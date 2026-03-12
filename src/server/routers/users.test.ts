@@ -42,7 +42,7 @@ describe.skipIf(skip)("users router", () => {
 
   it("getMe throws UNAUTHORIZED for anonymous callers", async () => {
     const caller = createAnonCaller();
-    await expect(caller.users.getMe()).rejects.toThrow("UNAUTHORIZED");
+    await expect(caller.users.getMe()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   // -------------------------------------------------------------------------
@@ -63,7 +63,7 @@ describe.skipIf(skip)("users router", () => {
 
   it("updateMe throws BAD_REQUEST when no fields provided", async () => {
     const caller = createTestCaller(userId);
-    await expect(caller.users.updateMe({})).rejects.toThrow("BAD_REQUEST");
+    await expect(caller.users.updateMe({})).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   // -------------------------------------------------------------------------

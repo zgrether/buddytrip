@@ -61,7 +61,7 @@ describe.skipIf(skip)("ideas router", () => {
         title: "Nope",
         location: "Nowhere",
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("list — any member can list ideas with votes", async () => {
@@ -95,7 +95,7 @@ describe.skipIf(skip)("ideas router", () => {
 
   it("remove — planner cannot remove", async () => {
     const caller = createTestCaller(plannerId);
-    await expect(caller.ideas.remove({ tripId, ideaId })).rejects.toThrow("FORBIDDEN");
+    await expect(caller.ideas.remove({ tripId, ideaId })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("remove — owner can remove", async () => {

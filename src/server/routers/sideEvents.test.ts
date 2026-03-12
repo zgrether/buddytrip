@@ -72,7 +72,7 @@ describe.skipIf(skip)("sideEvents router", () => {
         icon: "❌",
         pointsAvailable: 1,
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("list — member can list side events", async () => {
@@ -100,6 +100,6 @@ describe.skipIf(skip)("sideEvents router", () => {
         sideEventId,
         result: { [teamAId]: 0, [teamBId]: 1 },
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

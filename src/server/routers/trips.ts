@@ -276,6 +276,95 @@ export const tripsRouter = router({
     .input(z.object({ tripId: z.string() }))
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx }) => {
+      // Delete dependent records first (no ON DELETE CASCADE in schema).
+      // Order matters: children before parents.
+
+      // 1. Tables with direct trip_id FK — deep children first
+      const tripTables = [
+        "idea_votes",
+        "idea_comments",
+        "ideas",
+        "messages",
+        "reservations",
+        "quick_info_tiles",
+      ] as const;
+      for (const t of tripTables) {
+        await ctx.supabase.from(t).delete().eq("trip_id", ctx.tripId);
+      }
+
+      // 2. Notification reads → notification_events (has trip_id)
+      const { data: notifIds } = await ctx.supabase
+        .from("notification_events")
+        .select("id")
+        .eq("trip_id", ctx.tripId);
+      if (notifIds?.length) {
+        await ctx.supabase
+          .from("notification_reads")
+          .delete()
+          .in("notification_id", notifIds.map((n) => n.id));
+      }
+      await ctx.supabase.from("notification_events").delete().eq("trip_id", ctx.tripId);
+
+      // 3. Expense splits → expenses (has trip_id)
+      const { data: expIds } = await ctx.supabase
+        .from("expenses")
+        .select("id")
+        .eq("trip_id", ctx.tripId);
+      if (expIds?.length) {
+        await ctx.supabase
+          .from("expense_splits")
+          .delete()
+          .in("expense_id", expIds.map((e) => e.id));
+      }
+      await ctx.supabase.from("expenses").delete().eq("trip_id", ctx.tripId);
+
+      // 4. Date poll votes → date_windows (has trip_id)
+      const { data: winIds } = await ctx.supabase
+        .from("date_windows")
+        .select("id")
+        .eq("trip_id", ctx.tripId);
+      if (winIds?.length) {
+        await ctx.supabase
+          .from("date_poll_votes")
+          .delete()
+          .in("window_id", winIds.map((w) => w.id));
+      }
+      // Unlock date_polls.locked_window_id before deleting windows
+      await ctx.supabase
+        .from("date_polls")
+        .update({ locked_window_id: null })
+        .eq("trip_id", ctx.tripId);
+      await ctx.supabase.from("date_windows").delete().eq("trip_id", ctx.tripId);
+      await ctx.supabase.from("date_polls").delete().eq("trip_id", ctx.tripId);
+
+      // 5. Competition chain: event → teams/rounds/side_events → children
+      const { data: ev } = await ctx.supabase
+        .from("events")
+        .select("id")
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+
+      if (ev) {
+        // group_results → rounds, play_groups → rounds
+        const { data: roundIds } = await ctx.supabase
+          .from("rounds")
+          .select("id")
+          .eq("event_id", ev.id);
+        if (roundIds?.length) {
+          const rIds = roundIds.map((r) => r.id);
+          await ctx.supabase.from("group_results").delete().in("round_id", rIds);
+        }
+        await ctx.supabase.from("play_groups").delete().eq("event_id", ev.id);
+        await ctx.supabase.from("rounds").delete().eq("event_id", ev.id);
+        await ctx.supabase.from("team_assignments").delete().eq("event_id", ev.id);
+        await ctx.supabase.from("side_events").delete().eq("event_id", ev.id);
+        await ctx.supabase.from("teams").delete().eq("event_id", ev.id);
+        await ctx.supabase.from("events").delete().eq("id", ev.id);
+      }
+
+      // 6. trip_members last (before trips itself)
+      await ctx.supabase.from("trip_members").delete().eq("trip_id", ctx.tripId);
+
       const { error } = await ctx.supabase
         .from("trips")
         .delete()

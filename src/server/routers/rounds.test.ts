@@ -90,7 +90,7 @@ describe.skipIf(skip)("rounds router", () => {
         format: "skins",
         pointsAvailable: 4,
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("remove — owner can remove", async () => {

@@ -90,6 +90,6 @@ describe.skipIf(skip)("teamAssignments router", () => {
         teamId,
         userId: ownerId,
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
