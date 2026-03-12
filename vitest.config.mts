@@ -9,6 +9,7 @@ export default defineConfig({
   test: {
     environment: "node",
     testTimeout: 30_000,
+    exclude: ["e2e/**", "node_modules/**"],
   },
   resolve: {
     alias: {
