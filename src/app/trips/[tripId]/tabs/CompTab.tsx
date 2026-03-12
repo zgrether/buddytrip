@@ -38,7 +38,7 @@ function StatusPill({ status }: { status: string }) {
 
 // ── CompTab ───────────────────────────────────────────────────────────────
 
-export function CompTab({ trip, canEdit, isOwner }: TabProps) {
+export function CompTab({ trip, canEdit }: TabProps) {
   const router = useRouter();
 
   const { data: event, isLoading: eventLoading } =

@@ -76,7 +76,6 @@ export default function DashboardPage() {
   // ── Mark all read ──────────────────────────────────────────────────────────
   const utils = trpc.useUtils();
   const markAllReadMutations = tripIds.map((id) =>
-    // eslint-disable-next-line react-hooks/rules-of-hooks
     trpc.notifications.markAllRead.useMutation({
       onSuccess: () => {
         utils.notifications.list.invalidate({ tripId: id });

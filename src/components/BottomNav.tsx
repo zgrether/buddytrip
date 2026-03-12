@@ -50,7 +50,7 @@ export const BottomNav: FC<BottomNavProps> = ({
             onClick={() => onTabChange(id)}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "#00d4aa" : "#8b949e" }}
-            aria-selected={active}
+            aria-pressed={active}
           >
             <Icon
               size={22}
