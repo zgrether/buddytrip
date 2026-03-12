@@ -31,7 +31,15 @@ export const tripsRouter = router({
       });
     }
 
-    return trips ?? [];
+    const membershipByTripId = new Map(
+      memberships.map((m) => [m.trip_id, m])
+    );
+
+    return (trips ?? []).map((trip) => ({
+      ...trip,
+      myRole: membershipByTripId.get(trip.id)?.role ?? null,
+      myStatus: membershipByTripId.get(trip.id)?.status ?? null,
+    }));
   }),
 
   // -----------------------------------------------------------------------
