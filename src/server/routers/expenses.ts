@@ -1,0 +1,182 @@
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { router, authedProcedure } from "../trpc";
+import { requireTripMember, requireTripRole } from "../middleware";
+
+export const expensesRouter = router({
+  // -----------------------------------------------------------------------
+  // list — any member can view expenses
+  // -----------------------------------------------------------------------
+  list: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }) => {
+      const { data: expenses, error } = await ctx.supabase
+        .from("expenses")
+        .select("*")
+        .eq("trip_id", ctx.tripId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch expenses",
+        });
+      }
+
+      // Fetch splits for all expenses
+      const expenseIds = (expenses ?? []).map((e) => e.id);
+      let splits: { expense_id: string; user_id: string; amount: number | null }[] = [];
+      if (expenseIds.length > 0) {
+        const { data: s } = await ctx.supabase
+          .from("expense_splits")
+          .select("expense_id, user_id, amount")
+          .in("expense_id", expenseIds);
+        splits = s ?? [];
+      }
+
+      const splitsByExpense = new Map<string, typeof splits>();
+      for (const s of splits) {
+        const arr = splitsByExpense.get(s.expense_id) ?? [];
+        arr.push(s);
+        splitsByExpense.set(s.expense_id, arr);
+      }
+
+      return (expenses ?? []).map((e) => ({
+        ...e,
+        splits: splitsByExpense.get(e.id) ?? [],
+      }));
+    }),
+
+  // -----------------------------------------------------------------------
+  // create — Owner or Planner (canEdit)
+  // -----------------------------------------------------------------------
+  create: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        id: z.string().min(1),
+        title: z.string().min(1).max(200),
+        amount: z.number().min(0),
+        paidByUserId: z.string(),
+        splitAmong: z.array(z.string()).min(1),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: expense, error } = await ctx.supabase
+        .from("expenses")
+        .insert({
+          id: input.id,
+          trip_id: ctx.tripId,
+          title: input.title,
+          amount: input.amount,
+          paid_by_user_id: input.paidByUserId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to create expense: ${error.message}`,
+        });
+      }
+
+      // Insert splits (even split by default — amount = null)
+      const splitRows = input.splitAmong.map((userId) => ({
+        expense_id: input.id,
+        user_id: userId,
+        amount: null,
+      }));
+
+      const { error: splitErr } = await ctx.supabase
+        .from("expense_splits")
+        .insert(splitRows);
+
+      if (splitErr) {
+        // Clean up expense
+        await ctx.supabase.from("expenses").delete().eq("id", input.id);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create expense splits",
+        });
+      }
+
+      return expense;
+    }),
+
+  // -----------------------------------------------------------------------
+  // updateSplits — Owner only (isOwner)
+  // -----------------------------------------------------------------------
+  updateSplits: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        expenseId: z.string(),
+        splits: z.array(
+          z.object({
+            userId: z.string(),
+            amount: z.number().min(0).nullable(),
+          })
+        ),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      // Delete existing splits
+      await ctx.supabase
+        .from("expense_splits")
+        .delete()
+        .eq("expense_id", input.expenseId);
+
+      // Insert new splits
+      const splitRows = input.splits.map((s) => ({
+        expense_id: input.expenseId,
+        user_id: s.userId,
+        amount: s.amount,
+      }));
+
+      const { error } = await ctx.supabase
+        .from("expense_splits")
+        .insert(splitRows);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update splits",
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // remove — Owner or Planner (canEdit)
+  // -----------------------------------------------------------------------
+  remove: authedProcedure
+    .input(z.object({ tripId: z.string(), expenseId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      // Delete splits first
+      await ctx.supabase
+        .from("expense_splits")
+        .delete()
+        .eq("expense_id", input.expenseId);
+
+      const { error } = await ctx.supabase
+        .from("expenses")
+        .delete()
+        .eq("id", input.expenseId)
+        .eq("trip_id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to remove expense",
+        });
+      }
+
+      return { success: true };
+    }),
+});
