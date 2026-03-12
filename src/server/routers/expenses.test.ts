@@ -61,7 +61,7 @@ describe.skipIf(skip)("expenses router", () => {
         paidByUserId: memberId,
         splitAmong: [memberId],
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("list — any member can view with splits", async () => {
@@ -92,7 +92,7 @@ describe.skipIf(skip)("expenses router", () => {
         expenseId,
         splits: [{ userId: memberId, amount: 0 }],
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("remove — owner can remove", async () => {

@@ -57,7 +57,7 @@ describe.skipIf(skip)("datePoll router", () => {
         startDate: "2026-11-01",
         endDate: "2026-11-04",
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("vote — member can vote", async () => {

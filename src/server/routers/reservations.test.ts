@@ -60,7 +60,7 @@ describe.skipIf(skip)("reservations router", () => {
         title: "Nope",
         date: "2026-10-06",
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("list — any member can view", async () => {

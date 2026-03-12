@@ -57,7 +57,7 @@ describe.skipIf(skip)("quickInfoTiles router", () => {
         label: "Wifi",
         value: "password123",
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("list — any member can view tiles", async () => {

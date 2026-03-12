@@ -72,7 +72,7 @@ describe.skipIf(skip)("series router", () => {
     const caller = createTestCaller(otherUserId);
     await expect(
       caller.series.linkTrip({ seriesId, tripId })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("transferOwnership — owner can transfer", async () => {
@@ -91,6 +91,6 @@ describe.skipIf(skip)("series router", () => {
         seriesId,
         newOwnerId: ownerUserId,
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

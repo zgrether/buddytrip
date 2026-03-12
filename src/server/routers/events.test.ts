@@ -58,7 +58,7 @@ describe.skipIf(skip)("events router", () => {
         location: "Nowhere",
         dates: "Never",
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("getByTrip — any member can view", async () => {

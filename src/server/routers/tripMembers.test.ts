@@ -62,14 +62,14 @@ describe.skipIf(skip)("tripMembers router", () => {
     const caller = createTestCaller(memberId);
     await expect(
       caller.tripMembers.add({ tripId, userId: randomUUID() })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("add — duplicate throws CONFLICT", async () => {
     const caller = createTestCaller(plannerId);
     await expect(
       caller.tripMembers.add({ tripId, userId: newUserId })
-    ).rejects.toThrow("CONFLICT");
+    ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
   // updateRole
@@ -94,7 +94,7 @@ describe.skipIf(skip)("tripMembers router", () => {
     const caller = createTestCaller(plannerId);
     await expect(
       caller.tripMembers.updateRole({ tripId, userId: memberId, role: "Planner" })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   // updateRsvp

@@ -96,7 +96,7 @@ describe.skipIf(skip)("trips router", () => {
 
   it("getById — outsider is FORBIDDEN", async () => {
     const caller = createTestCaller(outsiderId);
-    await expect(caller.trips.getById({ tripId })).rejects.toThrow("FORBIDDEN");
+    await expect(caller.trips.getById({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   // -------------------------------------------------------------------------
@@ -115,7 +115,7 @@ describe.skipIf(skip)("trips router", () => {
     const caller = createTestCaller(memberId);
     await expect(
       caller.trips.update({ tripId, title: "Hacked" })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   // -------------------------------------------------------------------------
@@ -140,7 +140,7 @@ describe.skipIf(skip)("trips router", () => {
         title: "Somewhere",
         location: "Nowhere",
       })
-    ).rejects.toThrow("FORBIDDEN");
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("unlockDestination — owner can unlock", async () => {
@@ -154,7 +154,7 @@ describe.skipIf(skip)("trips router", () => {
   // -------------------------------------------------------------------------
   it("delete — member cannot delete", async () => {
     const caller = createTestCaller(memberId);
-    await expect(caller.trips.delete({ tripId })).rejects.toThrow("FORBIDDEN");
+    await expect(caller.trips.delete({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("delete — owner can delete", async () => {
