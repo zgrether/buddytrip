@@ -8,6 +8,8 @@ import { datePollRouter } from "./routers/datePoll";
 import { reservationsRouter } from "./routers/reservations";
 import { expensesRouter } from "./routers/expenses";
 import { messagesRouter } from "./routers/messages";
+import { notificationsRouter } from "./routers/notifications";
+import { quickInfoTilesRouter } from "./routers/quickInfoTiles";
 
 export const appRouter = router({
   health: publicProcedure.query(() => {
@@ -22,6 +24,8 @@ export const appRouter = router({
   reservations: reservationsRouter,
   expenses: expensesRouter,
   messages: messagesRouter,
+  notifications: notificationsRouter,
+  quickInfoTiles: quickInfoTilesRouter,
 });
 
 export type AppRouter = typeof appRouter;
