@@ -242,8 +242,6 @@ export default function TripMessagesPage() {
   const myUserId = currentUser?.id ?? "";
 
   const [activeChannel, setActiveChannel] = useState<ChatChannel>("trip");
-  const [activeTeamId, setActiveTeamId] = useState<string | undefined>();
-
   // ── Data ──────────────────────────────────────────────────────────────
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: event } = trpc.events.getByTrip.useQuery({ tripId });
@@ -271,14 +269,13 @@ export default function TripMessagesPage() {
   const myTeamIds = new Set(myAssignments.map((a) => a.team_id));
   const myTeams = (allTeams as Team[]).filter((t) => myTeamIds.has(t.id));
 
-  // Set default team when loaded
-  useEffect(() => {
-    if (myTeams.length > 0 && !activeTeamId) {
-      setActiveTeamId(myTeams[0].id);
-    }
-  }, [myTeams.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Default to first team reactively (no useEffect needed since data comes from queries)
+  const defaultTeamId = myTeams.length > 0 ? myTeams[0].id : undefined;
 
-  const activeTeam = (allTeams as Team[]).find((t) => t.id === activeTeamId);
+  const [activeTeamId, setActiveTeamId] = useState<string | undefined>();
+  const resolvedTeamId = activeTeamId ?? defaultTeamId;
+
+  const activeTeam = (allTeams as Team[]).find((t) => t.id === resolvedTeamId);
 
   return (
     <div
@@ -338,12 +335,12 @@ export default function TripMessagesPage() {
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
               style={{
                 background:
-                  activeChannel === "team" && activeTeamId === team.id
+                  activeChannel === "team" && resolvedTeamId === team.id
                     ? `${team.color}22`
                     : "transparent",
-                border: `1px solid ${activeChannel === "team" && activeTeamId === team.id ? team.color : "#30363d"}`,
+                border: `1px solid ${activeChannel === "team" && resolvedTeamId === team.id ? team.color : "#30363d"}`,
                 color:
-                  activeChannel === "team" && activeTeamId === team.id
+                  activeChannel === "team" && resolvedTeamId === team.id
                     ? team.color
                     : "#8b949e",
               }}
@@ -358,10 +355,10 @@ export default function TripMessagesPage() {
       {/* Chat pane — key forces re-mount when channel changes */}
       {myUserId && (
         <ChatPane
-          key={`${activeChannel}-${activeTeamId ?? "trip"}`}
+          key={`${activeChannel}-${resolvedTeamId ?? "trip"}`}
           tripId={tripId}
           channel={activeChannel}
-          teamId={activeChannel === "team" ? activeTeamId : undefined}
+          teamId={activeChannel === "team" ? resolvedTeamId : undefined}
           myUserId={myUserId}
           memberNames={memberNames}
         />

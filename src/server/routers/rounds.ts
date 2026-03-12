@@ -89,7 +89,7 @@ export const roundsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      const { roundId, tripId: _, ...fields } = input;
+      const { roundId, tripId: _tripId, ...fields } = input;
       const update: Record<string, unknown> = {};
 
       if (fields.title !== undefined) update.title = fields.title;
