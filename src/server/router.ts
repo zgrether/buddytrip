@@ -5,6 +5,9 @@ import { tripMembersRouter } from "./routers/tripMembers";
 import { ideasRouter } from "./routers/ideas";
 import { ideaCommentsRouter } from "./routers/ideaComments";
 import { datePollRouter } from "./routers/datePoll";
+import { reservationsRouter } from "./routers/reservations";
+import { expensesRouter } from "./routers/expenses";
+import { messagesRouter } from "./routers/messages";
 
 export const appRouter = router({
   health: publicProcedure.query(() => {
@@ -16,6 +19,9 @@ export const appRouter = router({
   ideas: ideasRouter,
   ideaComments: ideaCommentsRouter,
   datePoll: datePollRouter,
+  reservations: reservationsRouter,
+  expenses: expensesRouter,
+  messages: messagesRouter,
 });
 
 export type AppRouter = typeof appRouter;
