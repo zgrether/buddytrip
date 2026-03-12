@@ -15,17 +15,17 @@ import { createClient } from "@supabase/supabase-js";
  *  5. Clean up test data
  */
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Use service role if available (bypasses RLS), otherwise anon
-const client = createClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY
-);
-
+const hasSupabase = !!(SUPABASE_URL && (SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY));
 const hasServiceKey = !!SUPABASE_SERVICE_KEY;
+
+// Only create client when env vars are available (skipped in CI without secrets)
+const client = hasSupabase
+  ? createClient(SUPABASE_URL!, SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY!)
+  : (null as any);
 
 const TEST_EMAIL = `smoke-test-${Date.now()}@test.local`;
 const TEST_PASSWORD = "SmokeTe$t-2026!";
@@ -34,7 +34,7 @@ const TEST_TRIP_ID = `smoke-trip-${Date.now()}`;
 
 let authUserId: string | null = null;
 
-describe("Phase 0 Smoke Test", () => {
+describe.skipIf(!hasSupabase)("Phase 0 Smoke Test", () => {
   // --- Auth & write tests (require service role key) ---
 
   it.skipIf(!hasServiceKey)(
