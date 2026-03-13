@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BuddyTrip
 
-## Getting Started
+Mobile-first group trip planning and competition scoring app. Plan trips with your crew, vote on destinations, manage logistics, and run Ryder Cup-style golf competitions with live scoring and leaderboards.
 
-First, run the development server:
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 15 (App Router) |
+| UI | React 18 + Tailwind v4 |
+| API | tRPC v11 + TanStack Query v5 |
+| Database | Supabase (Postgres + Row Level Security) |
+| Auth | Supabase Auth (email/password) |
+| Realtime | Supabase Realtime |
+| Validation | Zod |
+| Testing | Vitest + Playwright |
+| Deployment | Vercel |
+
+## Local Development
 
 ```bash
+# Clone the repo
+git clone https://github.com/zgrether/buddytrip.git
+cd buddytrip
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.local.example .env.local
+# Fill in your Supabase credentials (see below)
+
+# Start local Supabase (requires Docker)
+npx supabase start
+
+# Run the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Description |
+|----------|------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous/public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) |
 
-## Learn More
+## Screens
 
-To learn more about Next.js, take a look at the following resources:
+| Screen | Route | Description |
+|--------|-------|------------|
+| Dashboard | `/dashboard` | Trip cards grouped by status, notification bell |
+| New Trip | `/trips/new` | 2-step creation wizard |
+| Trip Detail | `/trips/[tripId]` | 5-tab layout (Home, Schedule, Crew, Comp, More) |
+| Idea Comparison | `/trips/[tripId]/compare` | Side-by-side destination voting |
+| Competition Setup | `/trips/[tripId]/competition/setup` | Team builder, round builder, player assignment |
+| Trip Messages | `/trips/[tripId]/messages` | Trip chat + team chat |
+| Live Leaderboard | `/trips/[tripId]/leaderboard` | Live scores, groups, round history |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Spec Repository
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The visual and data specs live in [`buddytripworkflow`](https://github.com/zgrether/buddytripworkflow) (read-only):
 
-## Deploy on Vercel
+| Document | Purpose |
+|----------|---------|
+| `buddytrip-2.html` | Visual spec — open in browser, match screen-for-screen |
+| `types.ts` | Data spec — every interface maps to a Supabase table |
+| `SCHEMA.md` | Database schema reference |
+| `PERMISSIONS.md` | Auth spec — who can do what (3-tier: Owner/Planner/Member) |
+| `REALTIME.md` | Which features use Realtime vs polling |
+| `SCORING_PLAYBOOK.md` | Competition scoring rules and round lifecycle |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Development Status
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [PLAN_OF_ATTACK.md](./PLAN_OF_ATTACK.md) for the full development plan and current progress.
