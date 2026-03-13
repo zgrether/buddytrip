@@ -518,7 +518,7 @@ function OverviewTab({
               >
                 <div className="min-w-0">
                   <p className="truncate text-xs font-medium" style={{ color: "#e6edf3" }}>
-                    Day {round.day} — {round.title}
+                    {round.title}
                   </p>
                   <p className="text-[10px]" style={{ color: "#8b949e" }}>
                     {round.course} · {FORMAT_LABEL[round.format] ?? round.format} ·{" "}

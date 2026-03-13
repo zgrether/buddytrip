@@ -258,7 +258,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
-                      Day {round.day} — {round.title}
+                      {round.title}
                     </p>
                     <StatusPill status={round.status} />
                   </div>
