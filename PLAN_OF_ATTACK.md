@@ -1,7 +1,7 @@
 # BuddyTrip — Plan of Attack: Prototype → Production
 
 *Migration strategy for turning the buddytripworkflow prototype into a production application.*
-*Last updated: 2026-03-13 — CI green, test infrastructure hardened, Phase 4 next*
+*Last updated: 2026-03-13 — Phases 0-3 complete, Phase 4 starting*
 
 ---
 
@@ -206,19 +206,25 @@ If spec documents conflict with each other → stop and flag, do not silently re
 
 ## Phase 4 — Polish + Launch Prep 🔄 NEXT
 
-**Goal:** Everything that makes it feel finished and production-ready.
+**Goal:** Fix all broken core flows first, then make it feel finished and production-ready.
 
-| Task | What |
-|------|------|
-| 4.1 | Light/dark theme toggle — full WCAG-AA palette per prototype (see `CONTEXT.md` notes from task 7.1) |
-| 4.2 | Empty states for all lists — specific copy per section per prototype |
-| 4.3 | Navigation audit — all breadcrumbs, back buttons, deep links work round-trip |
-| 4.4 | Mobile responsive pass — test on real devices, prototype is mobile-first |
-| 4.5 | Error handling — loading states, error boundaries, offline indicators |
-| 4.6 | Seed data cleanup script — `TRUNCATE TABLE users CASCADE` wipes all test data |
-| 4.7 | E2E test suite — critical paths: create trip → invite → vote → lock → score → leaderboard → chat |
-| 4.8 | Performance pass — TanStack Query stale times, prefetching on hover, image optimization |
-| 4.9 | Deploy to Vercel production, verify build, smoke test live URL |
+| Task | What | Priority | Bug |
+|------|------|----------|-----|
+| 4.0 | Fix HIGH bugs — play groups UI, member invite UI, expenses UI, chat send, UTC dates, round title prefix | 🔴 Blocker | BUG-01 through BUG-06 |
+| 4.1 | User profile edit screen — name, avatar | 🔴 Core | Missing feature |
+| 4.2 | Medium bugs — share feedback, raw ISO dates, broken copy, CompetitionSetup layout, 404 page, sign-up error | 🟠 High | BUG-07 through BUG-13 |
+| 4.3 | Light/dark theme toggle — full WCAG-AA palette per prototype (see `CONTEXT.md` notes from task 7.1) | 🟡 Polish | — |
+| 4.4 | Visual match to prototype (Issue #28) | 🟡 Polish | — |
+| 4.5 | Empty states audit | 🟡 Polish | — |
+| 4.6 | Navigation audit — breadcrumbs, back buttons, deep links | 🟡 Polish | — |
+| 4.7 | Mobile responsive pass | 🟡 Polish | — |
+| 4.8 | Error handling — loading states, error boundaries | 🟡 Polish | — |
+| 4.9 | Playwright E2E (Issue #29) — fix middleware auth, add to CI | 🟡 Polish | — |
+| 4.10 | Seed data cleanup script | 🟡 Pre-launch | — |
+| 4.11 | Performance pass | 🟡 Pre-launch | — |
+| 4.12 | Deploy to Vercel production, smoke test | 🔴 Launch gate | — |
+
+**Walkthrough note (2026-03-13):** Walkthrough conducted 2026-03-13. Full findings in GitHub Issues. HIGH bugs (4.0) must be resolved before any polish work begins. Second walkthrough required after 4.0 completes to verify core flows work end-to-end.
 
 ---
 
@@ -249,6 +255,8 @@ Not started. Add ideas here, implement after launch.
 | Team chat privacy gap | Low | Medium | RLS policy on `messages` table enforces team membership at DB level |
 | Prototype drift after freeze | Low | Medium | Prototype is frozen — new ideas go to Phase 5 backlog only |
 | Test coverage gaps | Medium | Medium | CI blocks merge on failing tests; every task requires tests before commit |
+| Playwright E2E broken | High | Medium | Fix middleware auth redirect using global-setup pattern before Phase 4 ends |
+| Core flows missing UI | High | High | Play groups, expenses, member invite have no frontend — fixed in 4.0 |
 
 ---
 
@@ -256,7 +264,7 @@ Not started. Add ideas here, implement after launch.
 
 The app is "done" (Phase 4 complete) when:
 
-1. All 7 screens from the prototype are implemented and navigable
+1. All screens from the prototype are implemented and navigable, including gaps identified in the 2026-03-13 walkthrough: expenses view/add, play groups management, and member invite flow (all addressed in task 4.0)
 2. Full user journey works end-to-end: create account → create trip → invite crew → vote on destination → lock destination → set dates → create competition → assign teams → enter scores → view leaderboard → chat with team
 3. 3-tier permission model enforced (owner/planner/member) — matches `PERMISSIONS.md` exactly
 4. Notifications fire for 5 core events (destination locked, dates locked, crew added, chat message, score submitted)
