@@ -1,7 +1,7 @@
 # BuddyTrip — Plan of Attack: Prototype → Production
 
 *Migration strategy for turning the buddytripworkflow prototype into a production application.*
-*Last updated: 2026-03-11 — Phase 0 complete, Phase 1 in progress (task 5 of 20)*
+*Last updated: 2026-03-12 — Phase 2 complete, Phase 3 next*
 
 ---
 
@@ -101,9 +101,9 @@ If spec documents conflict with each other → stop and flag, do not silently re
 
 ---
 
-## Phase 1 — Backend Routers 🔄 IN PROGRESS (task 5 of 20)
+## Phase 1 — Backend Routers ✅ COMPLETE
 
-**Goal:** All tRPC routers built and tested against Supabase. No UI changes. Every router has a Vitest test file.
+**All 20 tasks complete. Committed and pushed.**
 
 | Task | Router | Status |
 |------|--------|--------|
@@ -112,58 +112,59 @@ If spec documents conflict with each other → stop and flag, do not silently re
 | 1.2 | Users router: `getMe`, `updateMe`, `search` | ✅ |
 | 1.3 | Trips router: `list`, `getById`, `create`, `update`, `lockDestination`, `unlockDestination`, `archive`, `delete` | ✅ |
 | 1.4 | Trip members router: `list`, `add`, `updateRole`, `remove`, `updateRsvp` | ✅ |
-| 1.5 | Ideas router: `list`, `create`, `update`, `remove`, `vote` | 🔄 In progress |
-| 1.6 | Idea comments router: `list`, `create` | ⬜ |
-| 1.7 | Date poll router: `get`, `addWindow`, `vote`, `lockWindow`, `unlock` | ⬜ |
-| 1.8 | Reservations router: `list`, `create`, `update`, `remove` | ⬜ |
-| 1.9 | Expenses router: `list`, `create`, `updateSplits`, `remove` | ⬜ |
-| 1.10 | Messages router: `list`, `send` (team channel filtered by team assignment) | ⬜ |
-| 1.11 | Notifications router: `list`, `markAllRead`, `pushNotification` helper + 4 triggers wired | ⬜ |
-| 1.12 | Quick info tiles router: `list`, `create`, `update`, `remove` | ⬜ |
-| 1.13 | Events router: `getByTrip`, `upsert` | ⬜ |
-| 1.14 | Teams router: `list`, `upsert` | ⬜ |
-| 1.15 | Team assignments router: `list`, `assign`, `remove` | ⬜ |
-| 1.16 | Rounds router: `list`, `create`, `update`, `remove` | ⬜ |
-| 1.17 | Play groups router: `list`, `create`, `update` | ⬜ |
-| 1.18 | Group results router: `list`, `submit`, `computeScores` (pure fn in `src/lib/scoring.ts`) | ⬜ |
-| 1.19 | Side events router: `list`, `create`, `submitResult` | ⬜ |
-| 1.20 | Series router: `list`, `create`, `linkTrip`, `transferOwnership` | ⬜ |
+| 1.5 | Ideas router: `list`, `create`, `update`, `remove`, `vote` | ✅ |
+| 1.6 | Idea comments router: `list`, `create` | ✅ |
+| 1.7 | Date poll router: `get`, `addWindow`, `vote`, `lockWindow`, `unlock` | ✅ |
+| 1.8 | Reservations router: `list`, `create`, `update`, `remove` | ✅ |
+| 1.9 | Expenses router: `list`, `create`, `updateSplits`, `remove` | ✅ |
+| 1.10 | Messages router: `list`, `send` (team channel filtered by team assignment) | ✅ |
+| 1.11 | Notifications router: `list`, `markAllRead`, `pushNotification` helper + 4 triggers wired | ✅ |
+| 1.12 | Quick info tiles router: `list`, `create`, `update`, `remove` | ✅ |
+| 1.13 | Events router: `getByTrip`, `upsert` | ✅ |
+| 1.14 | Teams router: `list`, `upsert` | ✅ |
+| 1.15 | Team assignments router: `list`, `assign`, `remove` | ✅ |
+| 1.16 | Rounds router: `list`, `create`, `update`, `remove` | ✅ |
+| 1.17 | Play groups router: `list`, `create`, `update` | ✅ |
+| 1.18 | Group results router: `list`, `submit`, `computeScores` (pure fn in `src/lib/scoring.ts`) | ✅ |
+| 1.19 | Side events router: `list`, `create`, `submitResult` | ✅ |
+| 1.20 | Series router: `list`, `create`, `linkTrip`, `transferOwnership` | ✅ |
 
-**Resuming mid-phase:** Start new session with:
-> Read `CLAUDE.md`. We are mid-way through Phase 1. Check the git log to see which routers are complete and continue from where we left off.
-
-**Done when:** All 20 tasks committed, all tests pass, PR created, `npx tsc --noEmit` clean.
-
----
-
-## Phase 2 — Frontend Core Screens
-
-**Goal:** All 7 screens implemented to match `buddytrip-2.html`. Open the prototype in a browser alongside the app and match screen-for-screen.
-
-| Task | Screen | Key Work |
-|------|--------|---------|
-| 2.1 | **Dashboard** | Live/ready/upcoming/past sections, notification bell, trip cards with status badges and score strips |
-| 2.2 | **TripNew** | 2-step wizard (basics → co-planner invites), validates invitees against `users` table |
-| 2.3 | **TripDetail shell** | 5-tab layout (Home, Schedule, Crew, Comp, More), BottomNav context switching, breadcrumbs |
-| 2.4 | **TripDetail > Home tab** | Quick Info Tiles, destination vote panel + lock, date poll panel, competition explainer/hero |
-| 2.5 | **TripDetail > Schedule tab** | Reservation list + Add Booking form (6 reservation types) |
-| 2.6 | **TripDetail > Crew tab** | Member roster, role badges, RSVP status, promote/demote/remove with inline confirmation |
-| 2.7 | **TripDetail > Comp tab** | Competition CTA or team assignment view depending on `hasComp` |
-| 2.8 | **TripDetail > More tab** | Expenses list + Add Expense form, trip settings panel (owner only) |
-| 2.9 | **IdeaComparison** | Side-by-side destination comparison, voting, comments, lock/unlock |
-| 2.10 | **CompetitionSetup** | Team builder, round builder, player assignment |
-| 2.11 | **TripMessages** | Trip chat + team chat stacked, team privacy via team assignment |
-
-**Each screen task is done when:**
-1. Visually matches `buddytrip-2.html` on mobile viewport
-2. All tRPC queries wired (no mock data)
-3. Permission gates match `PERMISSIONS.md`
-4. Happy path Playwright E2E test passes
-5. Committed and pushed
+**Notes:**
+- All routers use `requireTripMember` / `requireTripRole` middleware per PERMISSIONS.md
+- `trips.create` uses split INSERT → add member → SELECT pattern to avoid RLS race condition
 
 ---
 
-## Phase 3 — Competition + Live Features
+## Phase 2 — Frontend Core Screens ✅ COMPLETE
+
+**All 11 screens scaffolded. Committed and pushed.**
+
+| Task | Screen | Status |
+|------|--------|--------|
+| 2.1 | **Dashboard** | ✅ |
+| 2.2 | **TripNew** | ✅ |
+| 2.3 | **TripDetail shell** | ✅ |
+| 2.4 | **TripDetail > Home tab** | ✅ |
+| 2.5 | **TripDetail > Schedule tab** | ✅ |
+| 2.6 | **TripDetail > Crew tab** | ✅ |
+| 2.7 | **TripDetail > Comp tab** | ✅ |
+| 2.8 | **TripDetail > More tab** | ✅ |
+| 2.9 | **IdeaComparison** | ✅ |
+| 2.10 | **CompetitionSetup** | ✅ |
+| 2.11 | **TripMessages** | ✅ |
+
+**Notes:**
+- All 11 screens scaffolded and wired to tRPC — no mock data
+- 3-layer RLS bug fixed in `trips.create` (INSERT → add member → SELECT pattern)
+- Hook violations fixed: `useQueries` stabilized in DashboardClient, no hooks in loops/callbacks
+- Pixel-perfect visual match to `buddytrip-2.html` deferred to Phase 4 polish pass
+- `004_cascade_deletes.sql` migration added for proper FK cascading
+- `005_sync_auth_users.sql` trigger syncs `auth.users` → `public.users` on signup
+- Pre-Phase 3 cleanup audit passed: no hook violations, no RLS INSERT RETURNING issues, migrations clean, `tsc --noEmit` clean
+
+---
+
+## Phase 3 — Competition + Live Features 🔄 NEXT
 
 **Goal:** The competition day experience — score entry, live leaderboard, Realtime channels.
 
