@@ -20,6 +20,9 @@ interface TopNavProps {
   notifications?: Notification[];
   onMarkAllRead?: () => void;
   unreadCount?: number;
+  /** Single character shown in the avatar button; omit to hide the button */
+  avatarInitial?: string;
+  onProfileClick?: () => void;
 }
 
 function notificationLabel(n: Notification): string {
@@ -38,6 +41,8 @@ export const TopNav: FC<TopNavProps> = ({
   notifications = [],
   onMarkAllRead,
   unreadCount = 0,
+  avatarInitial,
+  onProfileClick,
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -77,6 +82,18 @@ export const TopNav: FC<TopNavProps> = ({
             style={{ color: "#e6edf3" }}
           >
             <Plus size={20} />
+          </button>
+        )}
+
+        {avatarInitial && (
+          <button
+            aria-label="Profile"
+            data-testid="profile-avatar-btn"
+            onClick={onProfileClick}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-colors hover:opacity-80"
+            style={{ background: "#0d2a22", color: "#00d4aa" }}
+          >
+            {avatarInitial}
           </button>
         )}
 

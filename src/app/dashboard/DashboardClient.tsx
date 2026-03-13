@@ -48,6 +48,11 @@ export default function DashboardClient() {
   const router = useRouter();
   const [pastExpanded, setPastExpanded] = useState(false);
 
+  // ── Current user (for avatar) ──────────────────────────────────────────────
+  const { data: me } = trpc.users.getMe.useQuery();
+  const avatarInitial =
+    ((me?.name ?? me?.email) || "").charAt(0).toUpperCase() || undefined;
+
   // ── Trips ──────────────────────────────────────────────────────────────────
   const { data: trips = [], isLoading: tripsLoading } =
     trpc.trips.list.useQuery();
@@ -132,6 +137,8 @@ export default function DashboardClient() {
         notifications={allNotifications}
         unreadCount={totalUnread}
         onMarkAllRead={handleMarkAllRead}
+        avatarInitial={avatarInitial}
+        onProfileClick={() => router.push("/profile")}
       />
 
       <main className="mx-auto max-w-lg px-4 pb-24 pt-4">
