@@ -91,6 +91,7 @@ function ChatPane({
 }) {
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([]);
 
@@ -134,7 +135,10 @@ function ChatPane({
   });
 
   const handleSend = useCallback(() => {
-    const trimmed = text.trim();
+    // Read from DOM ref as source of truth — guards against native events
+    // that update the DOM without firing React's synthetic onChange.
+    const current = textareaRef.current?.value ?? text;
+    const trimmed = current.trim();
     if (!trimmed || sendMessage.isPending) return;
 
     const id = crypto.randomUUID();
@@ -205,6 +209,7 @@ function ChatPane({
           style={{ background: "#161b22", border: "1px solid #30363d" }}
         >
           <textarea
+            ref={textareaRef}
             data-testid="message-input"
             value={text}
             onChange={(e) => setText(e.target.value)}
