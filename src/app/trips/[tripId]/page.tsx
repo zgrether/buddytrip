@@ -13,19 +13,7 @@ import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
 import { MoreTab } from "./tabs/MoreTab";
-
-function formatDateRange(start?: string | null, end?: string | null): string {
-  if (!start && !end) return "Dates TBD";
-  const fmt = (d: string) =>
-    new Date(d).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  if (start && end) return `${fmt(start)} – ${fmt(end)}`;
-  if (start) return `From ${fmt(start)}`;
-  return `Until ${fmt(end!)}`;
-}
+import { formatDateRange } from "@/lib/dates";
 
 export default function TripDetailPage() {
   const { tripId } = useParams<{ tripId: string }>();

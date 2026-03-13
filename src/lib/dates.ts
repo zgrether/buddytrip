@@ -1,0 +1,54 @@
+/**
+ * Date utilities for BuddyTrip.
+ *
+ * Problem: date-only strings like "2026-06-15" are stored in Postgres as
+ * plain dates (no time, no timezone). When parsed with `new Date("2026-06-15")`
+ * in JavaScript, the spec treats them as UTC midnight — which means in US
+ * timezones (UTC-5 to UTC-8) they appear as the *previous* day when formatted
+ * with toLocaleDateString().
+ *
+ * Fix: append "T12:00:00" before parsing so the date is noon local time,
+ * well clear of any timezone offset.
+ */
+
+/**
+ * Parse a YYYY-MM-DD date string as noon local time to prevent the UTC
+ * midnight off-by-one-day display bug in western timezones.
+ */
+export function parseLocalDate(dateStr: string): Date {
+  // ISO date-only strings have exactly 10 chars: "YYYY-MM-DD"
+  if (dateStr.length === 10) {
+    return new Date(`${dateStr}T12:00:00`);
+  }
+  // Fall back to native parsing for full ISO strings (already include time/tz)
+  return new Date(dateStr);
+}
+
+/**
+ * Format a YYYY-MM-DD date string for display (e.g. "Jun 15, 2026").
+ */
+export function formatDate(
+  dateStr: string,
+  options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }
+): string {
+  return parseLocalDate(dateStr).toLocaleDateString("en-US", options);
+}
+
+/**
+ * Format a date range for display (e.g. "Jun 15 – Jun 18, 2026").
+ * Either end may be omitted.
+ */
+export function formatDateRange(
+  start?: string | null,
+  end?: string | null
+): string {
+  if (!start && !end) return "Dates TBD";
+  const fmt = (d: string) => formatDate(d);
+  if (start && end) return `${fmt(start)} – ${fmt(end)}`;
+  if (start) return `From ${fmt(start)}`;
+  return `Until ${fmt(end!)}`;
+}

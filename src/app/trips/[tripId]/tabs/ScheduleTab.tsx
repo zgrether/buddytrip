@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { parseLocalDate } from "@/lib/dates";
 import type { TabProps } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ const RES_ICON: Record<ReservationType, React.ReactNode> = {
 };
 
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString("en-US", {
+  return parseLocalDate(d).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
