@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Search, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -76,9 +78,130 @@ function MyRsvpSelector({
   );
 }
 
+// ── InviteMember ──────────────────────────────────────────────────────────
+
+function InviteMember({
+  tripId,
+  existingMemberIds,
+}: {
+  tripId: string;
+  existingMemberIds: string[];
+}) {
+  const utils = trpc.useUtils();
+  const [query, setQuery] = useState("");
+  const [addedId, setAddedId] = useState<string | null>(null);
+
+  const { data: results = [], isFetching } = trpc.users.search.useQuery(
+    { query },
+    { enabled: query.trim().length >= 2 }
+  );
+
+  const addMember = trpc.tripMembers.add.useMutation({
+    onSuccess: (_, vars) => {
+      utils.tripMembers.list.invalidate({ tripId });
+      setAddedId(vars.userId);
+      setQuery("");
+    },
+  });
+
+  const filtered = results.filter((u) => !existingMemberIds.includes(u.id));
+
+  return (
+    <div
+      className="space-y-3 rounded-xl p-4"
+      style={{ background: "#161b22", border: "1px solid #30363d" }}
+    >
+      <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+        Add to Trip
+      </p>
+
+      {/* Search input */}
+      <div className="relative">
+        <Search
+          size={14}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+          style={{ color: "#8b949e" }}
+        />
+        <input
+          data-testid="invite-search-input"
+          type="email"
+          placeholder="Search by email…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setAddedId(null);
+          }}
+          className="w-full rounded-lg border py-2 pl-8 pr-3 text-sm outline-none"
+          style={{
+            background: "#0d1117",
+            borderColor: "#30363d",
+            color: "#e6edf3",
+          }}
+        />
+      </div>
+
+      {/* Results */}
+      {query.trim().length >= 2 && (
+        <div className="space-y-1.5">
+          {isFetching ? (
+            <p className="text-xs" style={{ color: "#8b949e" }}>
+              Searching…
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="text-xs" style={{ color: "#8b949e" }}>
+              No users found. They must sign up first.
+            </p>
+          ) : (
+            filtered.map((user) => {
+              const displayName = user.name ?? user.email ?? user.id;
+              const justAdded = addedId === user.id;
+              return (
+                <div
+                  key={user.id}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2"
+                  style={{ background: "#0d1117", border: "1px solid #30363d" }}
+                >
+                  <div
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                    style={{ background: "#1f1f1f", color: "#8b949e" }}
+                  >
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm" style={{ color: "#e6edf3" }}>
+                      {displayName}
+                    </p>
+                    {user.name && (
+                      <p className="truncate text-xs" style={{ color: "#8b949e" }}>
+                        {user.email}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    data-testid={`invite-btn-${user.id}`}
+                    disabled={addMember.isPending || justAdded}
+                    onClick={() =>
+                      addMember.mutate({ tripId, userId: user.id, role: "Member" })
+                    }
+                    className="flex flex-shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
+                    style={{ background: "#00d4aa22", color: "#00d4aa", border: "1px solid #00d4aa44" }}
+                  >
+                    <UserPlus size={12} />
+                    {justAdded ? "Added!" : "Add"}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
-export function CrewTab({ trip, isOwner }: TabProps) {
+export function CrewTab({ trip, canEdit }: TabProps) {
   const currentUser = useCurrentUser();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({
     tripId: trip.id,
@@ -163,10 +286,19 @@ export function CrewTab({ trip, isOwner }: TabProps) {
         </div>
       </section>
 
-      {isOwner && (
-        <p className="text-center text-xs" style={{ color: "#8b949e" }}>
-          To invite members, use the trip settings in the More tab.
-        </p>
+      {canEdit && (
+        <section>
+          <h2
+            className="mb-3 text-sm font-semibold uppercase tracking-wider"
+            style={{ color: "#8b949e" }}
+          >
+            Invite
+          </h2>
+          <InviteMember
+            tripId={trip.id}
+            existingMemberIds={members.map((m) => m.user_id)}
+          />
+        </section>
       )}
     </div>
   );
