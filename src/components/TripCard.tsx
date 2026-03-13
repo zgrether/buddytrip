@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MapPin, Calendar } from "lucide-react";
 import { StatusBadge, getTripStatus } from "./StatusBadge";
 import { RoleBadge } from "./RoleBadge";
+import { parseLocalDate } from "@/lib/dates";
 import type { TripRole } from "@/server/middleware";
 
 interface Trip {
@@ -25,7 +26,7 @@ interface TripCardProps {
 function formatDateRange(start?: string | null, end?: string | null): string {
   if (!start && !end) return "Dates TBD";
   const fmt = (d: string) =>
-    new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    parseLocalDate(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   if (start && end) return `${fmt(start)} – ${fmt(end)}`;
   if (start) return `From ${fmt(start)}`;
   return `Until ${fmt(end!)}`;
@@ -34,7 +35,7 @@ function formatDateRange(start?: string | null, end?: string | null): string {
 function getDaysUntil(dateStr: string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr);
+  const target = parseLocalDate(dateStr);
   target.setHours(0, 0, 0, 0);
   return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }

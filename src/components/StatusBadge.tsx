@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { parseLocalDate } from "@/lib/dates";
 
 export type TripStatus = "live" | "ready" | "upcoming" | "past";
 
@@ -35,11 +36,11 @@ export function getTripStatus(trip: {
   locked_destination_title?: string | null;
 }): TripStatus {
   const now = new Date();
-  if (trip.end_date && new Date(trip.end_date) < now) return "past";
+  if (trip.end_date && parseLocalDate(trip.end_date) < now) return "past";
   if (
     trip.start_date &&
-    new Date(trip.start_date) <= now &&
-    (!trip.end_date || new Date(trip.end_date) >= now)
+    parseLocalDate(trip.start_date) <= now &&
+    (!trip.end_date || parseLocalDate(trip.end_date) >= now)
   )
     return "live";
   if (trip.locked_destination_title) return "ready";

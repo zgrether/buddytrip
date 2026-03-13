@@ -69,12 +69,21 @@ export default function LeaderboardPage() {
 
   // Share link state
   const [shareCopied, setShareCopied] = useState(false);
+  const [shareError, setShareError] = useState(false);
   const shareLink = trpc.scoreboardShares.create.useMutation({
     onSuccess: async (data) => {
       const url = `${window.location.origin}/scoreboard/${data.shareCode}`;
-      await navigator.clipboard.writeText(url);
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2500);
+      } catch {
+        // Clipboard API unavailable (non-HTTPS, permissions denied, etc.)
+        // Fall back: prompt the user to copy manually
+        window.prompt("Copy the scoreboard link:", url);
+        setShareError(true);
+        setTimeout(() => setShareError(false), 3000);
+      }
     },
   });
 
@@ -270,13 +279,13 @@ export default function LeaderboardPage() {
           disabled={shareLink.isPending}
           className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all"
           style={{
-            background: shareCopied ? "#00d4aa22" : "#21262d",
-            color: shareCopied ? "#00d4aa" : "#8b949e",
+            background: shareCopied ? "#00d4aa22" : shareError ? "#3d1a1a" : "#21262d",
+            color: shareCopied ? "#00d4aa" : shareError ? "#ef4444" : "#8b949e",
           }}
           aria-label="Share scoreboard"
         >
           {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
-          {shareCopied ? "Copied!" : "Share"}
+          {shareCopied ? "Copied!" : shareError ? "Copy failed" : "Share"}
         </button>
       </header>
 
