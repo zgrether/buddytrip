@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Send, MessageSquare, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -93,13 +94,11 @@ function ChatPane({
   const [text, setText] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<DisplayMessage[]>([]);
 
-  // ── Fetch messages with polling ─────────────────────────────────────────
+  // ── Fetch messages (Realtime replaces polling) ─────────────────────────
+  useRealtimeChat(tripId, channel, teamId);
+
   const { data: messages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel, teamId, limit: 50 },
-    {
-      refetchInterval: 3000,
-      staleTime: 2500,
-    }
+    { tripId, channel, teamId, limit: 50 }
   );
 
   // Merge: real messages override optimistic ones with the same id

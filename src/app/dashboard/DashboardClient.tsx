@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ChevronDown, ChevronRight, Plane } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { TopNav } from "@/components/TopNav";
 import { TripCard } from "@/components/TripCard";
 import { getTripStatus, type TripStatus } from "@/components/StatusBadge";
@@ -63,6 +64,10 @@ export default function DashboardClient() {
   // NOTE: We intentionally pass an empty array when loading so hook count is
   // always 1 (the useQueries call itself is stable).
   const stableTripIds = tripsLoading ? [] : tripIds;
+
+  // Realtime subscription for live notification updates
+  useRealtimeNotifications(stableTripIds);
+
   const notifResults = trpc.useQueries((t) =>
     stableTripIds.map((id) => t.notifications.list({ tripId: id, limit: 20 }))
   );

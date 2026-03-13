@@ -10,6 +10,7 @@ export default defineConfig({
     environment: "node",
     testTimeout: 30_000,
     exclude: ["e2e/**", "node_modules/**"],
+    globalSetup: ["src/__tests__/helpers/global-setup.ts"],
   },
   resolve: {
     alias: {

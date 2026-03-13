@@ -1,7 +1,7 @@
 # BuddyTrip — Plan of Attack: Prototype → Production
 
 *Migration strategy for turning the buddytripworkflow prototype into a production application.*
-*Last updated: 2026-03-12 — Phase 2 complete, Phase 3 next*
+*Last updated: 2026-03-13 — CI green, test infrastructure hardened, Phase 4 next*
 
 ---
 
@@ -164,29 +164,47 @@ If spec documents conflict with each other → stop and flag, do not silently re
 
 ---
 
-## Phase 3 — Competition + Live Features 🔄 NEXT
+## Phase 3 — Competition + Live Features ✅ COMPLETE
 
-**Goal:** The competition day experience — score entry, live leaderboard, Realtime channels.
+**All 12 tasks complete. Committed and pushed.**
 
-| Task | What |
-|------|------|
-| 3.1 | **LiveLeaderboard** — 4 tabs (Overview, Groups, Trip Info, History) |
-| 3.2 | **ScoreEntry component** — bottom sheet for group-based score submission |
-| 3.3 | **Scramble format** — 3-way result selector (Team A / Halved / Team B) |
-| 3.4 | **Stableford format** — point entry per player |
-| 3.5 | **Sabotage format** — same as scramble with format-specific description |
-| 3.6 | **Skins format** — numeric skins-won per team |
-| 3.7 | **Supabase Realtime: live leaderboard** — subscribe to `group_results` filtered by `event_id` |
-| 3.8 | **Supabase Realtime: chat** — trip channel + team channel subscriptions |
-| 3.9 | **Supabase Realtime: notifications** — bell count updates without refresh |
-| 3.10 | **Public scoreboard** — share link generation + copy button |
-| 3.11 | **Round lifecycle** — 4 states (upcoming/active/submitted/closed) per `SCORING_PLAYBOOK.md` Task A |
+| Task | What | Status |
+|------|------|--------|
+| 3.0 | Update README.md with project overview | ✅ |
+| 3.1 | **LiveLeaderboard** — 4 tabs (Overview, Groups, Trip Info, History) | ✅ |
+| 3.2 | **ScoreEntry component** — bottom sheet for group-based score submission | ✅ |
+| 3.3 | **Scramble format** — 3-way result selector (Team A / Halved / Team B) | ✅ |
+| 3.4 | **Stableford format** — point entry per player | ✅ |
+| 3.5 | **Sabotage format** — same as scramble with format-specific description | ✅ |
+| 3.6 | **Skins format** — numeric skins-won per team | ✅ |
+| 3.7 | **Supabase Realtime: live leaderboard** — subscribe to `group_results` filtered by `event_id` | ✅ |
+| 3.8 | **Supabase Realtime: chat** — trip channel + team channel subscriptions | ✅ |
+| 3.9 | **Supabase Realtime: notifications** — bell count updates without refresh | ✅ |
+| 3.10 | **Public scoreboard** — share link generation + copy button | ✅ |
+| 3.11 | **Round lifecycle** — 4 states (upcoming/active/submitted/closed) per `SCORING_PLAYBOOK.md` Task A | ✅ |
 
-**Realtime implementation order:** leaderboard first (highest stakes), then notifications, then chat. See `REALTIME.md` for channel specs and reconnect pattern.
+**Notes:**
+- `006_realtime_setup.sql` migration adds `event_id` to `group_results` + enables Supabase Realtime publication on messages, group_results, side_events, notification_events
+- `007_scoreboard_shares.sql` migration adds `scoreboard_shares` table for public share links
+- Realtime uses invalidate-on-event pattern (not direct state updates) per REALTIME.md
+- Public scoreboard bypasses auth via middleware whitelist + `publicProcedure`
+- Round lifecycle is frontend-only — backend already supported all 4 states
+
+### Post-Phase 3 Hardening (2026-03-13)
+
+**CI green ✅** — first genuinely green CI run (run 23057090271). All steps pass: `tsc --noEmit`, `vitest run` (156 tests), Playwright.
+
+| Fix | What |
+|-----|------|
+| Test infrastructure rewrite | Replaced 55-user pool with 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`). Test isolation via unique trips, not unique users. Bearer token injection for auth. |
+| `009_missing_rls_policies.sql` | 5 RLS policy fixes: `play_groups` UPDATE, `expense_splits` DELETE, `expenses` DELETE, anon SELECT for public scoreboard (4 tables), `series` UPDATE WITH CHECK for ownership transfer |
+| `010_cascade_deletes.sql` | ON DELETE CASCADE/SET NULL for all 30 remaining NO ACTION FKs. CASCADE for child rows, SET NULL for audit columns and nullable back-references. `series.owner_id` intentionally left NO ACTION. |
+| `.env.example` | Documents all required env vars |
+| CI workflow | `supabase db push` step added (requires PAT with `workflow` scope) |
 
 ---
 
-## Phase 4 — Polish + Launch Prep
+## Phase 4 — Polish + Launch Prep 🔄 NEXT
 
 **Goal:** Everything that makes it feel finished and production-ready.
 

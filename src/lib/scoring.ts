@@ -11,6 +11,11 @@ export interface TeamScore {
   totalPoints: number;
 }
 
+export interface ScoreSummary {
+  teamScores: TeamScore[];
+  remaining: number;
+}
+
 export interface RoundResult {
   roundId: string;
   pointsAvailable: number;
@@ -20,7 +25,20 @@ export interface RoundResult {
 
 export interface SideEventScore {
   sideEventId: string;
+  pointsAvailable: number;
   result: Record<string, number>; // { [teamId]: points }
+}
+
+export interface RoundInfo {
+  roundId: string;
+  pointsAvailable: number;
+  hasResults: boolean;
+}
+
+export interface SideEventInfo {
+  sideEventId: string;
+  pointsAvailable: number;
+  isComplete: boolean;
 }
 
 /**
@@ -66,4 +84,38 @@ export function computeScores(
       totalPoints: s.roundPoints + s.sidePoints,
     };
   });
+}
+
+/**
+ * Compute remaining points — sum of points from rounds without results
+ * and side events without results.
+ */
+export function computeRemaining(
+  rounds: RoundInfo[],
+  sideEvents: SideEventInfo[]
+): number {
+  let remaining = 0;
+  for (const r of rounds) {
+    if (!r.hasResults) remaining += r.pointsAvailable;
+  }
+  for (const s of sideEvents) {
+    if (!s.isComplete) remaining += s.pointsAvailable;
+  }
+  return remaining;
+}
+
+/**
+ * Full score summary — scores + remaining points.
+ */
+export function computeScoreSummary(
+  teamIds: string[],
+  roundResults: RoundResult[],
+  sideEvents: SideEventScore[],
+  allRounds: RoundInfo[],
+  allSideEvents: SideEventInfo[]
+): ScoreSummary {
+  return {
+    teamScores: computeScores(teamIds, roundResults, sideEvents),
+    remaining: computeRemaining(allRounds, allSideEvents),
+  };
 }

@@ -18,5 +18,13 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Push migrations to Supabase
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       - run: npx tsc --noEmit
       - run: npx vitest run
+      # Playwright E2E tests deferred — requires auth redirect fix + global-setup (Issue #29)

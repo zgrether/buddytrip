@@ -18,6 +18,7 @@ import { playGroupsRouter } from "./routers/playGroups";
 import { groupResultsRouter } from "./routers/groupResults";
 import { sideEventsRouter } from "./routers/sideEvents";
 import { seriesRouter } from "./routers/series";
+import { scoreboardSharesRouter } from "./routers/scoreboardShares";
 
 export const appRouter = router({
   health: publicProcedure.query(() => {
@@ -42,6 +43,7 @@ export const appRouter = router({
   groupResults: groupResultsRouter,
   sideEvents: sideEventsRouter,
   series: seriesRouter,
+  scoreboardShares: scoreboardSharesRouter,
 });
 
 export type AppRouter = typeof appRouter;

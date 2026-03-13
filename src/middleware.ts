@@ -32,7 +32,8 @@ export async function middleware(request: NextRequest) {
   // Redirect unauthenticated users to /login (except for public routes)
   const isPublicRoute =
     request.nextUrl.pathname === "/login" ||
-    request.nextUrl.pathname.startsWith("/auth/");
+    request.nextUrl.pathname.startsWith("/auth/") ||
+    request.nextUrl.pathname.startsWith("/scoreboard/");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();

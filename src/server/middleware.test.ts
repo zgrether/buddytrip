@@ -1,19 +1,24 @@
-import { describe, it, expect } from "vitest";
-import { createTestCaller, createAnonCaller, hasServiceKey } from "./test-helpers";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { TestContext, createAnonCaller } from "../__tests__/helpers/test-setup";
 
-describe.skipIf(!hasServiceKey())("tRPC middleware", () => {
-  // Use seeded data: 'brad' is Owner of 'trip-bbmi', 'zach' is Planner,
-  // 'ben' is Member. 'rob' is not a member of 'trip-new-deciding'.
+let ctx: TestContext;
+
+describe("tRPC middleware", () => {
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+  });
+
+  afterAll(async () => {
+    await ctx.cleanup();
+  });
 
   it("authedProcedure: allows authenticated users", async () => {
-    const caller = createTestCaller("brad");
+    const caller = ctx.caller();
     const result = await caller.health();
     expect(result).toEqual({ status: "ok" });
   });
 
-  it("authedProcedure: rejects unauthenticated users on protected routes", async () => {
-    // health is a public procedure, so it passes even without auth.
-    // We'll test auth rejection via a protected router in later tests.
+  it("authedProcedure: unauthenticated users can access public routes", async () => {
     const caller = createAnonCaller();
     const result = await caller.health();
     expect(result).toEqual({ status: "ok" });

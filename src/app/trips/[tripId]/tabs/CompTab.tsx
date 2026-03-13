@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Trophy, Users, Calendar, ChevronRight, Flag } from "lucide-react";
+import { Trophy, Users, Calendar, ChevronRight, Flag, BarChart3, CheckCircle, Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { TabProps } from "./types";
 
@@ -22,9 +22,11 @@ function StatusPill({ status }: { status: string }) {
   const cfg =
     status === "active"
       ? { label: "Active", color: "#00d4aa" }
-      : status === "completed"
-        ? { label: "Completed", color: "#8b949e" }
-        : { label: "Upcoming", color: "#a78bfa" };
+      : status === "submitted"
+        ? { label: "Submitted", color: "#f59e0b" }
+        : status === "closed" || status === "completed"
+          ? { label: "Closed", color: "#8b949e" }
+          : { label: "Upcoming", color: "#a78bfa" };
 
   return (
     <span
@@ -40,6 +42,7 @@ function StatusPill({ status }: { status: string }) {
 
 export function CompTab({ trip, canEdit }: TabProps) {
   const router = useRouter();
+  const utils = trpc.useUtils();
 
   const { data: event, isLoading: eventLoading } =
     trpc.events.getByTrip.useQuery({ tripId: trip.id });
@@ -53,6 +56,12 @@ export function CompTab({ trip, canEdit }: TabProps) {
     { tripId: trip.id, eventId: event?.id ?? "" },
     { enabled: !!event?.id }
   );
+
+  const closeRound = trpc.rounds.update.useMutation({
+    onSuccess: () => {
+      utils.rounds.list.invalidate({ tripId: trip.id, eventId: event?.id ?? "" });
+    },
+  });
 
   // ── Loading ─────────────────────────────────────────────────────────────
   if (eventLoading) {
@@ -148,11 +157,21 @@ export function CompTab({ trip, canEdit }: TabProps) {
           )}
         </div>
 
+        <button
+          data-testid="view-leaderboard-btn"
+          onClick={() => router.push(`/trips/${trip.id}/leaderboard`)}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium"
+          style={{ background: "#00d4aa", color: "#0d1117" }}
+        >
+          <BarChart3 size={14} />
+          View Leaderboard
+        </button>
+
         {canEdit && (
           <button
             data-testid="edit-competition-btn"
             onClick={() => router.push(`/trips/${trip.id}/competition/setup`)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs transition-colors hover:bg-white/5"
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs transition-colors hover:bg-white/5"
             style={{ borderColor: "#30363d", color: "#00d4aa" }}
           >
             Manage Competition
@@ -219,36 +238,70 @@ export function CompTab({ trip, canEdit }: TabProps) {
           </p>
         ) : (
           <div className="space-y-2">
-            {rounds.map((round) => (
-              <div
-                key={round.id}
-                data-testid={`round-${round.id}`}
-                className="rounded-xl px-4 py-3"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
-                    Day {round.day} — {round.title}
-                  </p>
-                  <span
-                    className="text-xs"
-                    style={{ color: round.is_closed ? "#8b949e" : "#00d4aa" }}
-                  >
-                    {round.is_closed ? "Closed" : "Open"}
-                  </span>
-                </div>
+            {rounds.map((round) => {
+              const statusColor =
+                round.status === "active" ? "#00d4aa"
+                  : round.status === "submitted" ? "#f59e0b"
+                    : round.status === "closed" ? "#8b949e"
+                      : "#6e7681";
+
+              return (
                 <div
-                  className="mt-1 flex gap-3 text-xs"
-                  style={{ color: "#8b949e" }}
+                  key={round.id}
+                  data-testid={`round-${round.id}`}
+                  className="rounded-xl px-4 py-3"
+                  style={{
+                    background: "#161b22",
+                    border: "1px solid #30363d",
+                    borderLeft: `3px solid ${statusColor}`,
+                  }}
                 >
-                  <span>{round.course}</span>
-                  <span>{FORMAT_LABEL[round.format] ?? round.format}</span>
-                  {round.points_available > 0 && (
-                    <span>{round.points_available} pts</span>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                      Day {round.day} — {round.title}
+                    </p>
+                    <StatusPill status={round.status} />
+                  </div>
+                  <div
+                    className="mt-1 flex gap-3 text-xs"
+                    style={{ color: "#8b949e" }}
+                  >
+                    <span>{round.course}</span>
+                    <span>{FORMAT_LABEL[round.format] ?? round.format}</span>
+                    {round.points_available > 0 && (
+                      <span>{round.points_available} pts</span>
+                    )}
+                  </div>
+
+                  {/* Close Round button for submitted rounds (owner/planner only) */}
+                  {canEdit && round.status === "submitted" && (
+                    <button
+                      data-testid={`close-round-${round.id}`}
+                      onClick={() =>
+                        closeRound.mutate({
+                          roundId: round.id,
+                          tripId: trip.id,
+                          status: "closed",
+                        })
+                      }
+                      disabled={closeRound.isPending}
+                      className="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity disabled:opacity-50"
+                      style={{ background: "#00d4aa22", color: "#00d4aa" }}
+                    >
+                      <CheckCircle size={12} />
+                      Close Round
+                    </button>
+                  )}
+
+                  {round.status === "closed" && (
+                    <div className="mt-2 flex items-center gap-1 text-xs" style={{ color: "#8b949e" }}>
+                      <Lock size={10} />
+                      Officially closed
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

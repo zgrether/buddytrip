@@ -1,95 +1,74 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "crypto";
-import {
-  createTestCaller,
-  getAdminClient,
-  hasServiceKey,
-  cleanupRows,
-} from "../test-helpers";
+import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
-const skip = !hasServiceKey();
+let ctx: TestContext;
+let tripId: string;
+let seriesId: string;
 
-describe.skipIf(skip)("series router", () => {
-  const ownerUserId = randomUUID();
-  const otherUserId = randomUUID();
-  const seriesId = `series-${randomUUID().slice(0, 8)}`;
-  const tripId = `test-ser-${randomUUID().slice(0, 8)}`;
-
+describe("series router", () => {
   beforeAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("users").upsert([
-      { id: ownerUserId, name: "Series Owner", nickname: "SO", email: `so-${ownerUserId}@test.com` },
-      { id: otherUserId, name: "Other User", nickname: "OU", email: `ou-${otherUserId}@test.com` },
-    ]);
-    // Create a trip to link later
-    await admin.from("trips").insert({ id: tripId, title: "Series Link Test" });
-    await admin.from("trip_members").insert([
-      { trip_id: tripId, user_id: ownerUserId, role: "Owner", status: "in" },
-    ]);
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Series Link Test");
   });
 
   afterAll(async () => {
-    const admin = getAdminClient();
-    // Unlink trip from series first
-    await admin.from("trips").update({ series_id: null }).eq("id", tripId);
-    await admin.from("series").delete().eq("id", seriesId);
-    await admin.from("trip_members").delete().eq("trip_id", tripId);
-    await cleanupRows("trips", "id", [tripId]);
-    await cleanupRows("users", "id", [ownerUserId, otherUserId]);
+    await ctx.cleanup();
   });
 
   it("create — user can create a series", async () => {
-    const caller = createTestCaller(ownerUserId);
+    const caller = ctx.caller();
     const s = await caller.series.create({
-      id: seriesId,
+      id: genId("series"),
       name: "BT",
       fullName: "Buddy Trip Series",
       years: "2024-2026",
     });
-    expect(s.id).toBe(seriesId);
-    expect(s.owner_id).toBe(ownerUserId);
+    seriesId = s.id;
+    ctx.trackSeries(seriesId);
+    expect(s.owner_id).toBe(ctx.user.id);
   });
 
   it("list — owner sees their series", async () => {
-    const caller = createTestCaller(ownerUserId);
+    const caller = ctx.caller();
     const list = await caller.series.list();
     expect(list.some((s: { id: string }) => s.id === seriesId)).toBe(true);
   });
 
   it("list — other user does not see it", async () => {
-    const caller = createTestCaller(otherUserId);
+    const caller = ctx.callerAs("member");
     const list = await caller.series.list();
     expect(list.some((s: { id: string }) => s.id === seriesId)).toBe(false);
   });
 
   it("linkTrip — owner can link a trip", async () => {
-    const caller = createTestCaller(ownerUserId);
+    const caller = ctx.caller();
     const trip = await caller.series.linkTrip({ seriesId, tripId });
     expect(trip.series_id).toBe(seriesId);
   });
 
   it("linkTrip — non-owner cannot link", async () => {
-    const caller = createTestCaller(otherUserId);
+    const caller = ctx.callerAs("member");
     await expect(
       caller.series.linkTrip({ seriesId, tripId })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("transferOwnership — owner can transfer", async () => {
-    const caller = createTestCaller(ownerUserId);
+    const other = ctx.getUser("member");
+    const caller = ctx.caller();
     const s = await caller.series.transferOwnership({
       seriesId,
-      newOwnerId: otherUserId,
+      newOwnerId: other.id,
     });
-    expect(s.owner_id).toBe(otherUserId);
+    expect(s.owner_id).toBe(other.id);
   });
 
   it("transferOwnership — previous owner can no longer transfer", async () => {
-    const caller = createTestCaller(ownerUserId);
+    const caller = ctx.caller();
     await expect(
       caller.series.transferOwnership({
         seriesId,
-        newOwnerId: ownerUserId,
+        newOwnerId: ctx.user.id,
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
