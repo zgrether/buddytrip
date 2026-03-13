@@ -11,6 +11,8 @@ import {
   Flag,
   Calendar,
   Clock,
+  Share2,
+  Check,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -64,6 +66,17 @@ export default function LeaderboardPage() {
   } | null>(null);
 
   const utils = trpc.useUtils();
+
+  // Share link state
+  const [shareCopied, setShareCopied] = useState(false);
+  const shareLink = trpc.scoreboardShares.create.useMutation({
+    onSuccess: async (data) => {
+      const url = `${window.location.origin}/scoreboard/${data.shareCode}`;
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    },
+  });
 
   // ── Data queries ────────────────────────────────────────────────────────
 
@@ -251,6 +264,20 @@ export default function LeaderboardPage() {
             </p>
           )}
         </div>
+        <button
+          data-testid="share-btn"
+          onClick={() => shareLink.mutate({ tripId, eventId })}
+          disabled={shareLink.isPending}
+          className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all"
+          style={{
+            background: shareCopied ? "#00d4aa22" : "#21262d",
+            color: shareCopied ? "#00d4aa" : "#8b949e",
+          }}
+          aria-label="Share scoreboard"
+        >
+          {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+          {shareCopied ? "Copied!" : "Share"}
+        </button>
       </header>
 
       {/* Tab bar */}
