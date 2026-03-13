@@ -19,7 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Supabase CLI
-        run: npm install -g supabase
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/supabase/cli/main/install.sh | sh
       - name: Push migrations to Supabase
         run: supabase db push --db-url "$SUPABASE_DB_URL"
         env:
