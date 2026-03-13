@@ -162,7 +162,7 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      const { tripId, ...fields } = input;
+      const { tripId: _tripId, ...fields } = input;
       const update: Record<string, unknown> = {};
 
       if (fields.title !== undefined) update.title = fields.title;

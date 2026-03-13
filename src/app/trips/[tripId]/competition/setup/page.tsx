@@ -9,8 +9,6 @@ import {
   Trophy,
   Users,
   Calendar,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -753,7 +751,7 @@ type SetupTab = "event" | "teams" | "rounds";
 export default function CompetitionSetupPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const router = useRouter();
-  const { canEdit } = useTripRole(tripId);
+  useTripRole(tripId);
 
   const [activeTab, setActiveTab] = useState<SetupTab>("event");
 

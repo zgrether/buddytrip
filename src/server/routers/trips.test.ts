@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "crypto";
 import {
   createTestCaller,
-  createAnonCaller,
   getAdminClient,
   hasServiceKey,
   cleanupRows,
