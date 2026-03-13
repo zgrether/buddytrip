@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Trophy, Users, Calendar, ChevronRight, Flag } from "lucide-react";
+import { Trophy, Users, Calendar, ChevronRight, Flag, BarChart3 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { TabProps } from "./types";
 
@@ -148,11 +148,21 @@ export function CompTab({ trip, canEdit }: TabProps) {
           )}
         </div>
 
+        <button
+          data-testid="view-leaderboard-btn"
+          onClick={() => router.push(`/trips/${trip.id}/leaderboard`)}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium"
+          style={{ background: "#00d4aa", color: "#0d1117" }}
+        >
+          <BarChart3 size={14} />
+          View Leaderboard
+        </button>
+
         {canEdit && (
           <button
             data-testid="edit-competition-btn"
             onClick={() => router.push(`/trips/${trip.id}/competition/setup`)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs transition-colors hover:bg-white/5"
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs transition-colors hover:bg-white/5"
             style={{ borderColor: "#30363d", color: "#00d4aa" }}
           >
             Manage Competition
