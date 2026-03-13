@@ -18,5 +18,15 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+      - name: Push migrations to Supabase
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       - run: npx tsc --noEmit
       - run: npx vitest run
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright E2E tests
+        run: npx playwright test

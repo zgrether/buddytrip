@@ -1,7 +1,7 @@
 # BuddyTrip — Plan of Attack: Prototype → Production
 
 *Migration strategy for turning the buddytripworkflow prototype into a production application.*
-*Last updated: 2026-03-12 — Phase 3 complete, Phase 4 next*
+*Last updated: 2026-03-13 — CI green, test infrastructure hardened, Phase 4 next*
 
 ---
 
@@ -189,6 +189,18 @@ If spec documents conflict with each other → stop and flag, do not silently re
 - Realtime uses invalidate-on-event pattern (not direct state updates) per REALTIME.md
 - Public scoreboard bypasses auth via middleware whitelist + `publicProcedure`
 - Round lifecycle is frontend-only — backend already supported all 4 states
+
+### Post-Phase 3 Hardening (2026-03-13)
+
+**CI green ✅** — first genuinely green CI run (run 23057090271). All steps pass: `tsc --noEmit`, `vitest run` (156 tests), Playwright.
+
+| Fix | What |
+|-----|------|
+| Test infrastructure rewrite | Replaced 55-user pool with 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`). Test isolation via unique trips, not unique users. Bearer token injection for auth. |
+| `009_missing_rls_policies.sql` | 5 RLS policy fixes: `play_groups` UPDATE, `expense_splits` DELETE, `expenses` DELETE, anon SELECT for public scoreboard (4 tables), `series` UPDATE WITH CHECK for ownership transfer |
+| `010_cascade_deletes.sql` | ON DELETE CASCADE/SET NULL for all 30 remaining NO ACTION FKs. CASCADE for child rows, SET NULL for audit columns and nullable back-references. `series.owner_id` intentionally left NO ACTION. |
+| `.env.example` | Documents all required env vars |
+| CI workflow | `supabase db push` step added (requires PAT with `workflow` scope) |
 
 ---
 
