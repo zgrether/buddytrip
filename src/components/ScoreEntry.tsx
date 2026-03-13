@@ -3,6 +3,10 @@
 import { useState, useCallback } from "react";
 import { X, Check, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { ScrambleFormat } from "./scoring-formats/ScrambleFormat";
+import { StablefordFormat } from "./scoring-formats/StablefordFormat";
+import { SabotageFormat } from "./scoring-formats/SabotageFormat";
+import { SkinsFormat } from "./scoring-formats/SkinsFormat";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -85,8 +89,22 @@ export function ScoreEntry({
     });
   }, [submitMutation, tripId, roundId, groupId, scores]);
 
-  // Scramble-like formats: 3-way selector (Team A / Halved / Team B)
-  const isThreeWay = format === "scramble" || format === "sabotage" || format === "match_play";
+  const renderFormat = () => {
+    switch (format) {
+      case "scramble":
+      case "match_play":
+        return <ScrambleFormat teams={teams} scores={scores} onChange={handleScoreChange} />;
+      case "sabotage":
+        return <SabotageFormat teams={teams} scores={scores} onChange={handleScoreChange} />;
+      case "stableford":
+      case "singles":
+        return <StablefordFormat teams={teams} scores={scores} onChange={handleScoreChange} />;
+      case "skins":
+        return <SkinsFormat teams={teams} scores={scores} onChange={handleScoreChange} />;
+      default:
+        return <StablefordFormat teams={teams} scores={scores} onChange={handleScoreChange} />;
+    }
+  };
 
   return (
     <>
@@ -128,22 +146,9 @@ export function ScoreEntry({
           </button>
         </div>
 
-        {/* Score body */}
+        {/* Score body — format-specific component */}
         <div className="px-4 py-4">
-          {isThreeWay && teams.length === 2 ? (
-            <ThreeWaySelector
-              teams={teams}
-              scores={scores}
-              onChange={handleScoreChange}
-            />
-          ) : (
-            <PointsSelector
-              teams={teams}
-              scores={scores}
-              format={format}
-              onChange={handleScoreChange}
-            />
-          )}
+          {renderFormat()}
         </div>
 
         {/* Footer */}
@@ -173,181 +178,3 @@ export function ScoreEntry({
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// Three-Way Selector (Scramble, Sabotage, Match Play)
-// Team A wins (1-0) / Halved (0.5-0.5) / Team B wins (0-1)
-// ═════════════════════════════════════════════════════════════════════════════
-
-interface ThreeWaySelectorProps {
-  teams: TeamInfo[];
-  scores: ScoreEntryResult[];
-  onChange: (teamId: string, points: number) => void;
-}
-
-function ThreeWaySelector({ teams, scores, onChange }: ThreeWaySelectorProps) {
-  const teamA = teams[0];
-  const teamB = teams[1];
-  const scoreA = scores.find((s) => s.teamId === teamA.id)?.points ?? 0;
-  const scoreB = scores.find((s) => s.teamId === teamB.id)?.points ?? 0;
-
-  type Selection = "a" | "halved" | "b" | null;
-  let selection: Selection = null;
-  if (scoreA === 1 && scoreB === 0) selection = "a";
-  else if (scoreA === 0.5 && scoreB === 0.5) selection = "halved";
-  else if (scoreA === 0 && scoreB === 1) selection = "b";
-
-  const select = (sel: Selection) => {
-    if (sel === "a") {
-      onChange(teamA.id, 1);
-      onChange(teamB.id, 0);
-    } else if (sel === "halved") {
-      onChange(teamA.id, 0.5);
-      onChange(teamB.id, 0.5);
-    } else if (sel === "b") {
-      onChange(teamA.id, 0);
-      onChange(teamB.id, 1);
-    }
-  };
-
-  return (
-    <div className="space-y-3" data-testid="three-way-selector">
-      <p className="text-center text-xs" style={{ color: "#8b949e" }}>
-        Who won this group?
-      </p>
-      <div className="flex gap-2">
-        {/* Team A wins */}
-        <button
-          data-testid={`select-team-${teamA.id}`}
-          onClick={() => select("a")}
-          className="flex flex-1 flex-col items-center rounded-xl py-4 transition-all"
-          style={{
-            background: selection === "a" ? `${teamA.color}22` : "#21262d",
-            border: `2px solid ${selection === "a" ? teamA.color : "#30363d"}`,
-          }}
-        >
-          <span
-            className="text-lg font-bold"
-            style={{ color: selection === "a" ? teamA.color : "#8b949e" }}
-          >
-            {teamA.shortName}
-          </span>
-          <span className="text-[10px]" style={{ color: "#8b949e" }}>
-            wins
-          </span>
-        </button>
-
-        {/* Halved */}
-        <button
-          data-testid="select-halved"
-          onClick={() => select("halved")}
-          className="flex flex-1 flex-col items-center rounded-xl py-4 transition-all"
-          style={{
-            background: selection === "halved" ? "#f59e0b22" : "#21262d",
-            border: `2px solid ${selection === "halved" ? "#f59e0b" : "#30363d"}`,
-          }}
-        >
-          <span
-            className="text-lg font-bold"
-            style={{ color: selection === "halved" ? "#f59e0b" : "#8b949e" }}
-          >
-            ½
-          </span>
-          <span className="text-[10px]" style={{ color: "#8b949e" }}>
-            halved
-          </span>
-        </button>
-
-        {/* Team B wins */}
-        <button
-          data-testid={`select-team-${teamB.id}`}
-          onClick={() => select("b")}
-          className="flex flex-1 flex-col items-center rounded-xl py-4 transition-all"
-          style={{
-            background: selection === "b" ? `${teamB.color}22` : "#21262d",
-            border: `2px solid ${selection === "b" ? teamB.color : "#30363d"}`,
-          }}
-        >
-          <span
-            className="text-lg font-bold"
-            style={{ color: selection === "b" ? teamB.color : "#8b949e" }}
-          >
-            {teamB.shortName}
-          </span>
-          <span className="text-[10px]" style={{ color: "#8b949e" }}>
-            wins
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Points Selector (Stableford, Skins — numeric entry per team)
-// ═════════════════════════════════════════════════════════════════════════════
-
-interface PointsSelectorProps {
-  teams: TeamInfo[];
-  scores: ScoreEntryResult[];
-  format: string;
-  onChange: (teamId: string, points: number) => void;
-}
-
-function PointsSelector({ teams, scores, format, onChange }: PointsSelectorProps) {
-  const isSkins = format === "skins";
-
-  return (
-    <div className="space-y-3" data-testid="points-selector">
-      <p className="text-center text-xs" style={{ color: "#8b949e" }}>
-        {isSkins ? "Enter skins won per team" : "Enter points per team"}
-      </p>
-      {teams.map((team) => {
-        const score = scores.find((s) => s.teamId === team.id);
-        const points = score?.points ?? 0;
-
-        return (
-          <div
-            key={team.id}
-            className="flex items-center justify-between rounded-xl px-4 py-3"
-            style={{ background: "#21262d", border: `1px solid ${team.color}44` }}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className="h-3 w-3 rounded-full"
-                style={{ background: team.color }}
-              />
-              <span className="text-sm font-medium" style={{ color: team.color }}>
-                {team.name}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                data-testid={`decrement-${team.id}`}
-                onClick={() => onChange(team.id, Math.max(0, points - 0.5))}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold"
-                style={{ background: "#30363d", color: "#e6edf3" }}
-              >
-                -
-              </button>
-              <span
-                data-testid={`points-${team.id}`}
-                className="w-10 text-center text-lg font-bold"
-                style={{ color: "#e6edf3" }}
-              >
-                {points}
-              </span>
-              <button
-                data-testid={`increment-${team.id}`}
-                onClick={() => onChange(team.id, Math.min(1, points + 0.5))}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold"
-                style={{ background: "#30363d", color: "#e6edf3" }}
-              >
-                +
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
