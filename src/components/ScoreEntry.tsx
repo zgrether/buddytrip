@@ -24,6 +24,7 @@ export interface ScoreEntryResult {
 
 export interface ScoreEntryProps {
   tripId: string;
+  eventId: string;
   roundId: string;
   groupId: string;
   groupName: string;
@@ -50,6 +51,7 @@ const FORMAT_LABEL: Record<string, string> = {
 
 export function ScoreEntry({
   tripId,
+  eventId,
   roundId,
   groupId,
   groupName,
@@ -83,11 +85,12 @@ export function ScoreEntry({
   const handleSubmit = useCallback(() => {
     submitMutation.mutate({
       tripId,
+      eventId,
       roundId,
       groupId,
       scores,
     });
-  }, [submitMutation, tripId, roundId, groupId, scores]);
+  }, [submitMutation, tripId, eventId, roundId, groupId, scores]);
 
   const renderFormat = () => {
     switch (format) {

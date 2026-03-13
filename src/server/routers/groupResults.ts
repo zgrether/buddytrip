@@ -99,6 +99,7 @@ export const groupResultsRouter = router({
         tripId: z.string(),
         roundId: z.string(),
         groupId: z.string(),
+        eventId: z.string(),
         scores: z.array(
           z.object({
             teamId: z.string(),
@@ -116,6 +117,7 @@ export const groupResultsRouter = router({
           {
             round_id: input.roundId,
             group_id: input.groupId,
+            event_id: input.eventId,
             submitted_by: ctx.user!.id,
           },
           { onConflict: "round_id,group_id" }

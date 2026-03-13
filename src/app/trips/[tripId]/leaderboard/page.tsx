@@ -23,6 +23,7 @@ import {
   type SideEventInfo,
 } from "@/lib/scoring";
 import { ScoreEntry, type TeamInfo } from "@/components/ScoreEntry";
+import { useRealtimeLeaderboard } from "@/hooks/useRealtimeLeaderboard";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,9 @@ export default function LeaderboardPage() {
     { tripId, eventId },
     { enabled: !!eventId }
   );
+
+  // ── Realtime subscription ─────────────────────────────────────────────
+  useRealtimeLeaderboard(tripId, eventId);
 
   const { data: quickTiles = [] } = trpc.quickInfoTiles.list.useQuery({
     tripId,
@@ -321,6 +325,7 @@ export default function LeaderboardPage() {
       {scoreEntry && (
         <ScoreEntry
           tripId={tripId}
+          eventId={eventId}
           roundId={scoreEntry.roundId}
           groupId={scoreEntry.groupId}
           groupName={scoreEntry.groupName}

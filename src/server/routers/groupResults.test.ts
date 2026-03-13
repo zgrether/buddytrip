@@ -71,6 +71,7 @@ describe.skipIf(skip)("groupResults router", () => {
       tripId,
       roundId,
       groupId,
+      eventId,
       scores: [
         { teamId: "team-a", points: 1 },
         { teamId: "team-b", points: 0 },
@@ -91,6 +92,7 @@ describe.skipIf(skip)("groupResults router", () => {
       tripId,
       roundId,
       groupId,
+      eventId,
       scores: [
         { teamId: "team-a", points: 0.5 },
         { teamId: "team-b", points: 0.5 },
