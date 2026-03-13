@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Flag,
   Plus,
   Trash2,
   Trophy,
@@ -53,6 +54,14 @@ interface TeamAssignment {
   event_id: string;
   team_id: string;
   user_id: string;
+}
+
+interface PlayGroup {
+  id: string;
+  event_id: string;
+  name: string;
+  tee_time: string;
+  player_ids: string[];
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -744,9 +753,273 @@ function RoundsSection({
   );
 }
 
+// ── GroupsSection ─────────────────────────────────────────────────────────
+
+function GroupsSection({
+  tripId,
+  eventId,
+  playGroups,
+  members,
+  teams,
+  assignments,
+}: {
+  tripId: string;
+  eventId: string;
+  playGroups: PlayGroup[];
+  members: Member[];
+  teams: Team[];
+  assignments: TeamAssignment[];
+}) {
+  const utils = trpc.useUtils();
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newTeeTime, setNewTeeTime] = useState("");
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
+
+  const assignedUserIds = new Set(assignments.map((a) => a.user_id));
+  // Only show players who have been assigned to a team
+  const assignedMembers = members.filter((m) =>
+    assignedUserIds.has(m.user_id)
+  );
+
+  const teamByUserId = new Map(
+    assignments.map((a) => [a.user_id, teams.find((t) => t.id === a.team_id)])
+  );
+
+  const createGroup = trpc.playGroups.create.useMutation({
+    onSuccess: () => {
+      utils.playGroups.list.invalidate({ tripId, eventId });
+      setShowAdd(false);
+      setNewName("");
+      setNewTeeTime("");
+      setSelectedPlayerIds([]);
+    },
+  });
+
+  const deleteGroup = trpc.playGroups.delete.useMutation({
+    onSuccess: () => utils.playGroups.list.invalidate({ tripId, eventId }),
+  });
+
+  function togglePlayer(userId: string) {
+    setSelectedPlayerIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
+  }
+
+  if (assignedMembers.length === 0) {
+    return (
+      <div className="py-8 text-center">
+        <p className="text-sm" style={{ color: "#8b949e" }}>
+          Assign players to teams first before creating play groups.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {playGroups.length === 0 ? (
+        <p className="text-sm" style={{ color: "#8b949e" }}>
+          No play groups yet.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {playGroups.map((group) => (
+            <div
+              key={group.id}
+              data-testid={`group-row-${group.id}`}
+              className="flex items-start gap-3 rounded-xl p-3"
+              style={{ background: "#161b22", border: "1px solid #30363d" }}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                  {group.name}
+                </p>
+                <p className="mb-1.5 text-xs" style={{ color: "#8b949e" }}>
+                  {group.tee_time}
+                </p>
+                {/* Player dots */}
+                <div className="flex flex-wrap gap-1.5">
+                  {group.player_ids.map((uid) => {
+                    const m = members.find((x) => x.user_id === uid);
+                    const name =
+                      m?.user?.name ??
+                      m?.user?.email ??
+                      uid.slice(0, 6);
+                    const team = teamByUserId.get(uid);
+                    return (
+                      <span
+                        key={uid}
+                        className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                        style={{
+                          background: team ? `${team.color}22` : "#0d111722",
+                          color: team?.color ?? "#8b949e",
+                          border: `1px solid ${team?.color ?? "#30363d"}44`,
+                        }}
+                      >
+                        <span
+                          className="inline-block h-1.5 w-1.5 rounded-full"
+                          style={{ background: team?.color ?? "#8b949e" }}
+                        />
+                        {name}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <button
+                data-testid={`delete-group-${group.id}`}
+                onClick={() =>
+                  deleteGroup.mutate({ tripId, groupId: group.id })
+                }
+                disabled={deleteGroup.isPending}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-40"
+                style={{ color: "#8b949e" }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdd ? (
+        <div
+          className="space-y-3 rounded-xl p-4"
+          style={{ background: "#161b22", border: "1px solid #30363d" }}
+        >
+          <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+            Add Play Group
+          </p>
+          <input
+            data-testid="group-name-input"
+            placeholder="Group name (e.g. Group 1)"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{
+              background: "#0d1117",
+              borderColor: "#30363d",
+              color: "#e6edf3",
+            }}
+          />
+          <input
+            data-testid="group-tee-time-input"
+            placeholder="Tee time (e.g. 8:00 AM)"
+            value={newTeeTime}
+            onChange={(e) => setNewTeeTime(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{
+              background: "#0d1117",
+              borderColor: "#30363d",
+              color: "#e6edf3",
+            }}
+          />
+          {/* Player checkboxes — only team-assigned members */}
+          <div>
+            <label className="mb-1.5 block text-xs" style={{ color: "#8b949e" }}>
+              Players
+            </label>
+            <div className="space-y-1.5">
+              {assignedMembers.map((m) => {
+                const name =
+                  m.user?.name ??
+                  m.user?.email ??
+                  `User ${m.user_id.slice(0, 6)}`;
+                const team = teamByUserId.get(m.user_id);
+                const checked = selectedPlayerIds.includes(m.user_id);
+                return (
+                  <label
+                    key={m.user_id}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2"
+                    style={{
+                      background: checked ? "#00d4aa11" : "#0d1117",
+                      border: `1px solid ${checked ? "#00d4aa44" : "#30363d"}`,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePlayer(m.user_id)}
+                      className="accent-[#00d4aa]"
+                    />
+                    {team && (
+                      <span
+                        className="h-2 w-2 flex-shrink-0 rounded-full"
+                        style={{ background: team.color }}
+                      />
+                    )}
+                    <span className="text-sm" style={{ color: "#e6edf3" }}>
+                      {name}
+                    </span>
+                    {team && (
+                      <span className="ml-auto text-xs" style={{ color: team.color }}>
+                        {team.short_name}
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setShowAdd(false);
+                setNewName("");
+                setNewTeeTime("");
+                setSelectedPlayerIds([]);
+              }}
+              className="flex-1 rounded-lg border py-2 text-sm"
+              style={{ borderColor: "#30363d", color: "#8b949e" }}
+            >
+              Cancel
+            </button>
+            <button
+              data-testid="save-group-btn"
+              disabled={
+                !newName.trim() ||
+                !newTeeTime.trim() ||
+                selectedPlayerIds.length === 0 ||
+                createGroup.isPending
+              }
+              onClick={() => {
+                createGroup.mutate({
+                  tripId,
+                  id: crypto.randomUUID(),
+                  eventId,
+                  name: newName.trim(),
+                  teeTime: newTeeTime.trim(),
+                  playerIds: selectedPlayerIds,
+                });
+              }}
+              className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
+              style={{ background: "#00d4aa", color: "#0d1117" }}
+            >
+              Add Group
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          data-testid="show-add-group-btn"
+          onClick={() => setShowAdd(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-white/5"
+          style={{ borderColor: "#30363d", color: "#00d4aa" }}
+        >
+          <Plus size={16} />
+          Add Play Group
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── CompetitionSetupPage ──────────────────────────────────────────────────
 
-type SetupTab = "event" | "teams" | "rounds";
+type SetupTab = "event" | "teams" | "rounds" | "groups";
 
 export default function CompetitionSetupPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -775,6 +1048,11 @@ export default function CompetitionSetupPage() {
     { enabled: !!event?.id }
   );
 
+  const { data: playGroups = [] } = trpc.playGroups.list.useQuery(
+    { tripId, eventId: event?.id ?? "" },
+    { enabled: !!event?.id }
+  );
+
   if (eventLoading) {
     return (
       <div
@@ -793,6 +1071,7 @@ export default function CompetitionSetupPage() {
     { id: "event", label: "Event", Icon: Trophy },
     { id: "teams", label: "Teams", Icon: Users },
     { id: "rounds", label: "Rounds", Icon: Calendar },
+    { id: "groups", label: "Groups", Icon: Flag },
   ];
 
   return (
@@ -879,6 +1158,24 @@ export default function CompetitionSetupPage() {
             tripId={tripId}
             eventId={event.id}
             rounds={rounds as Round[]}
+          />
+        )}
+
+        {activeTab === "groups" && !event && (
+          <div className="py-8 text-center">
+            <p className="text-sm" style={{ color: "#8b949e" }}>
+              Create an event first before adding play groups.
+            </p>
+          </div>
+        )}
+        {activeTab === "groups" && event && (
+          <GroupsSection
+            tripId={tripId}
+            eventId={event.id}
+            playGroups={playGroups as PlayGroup[]}
+            members={members as Member[]}
+            teams={teams as Team[]}
+            assignments={assignments as TeamAssignment[]}
           />
         )}
       </main>

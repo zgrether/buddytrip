@@ -49,4 +49,34 @@ describe("playGroups router", () => {
     });
     expect(updated.tee_time).toBe("9:00 AM");
   });
+
+  it("delete — owner can delete a play group", async () => {
+    const caller = ctx.caller();
+    // Delete the group created in the first test
+    await expect(
+      caller.playGroups.delete({ tripId, groupId })
+    ).resolves.toBeUndefined();
+
+    // Confirm it no longer appears in the list
+    const groups = await caller.playGroups.list({ tripId, eventId });
+    expect(groups.find((g) => g.id === groupId)).toBeUndefined();
+  });
+
+  it("delete — member (non-planner) cannot delete a play group", async () => {
+    // Create a fresh group to attempt deletion of
+    const caller = ctx.caller();
+    const fresh = await caller.playGroups.create({
+      tripId,
+      id: genId("grp"),
+      eventId,
+      name: "Group 2",
+      teeTime: "10:00 AM",
+      playerIds: [],
+    });
+
+    const memberCaller = ctx.callerAs("member");
+    await expect(
+      memberCaller.playGroups.delete({ tripId, groupId: fresh.id })
+    ).rejects.toThrow();
+  });
 });

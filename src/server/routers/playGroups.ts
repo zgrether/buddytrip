@@ -104,4 +104,24 @@ export const playGroupsRouter = router({
 
       return data;
     }),
+
+  // -----------------------------------------------------------------------
+  // delete — remove a play group (canEdit)
+  // -----------------------------------------------------------------------
+  delete: authedProcedure
+    .input(z.object({ tripId: z.string(), groupId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("play_groups")
+        .delete()
+        .eq("id", input.groupId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete play group",
+        });
+      }
+    }),
 });
