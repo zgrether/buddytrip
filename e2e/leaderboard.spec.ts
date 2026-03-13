@@ -296,6 +296,90 @@ test.describe("Leaderboard", () => {
     await expect(page.getByText("No competition set up yet.")).toBeVisible();
   });
 
+  test("groups tab shows round lifecycle badges", async ({ page }) => {
+    // Override mock rounds to include all 4 states
+    const LIFECYCLE_ROUNDS = [
+      { ...MOCK_ROUNDS[0], status: "active" },
+      { ...MOCK_ROUNDS[1], status: "submitted" },
+    ];
+
+    await page.route("**/auth/v1/**", async (route) => {
+      const url = route.request().url();
+      if (url.includes("/user")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ id: MOCK_USER_ID, email: "alice@example.com" }),
+        });
+      } else if (url.includes("/token") || url.includes("/session")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            access_token: "mock-token",
+            user: { id: MOCK_USER_ID, email: "alice@example.com" },
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.route("**/api/trpc/**", async (route) => {
+      const url = route.request().url();
+
+      if (url.includes("rounds.list")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ result: { data: LIFECYCLE_ROUNDS } }]),
+        });
+      }
+
+      if (url.includes("events.getByTrip")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ result: { data: MOCK_EVENT } }]),
+        });
+      }
+
+      if (url.includes("trips.getById")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ result: { data: MOCK_TRIP } }]),
+        });
+      }
+
+      if (url.includes("tripMembers.list")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ result: { data: MOCK_MEMBERS } }]),
+        });
+      }
+
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{ result: { data: [] } }]),
+      });
+    });
+
+    await page.goto(`/trips/${TRIP_ID}/leaderboard`);
+
+    // Switch to Groups tab
+    await page.getByTestId("tab-groups").click();
+    await expect(page.getByTestId("groups-tab")).toBeVisible();
+
+    // Active round should show LIVE badge
+    await expect(page.getByText("LIVE")).toBeVisible();
+
+    // Submitted round should show "Pending close" badge
+    await expect(page.getByText("Pending close")).toBeVisible();
+  });
+
   test("history tab shows closed rounds with winner badge", async ({ page }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}/leaderboard`);

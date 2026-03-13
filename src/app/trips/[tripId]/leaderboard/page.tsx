@@ -646,14 +646,18 @@ interface GroupsProps {
   onScoreEntry: (roundId: string, groupId: string, groupName: string, format: string) => void;
 }
 
-function GroupsTab({ rounds, playGroups, roundsWithResults, onScoreEntry }: GroupsProps) {
+function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntry }: GroupsProps) {
   const activeRounds = rounds.filter((r) => r.status === "active" || r.status === "submitted");
   const displayRounds = activeRounds.length > 0 ? activeRounds : rounds;
 
   return (
     <div className="space-y-5" data-testid="groups-tab">
-      {displayRounds.map((round) => (
-        <section key={round.id}>
+      {displayRounds.map((round) => {
+        const isClosed = round.status === "closed";
+        const isSubmitted = round.status === "submitted";
+
+        return (
+          <section key={round.id}>
           <div className="mb-3 flex items-center gap-2">
             <h2 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
               Day {round.day} — {round.course}
@@ -666,6 +670,22 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, onScoreEntry }: Grou
                 LIVE
               </span>
             )}
+            {isSubmitted && (
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                style={{ background: "#f59e0b22", color: "#f59e0b" }}
+              >
+                Pending close
+              </span>
+            )}
+            {isClosed && (
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                style={{ background: "#8b949e22", color: "#8b949e" }}
+              >
+                Closed
+              </span>
+            )}
           </div>
 
           {playGroups.length === 0 ? (
@@ -676,7 +696,10 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, onScoreEntry }: Grou
             <div className="space-y-2">
               {playGroups.map((group) => {
                 const hasScore = roundsWithResults.has(round.id);
-                const canEnterScore = round.status === "active" || round.status === "submitted";
+                // Active: anyone can score. Submitted: only owners/planners can correct.
+                const canEnterScore =
+                  round.status === "active" ||
+                  (round.status === "submitted" && canEdit);
                 return (
                   <button
                     key={group.id}
@@ -685,7 +708,7 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, onScoreEntry }: Grou
                     style={{
                       background: "#161b22",
                       border: "1px solid #30363d",
-                      opacity: canEnterScore ? 1 : 0.7,
+                      opacity: canEnterScore ? 1 : isClosed ? 0.5 : 0.7,
                     }}
                     disabled={!canEnterScore}
                     onClick={() => onScoreEntry(round.id, group.id, group.name, round.format)}
@@ -700,12 +723,19 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, onScoreEntry }: Grou
                           {group.tee_time}
                         </p>
                       </div>
-                      {hasScore ? (
+                      {isClosed && hasScore ? (
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          style={{ background: "#8b949e22", color: "#8b949e" }}
+                        >
+                          Final
+                        </span>
+                      ) : hasScore ? (
                         <span
                           className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
                           style={{ background: "#00d4aa22", color: "#00d4aa" }}
                         >
-                          Scored
+                          {isSubmitted && canEdit ? "Edit Score" : "Scored"}
                         </span>
                       ) : canEnterScore ? (
                         <span
@@ -729,7 +759,8 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, onScoreEntry }: Grou
             </div>
           )}
         </section>
-      ))}
+        );
+      })}
 
       {displayRounds.length === 0 && (
         <p className="text-sm" style={{ color: "#8b949e" }}>
