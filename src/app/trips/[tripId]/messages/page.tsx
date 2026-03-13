@@ -271,14 +271,9 @@ export default function TripMessagesPage() {
   const myTeamIds = new Set(myAssignments.map((a) => a.team_id));
   const myTeams = (allTeams as Team[]).filter((t) => myTeamIds.has(t.id));
 
-  // Set default team when loaded
-  useEffect(() => {
-    if (myTeams.length > 0 && !activeTeamId) {
-      setActiveTeamId(myTeams[0].id);
-    }
-  }, [myTeams.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const activeTeam = (allTeams as Team[]).find((t) => t.id === activeTeamId);
+  // Default to first team if none selected
+  const resolvedTeamId = activeTeamId ?? myTeams[0]?.id;
+  const activeTeam = (allTeams as Team[]).find((t) => t.id === resolvedTeamId);
 
   return (
     <div
@@ -338,12 +333,12 @@ export default function TripMessagesPage() {
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
               style={{
                 background:
-                  activeChannel === "team" && activeTeamId === team.id
+                  activeChannel === "team" && resolvedTeamId === team.id
                     ? `${team.color}22`
                     : "transparent",
-                border: `1px solid ${activeChannel === "team" && activeTeamId === team.id ? team.color : "#30363d"}`,
+                border: `1px solid ${activeChannel === "team" && resolvedTeamId === team.id ? team.color : "#30363d"}`,
                 color:
-                  activeChannel === "team" && activeTeamId === team.id
+                  activeChannel === "team" && resolvedTeamId === team.id
                     ? team.color
                     : "#8b949e",
               }}
@@ -358,10 +353,10 @@ export default function TripMessagesPage() {
       {/* Chat pane — key forces re-mount when channel changes */}
       {myUserId && (
         <ChatPane
-          key={`${activeChannel}-${activeTeamId ?? "trip"}`}
+          key={`${activeChannel}-${resolvedTeamId ?? "trip"}`}
           tripId={tripId}
           channel={activeChannel}
-          teamId={activeChannel === "team" ? activeTeamId : undefined}
+          teamId={activeChannel === "team" ? resolvedTeamId : undefined}
           myUserId={myUserId}
           memberNames={memberNames}
         />
