@@ -113,7 +113,8 @@ describe("useRealtimeLeaderboard — subscription logic", () => {
   it("removeChannel is callable for cleanup", async () => {
     const { createClient } = await import("@/lib/supabase");
     const supabase = createClient();
-    supabase.removeChannel(mockChannel);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase.removeChannel(mockChannel as any);
     expect(mockRemoveChannel).toHaveBeenCalledWith(mockChannel);
   });
 });
