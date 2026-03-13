@@ -242,6 +242,8 @@ export default function TripMessagesPage() {
   const myUserId = currentUser?.id ?? "";
 
   const [activeChannel, setActiveChannel] = useState<ChatChannel>("trip");
+  const [activeTeamId, setActiveTeamId] = useState<string | undefined>();
+
   // ── Data ──────────────────────────────────────────────────────────────
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: event } = trpc.events.getByTrip.useQuery({ tripId });
@@ -269,12 +271,8 @@ export default function TripMessagesPage() {
   const myTeamIds = new Set(myAssignments.map((a) => a.team_id));
   const myTeams = (allTeams as Team[]).filter((t) => myTeamIds.has(t.id));
 
-  // Default to first team reactively (no useEffect needed since data comes from queries)
-  const defaultTeamId = myTeams.length > 0 ? myTeams[0].id : undefined;
-
-  const [activeTeamId, setActiveTeamId] = useState<string | undefined>();
-  const resolvedTeamId = activeTeamId ?? defaultTeamId;
-
+  // Default to first team if none selected
+  const resolvedTeamId = activeTeamId ?? myTeams[0]?.id;
   const activeTeam = (allTeams as Team[]).find((t) => t.id === resolvedTeamId);
 
   return (

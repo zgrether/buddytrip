@@ -53,9 +53,18 @@ export default function DashboardClient() {
 
   const tripIds = trips.map((t) => t.id);
 
-  // ── Notifications (parallel per-trip) ─────────────────────────────────────
+  // ── Notifications ─────────────────────────────────────────────────────────
+  // Fetch notifications for all trips. We avoid useQueries with a dynamic
+  // array (tripIds changes length as trips load) which violates Rules of Hooks.
+  // Instead, iterate after render and aggregate from individual enabled queries
+  // would also break hooks. Simplest safe approach: skip until trips are loaded,
+  // then use a stable-length useQueries by gating on tripsLoading.
+  //
+  // NOTE: We intentionally pass an empty array when loading so hook count is
+  // always 1 (the useQueries call itself is stable).
+  const stableTripIds = tripsLoading ? [] : tripIds;
   const notifResults = trpc.useQueries((t) =>
-    tripIds.map((id) => t.notifications.list({ tripId: id, limit: 20 }))
+    stableTripIds.map((id) => t.notifications.list({ tripId: id, limit: 20 }))
   );
 
   const allNotifications: NotificationItem[] = notifResults
@@ -75,20 +84,20 @@ export default function DashboardClient() {
 
   // ── Mark all read ──────────────────────────────────────────────────────────
   const utils = trpc.useUtils();
-  const markAllReadMutations = tripIds.map((id) =>
-    trpc.notifications.markAllRead.useMutation({
-      onSuccess: () => {
+  const markAllRead = trpc.notifications.markAllRead.useMutation({
+    onSuccess: () => {
+      for (const id of tripIds) {
         utils.notifications.list.invalidate({ tripId: id });
-      },
-    })
-  );
+      }
+    },
+  });
 
   const handleMarkAllRead = () => {
-    markAllReadMutations.forEach((m, i) => {
-      if ((unreadByTrip.get(tripIds[i]) ?? 0) > 0) {
-        m.mutate({ tripId: tripIds[i] });
+    for (const id of tripIds) {
+      if ((unreadByTrip.get(id) ?? 0) > 0) {
+        markAllRead.mutate({ tripId: id });
       }
-    });
+    }
   };
 
   // ── Partition ──────────────────────────────────────────────────────────────

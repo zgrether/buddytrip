@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Lock, Unlock, Trash2 } from "lucide-react";
+import { Save, Lock, Unlock, Trash2, MessageSquare, ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { TabProps } from "./types";
 
@@ -83,6 +83,32 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 px-4">
+      {/* ── Quick links ─────────────────────────────────────────────────── */}
+      <section>
+        <h2
+          className="mb-3 text-sm font-semibold uppercase tracking-wider"
+          style={{ color: "#8b949e" }}
+        >
+          Quick Links
+        </h2>
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ background: "#161b22", border: "1px solid #30363d" }}
+        >
+          <button
+            data-testid="messages-link"
+            onClick={() => router.push(`/trips/${trip.id}/messages`)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+          >
+            <MessageSquare size={18} style={{ color: "#00d4aa" }} />
+            <span className="flex-1 text-sm font-medium" style={{ color: "#e6edf3" }}>
+              Messages
+            </span>
+            <ChevronRight size={16} style={{ color: "#8b949e" }} />
+          </button>
+        </div>
+      </section>
+
       {/* ── Trip details ──────────────────────────────────────────────────── */}
       {canEdit && (
         <section>

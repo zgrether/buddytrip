@@ -13,13 +13,15 @@ export interface TRPCContext {
 
 /**
  * Creates context for the API route handler.
- * Uses the server-side Supabase client (cookie-based auth).
+ * Re-uses the shared createClient() from supabase-server which provides both
+ * getAll AND setAll cookie callbacks — required by @supabase/ssr for session
+ * hydration so that getSession() returns the JWT and PostgREST receives the
+ * authenticated role instead of falling back to anon.
  */
 export const createTRPCContext = async (): Promise<TRPCContext> => {
-  // Dynamic import to avoid pulling in next/headers at module scope
-  // (breaks tests and non-Next.js contexts)
   const { createClient } = await import("@/lib/supabase-server");
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
