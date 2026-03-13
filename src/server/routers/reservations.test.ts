@@ -1,46 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "crypto";
-import {
-  createTestCaller,
-  getAdminClient,
-  hasServiceKey,
-  cleanupRows,
-} from "../test-helpers";
+import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
-const skip = !hasServiceKey();
+let ctx: TestContext;
+let tripId: string;
+let resId: string;
 
-describe.skipIf(skip)("reservations router", () => {
-  const ownerId = randomUUID();
-  const memberId = randomUUID();
-  const tripId = `test-res-${randomUUID().slice(0, 8)}`;
-  const resId = `res-${randomUUID().slice(0, 8)}`;
-
+describe("reservations router", () => {
   beforeAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("users").upsert([
-      { id: ownerId, name: "Owner", nickname: "Own", email: `own-${ownerId}@test.com` },
-      { id: memberId, name: "Member", nickname: "Mem", email: `mem-${memberId}@test.com` },
-    ]);
-    await admin.from("trips").insert({ id: tripId, title: "Reservations Test" });
-    await admin.from("trip_members").insert([
-      { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in" },
-      { trip_id: tripId, user_id: memberId, role: "Member", status: "maybe" },
-    ]);
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Reservations Test");
+    await ctx.addTripMember(tripId, "member", "Member");
   });
 
   afterAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("reservations").delete().eq("trip_id", tripId);
-    await admin.from("trip_members").delete().eq("trip_id", tripId);
-    await cleanupRows("trips", "id", [tripId]);
-    await cleanupRows("users", "id", [ownerId, memberId]);
+    await ctx.cleanup();
   });
 
   it("create — owner can create a reservation", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const res = await caller.reservations.create({
       tripId,
-      id: resId,
+      id: genId("res"),
       type: "tee-time",
       title: "Bandon Dunes Round 1",
       date: "2026-10-06",
@@ -48,14 +28,15 @@ describe.skipIf(skip)("reservations router", () => {
       cost: 350,
     });
     expect(res.title).toBe("Bandon Dunes Round 1");
+    resId = res.id;
   });
 
   it("create — member cannot create", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     await expect(
       caller.reservations.create({
         tripId,
-        id: `res-${randomUUID().slice(0, 8)}`,
+        id: genId("res"),
         type: "restaurant",
         title: "Nope",
         date: "2026-10-06",
@@ -64,13 +45,13 @@ describe.skipIf(skip)("reservations router", () => {
   });
 
   it("list — any member can view", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     const list = await caller.reservations.list({ tripId });
     expect(list.length).toBeGreaterThanOrEqual(1);
   });
 
   it("update — owner can update", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const updated = await caller.reservations.update({
       tripId,
       reservationId: resId,
@@ -80,7 +61,7 @@ describe.skipIf(skip)("reservations router", () => {
   });
 
   it("remove — owner can remove", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const result = await caller.reservations.remove({ tripId, reservationId: resId });
     expect(result.success).toBe(true);
   });

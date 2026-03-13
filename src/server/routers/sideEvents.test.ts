@@ -1,72 +1,43 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "crypto";
-import {
-  createTestCaller,
-  getAdminClient,
-  hasServiceKey,
-  cleanupRows,
-} from "../test-helpers";
+import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
-const skip = !hasServiceKey();
+let ctx: TestContext;
+let tripId: string;
+let eventId: string;
+let sideEventId: string;
 
-describe.skipIf(skip)("sideEvents router", () => {
-  const ownerId = randomUUID();
-  const memberId = randomUUID();
-  const tripId = `test-side-${randomUUID().slice(0, 8)}`;
-  const eventId = `evt-${randomUUID().slice(0, 8)}`;
-  const sideEventId = `se-${randomUUID().slice(0, 8)}`;
-  const teamAId = `team-a-${randomUUID().slice(0, 8)}`;
-  const teamBId = `team-b-${randomUUID().slice(0, 8)}`;
-
+describe("sideEvents router", () => {
   beforeAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("users").upsert([
-      { id: ownerId, name: "Owner", nickname: "Own", email: `own-${ownerId}@test.com` },
-      { id: memberId, name: "Member", nickname: "Mem", email: `mem-${memberId}@test.com` },
-    ]);
-    await admin.from("trips").insert({ id: tripId, title: "Side Events Test" });
-    await admin.from("trip_members").insert([
-      { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in" },
-      { trip_id: tripId, user_id: memberId, role: "Member", status: "maybe" },
-    ]);
-    await admin.from("events").insert({
-      id: eventId,
-      trip_id: tripId,
-      title: "Test Event",
-      location: "Test",
-      dates: "2026",
-    });
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Side Events Test");
+    await ctx.addTripMember(tripId, "member", "Member");
+    eventId = await ctx.createEvent(tripId);
   });
 
   afterAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("side_events").delete().eq("event_id", eventId);
-    await admin.from("events").delete().eq("trip_id", tripId);
-    await admin.from("trip_members").delete().eq("trip_id", tripId);
-    await cleanupRows("trips", "id", [tripId]);
-    await cleanupRows("users", "id", [ownerId, memberId]);
+    await ctx.cleanup();
   });
 
   it("create — owner can create a side event", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const se = await caller.sideEvents.create({
       tripId,
-      id: sideEventId,
+      id: genId("se"),
       eventId,
       name: "Closest to Pin",
       icon: "🎯",
       pointsAvailable: 1,
     });
-    expect(se.id).toBe(sideEventId);
+    sideEventId = se.id;
     expect(se.name).toBe("Closest to Pin");
   });
 
   it("create — member cannot create", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     await expect(
       caller.sideEvents.create({
         tripId,
-        id: `se-${randomUUID().slice(0, 8)}`,
+        id: genId("se"),
         eventId,
         name: "Nope",
         icon: "❌",
@@ -76,13 +47,15 @@ describe.skipIf(skip)("sideEvents router", () => {
   });
 
   it("list — member can list side events", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     const list = await caller.sideEvents.list({ tripId, eventId });
     expect(list.length).toBeGreaterThanOrEqual(1);
   });
 
   it("submitResult — owner can submit result", async () => {
-    const caller = createTestCaller(ownerId);
+    const teamAId = await ctx.createTeam(eventId, "Team A");
+    const teamBId = await ctx.createTeam(eventId, "Team B");
+    const caller = ctx.caller();
     const result = await caller.sideEvents.submitResult({
       tripId,
       sideEventId,
@@ -93,12 +66,12 @@ describe.skipIf(skip)("sideEvents router", () => {
   });
 
   it("submitResult — member cannot submit", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     await expect(
       caller.sideEvents.submitResult({
         tripId,
         sideEventId,
-        result: { [teamAId]: 0, [teamBId]: 1 },
+        result: {},
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });

@@ -1,59 +1,41 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "crypto";
-import {
-  createTestCaller,
-  getAdminClient,
-  hasServiceKey,
-  cleanupRows,
-} from "../test-helpers";
+import { TestContext } from "../../__tests__/helpers/test-setup";
 
-const skip = !hasServiceKey();
+let ctx: TestContext;
+let tripId: string;
+let eventId: string;
 
-describe.skipIf(skip)("events router", () => {
-  const ownerId = randomUUID();
-  const memberId = randomUUID();
-  const tripId = `test-events-${randomUUID().slice(0, 8)}`;
-  const eventId = `evt-${randomUUID().slice(0, 8)}`;
-
+describe("events router", () => {
   beforeAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("users").upsert([
-      { id: ownerId, name: "Owner", nickname: "Own", email: `own-${ownerId}@test.com` },
-      { id: memberId, name: "Member", nickname: "Mem", email: `mem-${memberId}@test.com` },
-    ]);
-    await admin.from("trips").insert({ id: tripId, title: "Events Test" });
-    await admin.from("trip_members").insert([
-      { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in" },
-      { trip_id: tripId, user_id: memberId, role: "Member", status: "maybe" },
-    ]);
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Events Test");
+    await ctx.addTripMember(tripId, "member", "Member");
   });
 
   afterAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("events").delete().eq("trip_id", tripId);
-    await admin.from("trip_members").delete().eq("trip_id", tripId);
-    await cleanupRows("trips", "id", [tripId]);
-    await cleanupRows("users", "id", [ownerId, memberId]);
+    await ctx.cleanup();
   });
 
   it("upsert — owner can create an event", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const event = await caller.events.upsert({
+      id: `test-evt-${Date.now()}`,
       tripId,
-      id: eventId,
       title: "BBMI 2026",
       location: "Bandon Dunes, OR",
       dates: "Oct 5-8, 2026",
     });
     expect(event.title).toBe("BBMI 2026");
+    eventId = event.id;
+    ctx.trackEvent(eventId);
   });
 
   it("upsert — member cannot create", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     await expect(
       caller.events.upsert({
         tripId,
-        id: `evt-${randomUUID().slice(0, 8)}`,
+        id: `test-evt-nope-${Date.now()}`,
         title: "Nope",
         location: "Nowhere",
         dates: "Never",
@@ -62,13 +44,13 @@ describe.skipIf(skip)("events router", () => {
   });
 
   it("getByTrip — any member can view", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     const event = await caller.events.getByTrip({ tripId });
     expect(event?.title).toBe("BBMI 2026");
   });
 
   it("upsert — updates existing event", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const event = await caller.events.upsert({
       tripId,
       id: eventId,

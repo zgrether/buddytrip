@@ -1,56 +1,28 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { randomUUID } from "crypto";
-import {
-  createTestCaller,
-  getAdminClient,
-  hasServiceKey,
-  cleanupRows,
-} from "../test-helpers";
+import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
-const skip = !hasServiceKey();
+let ctx: TestContext;
+let tripId: string;
+let eventId: string;
+let roundId: string;
 
-describe.skipIf(skip)("rounds router", () => {
-  const ownerId = randomUUID();
-  const memberId = randomUUID();
-  const tripId = `test-rounds-${randomUUID().slice(0, 8)}`;
-  const eventId = `evt-${randomUUID().slice(0, 8)}`;
-  const roundId = `rnd-${randomUUID().slice(0, 8)}`;
-
+describe("rounds router", () => {
   beforeAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("users").upsert([
-      { id: ownerId, name: "Owner", nickname: "Own", email: `own-${ownerId}@test.com` },
-      { id: memberId, name: "Member", nickname: "Mem", email: `mem-${memberId}@test.com` },
-    ]);
-    await admin.from("trips").insert({ id: tripId, title: "Rounds Test" });
-    await admin.from("trip_members").insert([
-      { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in" },
-      { trip_id: tripId, user_id: memberId, role: "Member", status: "maybe" },
-    ]);
-    await admin.from("events").insert({
-      id: eventId,
-      trip_id: tripId,
-      title: "Test Event",
-      location: "Test",
-      dates: "2026",
-    });
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Rounds Test");
+    await ctx.addTripMember(tripId, "member", "Member");
+    eventId = await ctx.createEvent(tripId);
   });
 
   afterAll(async () => {
-    const admin = getAdminClient();
-    await admin.from("group_results").delete().eq("round_id", roundId);
-    await admin.from("rounds").delete().eq("event_id", eventId);
-    await admin.from("events").delete().eq("trip_id", tripId);
-    await admin.from("trip_members").delete().eq("trip_id", tripId);
-    await cleanupRows("trips", "id", [tripId]);
-    await cleanupRows("users", "id", [ownerId, memberId]);
+    await ctx.cleanup();
   });
 
   it("create — owner can create a round", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const round = await caller.rounds.create({
       tripId,
-      id: roundId,
+      id: genId("rnd"),
       eventId,
       day: 1,
       title: "Day 1 — Scramble",
@@ -59,16 +31,17 @@ describe.skipIf(skip)("rounds router", () => {
       pointsAvailable: 4,
     });
     expect(round.title).toBe("Day 1 — Scramble");
+    roundId = round.id;
   });
 
   it("list — member can view rounds", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     const rounds = await caller.rounds.list({ tripId, eventId });
     expect(rounds.length).toBeGreaterThanOrEqual(1);
   });
 
   it("update — owner can update round status", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const updated = await caller.rounds.update({
       tripId,
       roundId,
@@ -78,11 +51,11 @@ describe.skipIf(skip)("rounds router", () => {
   });
 
   it("create — member cannot create", async () => {
-    const caller = createTestCaller(memberId);
+    const caller = ctx.callerAs("member");
     await expect(
       caller.rounds.create({
         tripId,
-        id: `rnd-${randomUUID().slice(0, 8)}`,
+        id: genId("rnd"),
         eventId,
         day: 2,
         title: "Nope",
@@ -94,7 +67,7 @@ describe.skipIf(skip)("rounds router", () => {
   });
 
   it("remove — owner can remove", async () => {
-    const caller = createTestCaller(ownerId);
+    const caller = ctx.caller();
     const result = await caller.rounds.remove({ tripId, roundId });
     expect(result.success).toBe(true);
   });
