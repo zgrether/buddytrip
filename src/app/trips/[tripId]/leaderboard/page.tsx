@@ -22,6 +22,7 @@ import {
   type RoundInfo,
   type SideEventInfo,
 } from "@/lib/scoring";
+import { ScoreEntry, type TeamInfo } from "@/components/ScoreEntry";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,16 @@ export default function LeaderboardPage() {
   const [tab, setTab] = useState<TabId>("overview");
 
   const { canEdit } = useTripRole(tripId);
+
+  // Score entry bottom sheet state
+  const [scoreEntry, setScoreEntry] = useState<{
+    roundId: string;
+    groupId: string;
+    groupName: string;
+    format: string;
+  } | null>(null);
+
+  const utils = trpc.useUtils();
 
   // ── Data queries ────────────────────────────────────────────────────────
 
@@ -161,6 +172,11 @@ export default function LeaderboardPage() {
     for (const t of teams) map.set(t.id, t);
     return map;
   }, [teams]);
+
+  const teamInfos: TeamInfo[] = useMemo(
+    () => teams.map((t) => ({ id: t.id, name: t.name, shortName: t.short_name, color: t.color })),
+    [teams]
+  );
 
   const leader = useMemo(() => {
     if (teamScores.length < 2) return null;
@@ -280,6 +296,9 @@ export default function LeaderboardPage() {
             teamById={teamById}
             roundsWithResults={roundsWithResults}
             canEdit={canEdit}
+            onScoreEntry={(roundId, groupId, groupName, format) =>
+              setScoreEntry({ roundId, groupId, groupName, format })
+            }
           />
         )}
         {tab === "trip-info" && (
@@ -297,6 +316,25 @@ export default function LeaderboardPage() {
           />
         )}
       </div>
+
+      {/* Score entry bottom sheet */}
+      {scoreEntry && (
+        <ScoreEntry
+          tripId={tripId}
+          roundId={scoreEntry.roundId}
+          groupId={scoreEntry.groupId}
+          groupName={scoreEntry.groupName}
+          format={scoreEntry.format}
+          teams={teamInfos}
+          onClose={() => setScoreEntry(null)}
+          onSubmitted={() => {
+            setScoreEntry(null);
+            // Invalidate scores to refetch
+            utils.groupResults.listScoresByEvent.invalidate({ tripId, eventId });
+            utils.groupResults.list.invalidate();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -573,9 +611,10 @@ interface GroupsProps {
   teamById: Map<string, { id: string; name: string; short_name: string; color: string }>;
   roundsWithResults: Set<string>;
   canEdit: boolean;
+  onScoreEntry: (roundId: string, groupId: string, groupName: string, format: string) => void;
 }
 
-function GroupsTab({ rounds, playGroups, roundsWithResults }: GroupsProps) {
+function GroupsTab({ rounds, playGroups, roundsWithResults, onScoreEntry }: GroupsProps) {
   const activeRounds = rounds.filter((r) => r.status === "active" || r.status === "submitted");
   const displayRounds = activeRounds.length > 0 ? activeRounds : rounds;
 
@@ -605,12 +644,19 @@ function GroupsTab({ rounds, playGroups, roundsWithResults }: GroupsProps) {
             <div className="space-y-2">
               {playGroups.map((group) => {
                 const hasScore = roundsWithResults.has(round.id);
+                const canEnterScore = round.status === "active" || round.status === "submitted";
                 return (
-                  <div
+                  <button
                     key={group.id}
                     data-testid={`group-card-${group.id}`}
-                    className="rounded-xl px-4 py-3"
-                    style={{ background: "#161b22", border: "1px solid #30363d" }}
+                    className="w-full rounded-xl px-4 py-3 text-left transition-opacity"
+                    style={{
+                      background: "#161b22",
+                      border: "1px solid #30363d",
+                      opacity: canEnterScore ? 1 : 0.7,
+                    }}
+                    disabled={!canEnterScore}
+                    onClick={() => onScoreEntry(round.id, group.id, group.name, round.format)}
                   >
                     <div className="flex items-center justify-between">
                       <div>
@@ -629,6 +675,13 @@ function GroupsTab({ rounds, playGroups, roundsWithResults }: GroupsProps) {
                         >
                           Scored
                         </span>
+                      ) : canEnterScore ? (
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          style={{ background: "#00d4aa11", color: "#00d4aa" }}
+                        >
+                          Enter Score
+                        </span>
                       ) : (
                         <span
                           className="text-xs"
@@ -638,7 +691,7 @@ function GroupsTab({ rounds, playGroups, roundsWithResults }: GroupsProps) {
                         </span>
                       )}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>

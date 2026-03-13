@@ -55,6 +55,7 @@ describe.skipIf(skip)("groupResults router", () => {
 
   afterAll(async () => {
     const admin = getAdminClient();
+    await admin.from("group_result_scores").delete().eq("round_id", roundId);
     await admin.from("group_results").delete().eq("round_id", roundId);
     await admin.from("play_groups").delete().eq("event_id", eventId);
     await admin.from("rounds").delete().eq("event_id", eventId);
@@ -64,14 +65,18 @@ describe.skipIf(skip)("groupResults router", () => {
     await cleanupRows("users", "id", [ownerId, memberId]);
   });
 
-  it("submit — any member can submit a result", async () => {
+  it("submit — any member can submit a result with scores", async () => {
     const caller = createTestCaller(memberId);
     const result = await caller.groupResults.submit({
       tripId,
       roundId,
       groupId,
+      scores: [
+        { teamId: "team-a", points: 1 },
+        { teamId: "team-b", points: 0 },
+      ],
     });
-    expect(result.submitted_by).toBe(memberId);
+    expect(result.success).toBe(true);
   });
 
   it("list — member can view results", async () => {
@@ -80,13 +85,17 @@ describe.skipIf(skip)("groupResults router", () => {
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("submit — idempotent (upsert)", async () => {
+  it("submit — idempotent (upsert with new scores)", async () => {
     const caller = createTestCaller(ownerId);
     const result = await caller.groupResults.submit({
       tripId,
       roundId,
       groupId,
+      scores: [
+        { teamId: "team-a", points: 0.5 },
+        { teamId: "team-b", points: 0.5 },
+      ],
     });
-    expect(result.submitted_by).toBe(ownerId);
+    expect(result.success).toBe(true);
   });
 });

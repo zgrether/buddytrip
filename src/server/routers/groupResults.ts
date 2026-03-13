@@ -67,7 +67,31 @@ export const groupResultsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // submit — submit result for a group in a round (any member per PERMISSIONS.md)
+  // listScoresForRound — raw group_result_scores for a round (for editing)
+  // -----------------------------------------------------------------------
+  listScoresForRound: authedProcedure
+    .input(z.object({ tripId: z.string(), roundId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("group_result_scores")
+        .select("*")
+        .eq("round_id", input.roundId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch group result scores",
+        });
+      }
+
+      return data ?? [];
+    }),
+
+  // -----------------------------------------------------------------------
+  // submit — submit result + scores for a group in a round (any member)
+  // Accepts an array of team scores and writes both group_results and
+  // group_result_scores in sequence.
   // -----------------------------------------------------------------------
   submit: authedProcedure
     .input(
@@ -75,11 +99,18 @@ export const groupResultsRouter = router({
         tripId: z.string(),
         roundId: z.string(),
         groupId: z.string(),
+        scores: z.array(
+          z.object({
+            teamId: z.string(),
+            points: z.number().min(0).max(1),
+          })
+        ),
       })
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      const { data, error } = await ctx.supabase
+      // 1. Upsert group_results header (plain INSERT then SELECT to avoid RLS issue)
+      const { error: headerErr } = await ctx.supabase
         .from("group_results")
         .upsert(
           {
@@ -88,17 +119,42 @@ export const groupResultsRouter = router({
             submitted_by: ctx.user!.id,
           },
           { onConflict: "round_id,group_id" }
-        )
-        .select()
-        .single();
+        );
 
-      if (error) {
+      if (headerErr) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to submit result: ${error.message}`,
+          message: `Failed to submit result header: ${headerErr.message}`,
         });
       }
 
-      return data;
+      // 2. Delete existing scores for this group+round then insert new ones
+      await ctx.supabase
+        .from("group_result_scores")
+        .delete()
+        .eq("round_id", input.roundId)
+        .eq("group_id", input.groupId);
+
+      if (input.scores.length > 0) {
+        const rows = input.scores.map((s) => ({
+          round_id: input.roundId,
+          group_id: input.groupId,
+          team_id: s.teamId,
+          points: s.points,
+        }));
+
+        const { error: scoresErr } = await ctx.supabase
+          .from("group_result_scores")
+          .insert(rows);
+
+        if (scoresErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to submit scores: ${scoresErr.message}`,
+          });
+        }
+      }
+
+      return { success: true };
     }),
 });
