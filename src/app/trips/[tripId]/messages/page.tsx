@@ -262,15 +262,12 @@ export default function TripMessagesPage() {
     { enabled: !!event?.id }
   );
 
-  // Member name lookup
+  // Member name lookup — prefer nickname, fall back to name then email
   const memberNames: Record<string, string> = {};
   for (const m of members) {
-    memberNames[m.user_id] =
-      (m.user as { name?: string | null; email?: string | null } | null)
-        ?.name ??
-      (m.user as { name?: string | null; email?: string | null } | null)
-        ?.email ??
-      `User ${m.user_id.slice(0, 6)}`;
+    const u = m.user as { nickname?: string | null; name?: string | null; email?: string | null } | null;
+    memberNames[m.user_id ?? ""] =
+      u?.nickname ?? u?.name ?? u?.email ?? `User ${(m.user_id ?? "").slice(0, 6)}`;
   }
 
   // Which teams am I on?

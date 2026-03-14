@@ -117,6 +117,14 @@ export default function LeaderboardPage() {
       { enabled: !!eventId }
     );
 
+  // Fetch per-group scores for the round being edited so ScoreEntry can
+  // pre-fill existing values when a scored group is re-opened.
+  const { data: activeGroupScores = [] } =
+    trpc.groupResults.listScoresForRound.useQuery(
+      { tripId, roundId: scoreEntry?.roundId ?? "" },
+      { enabled: !!scoreEntry?.roundId }
+    );
+
   const { data: sideEvents = [] } = trpc.sideEvents.list.useQuery(
     { tripId, eventId },
     { enabled: !!eventId }
@@ -367,12 +375,16 @@ export default function LeaderboardPage() {
           groupName={scoreEntry.groupName}
           format={scoreEntry.format}
           teams={teamInfos}
+          existingScores={activeGroupScores
+            .filter((s) => s.group_id === scoreEntry.groupId)
+            .map((s) => ({ teamId: s.team_id, points: Number(s.points) }))}
           onClose={() => setScoreEntry(null)}
           onSubmitted={() => {
             setScoreEntry(null);
             // Invalidate scores to refetch
             utils.groupResults.listScoresByEvent.invalidate({ tripId, eventId });
             utils.groupResults.list.invalidate();
+            utils.groupResults.listScoresForRound.invalidate({ tripId, roundId: scoreEntry.roundId });
           }}
         />
       )}

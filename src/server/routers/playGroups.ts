@@ -123,5 +123,7 @@ export const playGroupsRouter = router({
           message: "Failed to delete play group",
         });
       }
+
+      return { success: true };
     }),
 });

@@ -2,6 +2,7 @@ import { router, publicProcedure } from "./trpc";
 import { usersRouter } from "./routers/users";
 import { tripsRouter } from "./routers/trips";
 import { tripMembersRouter } from "./routers/tripMembers";
+import { ghostCrewRouter } from "./routers/ghostCrew";
 import { ideasRouter } from "./routers/ideas";
 import { ideaCommentsRouter } from "./routers/ideaComments";
 import { datePollRouter } from "./routers/datePoll";
@@ -27,6 +28,7 @@ export const appRouter = router({
   users: usersRouter,
   trips: tripsRouter,
   tripMembers: tripMembersRouter,
+  ghostCrew: ghostCrewRouter,
   ideas: ideasRouter,
   ideaComments: ideaCommentsRouter,
   datePoll: datePollRouter,

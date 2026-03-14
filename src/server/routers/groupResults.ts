@@ -110,6 +110,20 @@ export const groupResultsRouter = router({
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      // 0. Verify round is not closed before accepting scores
+      const { data: round } = await ctx.supabase
+        .from("rounds")
+        .select("status")
+        .eq("id", input.roundId)
+        .maybeSingle();
+
+      if (round?.status === "closed") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This round is closed and no longer accepts scores",
+        });
+      }
+
       // 1. Upsert group_results header (plain INSERT then SELECT to avoid RLS issue)
       const { error: headerErr } = await ctx.supabase
         .from("group_results")
