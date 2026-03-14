@@ -62,9 +62,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
       const eventId = event?.id ?? "";
       await utils.rounds.list.cancel({ tripId: trip.id, eventId });
       const prev = utils.rounds.list.getData({ tripId: trip.id, eventId });
-      utils.rounds.list.setData({ tripId: trip.id, eventId }, (old) =>
-        (old ?? []).map((r) => (r.id === vars.roundId ? { ...r, status: vars.status ?? r.status } : r))
-      );
+      utils.rounds.list.setData({ tripId: trip.id, eventId }, (prev ?? []).map((r) => (r.id === vars.roundId ? { ...r, status: vars.status ?? r.status } : r)));
       return { prev };
     },
     onError(_err, _vars, context) {

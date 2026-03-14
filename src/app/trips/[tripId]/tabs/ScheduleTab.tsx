@@ -77,9 +77,9 @@ function DatePollSection({
     async onMutate(vars) {
       await utils.datePoll.get.cancel({ tripId });
       const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) => ({
+      utils.datePoll.get.setData({ tripId }, {
         windows: [
-          ...(old?.windows ?? []),
+          ...(prev?.windows ?? []),
           {
             id: vars.id,
             trip_id: tripId,
@@ -89,7 +89,7 @@ function DatePollSection({
             votes: [],
           },
         ],
-      }));
+      });
       return { prev };
     },
     onError(_err, _vars, context) {
@@ -103,8 +103,8 @@ function DatePollSection({
     async onMutate(vars) {
       await utils.datePoll.get.cancel({ tripId });
       const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) => ({
-        windows: (old?.windows ?? []).map((w) => {
+      utils.datePoll.get.setData({ tripId }, {
+        windows: (prev?.windows ?? []).map((w) => {
           if (w.id !== vars.windowId) return w;
           const existingVote = w.votes.find((v) => v.user_id === currentUser?.id);
           if (existingVote) {
@@ -127,7 +127,7 @@ function DatePollSection({
             ],
           };
         }),
-      }));
+      });
       return { prev };
     },
     onError(_err, _vars, context) {

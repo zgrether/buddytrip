@@ -37,7 +37,7 @@ function ExpensesSection({
     async onMutate(vars) {
       await utils.expenses.list.cancel({ tripId });
       const prev = utils.expenses.list.getData({ tripId });
-      utils.expenses.list.setData({ tripId }, (old) => [
+      utils.expenses.list.setData({ tripId }, [
         {
           id: vars.id,
           trip_id: tripId,
@@ -51,7 +51,7 @@ function ExpensesSection({
             amount: null,
           })),
         },
-        ...(old ?? []),
+        ...(prev ?? []),
       ]);
       return { prev };
     },
@@ -345,11 +345,9 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
     async onMutate(vars) {
       await utils.trips.getById.cancel({ tripId: trip.id });
       const prev = utils.trips.getById.getData({ tripId: trip.id });
-      utils.trips.getById.setData({ tripId: trip.id }, (old) =>
-        old
-          ? { ...old, locked_destination_title: vars.title, locked_destination_location: vars.location }
-          : old
-      );
+      if (prev) {
+        utils.trips.getById.setData({ tripId: trip.id }, { ...prev, locked_destination_title: vars.title, locked_destination_location: vars.location });
+      }
       return { prev };
     },
     onError(_err, _vars, context) {
@@ -367,11 +365,9 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
     async onMutate() {
       await utils.trips.getById.cancel({ tripId: trip.id });
       const prev = utils.trips.getById.getData({ tripId: trip.id });
-      utils.trips.getById.setData({ tripId: trip.id }, (old) =>
-        old
-          ? { ...old, locked_destination_title: null, locked_destination_location: null }
-          : old
-      );
+      if (prev) {
+        utils.trips.getById.setData({ tripId: trip.id }, { ...prev, locked_destination_title: null, locked_destination_location: null });
+      }
       return { prev };
     },
     onError(_err, _vars, context) {

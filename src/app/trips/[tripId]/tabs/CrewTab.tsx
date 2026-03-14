@@ -46,11 +46,9 @@ function MyRsvpSelector({
     async onMutate({ status }) {
       await utils.tripMembers.list.cancel({ tripId });
       const prev = utils.tripMembers.list.getData({ tripId });
-      utils.tripMembers.list.setData({ tripId }, (old) =>
-        (old ?? []).map((m) =>
-          m.user_id === currentUser?.id ? { ...m, status } : m
-        )
-      );
+      utils.tripMembers.list.setData({ tripId }, (prev ?? []).map((m) =>
+        m.user_id === currentUser?.id ? { ...m, status } : m
+      ));
       return { prev };
     },
     onError(_err, _vars, context) {
@@ -118,8 +116,8 @@ function InviteMember({
       const prev = utils.tripMembers.list.getData({ tripId });
       const searchData = utils.users.search.getData({ query });
       const userInfo = searchData?.find((u) => u.id === vars.userId) ?? null;
-      utils.tripMembers.list.setData({ tripId }, (old) => [
-        ...(old ?? []),
+      utils.tripMembers.list.setData({ tripId }, [
+        ...(prev ?? []),
         {
           trip_id: tripId,
           user_id: vars.userId,

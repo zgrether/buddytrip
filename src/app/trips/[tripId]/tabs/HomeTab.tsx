@@ -54,8 +54,8 @@ function AddTileModal({
     async onMutate(vars) {
       await utils.quickInfoTiles.list.cancel({ tripId });
       const prev = utils.quickInfoTiles.list.getData({ tripId });
-      utils.quickInfoTiles.list.setData({ tripId }, (old) => [
-        ...(old ?? []),
+      utils.quickInfoTiles.list.setData({ tripId }, [
+        ...(prev ?? []),
         {
           id: vars.id,
           trip_id: tripId,

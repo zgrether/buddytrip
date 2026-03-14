@@ -68,18 +68,16 @@ function IdeaCard({
     async onMutate({ ideaId }) {
       await utils.ideas.list.cancel({ tripId });
       const prev = utils.ideas.list.getData({ tripId });
-      utils.ideas.list.setData({ tripId }, (old) =>
-        (old ?? []).map((idea) => {
-          if (idea.id !== ideaId) return idea;
-          const alreadyVoted = idea.votes.some((v) => v.user_id === currentUser?.id);
-          return {
-            ...idea,
-            votes: alreadyVoted
-              ? idea.votes.filter((v) => v.user_id !== currentUser?.id)
-              : [...idea.votes, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }],
-          };
-        })
-      );
+      utils.ideas.list.setData({ tripId }, (prev ?? []).map((idea) => {
+        if (idea.id !== ideaId) return idea;
+        const alreadyVoted = idea.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
+        return {
+          ...idea,
+          votes: alreadyVoted
+            ? idea.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id)
+            : [...idea.votes, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }],
+        };
+      }));
       return { prev };
     },
     onError(_err, _vars, context) {
@@ -335,8 +333,8 @@ function AddIdeaModal({
     async onMutate(vars) {
       await utils.ideas.list.cancel({ tripId });
       const prev = utils.ideas.list.getData({ tripId });
-      utils.ideas.list.setData({ tripId }, (old) => [
-        ...(old ?? []),
+      utils.ideas.list.setData({ tripId }, [
+        ...(prev ?? []),
         {
           id: vars.id,
           trip_id: tripId,
@@ -467,11 +465,9 @@ function LockConfirmModal({
     async onMutate(vars) {
       await utils.trips.getById.cancel({ tripId });
       const prev = utils.trips.getById.getData({ tripId });
-      utils.trips.getById.setData({ tripId }, (old) =>
-        old
-          ? { ...old, locked_destination_title: vars.title, locked_destination_location: vars.location }
-          : old
-      );
+      if (prev) {
+        utils.trips.getById.setData({ tripId }, { ...prev, locked_destination_title: vars.title, locked_destination_location: vars.location });
+      }
       return { prev };
     },
     onError(_err, _vars, context) {
