@@ -204,16 +204,17 @@ If spec documents conflict with each other → stop and flag, do not silently re
 
 ---
 
-## Phase 4 — Polish + Launch Prep 🔄 NEXT
+## Phase 4 — Polish + Launch Prep 🔄 IN PROGRESS
 
 **Goal:** Fix all broken core flows first, then make it feel finished and production-ready.
 
-| Task | What | Priority | Bug |
-|------|------|----------|-----|
-| 4.0 | Fix HIGH bugs — play groups UI, member invite UI, expenses UI, chat send, UTC dates, round title prefix | 🔴 Blocker | BUG-01 through BUG-06 |
-| 4.1 | User profile edit screen — name, avatar | 🔴 Core | Missing feature |
-| 4.2 | Medium bugs — share feedback, raw ISO dates, broken copy, CompetitionSetup layout, 404 page, sign-up error | 🟠 High | BUG-07 through BUG-13 |
-| 4.3 | Light/dark theme toggle — full WCAG-AA palette per prototype (see `CONTEXT.md` notes from task 7.1) | 🟡 Polish | — |
+| Task | What | Priority | Status |
+|------|------|----------|--------|
+| 4.0 | Fix HIGH bugs — play groups UI, member invite UI, expenses UI, chat send, UTC dates, round title prefix | 🔴 Blocker | ✅ |
+| 4.1 | User profile edit screen — name, avatar | 🔴 Core | ✅ |
+| 4.2 | Medium bugs — share feedback, raw ISO dates, broken copy, CompetitionSetup layout, 404 page, sign-up error | 🟠 High | ✅ |
+| 4.2.1 | Fix competition tab chicken-and-egg — add setup CTA on Home tab, fix build errors | 🔴 Blocker | ✅ |
+| 4.3 | Light/dark theme toggle — full WCAG-AA palette per prototype (see `CONTEXT.md` notes from task 7.1) | 🟡 Polish | 🔄 |
 | 4.4 | Visual match to prototype (Issue #28) | 🟡 Polish | — |
 | 4.5 | Empty states audit | 🟡 Polish | — |
 | 4.6 | Navigation audit — breadcrumbs, back buttons, deep links | 🟡 Polish | — |
