@@ -664,7 +664,7 @@ function RoundsSection({
           </div>
           <input
             data-testid="round-title-input"
-            placeholder="Round title (e.g. Day 1 — Foursomes)"
+            placeholder="Round title (e.g. Foursomes)"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
