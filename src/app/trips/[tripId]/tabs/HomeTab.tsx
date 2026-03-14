@@ -11,7 +11,9 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
+  Trophy,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import type { TabProps } from "./types";
 
@@ -116,8 +118,9 @@ function AddTileModal({
   );
 }
 
-export function HomeTab({ trip, isOwner }: TabProps) {
-  const canEdit = isOwner ?? false; // tiles require Owner per PERMISSIONS.md
+export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
+  const canEditTiles = isOwner ?? false; // tiles require Owner per PERMISSIONS.md
+  const router = useRouter();
   const [showAddTile, setShowAddTile] = useState(false);
   const utils = trpc.useUtils();
 
@@ -155,7 +158,7 @@ export function HomeTab({ trip, isOwner }: TabProps) {
           <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#8b949e" }}>
             Quick Info
           </h2>
-          {canEdit && (
+          {canEditTiles && (
             <button
               data-testid="add-tile-btn"
               onClick={() => setShowAddTile(true)}
@@ -170,7 +173,7 @@ export function HomeTab({ trip, isOwner }: TabProps) {
         {tiles.length === 0 ? (
           <p className="text-sm" style={{ color: "#8b949e" }}>
             No quick info yet.{" "}
-            {canEdit && "Add tiles for hotel info, tee times, etc."}
+            {canEditTiles && "Add tiles for hotel info, tee times, etc."}
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -190,7 +193,7 @@ export function HomeTab({ trip, isOwner }: TabProps) {
                 <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
                   {tile.value}
                 </p>
-                {canEdit && (
+                {canEditTiles && (
                   <button
                     onClick={() => deleteTile.mutate({ tripId: trip.id, tileId: tile.id })}
                     className="absolute right-2 top-2 hidden rounded p-1 group-hover:flex"
@@ -283,6 +286,36 @@ export function HomeTab({ trip, isOwner }: TabProps) {
         </section>
       )}
 
+      {/* ── Competition setup CTA (Planners only, no event yet) ────── */}
+      {canEditProp && !trip.event_id && (
+        <section>
+          <div
+            className="flex items-center gap-4 rounded-xl p-4"
+            style={{ background: "#0d2a22", border: "1px solid #00d4aa44" }}
+          >
+            <Trophy size={24} style={{ color: "#00d4aa", flexShrink: 0 }} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+                Add a competition
+              </p>
+              <p className="text-xs" style={{ color: "#8b949e" }}>
+                Set up teams, rounds, and scoring for this trip.
+              </p>
+            </div>
+            <button
+              data-testid="home-setup-competition-btn"
+              onClick={() =>
+                router.push(`/trips/${trip.id}/competition/setup`)
+              }
+              className="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium"
+              style={{ background: "#00d4aa", color: "#0d1117" }}
+            >
+              Set Up
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* ── Comparison mode ─────────────────────────────────────────── */}
       {trip.comparison_mode && (
         <div
@@ -302,7 +335,7 @@ export function HomeTab({ trip, isOwner }: TabProps) {
       )}
 
       {/* ── Edit hint ───────────────────────────────────────────────── */}
-      {canEdit && !trip.notes && !trip.accommodation && tiles.length === 0 && (
+      {canEditTiles && !trip.notes && !trip.accommodation && tiles.length === 0 && (
         <div className="mt-6 text-center">
           <Pencil size={32} className="mx-auto mb-3" style={{ color: "#30363d" }} />
           <p className="text-sm" style={{ color: "#8b949e" }}>

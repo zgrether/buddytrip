@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, Save } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -14,18 +14,10 @@ export default function ProfilePage() {
 
   const { data: me, isLoading } = trpc.users.getMe.useQuery();
 
-  const [name, setName] = useState("");
-  const [nickname, setNickname] = useState("");
+  const [name, setName] = useState(me?.name ?? "");
+  const [nickname, setNickname] = useState(me?.nickname ?? "");
   const [saved, setSaved] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);
-
-  // Pre-fill form when profile data arrives
-  useEffect(() => {
-    if (me) {
-      setName(me.name ?? "");
-      setNickname(me.nickname ?? "");
-    }
-  }, [me]);
 
   const updateMe = trpc.users.updateMe.useMutation({
     onSuccess: () => {
@@ -88,7 +80,7 @@ export default function ProfilePage() {
             />
           </div>
         ) : (
-          <div className="space-y-6">
+          <div key={me?.id ?? "loading"} className="space-y-6">
             {/* Avatar + identity */}
             <div className="flex flex-col items-center gap-3 py-4">
               <div
