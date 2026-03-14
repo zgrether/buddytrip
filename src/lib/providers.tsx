@@ -6,6 +6,7 @@ import { useState } from "react";
 import superjson from "superjson";
 import { ThemeProvider } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
+import { AuthProvider } from "@/lib/auth-context";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
@@ -40,9 +41,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </trpc.Provider>
+      <AuthProvider>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        </trpc.Provider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
