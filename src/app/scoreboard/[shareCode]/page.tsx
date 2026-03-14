@@ -26,10 +26,10 @@ export default function PublicScoreboardPage() {
 
   // ── Computed scores ─────────────────────────────────────────────────────
 
-  const teams = data?.teams ?? [];
-  const rounds = data?.rounds ?? [];
-  const sideEvents = data?.sideEvents ?? [];
-  const roundScores = data?.roundScores ?? [];
+  const teams = useMemo(() => data?.teams ?? [], [data?.teams]);
+  const rounds = useMemo(() => data?.rounds ?? [], [data?.rounds]);
+  const sideEvents = useMemo(() => data?.sideEvents ?? [], [data?.sideEvents]);
+  const roundScores = useMemo(() => data?.roundScores ?? [], [data?.roundScores]);
 
   const teamIds = useMemo(() => teams.map((t) => t.id), [teams]);
 
