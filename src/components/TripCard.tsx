@@ -6,6 +6,7 @@ import { MapPin, Calendar } from "lucide-react";
 import { StatusBadge, getTripStatus } from "./StatusBadge";
 import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
+import { trpc } from "@/lib/trpc-client";
 import type { TripRole } from "@/server/middleware";
 
 interface Trip {
@@ -42,12 +43,24 @@ function getDaysUntil(dateStr: string): number {
 
 export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const router = useRouter();
+  const utils = trpc.useUtils();
   const status = getTripStatus(trip);
+
+  const handleClick = () => {
+    // Seed the getById cache with data we already have so the detail page
+    // renders immediately instead of showing a loading spinner.
+    const { myRole, myStatus, ...tripData } = trip as Trip & {
+      myStatus?: string | null;
+      [key: string]: unknown;
+    };
+    utils.trips.getById.setData({ tripId: trip.id }, tripData);
+    router.push(`/trips/${trip.id}`);
+  };
 
   return (
     <button
       data-testid={`trip-card-${trip.id}`}
-      onClick={() => router.push(`/trips/${trip.id}`)}
+      onClick={handleClick}
       className="w-full rounded-xl p-4 text-left transition-all hover:ring-1"
       style={{
         background: "var(--color-bt-card)",
