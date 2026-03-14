@@ -134,7 +134,7 @@ export default function TripDetailPage() {
         {activeTab === "crew" && (
           <CrewTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
         )}
-        {activeTab === "comp" && showComp && (
+        {activeTab === "comp" && (
           <CompTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
         )}
         {activeTab === "more" && (
