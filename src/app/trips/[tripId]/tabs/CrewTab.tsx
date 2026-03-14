@@ -92,6 +92,71 @@ function MyRsvpSelector({
   );
 }
 
+// ── NoAccountFound ───────────────────────────────────────────────────────
+// Shown when an email search returns no BuddyTrip account.
+// Lets the owner add them as a ghost crew member with the email pre-filled.
+
+function NoAccountFound({
+  email,
+  tripId,
+  onAdded,
+}: {
+  email: string;
+  tripId: string;
+  onAdded: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const createGhost = trpc.ghostCrew.create.useMutation({
+    onSuccess() {
+      utils.tripMembers.list.invalidate({ tripId });
+      onAdded();
+    },
+    onError(err) {
+      setError(err.message);
+    },
+  });
+
+  return (
+    <div className="space-y-2 rounded-lg p-3" style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}>
+      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+        No BuddyTrip account found for <span style={{ color: "var(--color-bt-text)" }}>{email}</span>.
+        Add them as a guest with this email saved for later.
+      </p>
+      <input
+        data-testid="no-account-name-input"
+        type="text"
+        placeholder="Their name (e.g. Andy)"
+        value={name}
+        onChange={(e) => { setName(e.target.value); setError(null); }}
+        className="w-full rounded-lg border py-1.5 px-3 text-sm outline-none"
+        style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+      />
+      {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
+      <button
+        data-testid="add-as-guest-btn"
+        disabled={!name.trim() || createGhost.isPending}
+        onClick={() =>
+          createGhost.mutate({
+            tripId,
+            id: crypto.randomUUID(),
+            name: name.trim(),
+            email,
+            role: "Member",
+          })
+        }
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
+        style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
+      >
+        <Ghost size={12} />
+        {createGhost.isPending ? "Adding…" : "Add as Guest"}
+      </button>
+    </div>
+  );
+}
+
 // ── InviteMember (real account search) ───────────────────────────────────
 
 function InviteMember({
@@ -191,9 +256,7 @@ function InviteMember({
               Searching…
             </p>
           ) : filtered.length === 0 ? (
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              No users found. They must sign up first.
-            </p>
+            <NoAccountFound email={query.trim()} tripId={tripId} onAdded={() => setQuery("")} />
           ) : (
             filtered.map((user) => {
               const displayName = user.name ?? user.email ?? user.id;
