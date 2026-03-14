@@ -33,11 +33,11 @@ ALTER TABLE trip_members ALTER COLUMN id SET DEFAULT gen_random_uuid()::text;
 -- Add guest_crew_id column
 ALTER TABLE trip_members ADD COLUMN guest_crew_id text REFERENCES guest_crew (id) ON DELETE CASCADE;
 
+-- Drop old composite PK before making user_id nullable (PK columns must be NOT NULL)
+ALTER TABLE trip_members DROP CONSTRAINT trip_members_pkey;
+
 -- Make user_id nullable to allow ghost-only rows
 ALTER TABLE trip_members ALTER COLUMN user_id DROP NOT NULL;
-
--- Drop old composite PK
-ALTER TABLE trip_members DROP CONSTRAINT trip_members_pkey;
 
 -- Add new surrogate PK
 ALTER TABLE trip_members ADD PRIMARY KEY (id);
@@ -64,11 +64,11 @@ ALTER TABLE team_assignments ALTER COLUMN id SET DEFAULT gen_random_uuid()::text
 -- Add guest_crew_id column
 ALTER TABLE team_assignments ADD COLUMN guest_crew_id text REFERENCES guest_crew (id) ON DELETE CASCADE;
 
+-- Drop old composite PK before making user_id nullable (PK columns must be NOT NULL)
+ALTER TABLE team_assignments DROP CONSTRAINT team_assignments_pkey;
+
 -- Make user_id nullable
 ALTER TABLE team_assignments ALTER COLUMN user_id DROP NOT NULL;
-
--- Drop old composite PK
-ALTER TABLE team_assignments DROP CONSTRAINT team_assignments_pkey;
 
 -- Add new surrogate PK
 ALTER TABLE team_assignments ADD PRIMARY KEY (id);
