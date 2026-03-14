@@ -34,12 +34,38 @@ function ExpensesSection({
   const { data: expenses = [] } = trpc.expenses.list.useQuery({ tripId });
 
   const createExpense = trpc.expenses.create.useMutation({
-    onSuccess: () => {
-      utils.expenses.list.invalidate({ tripId });
+    async onMutate(vars) {
+      await utils.expenses.list.cancel({ tripId });
+      const prev = utils.expenses.list.getData({ tripId });
+      utils.expenses.list.setData({ tripId }, (old) => [
+        {
+          id: vars.id,
+          trip_id: tripId,
+          title: vars.title,
+          amount: vars.amount,
+          paid_by_user_id: vars.paidByUserId,
+          created_at: new Date().toISOString(),
+          splits: vars.splitAmong.map((userId) => ({
+            expense_id: vars.id,
+            user_id: userId,
+            amount: null,
+          })),
+        },
+        ...(old ?? []),
+      ]);
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.expenses.list.setData({ tripId }, context.prev);
+    },
+    onSuccess() {
       setShowAdd(false);
       setNewTitle("");
       setNewAmount("");
       setSplitAmong(members.map((m) => m.user_id));
+    },
+    onSettled() {
+      utils.expenses.list.invalidate({ tripId });
     },
   });
 
@@ -316,14 +342,44 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
   });
 
   const lockDest = trpc.trips.lockDestination.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId: trip.id });
+    async onMutate(vars) {
+      await utils.trips.getById.cancel({ tripId: trip.id });
+      const prev = utils.trips.getById.getData({ tripId: trip.id });
+      utils.trips.getById.setData({ tripId: trip.id }, (old) =>
+        old
+          ? { ...old, locked_destination_title: vars.title, locked_destination_location: vars.location }
+          : old
+      );
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.trips.getById.setData({ tripId: trip.id }, context.prev);
+    },
+    onSuccess() {
       setShowLockForm(false);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId: trip.id });
     },
   });
 
   const unlockDest = trpc.trips.unlockDestination.useMutation({
-    onSuccess: () => utils.trips.getById.invalidate({ tripId: trip.id }),
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId: trip.id });
+      const prev = utils.trips.getById.getData({ tripId: trip.id });
+      utils.trips.getById.setData({ tripId: trip.id }, (old) =>
+        old
+          ? { ...old, locked_destination_title: null, locked_destination_location: null }
+          : old
+      );
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.trips.getById.setData({ tripId: trip.id }, context.prev);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId: trip.id });
+    },
   });
 
   const deleteTrip = trpc.trips.delete.useMutation({

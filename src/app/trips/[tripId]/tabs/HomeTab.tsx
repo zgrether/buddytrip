@@ -51,9 +51,32 @@ function AddTileModal({
   const [value, setValue] = useState("");
 
   const create = trpc.quickInfoTiles.create.useMutation({
-    onSuccess: () => {
-      utils.quickInfoTiles.list.invalidate({ tripId });
+    async onMutate(vars) {
+      await utils.quickInfoTiles.list.cancel({ tripId });
+      const prev = utils.quickInfoTiles.list.getData({ tripId });
+      utils.quickInfoTiles.list.setData({ tripId }, (old) => [
+        ...(old ?? []),
+        {
+          id: vars.id,
+          trip_id: tripId,
+          label: vars.label,
+          value: vars.value,
+          icon: null,
+          sort_order: vars.sortOrder ?? 0,
+          created_by: null,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.quickInfoTiles.list.setData({ tripId }, context.prev);
+    },
+    onSuccess() {
       onClose();
+    },
+    onSettled() {
+      utils.quickInfoTiles.list.invalidate({ tripId });
     },
   });
 
