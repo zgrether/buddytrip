@@ -50,15 +50,15 @@ describe("ghostCrew router", () => {
   });
 
   it("create — rejects email that belongs to an existing account", async () => {
-    // The test 'owner' user already has a real account
+    // 'outsider' has a real BuddyTrip account but is NOT a member of this trip
     const caller = ctx.callerAs("planner");
-    const ownerUser = ctx.user; // owner's real account
+    const outsider = ctx.getUser("outsider");
     await expect(
       caller.ghostCrew.create({
         tripId,
         id: genId("ghost"),
         name: "Dupe",
-        email: ownerUser.email,
+        email: outsider.email,
       })
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });

@@ -55,7 +55,7 @@ describe("playGroups router", () => {
     // Delete the group created in the first test
     await expect(
       caller.playGroups.delete({ tripId, groupId })
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ success: true });
 
     // Confirm it no longer appears in the list
     const groups = await caller.playGroups.list({ tripId, eventId });
