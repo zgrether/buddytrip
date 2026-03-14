@@ -41,8 +41,8 @@ interface Reservation {
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 const VOTE_ICON: Record<VoteAnswer, React.ReactNode> = {
-  yes: <Check size={14} style={{ color: "#00d4aa" }} />,
-  no: <X size={14} style={{ color: "#ef4444" }} />,
+  yes: <Check size={14} style={{ color: "var(--color-bt-accent)" }} />,
+  no: <X size={14} style={{ color: "var(--color-bt-danger)" }} />,
 };
 
 const RES_ICON: Record<ReservationType, React.ReactNode> = {
@@ -96,7 +96,7 @@ function DatePollSection({
   return (
     <div className="space-y-3">
       {windows.length === 0 && (
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No date options yet.{" "}
           {canEdit ? "Add some below." : "Waiting for a planner to add dates."}
         </p>
@@ -111,14 +111,14 @@ function DatePollSection({
           <div
             key={w.id}
             className="rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <p className="mb-3 text-sm font-medium" style={{ color: "#e6edf3" }}>
+            <p className="mb-3 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               {fmtDate(w.start_date)} – {fmtDate(w.end_date)}
             </p>
             <div
               className="mb-3 flex items-center gap-3 text-xs"
-              style={{ color: "#8b949e" }}
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
               <span>{yesCount} yes</span>
               <span>{noCount} no</span>
@@ -137,17 +137,17 @@ function DatePollSection({
                       background:
                         myVote === ans
                           ? ans === "yes"
-                            ? "#0d2a22"
-                            : "#2a0d0d"
-                          : "#0d1117",
+                            ? "var(--color-bt-tag-bg)"
+                            : "var(--color-bt-danger-bg)"
+                          : "var(--color-bt-base)",
                       border: `1px solid ${
                         myVote === ans
                           ? ans === "yes"
-                            ? "#00d4aa"
-                            : "#ef4444"
-                          : "#30363d"
+                            ? "var(--color-bt-accent)"
+                            : "var(--color-bt-danger)"
+                          : "var(--color-bt-border)"
                       }`,
-                      color: ans === "yes" ? "#00d4aa" : "#ef4444",
+                      color: ans === "yes" ? "var(--color-bt-accent)" : "var(--color-bt-danger)",
                     }}
                   >
                     {VOTE_ICON[ans]}
@@ -164,9 +164,9 @@ function DatePollSection({
         (addingWindow ? (
           <div
             className="space-y-3 rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               Add date window
             </p>
             <div className="grid grid-cols-2 gap-3">
@@ -176,10 +176,10 @@ function DatePollSection({
                 onChange={(e) => setNewStart(e.target.value)}
                 className="rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
-                  colorScheme: "dark",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                  colorScheme: "inherit",
                 }}
               />
               <input
@@ -189,10 +189,10 @@ function DatePollSection({
                 onChange={(e) => setNewEnd(e.target.value)}
                 className="rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
-                  colorScheme: "dark",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                  colorScheme: "inherit",
                 }}
               />
             </div>
@@ -200,7 +200,7 @@ function DatePollSection({
               <button
                 onClick={() => setAddingWindow(false)}
                 className="flex-1 rounded-lg border py-2 text-sm"
-                style={{ borderColor: "#30363d", color: "#8b949e" }}
+                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
               >
                 Cancel
               </button>
@@ -218,7 +218,7 @@ function DatePollSection({
                   setNewEnd("");
                 }}
                 className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-                style={{ background: "#00d4aa", color: "#0d1117" }}
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
                 Add
               </button>
@@ -227,8 +227,8 @@ function DatePollSection({
         ) : (
           <button
             onClick={() => setAddingWindow(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-white/5"
-            style={{ borderColor: "#30363d", color: "#00d4aa" }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
           >
             <Plus size={16} />
             Add date option
@@ -256,7 +256,7 @@ function ReservationsSection({
 
   if (reservations.length === 0) {
     return (
-      <p className="text-sm" style={{ color: "#8b949e" }}>
+      <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
         No reservations yet.{" "}
         {canEdit && "Add tee times, hotels, and more from the planner view."}
       </p>
@@ -270,16 +270,16 @@ function ReservationsSection({
           key={res.id}
           data-testid={`reservation-${res.id}`}
           className="flex items-start gap-3 rounded-xl p-4"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
-          <span style={{ color: "#00d4aa" }}>{RES_ICON[res.type]}</span>
+          <span style={{ color: "var(--color-bt-accent)" }}>{RES_ICON[res.type]}</span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               {res.title}
             </p>
             <div
               className="mt-1 flex flex-wrap gap-2 text-xs"
-              style={{ color: "#8b949e" }}
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
               {res.date && (
                 <span className="flex items-center gap-1">
@@ -298,7 +298,7 @@ function ReservationsSection({
               )}
             </div>
             {res.notes && (
-              <p className="mt-1 text-xs" style={{ color: "#8b949e" }}>
+              <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 {res.notes}
               </p>
             )}
@@ -309,7 +309,7 @@ function ReservationsSection({
                 removeRes.mutate({ tripId, reservationId: res.id })
               }
               className="flex h-6 w-6 items-center justify-center rounded-full"
-              style={{ color: "#8b949e" }}
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
               <X size={14} />
             </button>
@@ -328,7 +328,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
       <section>
         <h2
           className="mb-3 text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Date Poll
         </h2>
@@ -338,7 +338,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
       <section>
         <h2
           className="mb-3 text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Reservations
         </h2>

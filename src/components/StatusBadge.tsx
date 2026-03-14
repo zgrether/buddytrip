@@ -12,10 +12,10 @@ const CONFIG: Record<
   TripStatus,
   { label: string; bg: string; text: string }
 > = {
-  live: { label: "LIVE", bg: "#0d2a22", text: "#00d4aa" },
-  ready: { label: "READY", bg: "#1e1535", text: "#a78bfa" },
-  upcoming: { label: "UPCOMING", bg: "#161e35", text: "#7c93d4" },
-  past: { label: "PAST", bg: "#1f1f1f", text: "#8b949e" },
+  live: { label: "LIVE", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
+  ready: { label: "READY", bg: "var(--color-bt-ready-bg)", text: "var(--color-bt-ready)" },
+  upcoming: { label: "UPCOMING", bg: "var(--color-bt-blue-bg)", text: "var(--color-bt-planning)" },
+  past: { label: "PAST", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
 };
 
 export const StatusBadge: FC<StatusBadgeProps> = ({ status, className }) => {

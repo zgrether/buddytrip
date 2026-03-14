@@ -50,9 +50,9 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       onClick={() => router.push(`/trips/${trip.id}`)}
       className="w-full rounded-xl p-4 text-left transition-all hover:ring-1"
       style={{
-        background: "#161b22",
-        borderColor: "#30363d",
-        border: "1px solid #30363d",
+        background: "var(--color-bt-card)",
+        borderColor: "var(--color-bt-border)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
       {/* Header row */}
@@ -64,7 +64,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         {unreadCount > 0 && (
           <span
             className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
-            style={{ background: "#00d4aa", color: "#0d1117" }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
@@ -74,7 +74,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       {/* Title */}
       <h3
         className="mt-2 text-base font-semibold leading-tight"
-        style={{ color: "#e6edf3" }}
+        style={{ color: "var(--color-bt-text)" }}
       >
         {trip.title}
       </h3>
@@ -82,12 +82,12 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       {/* Meta row */}
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         {(trip.location || trip.locked_destination_title) && (
-          <span className="flex items-center gap-1" style={{ color: "#8b949e" }}>
+          <span className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)" }}>
             <MapPin size={12} />
             {trip.locked_destination_title ?? trip.location}
           </span>
         )}
-        <span className="flex items-center gap-1" style={{ color: "#8b949e" }}>
+        <span className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)" }}>
           <Calendar size={12} />
           {formatDateRange(trip.start_date, trip.end_date)}
         </span>
@@ -97,7 +97,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       {status === "ready" && trip.start_date && (
         <div
           className="mt-3 rounded-md px-3 py-1.5 text-center text-xs font-medium"
-          style={{ background: "#1e1535", color: "#a78bfa" }}
+          style={{ background: "var(--color-bt-ready-bg)", color: "var(--color-bt-ready)" }}
         >
           {getDaysUntil(trip.start_date) <= 0
             ? "Starting today!"
@@ -110,9 +110,9 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         <div className="mt-3 flex items-center gap-1.5">
           <span
             className="h-2 w-2 animate-pulse rounded-full"
-            style={{ background: "#00d4aa" }}
+            style={{ background: "var(--color-bt-accent)" }}
           />
-          <span className="text-xs font-medium" style={{ color: "#00d4aa" }}>
+          <span className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
             In progress
           </span>
         </div>

@@ -33,7 +33,7 @@ function TileIcon({ icon }: { icon?: string | null }) {
     file: <FileText size={16} />,
   };
   return (
-    <span style={{ color: "#00d4aa" }}>
+    <span style={{ color: "var(--color-bt-accent)" }}>
       {icons[icon ?? "file"] ?? <FileText size={16} />}
     </span>
   );
@@ -61,14 +61,14 @@ function AddTileModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
       <div
         className="absolute inset-0"
-        style={{ background: "rgba(0,0,0,0.7)" }}
+        style={{ background: "var(--color-bt-overlay)" }}
         onClick={onClose}
       />
       <div
         className="relative w-full max-w-lg rounded-2xl p-6 space-y-4"
-        style={{ background: "#161b22", border: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
-        <h3 className="text-base font-semibold" style={{ color: "#e6edf3" }}>
+        <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
           Add Info Tile
         </h3>
         <div>
@@ -77,7 +77,7 @@ function AddTileModal({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ background: "#0d1117", borderColor: "#30363d", color: "#e6edf3" }}
+            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
           />
         </div>
         <div>
@@ -86,14 +86,14 @@ function AddTileModal({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ background: "#0d1117", borderColor: "#30363d", color: "#e6edf3" }}
+            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
           />
         </div>
         <div className="flex gap-3">
           <button
             onClick={onClose}
             className="flex-1 rounded-xl border py-2.5 text-sm"
-            style={{ borderColor: "#30363d", color: "#8b949e" }}
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
           >
             Cancel
           </button>
@@ -108,7 +108,7 @@ function AddTileModal({
               })
             }
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-            style={{ background: "#00d4aa", color: "#0d1117" }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             Add
           </button>
@@ -138,14 +138,14 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
       {trip.locked_destination_title && (
         <div
           className="flex items-center gap-3 rounded-xl p-4"
-          style={{ background: "#0d2a22", border: "1px solid #00d4aa44" }}
+          style={{ background: "var(--color-bt-tag-bg)", border: "1px solid var(--color-bt-accent-border)" }}
         >
-          <Lock size={18} style={{ color: "#00d4aa", flexShrink: 0 }} />
+          <Lock size={18} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
           <div>
-            <p className="text-sm font-semibold" style={{ color: "#00d4aa" }}>
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-accent)" }}>
               Destination locked
             </p>
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {trip.locked_destination_title}
             </p>
           </div>
@@ -155,7 +155,7 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
       {/* ── Quick info tiles ────────────────────────────────────────── */}
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "#8b949e" }}>
+          <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
             Quick Info
           </h2>
           {canEditTiles && (
@@ -163,7 +163,7 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
               data-testid="add-tile-btn"
               onClick={() => setShowAddTile(true)}
               className="flex items-center gap-1 text-xs"
-              style={{ color: "#00d4aa" }}
+              style={{ color: "var(--color-bt-accent)" }}
             >
               <Plus size={14} /> Add
             </button>
@@ -171,7 +171,7 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
         </div>
 
         {tiles.length === 0 ? (
-          <p className="text-sm" style={{ color: "#8b949e" }}>
+          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             No quick info yet.{" "}
             {canEditTiles && "Add tiles for hotel info, tee times, etc."}
           </p>
@@ -182,22 +182,22 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
                 key={tile.id}
                 data-testid={`tile-${tile.id}`}
                 className="group relative rounded-xl p-4"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
                 <div className="mb-1.5 flex items-center gap-2">
                   <TileIcon icon={tile.icon} />
-                  <span className="text-xs" style={{ color: "#8b949e" }}>
+                  <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     {tile.label}
                   </span>
                 </div>
-                <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {tile.value}
                 </p>
                 {canEditTiles && (
                   <button
                     onClick={() => deleteTile.mutate({ tripId: trip.id, tileId: tile.id })}
                     className="absolute right-2 top-2 hidden rounded p-1 group-hover:flex"
-                    style={{ color: "#8b949e" }}
+                    style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -211,15 +211,15 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
       {/* ── Accommodation ───────────────────────────────────────────── */}
       {trip.accommodation && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "#8b949e" }}>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
             Accommodation
           </h2>
           <div
             className="flex items-start gap-3 rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <Hotel size={18} style={{ color: "#00d4aa", flexShrink: 0 }} />
-            <p className="text-sm" style={{ color: "#e6edf3" }}>
+            <Hotel size={18} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+            <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
               {trip.accommodation}
             </p>
           </div>
@@ -229,7 +229,7 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
       {/* ── Activities ─────────────────────────────────────────────── */}
       {trip.activities && trip.activities.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "#8b949e" }}>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
             Activities
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -237,7 +237,7 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
               <span
                 key={i}
                 className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{ background: "#161e35", color: "#7c93d4" }}
+                style={{ background: "var(--color-bt-blue-bg)", color: "var(--color-bt-planning)" }}
               >
                 {a}
               </span>
@@ -249,7 +249,7 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
       {/* ── Golf courses ─────────────────────────────────────────────── */}
       {trip.golf_courses && trip.golf_courses.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "#8b949e" }}>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
             Golf Courses
           </h2>
           <div className="space-y-2">
@@ -257,10 +257,10 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
               <div
                 key={i}
                 className="flex items-center gap-3 rounded-xl p-3"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
-                <Flag size={16} style={{ color: "#00d4aa" }} />
-                <span className="text-sm" style={{ color: "#e6edf3" }}>
+                <Flag size={16} style={{ color: "var(--color-bt-accent)" }} />
+                <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>
                   {c}
                 </span>
               </div>
@@ -272,14 +272,14 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
       {/* ── Notes ──────────────────────────────────────────────────── */}
       {trip.notes && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "#8b949e" }}>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
             Notes
           </h2>
           <div
             className="rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <p className="whitespace-pre-wrap text-sm" style={{ color: "#e6edf3" }}>
+            <p className="whitespace-pre-wrap text-sm" style={{ color: "var(--color-bt-text)" }}>
               {trip.notes}
             </p>
           </div>
@@ -291,14 +291,14 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
         <section>
           <div
             className="flex items-center gap-4 rounded-xl p-4"
-            style={{ background: "#0d2a22", border: "1px solid #00d4aa44" }}
+            style={{ background: "var(--color-bt-tag-bg)", border: "1px solid var(--color-bt-accent-border)" }}
           >
-            <Trophy size={24} style={{ color: "#00d4aa", flexShrink: 0 }} />
+            <Trophy size={24} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
             <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                 Add a competition
               </p>
-              <p className="text-xs" style={{ color: "#8b949e" }}>
+              <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Set up teams, rounds, and scoring for this trip.
               </p>
             </div>
@@ -308,7 +308,7 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
                 router.push(`/trips/${trip.id}/competition/setup`)
               }
               className="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium"
-              style={{ background: "#00d4aa", color: "#0d1117" }}
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               Set Up
             </button>
@@ -320,27 +320,27 @@ export function HomeTab({ trip, canEdit: canEditProp, isOwner }: TabProps) {
       {trip.comparison_mode && (
         <div
           className="flex items-center justify-between rounded-xl p-4"
-          style={{ background: "#161e35", border: "1px solid #7c93d444" }}
+          style={{ background: "var(--color-bt-blue-bg)", border: "1px solid var(--color-bt-planning-border)" }}
         >
           <div>
-            <p className="text-sm font-medium" style={{ color: "#7c93d4" }}>
+            <p className="text-sm font-medium" style={{ color: "var(--color-bt-planning)" }}>
               Destination voting active
             </p>
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Members are voting on destinations
             </p>
           </div>
-          <ChevronRight size={16} style={{ color: "#7c93d4" }} />
+          <ChevronRight size={16} style={{ color: "var(--color-bt-planning)" }} />
         </div>
       )}
 
       {/* ── Edit hint ───────────────────────────────────────────────── */}
       {canEditTiles && !trip.notes && !trip.accommodation && tiles.length === 0 && (
         <div className="mt-6 text-center">
-          <Pencil size={32} className="mx-auto mb-3" style={{ color: "#30363d" }} />
-          <p className="text-sm" style={{ color: "#8b949e" }}>
+          <Pencil size={32} className="mx-auto mb-3" style={{ color: "var(--color-bt-border)" }} />
+          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             Add quick-info tiles, accommodation details, and notes from the{" "}
-            <span style={{ color: "#00d4aa" }}>More</span> tab.
+            <span style={{ color: "var(--color-bt-accent)" }}>More</span> tab.
           </p>
         </div>
       )}

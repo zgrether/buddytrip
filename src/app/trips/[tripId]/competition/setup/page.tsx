@@ -76,10 +76,10 @@ const ROUND_FORMATS: { value: RoundFormat; label: string }[] = [
 ];
 
 const TEAM_COLORS = [
-  { color: "#ef4444", dim: "#7f1d1d", label: "Red" },
+  { color: "var(--color-bt-danger)", dim: "#7f1d1d", label: "Red" },
   { color: "#3b82f6", dim: "#1e3a8a", label: "Blue" },
   { color: "#22c55e", dim: "#14532d", label: "Green" },
-  { color: "#f59e0b", dim: "#78350f", label: "Amber" },
+  { color: "var(--color-bt-warning)", dim: "#78350f", label: "Amber" },
   { color: "#a855f7", dim: "#581c87", label: "Purple" },
   { color: "#06b6d4", dim: "#164e63", label: "Cyan" },
 ];
@@ -141,7 +141,7 @@ function EventSection({
       className="space-y-3"
     >
       <div>
-        <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+        <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           Event Name *
         </label>
         <input
@@ -152,14 +152,14 @@ function EventSection({
           placeholder="e.g. The Masters Invitational"
           className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
           style={{
-            background: "#0d1117",
-            borderColor: "#30363d",
-            color: "#e6edf3",
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+        <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           Subtitle
         </label>
         <input
@@ -168,14 +168,14 @@ function EventSection({
           placeholder="e.g. Annual Golf Weekend"
           className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
           style={{
-            background: "#0d1117",
-            borderColor: "#30363d",
-            color: "#e6edf3",
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+        <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           Motto
         </label>
         <input
@@ -184,15 +184,15 @@ function EventSection({
           placeholder="e.g. May the best man win"
           className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
           style={{
-            background: "#0d1117",
-            borderColor: "#30363d",
-            color: "#e6edf3",
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+          <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             Location *
           </label>
           <input
@@ -202,14 +202,14 @@ function EventSection({
             placeholder="e.g. Pebble Beach, CA"
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+          <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             Dates *
           </label>
           <input
@@ -219,15 +219,15 @@ function EventSection({
             placeholder="e.g. Jun 15–18, 2026"
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
         </div>
       </div>
       <div>
-        <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+        <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           Format
         </label>
         <div className="flex gap-2">
@@ -238,9 +238,9 @@ function EventSection({
               onClick={() => setCompType(t)}
               className="flex-1 rounded-lg py-2 text-xs font-medium transition-all"
               style={{
-                background: compType === t ? "#00d4aa22" : "#0d1117",
-                border: `1px solid ${compType === t ? "#00d4aa" : "#30363d"}`,
-                color: compType === t ? "#00d4aa" : "#8b949e",
+                background: compType === t ? "var(--color-bt-accent-faint)" : "var(--color-bt-base)",
+                border: `1px solid ${compType === t ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                color: compType === t ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
               }}
             >
               {t === "RYDER_CUP" ? "Ryder Cup" : "Standard"}
@@ -253,7 +253,7 @@ function EventSection({
         data-testid="save-event-btn"
         disabled={upsertEvent.isPending}
         className="w-full rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
-        style={{ background: "#00d4aa", color: "#0d1117" }}
+        style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
       >
         {upsertEvent.isPending
           ? "Saving…"
@@ -311,7 +311,7 @@ function TeamsSection({
     <div className="space-y-4">
       {/* Team list */}
       {teams.length === 0 ? (
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No teams yet. Add teams below.
         </p>
       ) : (
@@ -326,7 +326,7 @@ function TeamsSection({
                 data-testid={`team-row-${team.id}`}
                 className="rounded-xl p-3"
                 style={{
-                  background: "#161b22",
+                  background: "var(--color-bt-card)",
                   border: `1px solid ${team.color}44`,
                 }}
               >
@@ -337,13 +337,13 @@ function TeamsSection({
                   />
                   <p
                     className="flex-1 text-sm font-medium"
-                    style={{ color: "#e6edf3" }}
+                    style={{ color: "var(--color-bt-text)" }}
                   >
                     {team.name}
                   </p>
                   <span
                     className="text-xs"
-                    style={{ color: "#8b949e" }}
+                    style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     {teamMembers.length} player
                     {teamMembers.length !== 1 ? "s" : ""}
@@ -359,9 +359,9 @@ function TeamsSection({
       {showAdd ? (
         <div
           className="space-y-3 rounded-xl p-4"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
-          <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             New Team
           </p>
           <input
@@ -371,9 +371,9 @@ function TeamsSection({
             onChange={(e) => setNewName(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
           <input
@@ -384,9 +384,9 @@ function TeamsSection({
             maxLength={20}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
           {/* Color picker */}
@@ -412,7 +412,7 @@ function TeamsSection({
             <button
               onClick={() => setShowAdd(false)}
               className="flex-1 rounded-lg border py-2 text-sm"
-              style={{ borderColor: "#30363d", color: "#8b949e" }}
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
             >
               Cancel
             </button>
@@ -434,7 +434,7 @@ function TeamsSection({
                 });
               }}
               className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-              style={{ background: "#00d4aa", color: "#0d1117" }}
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               Add Team
             </button>
@@ -444,8 +444,8 @@ function TeamsSection({
         <button
           data-testid="show-add-team-btn"
           onClick={() => setShowAdd(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-white/5"
-          style={{ borderColor: "#30363d", color: "#00d4aa" }}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
         >
           <Plus size={16} />
           Add Team
@@ -457,7 +457,7 @@ function TeamsSection({
         <div>
           <p
             className="mb-2 text-sm font-medium"
-            style={{ color: "#e6edf3" }}
+            style={{ color: "var(--color-bt-text)" }}
           >
             Player Assignments
           </p>
@@ -473,22 +473,22 @@ function TeamsSection({
                   key={m.user_id}
                   data-testid={`player-row-${m.user_id}`}
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                  style={{ background: "#161b22", border: "1px solid #30363d" }}
+                  style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
                 >
                   <div
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
                     style={{
                       background: assignedTeam
                         ? `${assignedTeam.color}22`
-                        : "#0d1117",
-                      color: assignedTeam?.color ?? "#8b949e",
+                        : "var(--color-bt-base)",
+                      color: assignedTeam?.color ?? "var(--color-bt-text-dim)",
                     }}
                   >
                     {name.charAt(0).toUpperCase()}
                   </div>
                   <p
                     className="min-w-0 flex-1 truncate text-sm"
-                    style={{ color: "#e6edf3" }}
+                    style={{ color: "var(--color-bt-text)" }}
                   >
                     {name}
                   </p>
@@ -516,9 +516,9 @@ function TeamsSection({
                     }}
                     className="rounded-lg border px-2 py-1 text-xs outline-none"
                     style={{
-                      background: "#0d1117",
-                      borderColor: "#30363d",
-                      color: "#e6edf3",
+                      background: "var(--color-bt-base)",
+                      borderColor: "var(--color-bt-border)",
+                      color: "var(--color-bt-text)",
                     }}
                   >
                     <option value="">Unassigned</option>
@@ -574,7 +574,7 @@ function RoundsSection({
   return (
     <div className="space-y-3">
       {rounds.length === 0 ? (
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No rounds yet.
         </p>
       ) : (
@@ -584,19 +584,19 @@ function RoundsSection({
               key={round.id}
               data-testid={`round-row-${round.id}`}
               className="flex items-start gap-3 rounded-xl p-3"
-              style={{ background: "#161b22", border: "1px solid #30363d" }}
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
               <div
                 className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                style={{ background: "#00d4aa22", color: "#00d4aa" }}
+                style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
               >
                 {round.day}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {round.title}
                 </p>
-                <p className="text-xs" style={{ color: "#8b949e" }}>
+                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   {round.course} ·{" "}
                   {ROUND_FORMATS.find((f) => f.value === round.format)?.label ??
                     round.format}{" "}
@@ -609,7 +609,7 @@ function RoundsSection({
                   removeRound.mutate({ tripId, roundId: round.id })
                 }
                 className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
-                style={{ color: "#8b949e" }}
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
                 <Trash2 size={13} />
               </button>
@@ -621,14 +621,14 @@ function RoundsSection({
       {showAdd ? (
         <div
           className="space-y-3 rounded-xl p-4"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
-          <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             Add Round
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Day
               </label>
               <input
@@ -638,14 +638,14 @@ function RoundsSection({
                 onChange={(e) => setDay(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
                 }}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Points
               </label>
               <input
@@ -655,9 +655,9 @@ function RoundsSection({
                 onChange={(e) => setPoints(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
                 }}
               />
             </div>
@@ -669,9 +669,9 @@ function RoundsSection({
             onChange={(e) => setTitle(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
           <input
@@ -681,13 +681,13 @@ function RoundsSection({
             onChange={(e) => setCourse(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
           <div>
-            <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Format
             </label>
             <select
@@ -696,9 +696,9 @@ function RoundsSection({
               onChange={(e) => setFormat(e.target.value as RoundFormat)}
               className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
               style={{
-                background: "#0d1117",
-                borderColor: "#30363d",
-                color: "#e6edf3",
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
               }}
             >
               {ROUND_FORMATS.map((f) => (
@@ -712,7 +712,7 @@ function RoundsSection({
             <button
               onClick={() => setShowAdd(false)}
               className="flex-1 rounded-lg border py-2 text-sm"
-              style={{ borderColor: "#30363d", color: "#8b949e" }}
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
             >
               Cancel
             </button>
@@ -732,7 +732,7 @@ function RoundsSection({
                 });
               }}
               className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-              style={{ background: "#00d4aa", color: "#0d1117" }}
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               Add Round
             </button>
@@ -742,8 +742,8 @@ function RoundsSection({
         <button
           data-testid="show-add-round-btn"
           onClick={() => setShowAdd(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-white/5"
-          style={{ borderColor: "#30363d", color: "#00d4aa" }}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
         >
           <Plus size={16} />
           Add Round
@@ -811,7 +811,7 @@ function GroupsSection({
   if (assignedMembers.length === 0) {
     return (
       <div className="py-8 text-center">
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           Assign players to teams first before creating play groups.
         </p>
       </div>
@@ -821,7 +821,7 @@ function GroupsSection({
   return (
     <div className="space-y-3">
       {playGroups.length === 0 ? (
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No play groups yet.
         </p>
       ) : (
@@ -831,13 +831,13 @@ function GroupsSection({
               key={group.id}
               data-testid={`group-row-${group.id}`}
               className="flex items-start gap-3 rounded-xl p-3"
-              style={{ background: "#161b22", border: "1px solid #30363d" }}
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {group.name}
                 </p>
-                <p className="mb-1.5 text-xs" style={{ color: "#8b949e" }}>
+                <p className="mb-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   {group.tee_time}
                 </p>
                 {/* Player dots */}
@@ -854,14 +854,14 @@ function GroupsSection({
                         key={uid}
                         className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
                         style={{
-                          background: team ? `${team.color}22` : "#0d111722",
-                          color: team?.color ?? "#8b949e",
-                          border: `1px solid ${team?.color ?? "#30363d"}44`,
+                          background: team ? `${team.color}22` : "var(--color-bt-base, #0d1117)22",
+                          color: team?.color ?? "var(--color-bt-text-dim)",
+                          border: `1px solid ${team?.color ?? "var(--color-bt-border)"}44`,
                         }}
                       >
                         <span
                           className="inline-block h-1.5 w-1.5 rounded-full"
-                          style={{ background: team?.color ?? "#8b949e" }}
+                          style={{ background: team?.color ?? "var(--color-bt-text-dim)" }}
                         />
                         {name}
                       </span>
@@ -876,7 +876,7 @@ function GroupsSection({
                 }
                 disabled={deleteGroup.isPending}
                 className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-40"
-                style={{ color: "#8b949e" }}
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
                 <Trash2 size={13} />
               </button>
@@ -888,9 +888,9 @@ function GroupsSection({
       {showAdd ? (
         <div
           className="space-y-3 rounded-xl p-4"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
-          <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             Add Play Group
           </p>
           <input
@@ -900,9 +900,9 @@ function GroupsSection({
             onChange={(e) => setNewName(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
           <input
@@ -912,14 +912,14 @@ function GroupsSection({
             onChange={(e) => setNewTeeTime(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
             style={{
-              background: "#0d1117",
-              borderColor: "#30363d",
-              color: "#e6edf3",
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
             }}
           />
           {/* Player checkboxes — only team-assigned members */}
           <div>
-            <label className="mb-1.5 block text-xs" style={{ color: "#8b949e" }}>
+            <label className="mb-1.5 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Players
             </label>
             <div className="space-y-1.5">
@@ -935,15 +935,15 @@ function GroupsSection({
                     key={m.user_id}
                     className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2"
                     style={{
-                      background: checked ? "#00d4aa11" : "#0d1117",
-                      border: `1px solid ${checked ? "#00d4aa44" : "#30363d"}`,
+                      background: checked ? "var(--color-bt-accent-faint)" : "var(--color-bt-base)",
+                      border: `1px solid ${checked ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
                     }}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => togglePlayer(m.user_id)}
-                      className="accent-[#00d4aa]"
+                      className="accent-bt-accent"
                     />
                     {team && (
                       <span
@@ -951,7 +951,7 @@ function GroupsSection({
                         style={{ background: team.color }}
                       />
                     )}
-                    <span className="text-sm" style={{ color: "#e6edf3" }}>
+                    <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>
                       {name}
                     </span>
                     {team && (
@@ -973,7 +973,7 @@ function GroupsSection({
                 setSelectedPlayerIds([]);
               }}
               className="flex-1 rounded-lg border py-2 text-sm"
-              style={{ borderColor: "#30363d", color: "#8b949e" }}
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
             >
               Cancel
             </button>
@@ -996,7 +996,7 @@ function GroupsSection({
                 });
               }}
               className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-              style={{ background: "#00d4aa", color: "#0d1117" }}
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               Add Group
             </button>
@@ -1006,8 +1006,8 @@ function GroupsSection({
         <button
           data-testid="show-add-group-btn"
           onClick={() => setShowAdd(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-white/5"
-          style={{ borderColor: "#30363d", color: "#00d4aa" }}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
         >
           <Plus size={16} />
           Add Play Group
@@ -1057,11 +1057,11 @@ export default function CompetitionSetupPage() {
     return (
       <div
         className="flex min-h-screen items-center justify-center"
-        style={{ background: "#0d1117" }}
+        style={{ background: "var(--color-bt-base)" }}
       >
         <div
           className="h-8 w-8 animate-spin rounded-full border-2"
-          style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
         />
       </div>
     );
@@ -1077,17 +1077,17 @@ export default function CompetitionSetupPage() {
   return (
     <div
       className="flex min-h-screen flex-col"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Header */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "#161b22", borderBottom: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
       >
         <button
           onClick={() => router.push(`/trips/${tripId}`)}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-          style={{ color: "#e6edf3" }}
+          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text)" }}
           aria-label="Back to trip"
         >
           <ArrowLeft size={20} />
@@ -1095,7 +1095,7 @@ export default function CompetitionSetupPage() {
         <h1
           data-testid="setup-heading"
           className="flex-1 text-base font-semibold"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Competition Setup
         </h1>
@@ -1104,7 +1104,7 @@ export default function CompetitionSetupPage() {
       {/* Tab bar */}
       <div
         className="flex border-b"
-        style={{ background: "#161b22", borderColor: "#30363d" }}
+        style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
       >
         {TABS.map(({ id, label, Icon }) => (
           <button
@@ -1113,8 +1113,8 @@ export default function CompetitionSetupPage() {
             onClick={() => setActiveTab(id)}
             className="flex flex-1 items-center justify-center gap-1.5 py-3 text-sm transition-colors"
             style={{
-              color: activeTab === id ? "#00d4aa" : "#8b949e",
-              borderBottom: activeTab === id ? "2px solid #00d4aa" : "2px solid transparent",
+              color: activeTab === id ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              borderBottom: activeTab === id ? "2px solid var(--color-bt-accent)" : "2px solid transparent",
             }}
           >
             <Icon size={15} />
@@ -1131,7 +1131,7 @@ export default function CompetitionSetupPage() {
 
         {activeTab === "teams" && !event && (
           <div className="py-8 text-center">
-            <p className="text-sm" style={{ color: "#8b949e" }}>
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
               Create an event first before adding teams.
             </p>
           </div>
@@ -1148,7 +1148,7 @@ export default function CompetitionSetupPage() {
 
         {activeTab === "rounds" && !event && (
           <div className="py-8 text-center">
-            <p className="text-sm" style={{ color: "#8b949e" }}>
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
               Create an event first before adding rounds.
             </p>
           </div>
@@ -1163,7 +1163,7 @@ export default function CompetitionSetupPage() {
 
         {activeTab === "groups" && !event && (
           <div className="py-8 text-center">
-            <p className="text-sm" style={{ color: "#8b949e" }}>
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
               Create an event first before adding play groups.
             </p>
           </div>

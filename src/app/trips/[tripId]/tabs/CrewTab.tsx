@@ -11,16 +11,16 @@ import type { TripRole } from "@/server/middleware";
 // ── RSVP status config ────────────────────────────────────────────────────
 
 const RSVP_LABEL: Record<string, { label: string; color: string }> = {
-  in: { label: "In", color: "#00d4aa" },
-  likely: { label: "Likely", color: "#a78bfa" },
-  maybe: { label: "Maybe", color: "#7c93d4" },
-  out: { label: "Out", color: "#ef4444" },
+  in: { label: "In", color: "var(--color-bt-accent)" },
+  likely: { label: "Likely", color: "var(--color-bt-ready)" },
+  maybe: { label: "Maybe", color: "var(--color-bt-planning)" },
+  out: { label: "Out", color: "var(--color-bt-danger)" },
 };
 
 type RsvpStatus = "in" | "likely" | "maybe" | "out";
 
 function RsvpBadge({ status }: { status: string }) {
-  const cfg = RSVP_LABEL[status] ?? { label: status, color: "#8b949e" };
+  const cfg = RSVP_LABEL[status] ?? { label: status, color: "var(--color-bt-text-dim)" };
   return (
     <span
       className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
@@ -48,9 +48,9 @@ function MyRsvpSelector({
   return (
     <div
       className="rounded-xl p-4"
-      style={{ background: "#161b22", border: "1px solid #30363d" }}
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
-      <p className="mb-3 text-sm font-medium" style={{ color: "#e6edf3" }}>
+      <p className="mb-3 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
         My RSVP
       </p>
       <div className="flex gap-2">
@@ -64,8 +64,8 @@ function MyRsvpSelector({
               onClick={() => updateRsvp.mutate({ tripId, status: s })}
               className="flex-1 rounded-lg py-1.5 text-xs font-medium transition-all"
               style={{
-                background: active ? `${cfg.color}22` : "#0d1117",
-                border: `1px solid ${active ? cfg.color : "#30363d"}`,
+                background: active ? `${cfg.color}22` : "var(--color-bt-base)",
+                border: `1px solid ${active ? cfg.color : "var(--color-bt-border)"}`,
                 color: cfg.color,
               }}
             >
@@ -109,9 +109,9 @@ function InviteMember({
   return (
     <div
       className="space-y-3 rounded-xl p-4"
-      style={{ background: "#161b22", border: "1px solid #30363d" }}
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
-      <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+      <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
         Add to Trip
       </p>
 
@@ -120,7 +120,7 @@ function InviteMember({
         <Search
           size={14}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         />
         <input
           data-testid="invite-search-input"
@@ -133,9 +133,9 @@ function InviteMember({
           }}
           className="w-full rounded-lg border py-2 pl-8 pr-3 text-sm outline-none"
           style={{
-            background: "#0d1117",
-            borderColor: "#30363d",
-            color: "#e6edf3",
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
         />
       </div>
@@ -144,11 +144,11 @@ function InviteMember({
       {query.trim().length >= 2 && (
         <div className="space-y-1.5">
           {isFetching ? (
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Searching…
             </p>
           ) : filtered.length === 0 ? (
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               No users found. They must sign up first.
             </p>
           ) : (
@@ -159,20 +159,20 @@ function InviteMember({
                 <div
                   key={user.id}
                   className="flex items-center gap-3 rounded-lg px-3 py-2"
-                  style={{ background: "#0d1117", border: "1px solid #30363d" }}
+                  style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
                 >
                   <div
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                    style={{ background: "#1f1f1f", color: "#8b949e" }}
+                    style={{ background: "var(--color-bt-past-bg)", color: "var(--color-bt-text-dim)" }}
                   >
                     {displayName.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm" style={{ color: "#e6edf3" }}>
+                    <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
                       {displayName}
                     </p>
                     {user.name && (
-                      <p className="truncate text-xs" style={{ color: "#8b949e" }}>
+                      <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                         {user.email}
                       </p>
                     )}
@@ -184,7 +184,7 @@ function InviteMember({
                       addMember.mutate({ tripId, userId: user.id, role: "Member" })
                     }
                     className="flex flex-shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
-                    style={{ background: "#00d4aa22", color: "#00d4aa", border: "1px solid #00d4aa44" }}
+                    style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
                   >
                     <UserPlus size={12} />
                     {justAdded ? "Added!" : "Add"}
@@ -220,7 +220,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
       <section>
         <h2
           className="mb-3 text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Members ({members.length})
         </h2>
@@ -237,14 +237,14 @@ export function CrewTab({ trip, canEdit }: TabProps) {
                 key={member.user_id}
                 data-testid={`member-${member.user_id}`}
                 className="flex items-center gap-3 rounded-xl px-4 py-3"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
                 {/* Avatar */}
                 <div
                   className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
                   style={{
-                    background: isMe ? "#0d2a22" : "#1f1f1f",
-                    color: isMe ? "#00d4aa" : "#8b949e",
+                    background: isMe ? "var(--color-bt-tag-bg)" : "var(--color-bt-past-bg)",
+                    color: isMe ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
                   }}
                 >
                   {initial}
@@ -255,11 +255,11 @@ export function CrewTab({ trip, canEdit }: TabProps) {
                   <div className="flex items-center gap-2">
                     <p
                       className="truncate text-sm font-medium"
-                      style={{ color: "#e6edf3" }}
+                      style={{ color: "var(--color-bt-text)" }}
                     >
                       {displayName}
                       {isMe && (
-                        <span className="ml-1 text-xs" style={{ color: "#8b949e" }}>
+                        <span className="ml-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                           (you)
                         </span>
                       )}
@@ -268,7 +268,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
                   {member.user?.email && (
                     <p
                       className="truncate text-xs"
-                      style={{ color: "#8b949e" }}
+                      style={{ color: "var(--color-bt-text-dim)" }}
                     >
                       {member.user.email}
                     </p>
@@ -290,7 +290,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         <section>
           <h2
             className="mb-3 text-sm font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Invite
           </h2>

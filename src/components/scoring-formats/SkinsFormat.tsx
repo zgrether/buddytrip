@@ -20,11 +20,11 @@ export function SkinsFormat({ teams, scores, onChange }: SkinsFormatProps) {
     <div className="space-y-3" data-testid="skins-format">
       <div
         className="rounded-lg px-3 py-2 text-center text-xs"
-        style={{ background: "#00d4aa11", color: "#00d4aa", border: "1px solid #00d4aa33" }}
+        style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
       >
         Skins game — each hole is a skin!
       </div>
-      <p className="text-center text-xs" style={{ color: "#8b949e" }}>
+      <p className="text-center text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
         Enter match result per team (0, 0.5, or 1 point)
       </p>
       {teams.map((team) => {
@@ -35,7 +35,7 @@ export function SkinsFormat({ teams, scores, onChange }: SkinsFormatProps) {
           <div
             key={team.id}
             className="flex items-center justify-between rounded-xl px-4 py-3"
-            style={{ background: "#21262d", border: `1px solid ${team.color}44` }}
+            style={{ background: "var(--color-bt-subtle-border)", border: `1px solid ${team.color}44` }}
           >
             <div className="flex items-center gap-2">
               <div
@@ -51,14 +51,14 @@ export function SkinsFormat({ teams, scores, onChange }: SkinsFormatProps) {
                 data-testid={`decrement-${team.id}`}
                 onClick={() => onChange(team.id, Math.max(0, points - 0.5))}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold"
-                style={{ background: "#30363d", color: "#e6edf3" }}
+                style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               >
                 -
               </button>
               <span
                 data-testid={`points-${team.id}`}
                 className="w-10 text-center text-lg font-bold"
-                style={{ color: "#e6edf3" }}
+                style={{ color: "var(--color-bt-text)" }}
               >
                 {points}
               </span>
@@ -66,7 +66,7 @@ export function SkinsFormat({ teams, scores, onChange }: SkinsFormatProps) {
                 data-testid={`increment-${team.id}`}
                 onClick={() => onChange(team.id, Math.min(1, points + 0.5))}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold"
-                style={{ background: "#30363d", color: "#e6edf3" }}
+                style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               >
                 +
               </button>

@@ -50,13 +50,13 @@ export default function LoginClient() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4"
-      style={{ background: "#0d1117" }}>
+      style={{ background: "var(--color-bt-base)" }}>
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold" style={{ color: "#00d4aa" }}>
+          <h1 className="text-3xl font-bold" style={{ color: "var(--color-bt-accent)" }}>
             BuddyTrip
           </h1>
-          <p className="mt-2 text-sm" style={{ color: "#8b949e" }}>
+          <p className="mt-2 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             Group trip planning & competition
           </p>
         </div>
@@ -66,7 +66,7 @@ export default function LoginClient() {
             <>
               <div>
                 <label htmlFor="name" className="block text-sm font-medium"
-                  style={{ color: "#e6edf3" }}>
+                  style={{ color: "var(--color-bt-text)" }}>
                   Full Name
                 </label>
                 <input
@@ -77,16 +77,16 @@ export default function LoginClient() {
                   onChange={(e) => setName(e.target.value)}
                   className="mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2"
                   style={{
-                    background: "#161b22",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
+                    background: "var(--color-bt-card)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
                   }}
                   placeholder="Zach Grether"
                 />
               </div>
               <div>
                 <label htmlFor="nickname" className="block text-sm font-medium"
-                  style={{ color: "#e6edf3" }}>
+                  style={{ color: "var(--color-bt-text)" }}>
                   Nickname
                 </label>
                 <input
@@ -97,9 +97,9 @@ export default function LoginClient() {
                   onChange={(e) => setNickname(e.target.value)}
                   className="mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2"
                   style={{
-                    background: "#161b22",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
+                    background: "var(--color-bt-card)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
                   }}
                   placeholder="Grether"
                 />
@@ -109,7 +109,7 @@ export default function LoginClient() {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium"
-              style={{ color: "#e6edf3" }}>
+              style={{ color: "var(--color-bt-text)" }}>
               Email
             </label>
             <input
@@ -120,9 +120,9 @@ export default function LoginClient() {
               onChange={(e) => setEmail(e.target.value)}
               className="mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2"
               style={{
-                background: "#161b22",
-                borderColor: "#30363d",
-                color: "#e6edf3",
+                background: "var(--color-bt-card)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
               }}
               placeholder="you@example.com"
             />
@@ -130,7 +130,7 @@ export default function LoginClient() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium"
-              style={{ color: "#e6edf3" }}>
+              style={{ color: "var(--color-bt-text)" }}>
               Password
             </label>
             <input
@@ -142,16 +142,16 @@ export default function LoginClient() {
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2"
               style={{
-                background: "#161b22",
-                borderColor: "#30363d",
-                color: "#e6edf3",
+                background: "var(--color-bt-card)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
               }}
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <p className="text-sm" style={{ color: "#ef4444" }}>
+            <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
               {error}
             </p>
           )}
@@ -161,8 +161,8 @@ export default function LoginClient() {
             disabled={loading}
             className="w-full rounded-md py-2 text-sm font-semibold transition-colors disabled:opacity-50"
             style={{
-              background: "#00d4aa",
-              color: "#0d1117",
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
             }}
           >
             {loading
@@ -173,14 +173,14 @@ export default function LoginClient() {
           </button>
         </form>
 
-        <p className="text-center text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           {mode === "sign-in" ? (
             <>
               Don&apos;t have an account?{" "}
               <button
                 onClick={() => { setMode("sign-up"); setError(""); }}
                 className="font-medium hover:underline"
-                style={{ color: "#00d4aa" }}
+                style={{ color: "var(--color-bt-accent)" }}
               >
                 Sign up
               </button>
@@ -191,7 +191,7 @@ export default function LoginClient() {
               <button
                 onClick={() => { setMode("sign-in"); setError(""); }}
                 className="font-medium hover:underline"
-                style={{ color: "#00d4aa" }}
+                style={{ color: "var(--color-bt-accent)" }}
               >
                 Sign in
               </button>

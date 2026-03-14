@@ -57,7 +57,7 @@ function Step1({
         <label
           htmlFor="trip-name"
           className="mb-1.5 block text-sm font-medium"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Trip name *
         </label>
@@ -72,9 +72,9 @@ function Step1({
           maxLength={200}
           className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
           style={{
-            background: "#161b22",
-            borderColor: "#30363d",
-            color: "#e6edf3",
+            background: "var(--color-bt-card)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
         />
       </div>
@@ -84,10 +84,10 @@ function Step1({
         <label
           htmlFor="trip-desc"
           className="mb-1.5 block text-sm font-medium"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Description{" "}
-          <span style={{ color: "#8b949e" }}>(optional)</span>
+          <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
         </label>
         <textarea
           id="trip-desc"
@@ -98,26 +98,26 @@ function Step1({
           rows={3}
           className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
           style={{
-            background: "#161b22",
-            borderColor: "#30363d",
-            color: "#e6edf3",
+            background: "var(--color-bt-card)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
         />
       </div>
 
       {/* Invite co-planners */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium" style={{ color: "#e6edf3" }}>
+        <label className="mb-1.5 block text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
           Invite people{" "}
-          <span style={{ color: "#8b949e" }}>(optional)</span>
+          <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
         </label>
 
         <div ref={searchRef} className="relative">
           <div
             className="flex items-center gap-2 rounded-lg border px-3 py-2"
-            style={{ background: "#161b22", borderColor: "#30363d" }}
+            style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
           >
-            <Search size={16} style={{ color: "#8b949e", flexShrink: 0 }} />
+            <Search size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
             <input
               data-testid="invite-search"
               type="email"
@@ -129,12 +129,12 @@ function Step1({
               onFocus={() => setShowResults(true)}
               placeholder="Search by email…"
               className="flex-1 bg-transparent text-sm outline-none"
-              style={{ color: "#e6edf3" }}
+              style={{ color: "var(--color-bt-text)" }}
             />
             {isFetching && (
               <div
                 className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"
-                style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+                style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
               />
             )}
           </div>
@@ -143,10 +143,10 @@ function Step1({
           {showResults && query.length >= 2 && (
             <div
               className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg shadow-xl"
-              style={{ background: "#161b22", border: "1px solid #30363d" }}
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
               {filteredResults.length === 0 ? (
-                <div className="px-4 py-3 text-sm" style={{ color: "#8b949e" }}>
+                <div className="px-4 py-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
                   {isFetching ? "Searching…" : "No users found"}
                 </div>
               ) : (
@@ -164,23 +164,23 @@ function Step1({
                       setQuery("");
                       setShowResults(false);
                     }}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
                   >
                     <div
                       className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-                      style={{ background: "#0d2a22", color: "#00d4aa" }}
+                      style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
                     >
                       {(user.name ?? user.email).charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                      <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                         {user.name ?? "—"}
                       </p>
-                      <p className="text-xs" style={{ color: "#8b949e" }}>
+                      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                         {user.email}
                       </p>
                     </div>
-                    <Plus size={16} className="ml-auto" style={{ color: "#00d4aa" }} />
+                    <Plus size={16} className="ml-auto" style={{ color: "var(--color-bt-accent)" }} />
                   </button>
                 ))
               )}
@@ -196,19 +196,19 @@ function Step1({
                 key={invite.userId}
                 data-testid={`invite-${invite.userId}`}
                 className="flex items-center gap-3 rounded-lg border px-3 py-2"
-                style={{ background: "#0d2a22", borderColor: "#00d4aa33" }}
+                style={{ background: "var(--color-bt-tag-bg)", borderColor: "var(--color-bt-accent-border)" }}
               >
                 <div
                   className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-                  style={{ background: "#161b22", color: "#00d4aa" }}
+                  style={{ background: "var(--color-bt-card)", color: "var(--color-bt-accent)" }}
                 >
                   {invite.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" style={{ color: "#e6edf3" }}>
+                  <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                     {invite.name}
                   </p>
-                  <p className="truncate text-xs" style={{ color: "#8b949e" }}>
+                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     {invite.email}
                   </p>
                 </div>
@@ -220,9 +220,9 @@ function Step1({
                   }
                   className="rounded border px-2 py-1 text-xs outline-none"
                   style={{
-                    background: "#161b22",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
+                    background: "var(--color-bt-card)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
                   }}
                 >
                   <option value="Planner">Planner</option>
@@ -230,8 +230,8 @@ function Step1({
                 </select>
                 <button
                   onClick={() => onRemoveInvite(invite.userId)}
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-                  style={{ color: "#8b949e" }}
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                  style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <X size={14} />
                 </button>
@@ -247,7 +247,7 @@ function Step1({
         onClick={onNext}
         disabled={!tripName.trim()}
         className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-        style={{ background: "#00d4aa", color: "#0d1117" }}
+        style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
       >
         Next
         <ArrowRight size={16} />
@@ -286,10 +286,10 @@ function Step2({
         <label
           htmlFor="trip-location"
           className="mb-1.5 block text-sm font-medium"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Destination{" "}
-          <span style={{ color: "#8b949e" }}>(optional)</span>
+          <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
         </label>
         <input
           id="trip-location"
@@ -301,12 +301,12 @@ function Step2({
           maxLength={500}
           className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
           style={{
-            background: "#161b22",
-            borderColor: "#30363d",
-            color: "#e6edf3",
+            background: "var(--color-bt-card)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
         />
-        <p className="mt-1.5 text-xs" style={{ color: "#8b949e" }}>
+        <p className="mt-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           You can also let members vote on a destination — skip this if you&apos;re
           still deciding.
         </p>
@@ -318,7 +318,7 @@ function Step2({
           <label
             htmlFor="start-date"
             className="mb-1.5 block text-sm font-medium"
-            style={{ color: "#e6edf3" }}
+            style={{ color: "var(--color-bt-text)" }}
           >
             Start date
           </label>
@@ -330,10 +330,10 @@ function Step2({
             onChange={(e) => onStartDateChange(e.target.value)}
             className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
             style={{
-              background: "#161b22",
-              borderColor: "#30363d",
-              color: "#e6edf3",
-              colorScheme: "dark",
+              background: "var(--color-bt-card)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+              colorScheme: "inherit",
             }}
           />
         </div>
@@ -341,7 +341,7 @@ function Step2({
           <label
             htmlFor="end-date"
             className="mb-1.5 block text-sm font-medium"
-            style={{ color: "#e6edf3" }}
+            style={{ color: "var(--color-bt-text)" }}
           >
             End date
           </label>
@@ -354,10 +354,10 @@ function Step2({
             onChange={(e) => onEndDateChange(e.target.value)}
             className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
             style={{
-              background: "#161b22",
-              borderColor: "#30363d",
-              color: "#e6edf3",
-              colorScheme: "dark",
+              background: "var(--color-bt-card)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+              colorScheme: "inherit",
             }}
           />
         </div>
@@ -368,8 +368,8 @@ function Step2({
         <button
           data-testid="step2-back"
           onClick={onBack}
-          className="flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors hover:bg-white/5"
-          style={{ borderColor: "#30363d", color: "#e6edf3" }}
+          className="flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
         >
           <ArrowLeft size={16} />
           Back
@@ -379,13 +379,13 @@ function Step2({
           onClick={onSubmit}
           disabled={isSubmitting}
           className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: "#00d4aa", color: "#0d1117" }}
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
           {isSubmitting ? (
             <>
               <span
                 className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"
-                style={{ borderColor: "#0d1117", borderTopColor: "transparent" }}
+                style={{ borderColor: "var(--color-bt-base)", borderTopColor: "transparent" }}
               />
               Creating…
             </>
@@ -459,17 +459,17 @@ export default function TripNewPage() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Header */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "#0d1117", borderBottom: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-border)" }}
       >
         <button
           onClick={() => (step === 1 ? router.back() : setStep(1))}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-          style={{ color: "#e6edf3" }}
+          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text)" }}
           aria-label="Back"
         >
           <ArrowLeft size={20} />
@@ -483,7 +483,7 @@ export default function TripNewPage() {
               key={s}
               className="h-2 w-2 rounded-full transition-all"
               style={{
-                background: s === step ? "#00d4aa" : "#30363d",
+                background: s === step ? "var(--color-bt-accent)" : "var(--color-bt-border)",
                 width: s === step ? "20px" : "8px",
               }}
             />
@@ -493,17 +493,17 @@ export default function TripNewPage() {
 
       <main className="mx-auto max-w-lg px-4 pt-6 pb-16">
         {/* Step label */}
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "#8b949e" }}>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
           Step {step} of 2
         </p>
-        <h2 className="mb-6 text-xl font-bold" style={{ color: "#e6edf3" }}>
+        <h2 className="mb-6 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
           {step === 1 ? "Name your trip" : "Where are you going?"}
         </h2>
 
         {error && (
           <div
             className="mb-4 rounded-lg border px-4 py-3 text-sm"
-            style={{ background: "#1f1010", borderColor: "#ef444488", color: "#ef4444" }}
+            style={{ background: "var(--color-bt-danger-bg)", borderColor: "var(--color-bt-danger-border)", color: "var(--color-bt-danger)" }}
           >
             {error}
           </div>
