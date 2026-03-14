@@ -74,10 +74,68 @@ function DatePollSection({
 
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
   const addWindow = trpc.datePoll.addWindow.useMutation({
-    onSuccess: () => utils.datePoll.get.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, {
+        windows: [
+          ...(prev?.windows ?? []),
+          {
+            id: vars.id,
+            trip_id: tripId,
+            start_date: vars.startDate,
+            end_date: vars.endDate,
+            created_at: new Date().toISOString(),
+            votes: [],
+          },
+        ],
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
   });
   const vote = trpc.datePoll.vote.useMutation({
-    onSuccess: () => utils.datePoll.get.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, {
+        windows: (prev?.windows ?? []).map((w) => {
+          if (w.id !== vars.windowId) return w;
+          const existingVote = w.votes.find((v) => v.user_id === currentUser?.id);
+          if (existingVote) {
+            // Toggle: if same answer remove it, if different answer update it
+            if (existingVote.answer === vars.answer) {
+              return { ...w, votes: w.votes.filter((v) => v.user_id !== currentUser?.id) };
+            }
+            return {
+              ...w,
+              votes: w.votes.map((v) =>
+                v.user_id === currentUser?.id ? { ...v, answer: vars.answer } : v
+              ),
+            };
+          }
+          return {
+            ...w,
+            votes: [
+              ...w.votes,
+              { window_id: vars.windowId, user_id: currentUser?.id ?? "", answer: vars.answer, created_at: new Date().toISOString() },
+            ],
+          };
+        }),
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
   });
 
   const [addingWindow, setAddingWindow] = useState(false);

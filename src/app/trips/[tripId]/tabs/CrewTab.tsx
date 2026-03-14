@@ -41,8 +41,22 @@ function MyRsvpSelector({
   currentStatus?: string;
 }) {
   const utils = trpc.useUtils();
+  const currentUser = useCurrentUser();
   const updateRsvp = trpc.tripMembers.updateRsvp.useMutation({
-    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+    async onMutate({ status }) {
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      utils.tripMembers.list.setData({ tripId }, (prev ?? []).map((m) =>
+        m.user_id === currentUser?.id ? { ...m, status } : m
+      ));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.tripMembers.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.tripMembers.list.invalidate({ tripId });
+    },
   });
 
   return (
@@ -97,10 +111,35 @@ function InviteMember({
   );
 
   const addMember = trpc.tripMembers.add.useMutation({
-    onSuccess: (_, vars) => {
-      utils.tripMembers.list.invalidate({ tripId });
+    async onMutate(vars) {
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      const searchData = utils.users.search.getData({ query });
+      const userInfo = searchData?.find((u) => u.id === vars.userId) ?? null;
+      utils.tripMembers.list.setData({ tripId }, [
+        ...(prev ?? []),
+        {
+          trip_id: tripId,
+          user_id: vars.userId,
+          role: vars.role ?? "Member",
+          status: "maybe",
+          joined_at: new Date().toISOString(),
+          user: userInfo
+            ? { id: userInfo.id, name: userInfo.name ?? null, nickname: null, email: userInfo.email ?? null }
+            : null,
+        },
+      ]);
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.tripMembers.list.setData({ tripId }, context.prev);
+    },
+    onSuccess(_, vars) {
       setAddedId(vars.userId);
       setQuery("");
+    },
+    onSettled() {
+      utils.tripMembers.list.invalidate({ tripId });
     },
   });
 

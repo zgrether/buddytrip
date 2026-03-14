@@ -58,7 +58,18 @@ export function CompTab({ trip, canEdit }: TabProps) {
   );
 
   const closeRound = trpc.rounds.update.useMutation({
-    onSuccess: () => {
+    async onMutate(vars) {
+      const eventId = event?.id ?? "";
+      await utils.rounds.list.cancel({ tripId: trip.id, eventId });
+      const prev = utils.rounds.list.getData({ tripId: trip.id, eventId });
+      utils.rounds.list.setData({ tripId: trip.id, eventId }, (prev ?? []).map((r) => (r.id === vars.roundId ? { ...r, status: vars.status ?? r.status } : r)));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      const eventId = event?.id ?? "";
+      if (context?.prev !== undefined) utils.rounds.list.setData({ tripId: trip.id, eventId }, context.prev);
+    },
+    onSettled() {
       utils.rounds.list.invalidate({ tripId: trip.id, eventId: event?.id ?? "" });
     },
   });

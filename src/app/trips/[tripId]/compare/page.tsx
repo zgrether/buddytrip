@@ -62,9 +62,30 @@ function IdeaCard({
   onLock: (idea: Idea) => void;
 }) {
   const utils = trpc.useUtils();
+  const currentUser = useCurrentUser();
 
   const vote = trpc.ideas.vote.useMutation({
-    onSuccess: () => utils.ideas.list.invalidate({ tripId }),
+    async onMutate({ ideaId }) {
+      await utils.ideas.list.cancel({ tripId });
+      const prev = utils.ideas.list.getData({ tripId });
+      utils.ideas.list.setData({ tripId }, (prev ?? []).map((idea) => {
+        if (idea.id !== ideaId) return idea;
+        const alreadyVoted = idea.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
+        return {
+          ...idea,
+          votes: alreadyVoted
+            ? idea.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id)
+            : [...idea.votes, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }],
+        };
+      }));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.ideas.list.invalidate({ tripId });
+    },
   });
   const removeIdea = trpc.ideas.remove.useMutation({
     onSuccess: () => utils.ideas.list.invalidate({ tripId }),
@@ -309,9 +330,38 @@ function AddIdeaModal({
 }) {
   const utils = trpc.useUtils();
   const createIdea = trpc.ideas.create.useMutation({
-    onSuccess: () => {
-      utils.ideas.list.invalidate({ tripId });
+    async onMutate(vars) {
+      await utils.ideas.list.cancel({ tripId });
+      const prev = utils.ideas.list.getData({ tripId });
+      utils.ideas.list.setData({ tripId }, [
+        ...(prev ?? []),
+        {
+          id: vars.id,
+          trip_id: tripId,
+          title: vars.title,
+          location: vars.location,
+          description: vars.description ?? null,
+          golf_courses: vars.golfCourses ?? null,
+          activities: vars.activities ?? null,
+          cost_tier: vars.costTier ?? null,
+          pros: vars.pros ?? null,
+          cons: vars.cons ?? null,
+          accommodation: vars.accommodation ?? null,
+          notes: vars.notes ?? null,
+          image_url: vars.imageUrl ?? null,
+          votes: [],
+        },
+      ]);
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
+    },
+    onSuccess() {
       onClose();
+    },
+    onSettled() {
+      utils.ideas.list.invalidate({ tripId });
     },
   });
 
@@ -412,9 +462,22 @@ function LockConfirmModal({
   const utils = trpc.useUtils();
 
   const lockDest = trpc.trips.lockDestination.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
+    async onMutate(vars) {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      if (prev) {
+        utils.trips.getById.setData({ tripId }, { ...prev, locked_destination_title: vars.title, locked_destination_location: vars.location });
+      }
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.trips.getById.setData({ tripId }, context.prev);
+    },
+    onSuccess() {
       router.push(`/trips/${tripId}`);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
     },
   });
 
