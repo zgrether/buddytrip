@@ -45,15 +45,22 @@ interface Round {
 }
 
 interface Member {
-  user_id: string;
+  user_id: string | null;
+  guest_crew_id: string | null;
+  memberId: string;
+  isGuest: boolean;
   role: string;
+  displayName: string;
   user?: { id: string; name?: string | null; email?: string | null } | null;
+  guestCrew?: { id: string; name: string; email?: string | null } | null;
 }
 
 interface TeamAssignment {
   event_id: string;
   team_id: string;
-  user_id: string;
+  user_id: string | null;
+  guest_crew_id: string | null;
+  memberId: string;
 }
 
 interface PlayGroup {
@@ -303,8 +310,8 @@ function TeamsSection({
     onSuccess: () => utils.teamAssignments.list.invalidate({ tripId, eventId }),
   });
 
-  const assignmentByUser = new Map(
-    assignments.map((a) => [a.user_id, a.team_id])
+  const assignmentByMember = new Map(
+    assignments.map((a) => [a.memberId, a.team_id])
   );
 
   return (
@@ -463,15 +470,13 @@ function TeamsSection({
           </p>
           <div className="space-y-2">
             {members.map((m) => {
-              const name =
-                m.user?.name ?? m.user?.email ?? `User ${m.user_id.slice(0, 6)}`;
-              const assignedTeamId = assignmentByUser.get(m.user_id);
+              const assignedTeamId = assignmentByMember.get(m.memberId);
               const assignedTeam = teams.find((t) => t.id === assignedTeamId);
 
               return (
                 <div
-                  key={m.user_id}
-                  data-testid={`player-row-${m.user_id}`}
+                  key={m.memberId}
+                  data-testid={`player-row-${m.memberId}`}
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5"
                   style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
                 >
@@ -484,16 +489,16 @@ function TeamsSection({
                       color: assignedTeam?.color ?? "var(--color-bt-text-dim)",
                     }}
                   >
-                    {name.charAt(0).toUpperCase()}
+                    {m.displayName.charAt(0).toUpperCase()}
                   </div>
                   <p
                     className="min-w-0 flex-1 truncate text-sm"
                     style={{ color: "var(--color-bt-text)" }}
                   >
-                    {name}
+                    {m.displayName}
                   </p>
                   <select
-                    data-testid={`assign-${m.user_id}`}
+                    data-testid={`assign-${m.memberId}`}
                     value={assignedTeamId ?? ""}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -502,7 +507,8 @@ function TeamsSection({
                           unassignMember.mutate({
                             tripId,
                             eventId,
-                            userId: m.user_id,
+                            userId: m.user_id ?? undefined,
+                            guestCrewId: m.guest_crew_id ?? undefined,
                           });
                         }
                       } else {
@@ -510,7 +516,8 @@ function TeamsSection({
                           tripId,
                           eventId,
                           teamId: val,
-                          userId: m.user_id,
+                          userId: m.user_id ?? undefined,
+                          guestCrewId: m.guest_crew_id ?? undefined,
                         });
                       }
                     }}
@@ -776,14 +783,12 @@ function GroupsSection({
   const [newTeeTime, setNewTeeTime] = useState("");
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
 
-  const assignedUserIds = new Set(assignments.map((a) => a.user_id));
+  const assignedMemberIds = new Set(assignments.map((a) => a.memberId));
   // Only show players who have been assigned to a team
-  const assignedMembers = members.filter((m) =>
-    assignedUserIds.has(m.user_id)
-  );
+  const assignedMembers = members.filter((m) => assignedMemberIds.has(m.memberId));
 
-  const teamByUserId = new Map(
-    assignments.map((a) => [a.user_id, teams.find((t) => t.id === a.team_id)])
+  const teamByMemberId = new Map(
+    assignments.map((a) => [a.memberId, teams.find((t) => t.id === a.team_id)])
   );
 
   const createGroup = trpc.playGroups.create.useMutation({
@@ -843,12 +848,9 @@ function GroupsSection({
                 {/* Player dots */}
                 <div className="flex flex-wrap gap-1.5">
                   {group.player_ids.map((uid) => {
-                    const m = members.find((x) => x.user_id === uid);
-                    const name =
-                      m?.user?.name ??
-                      m?.user?.email ??
-                      uid.slice(0, 6);
-                    const team = teamByUserId.get(uid);
+                    const m = members.find((x) => x.memberId === uid);
+                    const name = m?.displayName ?? uid.slice(0, 6);
+                    const team = teamByMemberId.get(uid);
                     return (
                       <span
                         key={uid}
@@ -924,15 +926,11 @@ function GroupsSection({
             </label>
             <div className="space-y-1.5">
               {assignedMembers.map((m) => {
-                const name =
-                  m.user?.name ??
-                  m.user?.email ??
-                  `User ${m.user_id.slice(0, 6)}`;
-                const team = teamByUserId.get(m.user_id);
-                const checked = selectedPlayerIds.includes(m.user_id);
+                const team = teamByMemberId.get(m.memberId);
+                const checked = selectedPlayerIds.includes(m.memberId);
                 return (
                   <label
-                    key={m.user_id}
+                    key={m.memberId}
                     className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2"
                     style={{
                       background: checked ? "var(--color-bt-accent-faint)" : "var(--color-bt-base)",
@@ -942,7 +940,7 @@ function GroupsSection({
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => togglePlayer(m.user_id)}
+                      onChange={() => togglePlayer(m.memberId)}
                       className="accent-bt-accent"
                     />
                     {team && (
@@ -952,7 +950,7 @@ function GroupsSection({
                       />
                     )}
                     <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                      {name}
+                      {m.displayName}
                     </span>
                     {team && (
                       <span className="ml-auto text-xs" style={{ color: team.color }}>

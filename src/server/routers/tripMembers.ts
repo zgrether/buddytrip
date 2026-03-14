@@ -6,6 +6,9 @@ import { requireTripMember, requireTripRole } from "../middleware";
 export const tripMembersRouter = router({
   // -----------------------------------------------------------------------
   // list — all members of a trip (any member can view)
+  //
+  // Returns both real users and ghost crew in a unified shape.
+  // Use `memberId` as the stable identifier (user_id ?? guest_crew_id).
   // -----------------------------------------------------------------------
   list: authedProcedure
     .input(z.object({ tripId: z.string() }))
@@ -13,7 +16,7 @@ export const tripMembersRouter = router({
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
         .from("trip_members")
-        .select("trip_id, user_id, role, status, joined_at")
+        .select("id, trip_id, user_id, guest_crew_id, role, status, joined_at")
         .eq("trip_id", ctx.tripId)
         .order("joined_at", { ascending: true });
 
@@ -24,22 +27,45 @@ export const tripMembersRouter = router({
         });
       }
 
-      // Join user info
-      const userIds = (data ?? []).map((m) => m.user_id);
-      const { data: users } = await ctx.supabase
-        .from("users")
-        .select("id, name, nickname, email")
-        .in("id", userIds);
+      const rows = data ?? [];
+      const userIds = rows.filter((m) => m.user_id).map((m) => m.user_id as string);
+      const guestIds = rows.filter((m) => m.guest_crew_id).map((m) => m.guest_crew_id as string);
 
-      const userMap = new Map((users ?? []).map((u) => [u.id, u]));
-      return (data ?? []).map((m) => ({
-        ...m,
-        user: userMap.get(m.user_id) ?? null,
-      }));
+      const [usersResult, guestsResult] = await Promise.all([
+        userIds.length > 0
+          ? ctx.supabase.from("users").select("id, name, nickname, email").in("id", userIds)
+          : Promise.resolve({ data: [] as { id: string; name: string | null; nickname: string | null; email: string | null }[] }),
+        guestIds.length > 0
+          ? ctx.supabase.from("guest_crew").select("id, name, email").in("id", guestIds)
+          : Promise.resolve({ data: [] as { id: string; name: string; email: string | null }[] }),
+      ]);
+
+      const userMap = new Map((usersResult.data ?? []).map((u) => [u.id, u]));
+      const guestMap = new Map((guestsResult.data ?? []).map((g) => [g.id, g]));
+
+      return rows.map((m) => {
+        const user = m.user_id ? (userMap.get(m.user_id) ?? null) : null;
+        const guestCrew = m.guest_crew_id ? (guestMap.get(m.guest_crew_id) ?? null) : null;
+        const isGuest = !!m.guest_crew_id;
+        const memberId = (m.user_id ?? m.guest_crew_id) as string;
+        const displayName = user
+          ? (user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`)
+          : (guestCrew?.name ?? `Guest ${memberId.slice(0, 6)}`);
+
+        return {
+          ...m,
+          user,
+          guestCrew,
+          memberId,
+          isGuest,
+          displayName,
+        };
+      });
     }),
 
   // -----------------------------------------------------------------------
-  // add — Owner or Planner can add members (canEdit)
+  // add — Owner or Planner can add real-account members (canEdit)
+  // To add ghost crew, use ghostCrew.create instead.
   // -----------------------------------------------------------------------
   add: authedProcedure
     .input(
@@ -54,7 +80,7 @@ export const tripMembersRouter = router({
       // Check if already a member
       const { data: existing } = await ctx.supabase
         .from("trip_members")
-        .select("user_id")
+        .select("id")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.userId)
         .maybeSingle();
@@ -69,6 +95,7 @@ export const tripMembersRouter = router({
       const { data, error } = await ctx.supabase
         .from("trip_members")
         .insert({
+          id: crypto.randomUUID(),
           trip_id: ctx.tripId,
           user_id: input.userId,
           role: input.role,
@@ -88,7 +115,7 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // updateRole — Owner only, can promote/demote (not self)
+  // updateRole — Owner only, can promote/demote real members (not self)
   // -----------------------------------------------------------------------
   updateRole: authedProcedure
     .input(
@@ -126,7 +153,8 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner only (not self)
+  // remove — Owner only, removes a real member (not self)
+  // To remove ghost crew, use ghostCrew.remove instead.
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(
@@ -161,7 +189,8 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // updateRsvp — any member can update their own RSVP status
+  // updateRsvp — any real member can update their own RSVP status
+  // Ghost crew always stay "in" — no RSVP for ghosts.
   // -----------------------------------------------------------------------
   updateRsvp: authedProcedure
     .input(
