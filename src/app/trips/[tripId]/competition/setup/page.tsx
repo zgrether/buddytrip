@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Flag,
+  Pencil,
   Plus,
   Trash2,
   Trophy,
@@ -783,6 +784,12 @@ function GroupsSection({
   const [newTeeTime, setNewTeeTime] = useState("");
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
 
+  // Edit state
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editTeeTime, setEditTeeTime] = useState("");
+  const [editPlayerIds, setEditPlayerIds] = useState<string[]>([]);
+
   const assignedMemberIds = new Set(assignments.map((a) => a.memberId));
   // Only show players who have been assigned to a team
   const assignedMembers = members.filter((m) => assignedMemberIds.has(m.memberId));
@@ -804,6 +811,28 @@ function GroupsSection({
   const deleteGroup = trpc.playGroups.delete.useMutation({
     onSuccess: () => utils.playGroups.list.invalidate({ tripId, eventId }),
   });
+
+  const updateGroup = trpc.playGroups.update.useMutation({
+    onSuccess: () => {
+      utils.playGroups.list.invalidate({ tripId, eventId });
+      setEditingGroupId(null);
+    },
+  });
+
+  function startEdit(group: PlayGroup) {
+    setEditingGroupId(group.id);
+    setEditName(group.name);
+    setEditTeeTime(group.tee_time);
+    setEditPlayerIds(group.player_ids);
+  }
+
+  function toggleEditPlayer(memberId: string) {
+    setEditPlayerIds((prev) =>
+      prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId]
+    );
+  }
 
   function togglePlayer(userId: string) {
     setSelectedPlayerIds((prev) =>
@@ -835,53 +864,124 @@ function GroupsSection({
             <div
               key={group.id}
               data-testid={`group-row-${group.id}`}
-              className="flex items-start gap-3 rounded-xl p-3"
+              className="rounded-xl"
               style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  {group.name}
-                </p>
-                <p className="mb-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {group.tee_time}
-                </p>
-                {/* Player dots */}
-                <div className="flex flex-wrap gap-1.5">
-                  {group.player_ids.map((uid) => {
-                    const m = members.find((x) => x.memberId === uid);
-                    const name = m?.displayName ?? uid.slice(0, 6);
-                    const team = teamByMemberId.get(uid);
-                    return (
-                      <span
-                        key={uid}
-                        className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-                        style={{
-                          background: team ? `${team.color}22` : "var(--color-bt-base, #0d1117)22",
-                          color: team?.color ?? "var(--color-bt-text-dim)",
-                          border: `1px solid ${team?.color ?? "var(--color-bt-border)"}44`,
-                        }}
-                      >
-                        <span
-                          className="inline-block h-1.5 w-1.5 rounded-full"
-                          style={{ background: team?.color ?? "var(--color-bt-text-dim)" }}
-                        />
-                        {name}
-                      </span>
-                    );
-                  })}
+              {editingGroupId === group.id ? (
+                /* ── Inline edit form ── */
+                <div className="space-y-3 p-3">
+                  <input
+                    data-testid={`edit-group-name-${group.id}`}
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                    placeholder="Group name"
+                  />
+                  <input
+                    data-testid={`edit-group-tee-time-${group.id}`}
+                    value={editTeeTime}
+                    onChange={(e) => setEditTeeTime(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                    placeholder="Tee time"
+                  />
+                  <div className="space-y-1.5">
+                    <label className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Players</label>
+                    {assignedMembers.map((m) => {
+                      const team = teamByMemberId.get(m.memberId);
+                      const checked = editPlayerIds.includes(m.memberId);
+                      return (
+                        <label
+                          key={m.memberId}
+                          className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2"
+                          style={{
+                            background: checked ? "var(--color-bt-accent-faint)" : "var(--color-bt-base)",
+                            border: `1px solid ${checked ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+                          }}
+                        >
+                          <input type="checkbox" checked={checked} onChange={() => toggleEditPlayer(m.memberId)} className="accent-bt-accent" />
+                          {team && <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: team.color }} />}
+                          <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>{m.displayName}</span>
+                          {team && <span className="ml-auto text-xs" style={{ color: team.color }}>{team.short_name}</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingGroupId(null)}
+                      className="flex-1 rounded-lg border py-2 text-sm"
+                      style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      data-testid={`save-edit-group-${group.id}`}
+                      disabled={!editName.trim() || !editTeeTime.trim() || editPlayerIds.length === 0 || updateGroup.isPending}
+                      onClick={() => updateGroup.mutate({ tripId, groupId: group.id, name: editName.trim(), teeTime: editTeeTime.trim(), playerIds: editPlayerIds })}
+                      className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
+                      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                    >
+                      Save
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <button
-                data-testid={`delete-group-${group.id}`}
-                onClick={() =>
-                  deleteGroup.mutate({ tripId, groupId: group.id })
-                }
-                disabled={deleteGroup.isPending}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-40"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <Trash2 size={13} />
-              </button>
+              ) : (
+                /* ── Read view ── */
+                <div className="flex items-start gap-3 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                      {group.name}
+                    </p>
+                    <p className="mb-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {group.tee_time}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.player_ids.map((uid) => {
+                        const m = members.find((x) => x.memberId === uid);
+                        const name = m?.displayName ?? uid.slice(0, 6);
+                        const team = teamByMemberId.get(uid);
+                        return (
+                          <span
+                            key={uid}
+                            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                            style={{
+                              background: team ? `${team.color}22` : "var(--color-bt-base, #0d1117)22",
+                              color: team?.color ?? "var(--color-bt-text-dim)",
+                              border: `1px solid ${team?.color ?? "var(--color-bt-border)"}44`,
+                            }}
+                          >
+                            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: team?.color ?? "var(--color-bt-text-dim)" }} />
+                            {name}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex flex-shrink-0 gap-1">
+                    <button
+                      data-testid={`edit-group-${group.id}`}
+                      onClick={() => startEdit(group)}
+                      className="flex h-6 w-6 items-center justify-center rounded-full"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                      aria-label="Edit group"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      data-testid={`delete-group-${group.id}`}
+                      onClick={() => deleteGroup.mutate({ tripId, groupId: group.id })}
+                      disabled={deleteGroup.isPending}
+                      className="flex h-6 w-6 items-center justify-center rounded-full disabled:opacity-40"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                      aria-label="Delete group"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
