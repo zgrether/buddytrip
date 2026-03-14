@@ -123,18 +123,18 @@ export function ScoreEntry({
       <div
         data-testid="score-entry-sheet"
         className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-xl rounded-t-2xl"
-        style={{ background: "#161b22", border: "1px solid #30363d", borderBottom: "none" }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", borderBottom: "none" }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between border-b px-4 py-3"
-          style={{ borderColor: "#30363d" }}
+          style={{ borderColor: "var(--color-bt-border)" }}
         >
           <div>
-            <h2 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+            <h2 className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {groupName}
             </h2>
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {FORMAT_LABEL[format] ?? format}
             </p>
           </div>
@@ -143,9 +143,9 @@ export function ScoreEntry({
             onClick={onClose}
             aria-label="Close"
             className="rounded-full p-1.5"
-            style={{ background: "#21262d" }}
+            style={{ background: "var(--color-bt-subtle-border)" }}
           >
-            <X size={16} style={{ color: "#8b949e" }} />
+            <X size={16} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
         </div>
 
@@ -155,9 +155,9 @@ export function ScoreEntry({
         </div>
 
         {/* Footer */}
-        <div className="border-t px-4 py-3" style={{ borderColor: "#30363d" }}>
+        <div className="border-t px-4 py-3" style={{ borderColor: "var(--color-bt-border)" }}>
           {submitMutation.error && (
-            <p className="mb-2 text-xs" style={{ color: "#f85149" }}>
+            <p className="mb-2 text-xs" style={{ color: "var(--color-bt-danger)" }}>
               {submitMutation.error.message}
             </p>
           )}
@@ -166,7 +166,7 @@ export function ScoreEntry({
             onClick={handleSubmit}
             disabled={submitMutation.isPending}
             className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
-            style={{ background: "#00d4aa", color: "#0d1117" }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             {submitMutation.isPending ? (
               <Loader2 size={16} className="animate-spin" />

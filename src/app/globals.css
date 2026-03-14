@@ -1,8 +1,46 @@
 @import "tailwindcss";
 
-@theme inline {
+/* ── Light mode (default) ─────────────────────────────────────────────── */
+:root {
+  --color-bt-base: #ffffff;
+  --color-bt-base-alt: #1f2328;     /* inverted base for accent-on-base text */
+  --color-bt-card: #f6f8fa;
+  --color-bt-border: #d0d7de;
+  --color-bt-text: #1f2328;
+  --color-bt-text-dim: #656d76;
+  --color-bt-accent: #009e80;       /* darker teal for WCAG-AA on white */
+  --color-bt-accent-dim: #007a63;
+  --color-bt-tag-bg: #e6f9f3;
+  --color-bt-danger: #d32f2f;
+  --color-bt-planning: #4a64a8;
+  --color-bt-blue-bg: #e8edf6;
+  --color-bt-owner: #b37519;
+  --color-bt-ready: #6b4fad;
+  --color-bt-ready-bg: #f0ecf8;
+  --color-bt-past-bg: #f3f3f3;
+  --color-bt-accent-faint: rgba(0, 158, 128, 0.10);
+  --color-bt-accent-border: rgba(0, 158, 128, 0.25);
+  --color-bt-danger-border: rgba(211, 47, 47, 0.20);
+  --color-bt-danger-bg: #fef2f2;
+  --color-bt-warning: #d97706;
+  --color-bt-warning-faint: rgba(217, 119, 6, 0.08);
+  --color-bt-warning-border: rgba(217, 119, 6, 0.20);
+  --color-bt-hover: rgba(0, 0, 0, 0.05);
+  --color-bt-overlay: rgba(0, 0, 0, 0.5);
+  --color-bt-subtle-border: #e1e4e8;
+  --color-bt-dim-faint: rgba(101, 109, 118, 0.13);
+  --color-bt-planning-border: rgba(74, 100, 168, 0.27);
+  color-scheme: light;
+}
+
+/* ── Dark mode ────────────────────────────────────────────────────────── */
+.dark {
   --color-bt-base: #0d1117;
+  --color-bt-base-alt: #0d1117;
   --color-bt-card: #161b22;
+  --color-bt-border: #30363d;
+  --color-bt-text: #e6edf3;
+  --color-bt-text-dim: #8b949e;
   --color-bt-accent: #00d4aa;
   --color-bt-accent-dim: #009e80;
   --color-bt-tag-bg: #0d2a22;
@@ -11,9 +49,37 @@
   --color-bt-blue-bg: #161e35;
   --color-bt-owner: #f0a84a;
   --color-bt-ready: #a78bfa;
-  --color-bt-border: #30363d;
-  --color-bt-text: #e6edf3;
-  --color-bt-text-dim: #8b949e;
+  --color-bt-ready-bg: #1e1535;
+  --color-bt-past-bg: #1f1f1f;
+  --color-bt-accent-faint: rgba(0, 212, 170, 0.13);
+  --color-bt-accent-border: rgba(0, 212, 170, 0.27);
+  --color-bt-danger-border: rgba(239, 68, 68, 0.19);
+  --color-bt-danger-bg: #1f1010;
+  --color-bt-warning: #f59e0b;
+  --color-bt-warning-faint: rgba(245, 158, 11, 0.07);
+  --color-bt-warning-border: rgba(245, 158, 11, 0.20);
+  --color-bt-hover: rgba(255, 255, 255, 0.05);
+  --color-bt-overlay: rgba(0, 0, 0, 0.7);
+  --color-bt-subtle-border: #21262d;
+  --color-bt-dim-faint: rgba(139, 148, 158, 0.13);
+  --color-bt-planning-border: rgba(124, 147, 212, 0.27);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bt-base: var(--color-bt-base);
+  --color-bt-card: var(--color-bt-card);
+  --color-bt-accent: var(--color-bt-accent);
+  --color-bt-accent-dim: var(--color-bt-accent-dim);
+  --color-bt-tag-bg: var(--color-bt-tag-bg);
+  --color-bt-danger: var(--color-bt-danger);
+  --color-bt-planning: var(--color-bt-planning);
+  --color-bt-blue-bg: var(--color-bt-blue-bg);
+  --color-bt-owner: var(--color-bt-owner);
+  --color-bt-ready: var(--color-bt-ready);
+  --color-bt-border: var(--color-bt-border);
+  --color-bt-text: var(--color-bt-text);
+  --color-bt-text-dim: var(--color-bt-text-dim);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

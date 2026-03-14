@@ -36,8 +36,8 @@ export const BottomNav: FC<BottomNavProps> = ({
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 mx-auto flex max-w-lg items-stretch"
       style={{
-        background: "#161b22",
-        borderTop: "1px solid #30363d",
+        background: "var(--color-bt-card)",
+        borderTop: "1px solid var(--color-bt-border)",
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
@@ -49,16 +49,16 @@ export const BottomNav: FC<BottomNavProps> = ({
             data-testid={`tab-${id}`}
             onClick={() => onTabChange(id)}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
-            style={{ color: active ? "#00d4aa" : "#8b949e" }}
+            style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
             aria-pressed={active}
           >
             <Icon
               size={22}
-              style={{ color: active ? "#00d4aa" : "#8b949e" }}
+              style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
             />
             <span
               className="text-[10px] font-medium"
-              style={{ color: active ? "#00d4aa" : "#8b949e" }}
+              style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
             >
               {label}
             </span>

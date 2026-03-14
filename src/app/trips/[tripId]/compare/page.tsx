@@ -77,21 +77,21 @@ function IdeaCard({
     <div
       data-testid={`idea-card-${idea.id}`}
       className="flex flex-col rounded-xl overflow-hidden"
-      style={{ background: "#161b22", border: "1px solid #30363d" }}
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
       {/* Header */}
-      <div className="p-3" style={{ borderBottom: "1px solid #30363d" }}>
+      <div className="p-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p
               className="truncate text-sm font-semibold"
-              style={{ color: "#e6edf3" }}
+              style={{ color: "var(--color-bt-text)" }}
             >
               {idea.title}
             </p>
             <p
               className="mt-0.5 flex items-center gap-1 truncate text-xs"
-              style={{ color: "#8b949e" }}
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
               <MapPin size={10} />
               {idea.location}
@@ -101,7 +101,7 @@ function IdeaCard({
             {idea.cost_tier && (
               <span
                 className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                style={{ background: "#0d2a22", color: "#00d4aa" }}
+                style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
               >
                 <DollarSign size={9} />
                 {idea.cost_tier}
@@ -114,7 +114,7 @@ function IdeaCard({
                   removeIdea.mutate({ tripId, ideaId: idea.id })
                 }
                 className="flex h-5 w-5 items-center justify-center rounded-full opacity-50 transition-opacity hover:opacity-100"
-                style={{ color: "#8b949e" }}
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
                 <X size={12} />
               </button>
@@ -126,7 +126,7 @@ function IdeaCard({
       {/* Body */}
       <div className="flex flex-1 flex-col gap-2.5 p-3">
         {idea.description && (
-          <p className="text-xs leading-relaxed" style={{ color: "#8b949e" }}>
+          <p className="text-xs leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
             {idea.description}
           </p>
         )}
@@ -135,7 +135,7 @@ function IdeaCard({
           <div>
             <p
               className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "#8b949e" }}
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
               Courses
             </p>
@@ -144,11 +144,11 @@ function IdeaCard({
                 <span
                   key={i}
                   className="flex items-center gap-1 text-xs"
-                  style={{ color: "#e6edf3" }}
+                  style={{ color: "var(--color-bt-text)" }}
                 >
                   <Flag
                     size={10}
-                    style={{ color: "#00d4aa", flexShrink: 0 }}
+                    style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
                   />
                   {c}
                 </span>
@@ -161,7 +161,7 @@ function IdeaCard({
           <div>
             <p
               className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "#8b949e" }}
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
               Activities
             </p>
@@ -170,7 +170,7 @@ function IdeaCard({
                 <span
                   key={i}
                   className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px]"
-                  style={{ background: "#0d1117", color: "#8b949e" }}
+                  style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)" }}
                 >
                   <Zap size={8} />
                   {a}
@@ -184,7 +184,7 @@ function IdeaCard({
           <div>
             <p
               className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "#00d4aa" }}
+              style={{ color: "var(--color-bt-accent)" }}
             >
               Pros
             </p>
@@ -193,12 +193,12 @@ function IdeaCard({
                 <li
                   key={i}
                   className="flex items-start gap-1 text-xs"
-                  style={{ color: "#e6edf3" }}
+                  style={{ color: "var(--color-bt-text)" }}
                 >
                   <Star
                     size={9}
                     className="mt-0.5 flex-shrink-0"
-                    style={{ color: "#00d4aa" }}
+                    style={{ color: "var(--color-bt-accent)" }}
                   />
                   {p}
                 </li>
@@ -211,7 +211,7 @@ function IdeaCard({
           <div>
             <p
               className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "#ef4444" }}
+              style={{ color: "var(--color-bt-danger)" }}
             >
               Cons
             </p>
@@ -220,12 +220,12 @@ function IdeaCard({
                 <li
                   key={i}
                   className="flex items-start gap-1 text-xs"
-                  style={{ color: "#8b949e" }}
+                  style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <X
                     size={9}
                     className="mt-0.5 flex-shrink-0"
-                    style={{ color: "#ef4444" }}
+                    style={{ color: "var(--color-bt-danger)" }}
                   />
                   {c}
                 </li>
@@ -235,19 +235,19 @@ function IdeaCard({
         )}
 
         {idea.accommodation && (
-          <p className="text-xs" style={{ color: "#8b949e" }}>
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             🏨 {idea.accommodation}
           </p>
         )}
       </div>
 
       {/* Footer */}
-      <div className="p-3" style={{ borderTop: "1px solid #30363d" }}>
+      <div className="p-3" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
         {/* Vote progress bar */}
         <div className="mb-2">
           <div
             className="mb-1 flex justify-between text-[10px]"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             <span>
               {voteCount} vote{voteCount !== 1 ? "s" : ""}
@@ -256,11 +256,11 @@ function IdeaCard({
           </div>
           <div
             className="h-1 w-full overflow-hidden rounded-full"
-            style={{ background: "#30363d" }}
+            style={{ background: "var(--color-bt-border)" }}
           >
             <div
               className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${votePercent}%`, background: "#00d4aa" }}
+              style={{ width: `${votePercent}%`, background: "var(--color-bt-accent)" }}
             />
           </div>
         </div>
@@ -272,9 +272,9 @@ function IdeaCard({
           onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-all disabled:opacity-40"
           style={{
-            background: isVoted ? "#0d2a22" : "#0d1117",
-            border: `1px solid ${isVoted ? "#00d4aa" : "#30363d"}`,
-            color: isVoted ? "#00d4aa" : "#8b949e",
+            background: isVoted ? "var(--color-bt-tag-bg)" : "var(--color-bt-base)",
+            border: `1px solid ${isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+            color: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
           }}
         >
           <ThumbsUp size={12} />
@@ -286,8 +286,8 @@ function IdeaCard({
           <button
             data-testid={`lock-idea-${idea.id}`}
             onClick={() => onLock(idea)}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-all hover:bg-white/5"
-            style={{ borderColor: "#00d4aa", color: "#00d4aa" }}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-all hover:bg-[var(--color-bt-hover)]"
+            style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
           >
             <Lock size={12} />
             Lock as Destination
@@ -318,17 +318,17 @@ function AddIdeaModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.7)" }}
+      style={{ background: "var(--color-bt-overlay)" }}
       onClick={onClose}
     >
       <div
         className="w-full max-w-lg rounded-t-2xl p-5"
-        style={{ background: "#161b22", border: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <p
           className="mb-4 text-base font-semibold"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Add Destination Idea
         </p>
@@ -356,9 +356,9 @@ function AddIdeaModal({
               autoFocus
               className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
               style={{
-                background: "#0d1117",
-                borderColor: "#30363d",
-                color: "#e6edf3",
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
               }}
             />
             <input
@@ -367,9 +367,9 @@ function AddIdeaModal({
               placeholder="Location (e.g. Bandon, OR)"
               className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
               style={{
-                background: "#0d1117",
-                borderColor: "#30363d",
-                color: "#e6edf3",
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
               }}
             />
             <div className="flex gap-2 pt-1">
@@ -377,7 +377,7 @@ function AddIdeaModal({
                 type="button"
                 onClick={onClose}
                 className="flex-1 rounded-lg border py-2.5 text-sm"
-                style={{ borderColor: "#30363d", color: "#8b949e" }}
+                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
               >
                 Cancel
               </button>
@@ -385,7 +385,7 @@ function AddIdeaModal({
                 type="submit"
                 disabled={createIdea.isPending}
                 className="flex-1 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
-                style={{ background: "#00d4aa", color: "#0d1117" }}
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
                 {createIdea.isPending ? "Adding…" : "Add Idea"}
               </button>
@@ -421,30 +421,30 @@ function LockConfirmModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.7)" }}
+      style={{ background: "var(--color-bt-overlay)" }}
       onClick={onClose}
     >
       <div
         className="w-full max-w-lg rounded-t-2xl p-5"
-        style={{ background: "#161b22", border: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <p
           className="mb-2 text-base font-semibold"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Lock Destination?
         </p>
-        <p className="mb-4 text-sm" style={{ color: "#8b949e" }}>
+        <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           This will set{" "}
-          <strong style={{ color: "#e6edf3" }}>{idea.title}</strong> as the
+          <strong style={{ color: "var(--color-bt-text)" }}>{idea.title}</strong> as the
           final destination. This can be unlocked later from the More tab.
         </p>
         <div className="flex gap-2">
           <button
             onClick={onClose}
             className="flex-1 rounded-lg border py-2.5 text-sm"
-            style={{ borderColor: "#30363d", color: "#8b949e" }}
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
           >
             Cancel
           </button>
@@ -459,7 +459,7 @@ function LockConfirmModal({
               })
             }
             className="flex-1 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
-            style={{ background: "#00d4aa", color: "#0d1117" }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             {lockDest.isPending ? "Locking…" : "Lock It"}
           </button>
@@ -487,11 +487,11 @@ export default function IdeaComparisonPage() {
     return (
       <div
         className="flex min-h-screen items-center justify-center"
-        style={{ background: "#0d1117" }}
+        style={{ background: "var(--color-bt-base)" }}
       >
         <div
           className="h-8 w-8 animate-spin rounded-full border-2"
-          style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
         />
       </div>
     );
@@ -502,17 +502,17 @@ export default function IdeaComparisonPage() {
   return (
     <div
       className="flex min-h-screen flex-col"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "#161b22", borderBottom: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
       >
         <button
           onClick={() => router.push(`/trips/${tripId}`)}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-          style={{ color: "#e6edf3" }}
+          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text)" }}
           aria-label="Back to trip"
         >
           <ArrowLeft size={20} />
@@ -521,13 +521,13 @@ export default function IdeaComparisonPage() {
         <h1
           data-testid="compare-heading"
           className="flex-1 text-base font-semibold"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Compare Destinations
           {ideasTyped.length > 0 && (
             <span
               className="ml-2 text-sm font-normal"
-              style={{ color: "#8b949e" }}
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
               ({ideasTyped.length})
             </span>
@@ -538,8 +538,8 @@ export default function IdeaComparisonPage() {
           <button
             data-testid="add-idea-btn"
             onClick={() => setShowAddModal(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-            style={{ color: "#00d4aa" }}
+            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-accent)" }}
             aria-label="Add idea"
           >
             <Plus size={20} />
@@ -551,11 +551,11 @@ export default function IdeaComparisonPage() {
       <main className="flex-1 p-4">
         {ideasTyped.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <MapPin size={36} className="mb-4" style={{ color: "#30363d" }} />
-            <p className="mb-1 text-sm font-medium" style={{ color: "#e6edf3" }}>
+            <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
+            <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               No destination ideas yet
             </p>
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {canEdit
                 ? "Tap + to add the first destination idea"
                 : "Waiting for a planner to add ideas."}

@@ -224,10 +224,10 @@ export default function LeaderboardPage() {
 
   if (eventLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#0d1117" }}>
+      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--color-bt-base)" }}>
         <div
           className="h-6 w-6 animate-spin rounded-full border-2"
-          style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
         />
       </div>
     );
@@ -235,14 +235,14 @@ export default function LeaderboardPage() {
 
   if (!event) {
     return (
-      <div className="min-h-screen" style={{ background: "#0d1117", color: "#e6edf3" }}>
+      <div className="min-h-screen" style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}>
         <header className="flex items-center gap-3 px-4 py-4">
           <button onClick={() => router.back()} aria-label="Back">
-            <ArrowLeft size={20} style={{ color: "#e6edf3" }} />
+            <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
           </button>
           <h1 className="text-lg font-bold">Leaderboard</h1>
         </header>
-        <p className="px-4 text-sm" style={{ color: "#8b949e" }}>
+        <p className="px-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No competition set up yet.
         </p>
       </div>
@@ -254,7 +254,7 @@ export default function LeaderboardPage() {
   return (
     <div
       className="mx-auto min-h-screen max-w-xl pb-8"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Header */}
       <header className="flex items-center gap-3 px-4 py-4">
@@ -263,12 +263,12 @@ export default function LeaderboardPage() {
           onClick={() => router.push(`/trips/${tripId}`)}
           aria-label="Back to trip"
         >
-          <ArrowLeft size={20} style={{ color: "#e6edf3" }} />
+          <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-bold">{event.title}</h1>
           {event.subtitle && (
-            <p className="truncate text-xs" style={{ color: "#8b949e" }}>
+            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {event.subtitle}
             </p>
           )}
@@ -279,8 +279,8 @@ export default function LeaderboardPage() {
           disabled={shareLink.isPending}
           className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all"
           style={{
-            background: shareCopied ? "#00d4aa22" : shareError ? "#3d1a1a" : "#21262d",
-            color: shareCopied ? "#00d4aa" : shareError ? "#ef4444" : "#8b949e",
+            background: shareCopied ? "var(--color-bt-accent-faint)" : shareError ? "var(--color-bt-danger-bg)" : "var(--color-bt-subtle-border)",
+            color: shareCopied ? "var(--color-bt-accent)" : shareError ? "var(--color-bt-danger)" : "var(--color-bt-text-dim)",
           }}
           aria-label="Share scoreboard"
         >
@@ -292,7 +292,7 @@ export default function LeaderboardPage() {
       {/* Tab bar */}
       <div
         className="flex border-b px-2"
-        style={{ borderColor: "#30363d" }}
+        style={{ borderColor: "var(--color-bt-border)" }}
         data-testid="leaderboard-tabs"
       >
         {TABS.map(({ id, label, icon: Icon }) => (
@@ -302,8 +302,8 @@ export default function LeaderboardPage() {
             onClick={() => setTab(id)}
             className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors"
             style={{
-              color: tab === id ? "#00d4aa" : "#8b949e",
-              borderBottom: tab === id ? "2px solid #00d4aa" : "2px solid transparent",
+              color: tab === id ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              borderBottom: tab === id ? "2px solid var(--color-bt-accent)" : "2px solid transparent",
             }}
           >
             <Icon size={14} />
@@ -423,19 +423,19 @@ function OverviewTab({
       {/* Score hero */}
       <div
         className="rounded-xl p-4"
-        style={{ background: "#161b22", border: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
         <div className="flex items-center justify-between">
           {teamScores.map((ts) => {
             const team = teamById.get(ts.teamId);
             return (
               <div key={ts.teamId} className="flex-1 text-center">
-                <p className="text-xs font-medium" style={{ color: team?.color ?? "#8b949e" }}>
+                <p className="text-xs font-medium" style={{ color: team?.color ?? "var(--color-bt-text-dim)" }}>
                   {team?.short_name ?? ts.teamId}
                 </p>
                 <p
                   className="text-3xl font-bold"
-                  style={{ color: team?.color ?? "#e6edf3" }}
+                  style={{ color: team?.color ?? "var(--color-bt-text)" }}
                   data-testid={`score-${ts.teamId}`}
                 >
                   {ts.totalPoints}
@@ -447,14 +447,14 @@ function OverviewTab({
 
         {/* Lead bar */}
         {totalPoints > 0 && (
-          <div className="mt-3 flex h-2 overflow-hidden rounded-full" style={{ background: "#30363d" }}>
+          <div className="mt-3 flex h-2 overflow-hidden rounded-full" style={{ background: "var(--color-bt-border)" }}>
             {teamScores.map((ts) => {
               const team = teamById.get(ts.teamId);
               const pct = totalPoints > 0 ? (ts.totalPoints / totalPoints) * 100 : 0;
               return (
                 <div
                   key={ts.teamId}
-                  style={{ width: `${pct}%`, background: team?.color ?? "#8b949e" }}
+                  style={{ width: `${pct}%`, background: team?.color ?? "var(--color-bt-text-dim)" }}
                 />
               );
             })}
@@ -462,7 +462,7 @@ function OverviewTab({
         )}
 
         {/* Status line */}
-        <p className="mt-2 text-center text-xs" style={{ color: "#8b949e" }}>
+        <p className="mt-2 text-center text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           {remaining > 0
             ? leader
               ? `${teamById.get(leader.teamId)?.short_name} leads · ${remaining} pts remaining`
@@ -477,21 +477,21 @@ function OverviewTab({
       <section>
         <h2
           className="mb-3 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Rounds
         </h2>
         <div
           className="overflow-hidden rounded-xl"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
           {/* Header row */}
           <div
             className="grid gap-2 border-b px-3 py-2 text-[10px] font-semibold uppercase"
             style={{
               gridTemplateColumns: `1fr ${teams.map(() => "60px").join(" ")}`,
-              color: "#8b949e",
-              borderColor: "#30363d",
+              color: "var(--color-bt-text-dim)",
+              borderColor: "var(--color-bt-border)",
             }}
           >
             <span>Round</span>
@@ -507,12 +507,12 @@ function OverviewTab({
             const hasResult = !!pts;
             const statusColor =
               round.status === "active"
-                ? "#00d4aa"
+                ? "var(--color-bt-accent)"
                 : round.status === "submitted"
-                  ? "#f59e0b"
+                  ? "var(--color-bt-warning)"
                   : round.status === "closed"
-                    ? "#8b949e"
-                    : "#6e7681";
+                    ? "var(--color-bt-text-dim)"
+                    : "var(--color-bt-text-dim)";
 
             return (
               <div
@@ -521,15 +521,15 @@ function OverviewTab({
                 className="grid items-center gap-2 border-b px-3 py-2 last:border-b-0"
                 style={{
                   gridTemplateColumns: `1fr ${teams.map(() => "60px").join(" ")}`,
-                  borderColor: "#21262d",
+                  borderColor: "var(--color-bt-subtle-border)",
                   borderLeft: `3px solid ${statusColor}`,
                 }}
               >
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-medium" style={{ color: "#e6edf3" }}>
+                  <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
                     {round.title}
                   </p>
-                  <p className="text-[10px]" style={{ color: "#8b949e" }}>
+                  <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
                     {round.course} · {FORMAT_LABEL[round.format] ?? round.format} ·{" "}
                     {round.points_available} pts
                   </p>
@@ -538,7 +538,7 @@ function OverviewTab({
                   <span
                     key={t.id}
                     className="text-center text-sm font-bold"
-                    style={{ color: hasResult ? t.color : "#6e7681" }}
+                    style={{ color: hasResult ? t.color : "var(--color-bt-text-dim)" }}
                   >
                     {hasResult ? (pts![t.id] ?? 0) : "—"}
                   </span>
@@ -552,14 +552,14 @@ function OverviewTab({
             className="grid gap-2 px-3 py-2 text-sm font-bold"
             style={{
               gridTemplateColumns: `1fr ${teams.map(() => "60px").join(" ")}`,
-              background: "#0d1117",
+              background: "var(--color-bt-base)",
             }}
           >
-            <span style={{ color: "#e6edf3" }}>TOTAL</span>
+            <span style={{ color: "var(--color-bt-text)" }}>TOTAL</span>
             {teamScores.map((ts) => {
               const team = teamById.get(ts.teamId);
               return (
-                <span key={ts.teamId} className="text-center" style={{ color: team?.color ?? "#e6edf3" }}>
+                <span key={ts.teamId} className="text-center" style={{ color: team?.color ?? "var(--color-bt-text)" }}>
                   {ts.roundPoints}
                 </span>
               );
@@ -573,7 +573,7 @@ function OverviewTab({
         <section>
           <h2
             className="mb-3 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Side Events
           </h2>
@@ -582,17 +582,17 @@ function OverviewTab({
               <div
                 key={se.id}
                 className="flex items-center justify-between rounded-xl px-4 py-3"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
                 <div className="flex items-center gap-2">
                   <span>{se.icon}</span>
-                  <span className="text-sm" style={{ color: "#e6edf3" }}>
+                  <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>
                     {se.name}
                   </span>
                 </div>
                 <span
                   className="text-xs font-medium"
-                  style={{ color: se.status === "complete" ? "#00d4aa" : "#8b949e" }}
+                  style={{ color: se.status === "complete" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                 >
                   {se.status === "complete" ? "Complete" : `${se.points_available} pts`}
                 </span>
@@ -606,7 +606,7 @@ function OverviewTab({
       <section>
         <h2
           className="mb-3 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Teams
         </h2>
@@ -617,7 +617,7 @@ function OverviewTab({
               <div
                 key={team.id}
                 className="rounded-xl p-4"
-                style={{ background: "#161b22", border: `1px solid ${team.color}44` }}
+                style={{ background: "var(--color-bt-card)", border: `1px solid ${team.color}44` }}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -668,13 +668,13 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
         return (
           <section key={round.id}>
           <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+            <h2 className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               Day {round.day} — {round.course}
             </h2>
             {round.status === "active" && (
               <span
                 className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{ background: "#00d4aa22", color: "#00d4aa" }}
+                style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
               >
                 LIVE
               </span>
@@ -682,7 +682,7 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
             {isSubmitted && (
               <span
                 className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{ background: "#f59e0b22", color: "#f59e0b" }}
+                style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
               >
                 Pending close
               </span>
@@ -690,7 +690,7 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
             {isClosed && (
               <span
                 className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{ background: "#8b949e22", color: "#8b949e" }}
+                style={{ background: "var(--color-bt-dim-faint)", color: "var(--color-bt-text-dim)" }}
               >
                 Closed
               </span>
@@ -698,7 +698,7 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
           </div>
 
           {playGroups.length === 0 ? (
-            <p className="text-sm" style={{ color: "#8b949e" }}>
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
               No groups set up yet.
             </p>
           ) : (
@@ -715,8 +715,8 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
                     data-testid={`group-card-${group.id}`}
                     className="w-full rounded-xl px-4 py-3 text-left transition-opacity"
                     style={{
-                      background: "#161b22",
-                      border: "1px solid #30363d",
+                      background: "var(--color-bt-card)",
+                      border: "1px solid var(--color-bt-border)",
                       opacity: canEnterScore ? 1 : isClosed ? 0.5 : 0.7,
                     }}
                     disabled={!canEnterScore}
@@ -724,10 +724,10 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                           {group.name}
                         </p>
-                        <p className="flex items-center gap-1 text-xs" style={{ color: "#8b949e" }}>
+                        <p className="flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                           <Clock size={10} />
                           {group.tee_time}
                         </p>
@@ -735,28 +735,28 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
                       {isClosed && hasScore ? (
                         <span
                           className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                          style={{ background: "#8b949e22", color: "#8b949e" }}
+                          style={{ background: "var(--color-bt-dim-faint)", color: "var(--color-bt-text-dim)" }}
                         >
                           Final
                         </span>
                       ) : hasScore ? (
                         <span
                           className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                          style={{ background: "#00d4aa22", color: "#00d4aa" }}
+                          style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
                         >
                           {isSubmitted && canEdit ? "Edit Score" : "Scored"}
                         </span>
                       ) : canEnterScore ? (
                         <span
                           className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                          style={{ background: "#00d4aa11", color: "#00d4aa" }}
+                          style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
                         >
                           Enter Score
                         </span>
                       ) : (
                         <span
                           className="text-xs"
-                          style={{ color: "#8b949e" }}
+                          style={{ color: "var(--color-bt-text-dim)" }}
                         >
                           {group.player_ids.length} players
                         </span>
@@ -772,7 +772,7 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
       })}
 
       {displayRounds.length === 0 && (
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No rounds scheduled yet.
         </p>
       )}
@@ -805,7 +805,7 @@ function TripInfoTab({ trip, quickTiles, reservations }: TripInfoProps) {
         <section>
           <h2
             className="mb-3 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Quick Info
           </h2>
@@ -814,12 +814,12 @@ function TripInfoTab({ trip, quickTiles, reservations }: TripInfoProps) {
               <div
                 key={tile.id}
                 className="rounded-xl px-3 py-2"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
-                <p className="text-[10px] uppercase" style={{ color: "#8b949e" }}>
+                <p className="text-[10px] uppercase" style={{ color: "var(--color-bt-text-dim)" }}>
                   {tile.label}
                 </p>
-                <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {tile.value}
                 </p>
               </div>
@@ -833,24 +833,24 @@ function TripInfoTab({ trip, quickTiles, reservations }: TripInfoProps) {
         <section>
           <h2
             className="mb-3 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Trip Details
           </h2>
           <div
             className="space-y-2 rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
             {trip.location && (
               <div className="flex items-center gap-2 text-sm">
-                <Flag size={12} style={{ color: "#8b949e" }} />
-                <span style={{ color: "#e6edf3" }}>{trip.location}</span>
+                <Flag size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                <span style={{ color: "var(--color-bt-text)" }}>{trip.location}</span>
               </div>
             )}
             {trip.start_date && (
               <div className="flex items-center gap-2 text-sm">
-                <Calendar size={12} style={{ color: "#8b949e" }} />
-                <span style={{ color: "#e6edf3" }}>
+                <Calendar size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                <span style={{ color: "var(--color-bt-text)" }}>
                   {trip.start_date}
                   {trip.end_date && ` — ${trip.end_date}`}
                 </span>
@@ -865,7 +865,7 @@ function TripInfoTab({ trip, quickTiles, reservations }: TripInfoProps) {
         <section>
           <h2
             className="mb-3 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Schedule
           </h2>
@@ -874,19 +874,19 @@ function TripInfoTab({ trip, quickTiles, reservations }: TripInfoProps) {
               <div
                 key={r.id}
                 className="flex items-center justify-between rounded-xl px-4 py-3"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
                 <div>
-                  <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                     {r.title}
                   </p>
-                  <p className="text-xs" style={{ color: "#8b949e" }}>
+                  <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     {r.date} {r.start_time && `· ${r.start_time}`}
                   </p>
                 </div>
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] capitalize"
-                  style={{ background: "#30363d", color: "#8b949e" }}
+                  style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
                 >
                   {r.type}
                 </span>
@@ -897,7 +897,7 @@ function TripInfoTab({ trip, quickTiles, reservations }: TripInfoProps) {
       )}
 
       {quickTiles.length === 0 && upcoming.length === 0 && !trip?.location && (
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No trip info available yet.
         </p>
       )}
@@ -931,7 +931,7 @@ function HistoryTab({ rounds, roundResults, teamById }: HistoryProps) {
   if (closedRounds.length === 0) {
     return (
       <div data-testid="history-tab">
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No completed rounds yet.
         </p>
       </div>
@@ -965,10 +965,10 @@ function HistoryTab({ rounds, roundResults, teamById }: HistoryProps) {
             key={round.id}
             data-testid={`history-${round.id}`}
             className="rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+              <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                 Day {round.day} — {round.title}
               </p>
               {winner ? (
@@ -981,13 +981,13 @@ function HistoryTab({ rounds, roundResults, teamById }: HistoryProps) {
               ) : pts ? (
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                  style={{ background: "#f59e0b22", color: "#f59e0b" }}
+                  style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
                 >
                   Tied
                 </span>
               ) : null}
             </div>
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {round.course} · {FORMAT_LABEL[round.format] ?? round.format} ·{" "}
               {round.points_available} pts
             </p>
@@ -996,7 +996,7 @@ function HistoryTab({ rounds, roundResults, teamById }: HistoryProps) {
                 {Object.entries(pts).map(([teamId, p]) => {
                   const team = teamById.get(teamId);
                   return (
-                    <span key={teamId} className="text-sm font-bold" style={{ color: team?.color ?? "#e6edf3" }}>
+                    <span key={teamId} className="text-sm font-bold" style={{ color: team?.color ?? "var(--color-bt-text)" }}>
                       {team?.short_name ?? teamId}: {p}
                     </span>
                   );

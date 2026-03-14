@@ -52,22 +52,22 @@ function MessageBubble({
       className={`flex flex-col gap-0.5 ${isMe ? "items-end" : "items-start"}`}
     >
       {!isMe && (
-        <p className="px-1 text-xs" style={{ color: "#8b949e" }}>
+        <p className="px-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           {senderName}
         </p>
       )}
       <div
         className="max-w-[80%] rounded-2xl px-4 py-2 text-sm"
         style={{
-          background: isMe ? "#00d4aa22" : "#161b22",
-          border: `1px solid ${isMe ? "#00d4aa44" : "#30363d"}`,
-          color: "#e6edf3",
+          background: isMe ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+          border: `1px solid ${isMe ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+          color: "var(--color-bt-text)",
           opacity: message._optimistic ? 0.6 : 1,
         }}
       >
         {message.text}
       </div>
-      <p className="px-1 text-[10px]" style={{ color: "#8b949e" }}>
+      <p className="px-1 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
         {time}
       </p>
     </div>
@@ -179,8 +179,8 @@ function ChatPane({
       >
         {displayed.length === 0 ? (
           <div className="flex flex-col items-center py-16 gap-3">
-            <MessageSquare size={32} style={{ color: "#30363d" }} />
-            <p className="text-sm" style={{ color: "#8b949e" }}>
+            <MessageSquare size={32} style={{ color: "var(--color-bt-border)" }} />
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
               No messages yet. Say something!
             </p>
           </div>
@@ -202,11 +202,11 @@ function ChatPane({
       {/* Input bar */}
       <div
         className="px-4 pb-6 pt-3"
-        style={{ borderTop: "1px solid #30363d", background: "#0d1117" }}
+        style={{ borderTop: "1px solid var(--color-bt-border)", background: "var(--color-bt-base)" }}
       >
         <div
           className="flex items-end gap-2 rounded-2xl px-4 py-2"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
           <textarea
             ref={textareaRef}
@@ -217,14 +217,14 @@ function ChatPane({
             placeholder="Message…"
             rows={1}
             className="flex-1 resize-none bg-transparent py-1 text-sm outline-none"
-            style={{ color: "#e6edf3", maxHeight: "120px" }}
+            style={{ color: "var(--color-bt-text)", maxHeight: "120px" }}
           />
           <button
             data-testid="send-btn"
             onClick={handleSend}
             disabled={!text.trim() || sendMessage.isPending}
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-all disabled:opacity-30"
-            style={{ background: "#00d4aa", color: "#0d1117" }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             aria-label="Send message"
           >
             <Send size={15} />
@@ -282,18 +282,18 @@ export default function TripMessagesPage() {
   return (
     <div
       className="flex h-screen flex-col"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Header */}
       <header
         className="flex-shrink-0"
-        style={{ background: "#161b22", borderBottom: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
       >
         <div className="flex h-14 items-center gap-3 px-4">
           <button
             onClick={() => router.push(`/trips/${tripId}`)}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-            style={{ color: "#e6edf3" }}
+            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text)" }}
             aria-label="Back to trip"
           >
             <ArrowLeft size={20} />
@@ -301,7 +301,7 @@ export default function TripMessagesPage() {
           <h1
             data-testid="messages-heading"
             className="flex-1 text-base font-semibold"
-            style={{ color: "#e6edf3" }}
+            style={{ color: "var(--color-bt-text)" }}
           >
             {activeChannel === "team" && activeTeam
               ? `${activeTeam.name} Chat`
@@ -317,9 +317,9 @@ export default function TripMessagesPage() {
             className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
             style={{
               background:
-                activeChannel === "trip" ? "#00d4aa22" : "transparent",
-              border: `1px solid ${activeChannel === "trip" ? "#00d4aa" : "#30363d"}`,
-              color: activeChannel === "trip" ? "#00d4aa" : "#8b949e",
+                activeChannel === "trip" ? "var(--color-bt-accent-faint)" : "transparent",
+              border: `1px solid ${activeChannel === "trip" ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+              color: activeChannel === "trip" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
             }}
           >
             <MessageSquare size={12} />
@@ -340,11 +340,11 @@ export default function TripMessagesPage() {
                   activeChannel === "team" && resolvedTeamId === team.id
                     ? `${team.color}22`
                     : "transparent",
-                border: `1px solid ${activeChannel === "team" && resolvedTeamId === team.id ? team.color : "#30363d"}`,
+                border: `1px solid ${activeChannel === "team" && resolvedTeamId === team.id ? team.color : "var(--color-bt-border)"}`,
                 color:
                   activeChannel === "team" && resolvedTeamId === team.id
                     ? team.color
-                    : "#8b949e",
+                    : "var(--color-bt-text-dim)",
               }}
             >
               <Users size={12} />

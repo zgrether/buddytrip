@@ -21,12 +21,12 @@ const FORMAT_LABEL: Record<string, string> = {
 function StatusPill({ status }: { status: string }) {
   const cfg =
     status === "active"
-      ? { label: "Active", color: "#00d4aa" }
+      ? { label: "Active", color: "var(--color-bt-accent)" }
       : status === "submitted"
-        ? { label: "Submitted", color: "#f59e0b" }
+        ? { label: "Submitted", color: "var(--color-bt-warning)" }
         : status === "closed" || status === "completed"
-          ? { label: "Closed", color: "#8b949e" }
-          : { label: "Upcoming", color: "#a78bfa" };
+          ? { label: "Closed", color: "var(--color-bt-text-dim)" }
+          : { label: "Upcoming", color: "var(--color-bt-ready)" };
 
   return (
     <span
@@ -69,7 +69,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
       <div className="flex items-center justify-center py-12">
         <div
           className="h-6 w-6 animate-spin rounded-full border-2"
-          style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
         />
       </div>
     );
@@ -81,13 +81,13 @@ export function CompTab({ trip, canEdit }: TabProps) {
       <div className="space-y-4 px-4">
         <div
           className="rounded-xl p-6 text-center"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
-          <Trophy size={32} className="mx-auto mb-3" style={{ color: "#00d4aa" }} />
-          <p className="mb-1 text-sm font-medium" style={{ color: "#e6edf3" }}>
+          <Trophy size={32} className="mx-auto mb-3" style={{ color: "var(--color-bt-accent)" }} />
+          <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             No competition set up yet
           </p>
-          <p className="text-xs" style={{ color: "#8b949e" }}>
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {canEdit
               ? "Set up teams, rounds, and scoring from the Competition Setup screen."
               : "Waiting for a planner to set up the competition."}
@@ -99,7 +99,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
                 router.push(`/trips/${trip.id}/competition/setup`)
               }
               className="mt-4 rounded-lg px-4 py-2 text-sm font-medium"
-              style={{ background: "#00d4aa", color: "#0d1117" }}
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               Set Up Competition
             </button>
@@ -115,33 +115,33 @@ export function CompTab({ trip, canEdit }: TabProps) {
       {/* Event header card */}
       <div
         className="rounded-xl p-4"
-        style={{ background: "#161b22", border: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Trophy size={16} style={{ color: "#00d4aa" }} />
-            <p className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+            <Trophy size={16} style={{ color: "var(--color-bt-accent)" }} />
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {event.title}
             </p>
           </div>
           <StatusPill status={event.status ?? "upcoming"} />
         </div>
         {event.subtitle && (
-          <p className="mb-1 text-xs" style={{ color: "#8b949e" }}>
+          <p className="mb-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {event.subtitle}
           </p>
         )}
         {event.motto && (
           <p
             className="text-xs italic"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             &ldquo;{event.motto}&rdquo;
           </p>
         )}
         <div
           className="mt-2 flex flex-wrap gap-3 text-xs"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           {event.location && (
             <span className="flex items-center gap-1">
@@ -161,7 +161,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
           data-testid="view-leaderboard-btn"
           onClick={() => router.push(`/trips/${trip.id}/leaderboard`)}
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium"
-          style={{ background: "#00d4aa", color: "#0d1117" }}
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
           <BarChart3 size={14} />
           View Leaderboard
@@ -171,8 +171,8 @@ export function CompTab({ trip, canEdit }: TabProps) {
           <button
             data-testid="edit-competition-btn"
             onClick={() => router.push(`/trips/${trip.id}/competition/setup`)}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs transition-colors hover:bg-white/5"
-            style={{ borderColor: "#30363d", color: "#00d4aa" }}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
           >
             Manage Competition
             <ChevronRight size={12} />
@@ -184,13 +184,13 @@ export function CompTab({ trip, canEdit }: TabProps) {
       <section>
         <h2
           className="mb-3 text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Teams ({teams.length})
         </h2>
 
         {teams.length === 0 ? (
-          <p className="text-sm" style={{ color: "#8b949e" }}>
+          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             No teams yet.{" "}
             {canEdit && "Add teams from the competition setup."}
           </p>
@@ -201,21 +201,21 @@ export function CompTab({ trip, canEdit }: TabProps) {
                 key={team.id}
                 data-testid={`team-${team.id}`}
                 className="flex items-center gap-3 rounded-xl px-4 py-3"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
                 <div
                   className="h-3 w-3 flex-shrink-0 rounded-full"
-                  style={{ background: team.color ?? "#8b949e" }}
+                  style={{ background: team.color ?? "var(--color-bt-text-dim)" }}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                     {team.name}
                   </p>
-                  <p className="text-xs" style={{ color: "#8b949e" }}>
+                  <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     {team.short_name}
                   </p>
                 </div>
-                <Users size={14} style={{ color: "#8b949e" }} />
+                <Users size={14} style={{ color: "var(--color-bt-text-dim)" }} />
               </div>
             ))}
           </div>
@@ -226,13 +226,13 @@ export function CompTab({ trip, canEdit }: TabProps) {
       <section>
         <h2
           className="mb-3 text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Rounds ({rounds.length})
         </h2>
 
         {rounds.length === 0 ? (
-          <p className="text-sm" style={{ color: "#8b949e" }}>
+          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             No rounds yet.{" "}
             {canEdit && "Add rounds from the competition setup."}
           </p>
@@ -240,10 +240,10 @@ export function CompTab({ trip, canEdit }: TabProps) {
           <div className="space-y-2">
             {rounds.map((round) => {
               const statusColor =
-                round.status === "active" ? "#00d4aa"
-                  : round.status === "submitted" ? "#f59e0b"
-                    : round.status === "closed" ? "#8b949e"
-                      : "#6e7681";
+                round.status === "active" ? "var(--color-bt-accent)"
+                  : round.status === "submitted" ? "var(--color-bt-warning)"
+                    : round.status === "closed" ? "var(--color-bt-text-dim)"
+                      : "var(--color-bt-text-dim)";
 
               return (
                 <div
@@ -251,20 +251,20 @@ export function CompTab({ trip, canEdit }: TabProps) {
                   data-testid={`round-${round.id}`}
                   className="rounded-xl px-4 py-3"
                   style={{
-                    background: "#161b22",
-                    border: "1px solid #30363d",
+                    background: "var(--color-bt-card)",
+                    border: "1px solid var(--color-bt-border)",
                     borderLeft: `3px solid ${statusColor}`,
                   }}
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                    <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                       {round.title}
                     </p>
                     <StatusPill status={round.status} />
                   </div>
                   <div
                     className="mt-1 flex gap-3 text-xs"
-                    style={{ color: "#8b949e" }}
+                    style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     <span>{round.course}</span>
                     <span>{FORMAT_LABEL[round.format] ?? round.format}</span>
@@ -286,7 +286,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
                       }
                       disabled={closeRound.isPending}
                       className="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity disabled:opacity-50"
-                      style={{ background: "#00d4aa22", color: "#00d4aa" }}
+                      style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
                     >
                       <CheckCircle size={12} />
                       Close Round
@@ -294,7 +294,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
                   )}
 
                   {round.status === "closed" && (
-                    <div className="mt-2 flex items-center gap-1 text-xs" style={{ color: "#8b949e" }}>
+                    <div className="mt-2 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                       <Lock size={10} />
                       Officially closed
                     </div>

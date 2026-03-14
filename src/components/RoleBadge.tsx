@@ -7,9 +7,9 @@ interface RoleBadgeProps {
 }
 
 const CONFIG: Record<TripRole, { label: string; color: string }> = {
-  Owner: { label: "Owner", color: "#f0a84a" },
-  Planner: { label: "Planner", color: "#00d4aa" },
-  Member: { label: "Member", color: "#8b949e" },
+  Owner: { label: "Owner", color: "var(--color-bt-owner)" },
+  Planner: { label: "Planner", color: "var(--color-bt-accent)" },
+  Member: { label: "Member", color: "var(--color-bt-text-dim)" },
 };
 
 export const RoleBadge: FC<RoleBadgeProps> = ({ role, className }) => {

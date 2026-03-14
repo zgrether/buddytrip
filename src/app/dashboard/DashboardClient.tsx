@@ -118,7 +118,7 @@ export default function DashboardClient() {
       <div className="flex min-h-screen items-center justify-center">
         <div
           className="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent"
-          style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
         />
       </div>
     );
@@ -129,7 +129,7 @@ export default function DashboardClient() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       <TopNav
         title="BuddyTrip"
@@ -150,24 +150,24 @@ export default function DashboardClient() {
           >
             <div
               className="flex h-20 w-20 items-center justify-center rounded-full"
-              style={{ background: "#161b22" }}
+              style={{ background: "var(--color-bt-card)" }}
             >
-              <Plane size={36} style={{ color: "#00d4aa" }} />
+              <Plane size={36} style={{ color: "var(--color-bt-accent)" }} />
             </div>
             <h2
               className="text-xl font-semibold"
-              style={{ color: "#e6edf3" }}
+              style={{ color: "var(--color-bt-text)" }}
             >
               No trips yet
             </h2>
-            <p className="max-w-xs text-sm" style={{ color: "#8b949e" }}>
+            <p className="max-w-xs text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
               Create your first group trip and start planning together.
             </p>
             <button
               data-testid="create-first-trip"
               onClick={() => router.push("/trips/new")}
               className="mt-2 flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{ background: "#00d4aa", color: "#0d1117" }}
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               <Plus size={18} />
               Create a Trip
@@ -202,14 +202,14 @@ export default function DashboardClient() {
                 >
                   <span
                     className="text-sm font-semibold uppercase tracking-wider"
-                    style={{ color: "#8b949e" }}
+                    style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     Past ({sections.past.length})
                   </span>
                   {pastExpanded ? (
-                    <ChevronDown size={16} style={{ color: "#8b949e" }} />
+                    <ChevronDown size={16} style={{ color: "var(--color-bt-text-dim)" }} />
                   ) : (
-                    <ChevronRight size={16} style={{ color: "#8b949e" }} />
+                    <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
                   )}
                 </button>
                 {pastExpanded && (
@@ -235,10 +235,10 @@ export default function DashboardClient() {
           data-testid="fab-new-trip"
           onClick={() => router.push("/trips/new")}
           className="fixed bottom-6 right-4 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-opacity hover:opacity-90"
-          style={{ background: "#00d4aa" }}
+          style={{ background: "var(--color-bt-accent)" }}
           aria-label="New trip"
         >
-          <Plus size={24} style={{ color: "#0d1117" }} />
+          <Plus size={24} style={{ color: "var(--color-bt-base)" }} />
         </button>
       )}
     </div>
@@ -261,7 +261,7 @@ function TripSection({
       <h2
         data-testid={`section-${label.toLowerCase()}`}
         className="mb-3 text-sm font-semibold uppercase tracking-wider"
-        style={{ color: "#8b949e" }}
+        style={{ color: "var(--color-bt-text-dim)" }}
       >
         {label}
       </h2>

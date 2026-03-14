@@ -35,7 +35,7 @@ export default function TripDetailPage() {
       <div className="flex min-h-screen items-center justify-center">
         <div
           className="h-8 w-8 animate-spin rounded-full border-2"
-          style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
         />
       </div>
     );
@@ -45,13 +45,13 @@ export default function TripDetailPage() {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="text-center">
-          <p className="text-lg font-semibold" style={{ color: "#e6edf3" }}>
+          <p className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Trip not found
           </p>
           <button
             onClick={() => router.push("/dashboard")}
             className="mt-4 text-sm"
-            style={{ color: "#00d4aa" }}
+            style={{ color: "var(--color-bt-accent)" }}
           >
             Back to Dashboard
           </button>
@@ -67,19 +67,19 @@ export default function TripDetailPage() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-40"
-        style={{ background: "#161b22", borderBottom: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
       >
         {/* Row 1: back + title */}
         <div className="flex h-14 items-center gap-3 px-4">
           <button
             onClick={() => router.push("/dashboard")}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-            style={{ color: "#e6edf3" }}
+            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text)" }}
             aria-label="Back to dashboard"
           >
             <ArrowLeft size={20} />
@@ -89,7 +89,7 @@ export default function TripDetailPage() {
             <h1
               data-testid="trip-title"
               className="truncate text-base font-semibold"
-              style={{ color: "#e6edf3" }}
+              style={{ color: "var(--color-bt-text)" }}
             >
               {trip.title}
             </h1>
@@ -97,7 +97,7 @@ export default function TripDetailPage() {
           </div>
 
           {trip.locked_destination_title && (
-            <Lock size={14} style={{ color: "#00d4aa", flexShrink: 0 }} />
+            <Lock size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
           )}
         </div>
 
@@ -105,7 +105,7 @@ export default function TripDetailPage() {
         {(trip.location || trip.start_date || trip.end_date) && (
           <div
             className="flex items-center gap-4 px-4 pb-3"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             {trip.location && (
               <span className="flex items-center gap-1 text-xs">

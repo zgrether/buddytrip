@@ -48,24 +48,24 @@ export default function ProfilePage() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: "#0d1117", color: "#e6edf3" }}
+      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Header */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "#0d1117", borderBottom: "1px solid #30363d" }}
+        style={{ background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-border)" }}
       >
         <button
           onClick={() => router.back()}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10"
-          style={{ color: "#e6edf3" }}
+          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text)" }}
           aria-label="Back"
         >
           <ArrowLeft size={20} />
         </button>
         <h1
           className="flex-1 text-base font-semibold"
-          style={{ color: "#e6edf3" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Profile
         </h1>
@@ -76,7 +76,7 @@ export default function ProfilePage() {
           <div className="flex justify-center py-12">
             <div
               className="h-6 w-6 animate-spin rounded-full border-2"
-              style={{ borderColor: "#00d4aa", borderTopColor: "transparent" }}
+              style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
             />
           </div>
         ) : (
@@ -86,7 +86,7 @@ export default function ProfilePage() {
               <div
                 data-testid="profile-avatar"
                 className="flex h-20 w-20 items-center justify-center rounded-full text-3xl font-bold"
-                style={{ background: "#0d2a22", color: "#00d4aa" }}
+                style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
               >
                 {initial}
               </div>
@@ -94,12 +94,12 @@ export default function ProfilePage() {
                 {me?.name && (
                   <p
                     className="text-lg font-semibold"
-                    style={{ color: "#e6edf3" }}
+                    style={{ color: "var(--color-bt-text)" }}
                   >
                     {me.name}
                   </p>
                 )}
-                <p className="text-sm" style={{ color: "#8b949e" }}>
+                <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
                   {me?.email}
                 </p>
               </div>
@@ -108,11 +108,11 @@ export default function ProfilePage() {
             {/* Edit form */}
             <div
               className="space-y-4 rounded-xl p-5"
-              style={{ background: "#161b22", border: "1px solid #30363d" }}
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
               <h2
                 className="text-sm font-semibold uppercase tracking-wider"
-                style={{ color: "#8b949e" }}
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
                 Edit Profile
               </h2>
@@ -121,7 +121,7 @@ export default function ProfilePage() {
                 <label
                   htmlFor="name"
                   className="mb-1.5 block text-xs font-medium"
-                  style={{ color: "#8b949e" }}
+                  style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   Full Name
                 </label>
@@ -134,9 +134,9 @@ export default function ProfilePage() {
                   placeholder="Your full name"
                   className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                   style={{
-                    background: "#0d1117",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
+                    background: "var(--color-bt-base)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
                   }}
                 />
               </div>
@@ -145,7 +145,7 @@ export default function ProfilePage() {
                 <label
                   htmlFor="nickname"
                   className="mb-1.5 block text-xs font-medium"
-                  style={{ color: "#8b949e" }}
+                  style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   Nickname
                 </label>
@@ -158,9 +158,9 @@ export default function ProfilePage() {
                   placeholder="e.g. Grether"
                   className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                   style={{
-                    background: "#0d1117",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
+                    background: "var(--color-bt-base)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
                   }}
                 />
               </div>
@@ -169,14 +169,14 @@ export default function ProfilePage() {
                 <p
                   data-testid="save-success"
                   className="text-xs font-medium"
-                  style={{ color: "#00d4aa" }}
+                  style={{ color: "var(--color-bt-accent)" }}
                 >
                   ✓ Profile saved
                 </p>
               )}
 
               {updateMe.isError && (
-                <p className="text-xs" style={{ color: "#ef4444" }}>
+                <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
                   Failed to save. Please try again.
                 </p>
               )}
@@ -186,7 +186,7 @@ export default function ProfilePage() {
                 onClick={handleSave}
                 disabled={updateMe.isPending || !name.trim()}
                 className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-opacity disabled:opacity-50"
-                style={{ background: "#00d4aa", color: "#0d1117" }}
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
                 <Save size={14} />
                 {updateMe.isPending ? "Saving…" : "Save Changes"}
@@ -196,14 +196,14 @@ export default function ProfilePage() {
             {/* Sign out */}
             <div
               className="rounded-xl p-5"
-              style={{ background: "#161b22", border: "1px solid #30363d" }}
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
               <button
                 data-testid="sign-out-btn"
                 onClick={handleSignOut}
                 disabled={signOutLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors hover:bg-white/5 disabled:opacity-50"
-                style={{ borderColor: "#ef444430", color: "#ef4444" }}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-50"
+                style={{ borderColor: "var(--color-bt-danger-border)", color: "var(--color-bt-danger)" }}
               >
                 <LogOut size={14} />
                 {signOutLoading ? "Signing out…" : "Sign Out"}

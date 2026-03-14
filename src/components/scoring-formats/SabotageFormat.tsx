@@ -45,11 +45,11 @@ export function SabotageFormat({ teams, scores, onChange }: SabotageFormatProps)
     <div className="space-y-3" data-testid="sabotage-format">
       <div
         className="rounded-lg px-3 py-2 text-center text-xs"
-        style={{ background: "#f59e0b11", color: "#f59e0b", border: "1px solid #f59e0b33" }}
+        style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)", border: "1px solid var(--color-bt-warning-border)" }}
       >
         Sabotage round — special rules apply!
       </div>
-      <p className="text-center text-xs" style={{ color: "#8b949e" }}>
+      <p className="text-center text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
         Who won this group?
       </p>
       <div className="flex gap-2">
@@ -58,17 +58,17 @@ export function SabotageFormat({ teams, scores, onChange }: SabotageFormatProps)
           onClick={() => select("a")}
           className="flex flex-1 flex-col items-center rounded-xl py-4 transition-all"
           style={{
-            background: selection === "a" ? `${teamA.color}22` : "#21262d",
-            border: `2px solid ${selection === "a" ? teamA.color : "#30363d"}`,
+            background: selection === "a" ? `${teamA.color}22` : "var(--color-bt-subtle-border)",
+            border: `2px solid ${selection === "a" ? teamA.color : "var(--color-bt-border)"}`,
           }}
         >
           <span
             className="text-lg font-bold"
-            style={{ color: selection === "a" ? teamA.color : "#8b949e" }}
+            style={{ color: selection === "a" ? teamA.color : "var(--color-bt-text-dim)" }}
           >
             {teamA.shortName}
           </span>
-          <span className="text-[10px]" style={{ color: "#8b949e" }}>
+          <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
             wins
           </span>
         </button>
@@ -78,17 +78,17 @@ export function SabotageFormat({ teams, scores, onChange }: SabotageFormatProps)
           onClick={() => select("halved")}
           className="flex flex-1 flex-col items-center rounded-xl py-4 transition-all"
           style={{
-            background: selection === "halved" ? "#f59e0b22" : "#21262d",
-            border: `2px solid ${selection === "halved" ? "#f59e0b" : "#30363d"}`,
+            background: selection === "halved" ? "var(--color-bt-warning-faint)" : "var(--color-bt-subtle-border)",
+            border: `2px solid ${selection === "halved" ? "var(--color-bt-warning)" : "var(--color-bt-border)"}`,
           }}
         >
           <span
             className="text-lg font-bold"
-            style={{ color: selection === "halved" ? "#f59e0b" : "#8b949e" }}
+            style={{ color: selection === "halved" ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
           >
             ½
           </span>
-          <span className="text-[10px]" style={{ color: "#8b949e" }}>
+          <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
             halved
           </span>
         </button>
@@ -98,17 +98,17 @@ export function SabotageFormat({ teams, scores, onChange }: SabotageFormatProps)
           onClick={() => select("b")}
           className="flex flex-1 flex-col items-center rounded-xl py-4 transition-all"
           style={{
-            background: selection === "b" ? `${teamB.color}22` : "#21262d",
-            border: `2px solid ${selection === "b" ? teamB.color : "#30363d"}`,
+            background: selection === "b" ? `${teamB.color}22` : "var(--color-bt-subtle-border)",
+            border: `2px solid ${selection === "b" ? teamB.color : "var(--color-bt-border)"}`,
           }}
         >
           <span
             className="text-lg font-bold"
-            style={{ color: selection === "b" ? teamB.color : "#8b949e" }}
+            style={{ color: selection === "b" ? teamB.color : "var(--color-bt-text-dim)" }}
           >
             {teamB.shortName}
           </span>
-          <span className="text-[10px]" style={{ color: "#8b949e" }}>
+          <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
             wins
           </span>
         </button>

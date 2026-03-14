@@ -83,7 +83,7 @@ function ExpensesSection({
     <div className="space-y-3">
       {/* Expense list */}
       {expenses.length === 0 ? (
-        <p className="text-sm" style={{ color: "#8b949e" }}>
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No expenses recorded yet.
         </p>
       ) : (
@@ -94,18 +94,18 @@ function ExpensesSection({
                 key={expense.id}
                 data-testid={`expense-row-${expense.id}`}
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                style={{ background: "#161b22", border: "1px solid #30363d" }}
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
               >
-                <DollarSign size={14} style={{ color: "#00d4aa" }} />
+                <DollarSign size={14} style={{ color: "var(--color-bt-accent)" }} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" style={{ color: "#e6edf3" }}>
+                  <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                     {expense.title}
                   </p>
-                  <p className="text-xs" style={{ color: "#8b949e" }}>
+                  <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     Paid by {memberName(expense.paid_by_user_id)} · split {expense.splits.length} ways
                   </p>
                 </div>
-                <span className="flex-shrink-0 text-sm font-semibold" style={{ color: "#e6edf3" }}>
+                <span className="flex-shrink-0 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                   ${expense.amount.toFixed(2)}
                 </span>
                 {canEdit && (
@@ -116,7 +116,7 @@ function ExpensesSection({
                     }
                     disabled={removeExpense.isPending}
                     className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-40"
-                    style={{ color: "#8b949e" }}
+                    style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -128,19 +128,19 @@ function ExpensesSection({
           {/* Total + balances */}
           <div
             className="rounded-xl p-3"
-            style={{ background: "#0d1117", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
           >
-            <div className="mb-2 flex justify-between text-xs font-medium" style={{ color: "#8b949e" }}>
+            <div className="mb-2 flex justify-between text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
               <span>Total</span>
-              <span style={{ color: "#e6edf3" }}>${total.toFixed(2)}</span>
+              <span style={{ color: "var(--color-bt-text)" }}>${total.toFixed(2)}</span>
             </div>
             {members.map((m) => {
               const bal = balances.get(m.user_id) ?? 0;
               if (Math.abs(bal) < 0.01) return null;
               return (
                 <div key={m.user_id} className="flex justify-between text-xs">
-                  <span style={{ color: "#8b949e" }}>{memberName(m.user_id)}</span>
-                  <span style={{ color: bal > 0 ? "#00d4aa" : "#ef4444" }}>
+                  <span style={{ color: "var(--color-bt-text-dim)" }}>{memberName(m.user_id)}</span>
+                  <span style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
                     {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
                   </span>
                 </div>
@@ -155,9 +155,9 @@ function ExpensesSection({
         showAdd ? (
           <div
             className="space-y-3 rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               Add Expense
             </p>
             <input
@@ -166,7 +166,7 @@ function ExpensesSection({
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "#0d1117", borderColor: "#30363d", color: "#e6edf3" }}
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
             <input
               data-testid="expense-amount-input"
@@ -177,10 +177,10 @@ function ExpensesSection({
               value={newAmount}
               onChange={(e) => setNewAmount(e.target.value)}
               className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "#0d1117", borderColor: "#30363d", color: "#e6edf3" }}
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
             <div>
-              <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Paid by
               </label>
               <select
@@ -188,7 +188,7 @@ function ExpensesSection({
                 value={paidByUserId}
                 onChange={(e) => setPaidByUserId(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-                style={{ background: "#0d1117", borderColor: "#30363d", color: "#e6edf3" }}
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               >
                 {members.map((m) => (
                   <option key={m.user_id} value={m.user_id}>
@@ -198,7 +198,7 @@ function ExpensesSection({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1.5 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Split among
               </label>
               <div className="space-y-1">
@@ -209,17 +209,17 @@ function ExpensesSection({
                       key={m.user_id}
                       className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5"
                       style={{
-                        background: checked ? "#00d4aa11" : "#0d1117",
-                        border: `1px solid ${checked ? "#00d4aa44" : "#30363d"}`,
+                        background: checked ? "var(--color-bt-accent-faint)" : "var(--color-bt-base)",
+                        border: `1px solid ${checked ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
                       }}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleSplit(m.user_id)}
-                        className="accent-[#00d4aa]"
+                        className="accent-bt-accent"
                       />
-                      <span className="text-sm" style={{ color: "#e6edf3" }}>
+                      <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>
                         {memberName(m.user_id)}
                       </span>
                     </label>
@@ -231,7 +231,7 @@ function ExpensesSection({
               <button
                 onClick={() => { setShowAdd(false); setNewTitle(""); setNewAmount(""); }}
                 className="flex-1 rounded-lg border py-2 text-sm"
-                style={{ borderColor: "#30363d", color: "#8b949e" }}
+                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
               >
                 Cancel
               </button>
@@ -256,7 +256,7 @@ function ExpensesSection({
                   });
                 }}
                 className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-                style={{ background: "#00d4aa", color: "#0d1117" }}
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
                 Add Expense
               </button>
@@ -266,8 +266,8 @@ function ExpensesSection({
           <button
             data-testid="show-add-expense-btn"
             onClick={() => setShowAdd(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-white/5"
-            style={{ borderColor: "#30363d", color: "#00d4aa" }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
           >
             <Plus size={16} />
             Add Expense
@@ -362,24 +362,24 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       <section>
         <h2
           className="mb-3 text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Quick Links
         </h2>
         <div
           className="rounded-xl overflow-hidden"
-          style={{ background: "#161b22", border: "1px solid #30363d" }}
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
         >
           <button
             data-testid="messages-link"
             onClick={() => router.push(`/trips/${trip.id}/messages`)}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
           >
-            <MessageSquare size={18} style={{ color: "#00d4aa" }} />
-            <span className="flex-1 text-sm font-medium" style={{ color: "#e6edf3" }}>
+            <MessageSquare size={18} style={{ color: "var(--color-bt-accent)" }} />
+            <span className="flex-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               Messages
             </span>
-            <ChevronRight size={16} style={{ color: "#8b949e" }} />
+            <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
         </div>
       </section>
@@ -388,7 +388,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       <section>
         <h2
           className="mb-3 text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "#8b949e" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           Expenses
         </h2>
@@ -404,17 +404,17 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
         <section>
           <h2
             className="mb-3 text-sm font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Trip Details
           </h2>
           <div
             className="space-y-3 rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
             {/* Title */}
             <div>
-              <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Name
               </label>
               <input
@@ -423,16 +423,16 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
                 }}
               />
             </div>
 
             {/* Description */}
             <div>
-              <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Description
               </label>
               <textarea
@@ -442,9 +442,9 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                 rows={2}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
                   resize: "none",
                 }}
               />
@@ -452,7 +452,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
 
             {/* Location */}
             <div>
-              <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Location
               </label>
               <input
@@ -461,9 +461,9 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                 onChange={(e) => setLocation(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
                 }}
               />
             </div>
@@ -471,7 +471,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
             {/* Dates */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+                <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   Start Date
                 </label>
                 <input
@@ -481,15 +481,15 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                   onChange={(e) => setStartDate(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                   style={{
-                    background: "#0d1117",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
-                    colorScheme: "dark",
+                    background: "var(--color-bt-base)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                    colorScheme: "inherit",
                   }}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+                <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   End Date
                 </label>
                 <input
@@ -500,10 +500,10 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                   onChange={(e) => setEndDate(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                   style={{
-                    background: "#0d1117",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
-                    colorScheme: "dark",
+                    background: "var(--color-bt-base)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                    colorScheme: "inherit",
                   }}
                 />
               </div>
@@ -511,7 +511,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
 
             {/* Notes */}
             <div>
-              <label className="mb-1 block text-xs" style={{ color: "#8b949e" }}>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                 Notes
               </label>
               <textarea
@@ -521,9 +521,9 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                 rows={3}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{
-                  background: "#0d1117",
-                  borderColor: "#30363d",
-                  color: "#e6edf3",
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
                   resize: "none",
                 }}
               />
@@ -535,7 +535,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
               disabled={updateTrip.isPending}
               onClick={handleSave}
               className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
-              style={{ background: "#00d4aa", color: "#0d1117" }}
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               <Save size={14} />
               {updateTrip.isPending ? "Saving…" : "Save Changes"}
@@ -549,31 +549,31 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
         <section>
           <h2
             className="mb-3 text-sm font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Destination
           </h2>
           <div
             className="rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
             {isLocked ? (
               <>
                 <div className="mb-3 flex items-center gap-2">
-                  <Lock size={14} style={{ color: "#00d4aa" }} />
-                  <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                  <Lock size={14} style={{ color: "var(--color-bt-accent)" }} />
+                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                     {trip.locked_destination_title}
                   </p>
                 </div>
-                <p className="mb-3 text-xs" style={{ color: "#8b949e" }}>
+                <p className="mb-3 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   {trip.locked_destination_location}
                 </p>
                 <button
                   data-testid="unlock-destination-btn"
                   disabled={unlockDest.isPending}
                   onClick={() => unlockDest.mutate({ tripId: trip.id })}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-sm transition-colors hover:bg-white/5 disabled:opacity-40"
-                  style={{ borderColor: "#30363d", color: "#8b949e" }}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-sm transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
                 >
                   <Unlock size={14} />
                   Unlock Destination
@@ -581,7 +581,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
               </>
             ) : showLockForm ? (
               <div className="space-y-3">
-                <p className="text-sm font-medium" style={{ color: "#e6edf3" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                   Lock Destination
                 </p>
                 <input
@@ -591,9 +591,9 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                   onChange={(e) => setLockTitle(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                   style={{
-                    background: "#0d1117",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
+                    background: "var(--color-bt-base)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
                   }}
                 />
                 <input
@@ -603,16 +603,16 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                   onChange={(e) => setLockLocation(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
                   style={{
-                    background: "#0d1117",
-                    borderColor: "#30363d",
-                    color: "#e6edf3",
+                    background: "var(--color-bt-base)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
                   }}
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowLockForm(false)}
                     className="flex-1 rounded-lg border py-2 text-sm"
-                    style={{ borderColor: "#30363d", color: "#8b949e" }}
+                    style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
                   >
                     Cancel
                   </button>
@@ -625,7 +625,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                     }
                     onClick={handleLock}
                     className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-                    style={{ background: "#00d4aa", color: "#0d1117" }}
+                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
                   >
                     Lock
                   </button>
@@ -633,14 +633,14 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
               </div>
             ) : (
               <>
-                <p className="mb-3 text-xs" style={{ color: "#8b949e" }}>
+                <p className="mb-3 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   Lock the destination to finalize it for all crew members.
                 </p>
                 <button
                   data-testid="lock-destination-btn"
                   onClick={() => setShowLockForm(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-sm transition-colors hover:bg-white/5"
-                  style={{ borderColor: "#00d4aa", color: "#00d4aa" }}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border py-2 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+                  style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
                 >
                   <Lock size={14} />
                   Lock Destination
@@ -656,15 +656,15 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
         <section>
           <h2
             className="mb-3 text-sm font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Members
           </h2>
           <div
             className="rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            <p className="text-xs" style={{ color: "#8b949e" }}>
+            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               To invite new members, search for users in the Crew tab and add
               them by email.
             </p>
@@ -677,24 +677,24 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
         <section>
           <h2
             className="mb-3 text-sm font-semibold uppercase tracking-wider"
-            style={{ color: "#8b949e" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             Danger Zone
           </h2>
           <div
             className="rounded-xl p-4"
-            style={{ background: "#161b22", border: "1px solid #30363d" }}
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
             {confirmDelete ? (
               <div>
-                <p className="mb-3 text-sm" style={{ color: "#e6edf3" }}>
+                <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text)" }}>
                   Delete <strong>{trip.title}</strong>? This cannot be undone.
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setConfirmDelete(false)}
                     className="flex-1 rounded-lg border py-2 text-sm"
-                    style={{ borderColor: "#30363d", color: "#8b949e" }}
+                    style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
                   >
                     Cancel
                   </button>
@@ -703,7 +703,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                     disabled={deleteTrip.isPending}
                     onClick={() => deleteTrip.mutate({ tripId: trip.id })}
                     className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-                    style={{ background: "#ef4444", color: "#fff" }}
+                    style={{ background: "var(--color-bt-danger)", color: "#fff" }}
                   >
                     Delete
                   </button>
@@ -714,7 +714,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
                 data-testid="delete-trip-btn"
                 onClick={() => setConfirmDelete(true)}
                 className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm"
-                style={{ color: "#ef4444" }}
+                style={{ color: "var(--color-bt-danger)" }}
               >
                 <Trash2 size={14} />
                 Delete Trip
