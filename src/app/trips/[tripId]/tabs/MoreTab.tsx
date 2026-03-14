@@ -255,7 +255,13 @@ function ExpensesSection({
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => { setShowAdd(false); setNewTitle(""); setNewAmount(""); }}
+                onClick={() => {
+                  setShowAdd(false);
+                  setNewTitle("");
+                  setNewAmount("");
+                  setPaidByUserId(members[0]?.user_id ?? "");
+                  setSplitAmong(members.map((m) => m.user_id));
+                }}
                 className="flex-1 rounded-lg border py-2 text-sm"
                 style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
               >
