@@ -119,12 +119,14 @@ function ChatPane({
 
   // ── Send ────────────────────────────────────────────────────────────────
   const sendMessage = trpc.messages.send.useMutation({
-    onSuccess: (data) => {
-      // Remove optimistic message once real one is returned
+    onSuccess: async (data) => {
+      // Wait for the refetch to complete before removing the optimistic
+      // message. Otherwise the cache is empty during the refetch and the
+      // "no messages" placeholder / old list flashes on screen.
+      await utils.messages.list.invalidate({ tripId, channel, teamId });
       setOptimisticMessages((prev) =>
         prev.filter((m) => m.id !== (data as unknown as Message).id)
       );
-      utils.messages.list.invalidate({ tripId, channel, teamId });
     },
     onError: (_, variables) => {
       // Remove failed optimistic message
