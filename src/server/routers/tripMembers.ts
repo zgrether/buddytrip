@@ -49,7 +49,7 @@ export const tripMembersRouter = router({
         const isGuest = !!m.guest_crew_id;
         const memberId = (m.user_id ?? m.guest_crew_id) as string;
         const displayName = user
-          ? (user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`)
+          ? (user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`)
           : (guestCrew?.name ?? `Guest ${memberId.slice(0, 6)}`);
 
         return {
