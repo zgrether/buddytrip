@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, Save } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -19,8 +19,10 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (me) {
-      setName(me.name ?? "");
-      setNickname(me.nickname ?? "");
+      startTransition(() => {
+        setName(me.name ?? "");
+        setNickname(me.nickname ?? "");
+      });
     }
   }, [me?.id]);
   const [saved, setSaved] = useState(false);
