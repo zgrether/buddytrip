@@ -453,7 +453,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
         </h2>
         <ExpensesSection
           tripId={trip.id}
-          members={(members as ExpenseMember[]).filter((m) => !!m.user_id)}
+          members={members as ExpenseMember[]}
           canEdit={canEdit}
         />
       </section>

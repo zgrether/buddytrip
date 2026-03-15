@@ -5,56 +5,81 @@ import { requireTripMember, requireTripRole } from "../middleware";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
-  // list — all ghost crew for a trip (any member can view)
+  // list — all guest users for a trip (any member can view)
   // -----------------------------------------------------------------------
   list: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx }) => {
-      const { data, error } = await ctx.supabase
-        .from("guest_crew")
-        .select("id, trip_id, name, email, role, invited_at, created_at")
-        .eq("trip_id", ctx.tripId)
-        .order("created_at", { ascending: true });
+      const { data: memberRows, error: mErr } = await ctx.supabase
+        .from("trip_members")
+        .select("user_id, role")
+        .eq("trip_id", ctx.tripId);
 
-      if (error) {
+      if (mErr) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch ghost crew",
+          message: "Failed to fetch members",
         });
       }
 
-      return data ?? [];
+      const userIds = (memberRows ?? []).map((m) => m.user_id).filter(Boolean) as string[];
+      if (userIds.length === 0) return [];
+
+      const { data: users, error: uErr } = await ctx.supabase
+        .from("users")
+        .select("id, name, nickname, email, is_guest, created_at")
+        .in("id", userIds)
+        .eq("is_guest", true);
+
+      if (uErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch guest users",
+        });
+      }
+
+      const roleMap = new Map((memberRows ?? []).map((m) => [m.user_id, m.role]));
+
+      return (users ?? []).map((u) => ({
+        id: u.id,
+        name: u.name,
+        nickname: u.nickname,
+        email: u.email,
+        role: roleMap.get(u.id) ?? "Member",
+        is_guest: u.is_guest,
+        created_at: u.created_at,
+      }));
     }),
 
   // -----------------------------------------------------------------------
-  // create — add a ghost crew member (Planner+)
+  // create — add a guest user and add them to the trip (Planner+)
   //
-  // If email is provided and matches an existing account, throws CONFLICT
-  // so the caller can add them as a real member instead.
+  // Creates a users row with is_guest=true, then a trip_members row.
+  // If email belongs to an existing real account, throws PRECONDITION_FAILED.
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
-        id: z.string(),
         name: z.string().min(1).max(100),
+        nickname: z.string().min(1).max(100).optional(),
         email: z.string().email().optional(),
         role: z.enum(["Planner", "Member"]).default("Member"),
       })
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      // If email provided, check if it already matches a registered user
+      // If email provided, check it against existing accounts
       if (input.email) {
         const { data: existingUser } = await ctx.supabase
           .from("users")
-          .select("id")
+          .select("id, is_guest")
           .eq("email", input.email)
           .maybeSingle();
 
-        if (existingUser) {
-          // Check if they're already a trip member
+        if (existingUser && !existingUser.is_guest) {
+          // Real account exists — check if already a member
           const { data: existingMember } = await ctx.supabase
             .from("trip_members")
             .select("id")
@@ -69,74 +94,108 @@ export const ghostCrewRouter = router({
             });
           }
 
-          // Real account exists but not yet a member — caller should add them
-          // as a real member, not a ghost
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
             message: "This email belongs to an existing BuddyTrip account. Add them as a crew member instead.",
           });
         }
+
+        if (existingUser && existingUser.is_guest) {
+          // Guest with this email already exists — check if they're in this trip
+          const { data: existingMember } = await ctx.supabase
+            .from("trip_members")
+            .select("id")
+            .eq("trip_id", ctx.tripId)
+            .eq("user_id", existingUser.id)
+            .maybeSingle();
+
+          if (existingMember) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "A crew member with this email already exists.",
+            });
+          }
+        }
       }
 
-      // Insert ghost_crew record
-      const { data: ghost, error: ghostError } = await ctx.supabase
-        .from("guest_crew")
+      // Create guest users row
+      const guestId = `ghost-${crypto.randomUUID()}`;
+      const { data: guest, error: guestError } = await ctx.supabase
+        .from("users")
         .insert({
-          id: input.id,
-          trip_id: ctx.tripId,
+          id: guestId,
           name: input.name,
+          nickname: input.nickname ?? null,
           email: input.email ?? null,
-          role: input.role,
+          is_guest: true,
+          created_by: ctx.user!.id,
         })
-        .select()
+        .select("id, name, nickname, email, is_guest, created_by, created_at")
         .single();
 
-      if (ghostError) {
+      if (guestError) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to create ghost crew: ${ghostError.message}`,
+          message: `Failed to create guest user: ${guestError.message}`,
         });
       }
 
-      // Insert corresponding trip_members row (ghosts are always "in")
+      // Insert trip_members row (guests are always "in")
       const { error: memberError } = await ctx.supabase
         .from("trip_members")
         .insert({
           id: crypto.randomUUID(),
           trip_id: ctx.tripId,
-          guest_crew_id: ghost.id,
+          user_id: guest.id,
           role: input.role,
           status: "in",
         });
 
       if (memberError) {
-        // Rollback ghost_crew insert
-        await ctx.supabase.from("guest_crew").delete().eq("id", ghost.id);
+        // Rollback guest user insert
+        await ctx.supabase.from("users").delete().eq("id", guest.id);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to add ghost to trip members: ${memberError.message}`,
+          message: `Failed to add guest to trip members: ${memberError.message}`,
         });
       }
 
-      return ghost;
+      return { ...guest, role: input.role };
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit name or email of a ghost (Planner+)
+  // update — edit a guest user's name/nickname/email (Planner+)
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
-        guestCrewId: z.string(),
+        guestUserId: z.string(),
         name: z.string().min(1).max(100).optional(),
+        nickname: z.string().min(1).max(100).nullable().optional(),
         email: z.string().email().nullable().optional(),
       })
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
+      // Verify this guest is a member of this trip
+      const { data: membership } = await ctx.supabase
+        .from("trip_members")
+        .select("id")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.guestUserId)
+        .maybeSingle();
+
+      if (!membership) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Guest not found in this trip",
+        });
+      }
+
       const update: Record<string, unknown> = {};
       if (input.name !== undefined) update.name = input.name;
+      if (input.nickname !== undefined) update.nickname = input.nickname;
       if (input.email !== undefined) update.email = input.email;
 
       if (Object.keys(update).length === 0) {
@@ -144,17 +203,17 @@ export const ghostCrewRouter = router({
       }
 
       const { data, error } = await ctx.supabase
-        .from("guest_crew")
+        .from("users")
         .update(update)
-        .eq("id", input.guestCrewId)
-        .eq("trip_id", ctx.tripId)
-        .select()
+        .eq("id", input.guestUserId)
+        .eq("is_guest", true)
+        .select("id, name, nickname, email, is_guest, created_at")
         .single();
 
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update ghost crew member",
+          message: "Failed to update guest user",
         });
       }
 
@@ -162,31 +221,30 @@ export const ghostCrewRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — delete ghost crew member (Owner only)
+  // remove — remove a guest from a trip (Owner only)
   //
-  // Deletes the ghost_crew record. Because trip_members.guest_crew_id and
-  // team_assignments.guest_crew_id both reference guest_crew with ON DELETE
-  // CASCADE, all downstream rows are cleaned up automatically.
+  // Deletes the trip_members row. The guest users row is kept so that
+  // historical data (expenses, scores) is preserved across trips.
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
-        guestCrewId: z.string(),
+        guestUserId: z.string(),
       })
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
-        .from("guest_crew")
+        .from("trip_members")
         .delete()
-        .eq("id", input.guestCrewId)
-        .eq("trip_id", ctx.tripId);
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.guestUserId);
 
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to remove ghost crew member",
+          message: "Failed to remove guest",
         });
       }
 

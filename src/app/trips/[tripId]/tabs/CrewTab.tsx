@@ -141,7 +141,6 @@ function NoAccountFound({
         onClick={() =>
           createGhost.mutate({
             tripId,
-            id: crypto.randomUUID(),
             name: name.trim(),
             email,
             role: "Member",
@@ -187,14 +186,12 @@ function InviteMember({
           id: crypto.randomUUID(),
           trip_id: tripId,
           user_id: vars.userId,
-          guest_crew_id: null,
           role: vars.role ?? "Member",
           status: "maybe",
           joined_at: new Date().toISOString(),
           user: userInfo
-            ? { id: userInfo.id, name: userInfo.name ?? null, nickname: null, email: userInfo.email ?? null }
+            ? { id: userInfo.id, name: userInfo.name ?? null, nickname: null, email: userInfo.email ?? null, is_guest: false }
             : null,
-          guestCrew: null,
           memberId: vars.userId,
           isGuest: false,
           displayName: userInfo?.name ?? userInfo?.email ?? vars.userId,
@@ -380,7 +377,6 @@ function AddGhostCrew({ tripId }: { tripId: string }) {
         onClick={() =>
           createGhost.mutate({
             tripId,
-            id: crypto.randomUUID(),
             name: name.trim(),
             email: email.trim() || undefined,
             role: "Member",
@@ -473,7 +469,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
                   </div>
                   {member.isGuest ? (
                     <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {member.guestCrew?.email ?? "Guest · no account"}
+                      {member.user?.email ?? "Guest · no account"}
                     </p>
                   ) : (
                     member.user?.email && (
