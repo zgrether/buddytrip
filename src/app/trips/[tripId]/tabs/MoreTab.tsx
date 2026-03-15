@@ -73,7 +73,8 @@ function ExpensesSection({
     onSuccess: () => utils.expenses.list.invalidate({ tripId }),
   });
 
-  const memberName = (userId: string) => {
+  const memberName = (userId: string | null | undefined) => {
+    if (!userId) return "Unknown";
     const m = members.find((x) => x.user_id === userId);
     return m?.user?.name ?? m?.user?.email ?? userId.slice(0, 6);
   };
@@ -452,7 +453,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
         </h2>
         <ExpensesSection
           tripId={trip.id}
-          members={members as ExpenseMember[]}
+          members={(members as ExpenseMember[]).filter((m) => !!m.user_id)}
           canEdit={canEdit}
         />
       </section>
