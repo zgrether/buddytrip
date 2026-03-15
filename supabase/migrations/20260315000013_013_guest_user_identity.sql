@@ -48,30 +48,35 @@ SELECT
 FROM guest_crew gc
 ON CONFLICT (id) DO NOTHING;
 
--- ── 4. Update trip_members: user_id ← guest_crew_id ──────────
+-- ── 4. Drop identity constraints BEFORE the data migration ────
+-- (UPDATE sets user_id while guest_crew_id is still set,
+--  which would violate the "exactly one" check otherwise)
+
+ALTER TABLE trip_members     DROP CONSTRAINT chk_trip_member_identity;
+ALTER TABLE team_assignments DROP CONSTRAINT chk_team_assignment_identity;
+
+-- ── 5. Update trip_members: user_id ← guest_crew_id ──────────
 
 UPDATE trip_members
 SET user_id = guest_crew_id
 WHERE guest_crew_id IS NOT NULL
   AND user_id IS NULL;
 
--- ── 5. Update team_assignments: user_id ← guest_crew_id ──────
+-- ── 6. Update team_assignments: user_id ← guest_crew_id ──────
 
 UPDATE team_assignments
 SET user_id = guest_crew_id
 WHERE guest_crew_id IS NOT NULL
   AND user_id IS NULL;
 
--- ── 6a. Clean up trip_members ──────────────────────────────────
+-- ── 7a. Clean up trip_members ─────────────────────────────────
 
-ALTER TABLE trip_members DROP CONSTRAINT chk_trip_member_identity;
 ALTER TABLE trip_members DROP COLUMN     guest_crew_id;
 ALTER TABLE trip_members ALTER COLUMN    user_id SET NOT NULL;
 DROP INDEX IF EXISTS idx_trip_members_trip_guest;
 
--- ── 6b. Clean up team_assignments ────────────────────────────
+-- ── 7b. Clean up team_assignments ────────────────────────────
 
-ALTER TABLE team_assignments DROP CONSTRAINT chk_team_assignment_identity;
 ALTER TABLE team_assignments DROP COLUMN     guest_crew_id;
 ALTER TABLE team_assignments ALTER COLUMN    user_id SET NOT NULL;
 DROP INDEX IF EXISTS idx_team_assignments_event_guest;
