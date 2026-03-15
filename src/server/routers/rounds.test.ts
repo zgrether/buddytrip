@@ -66,6 +66,41 @@ describe("rounds router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
+  it("activate — owner can activate an upcoming round", async () => {
+    // Create two rounds: one active, one upcoming
+    const caller = ctx.caller();
+    const r1 = await caller.rounds.create({
+      tripId, id: genId("rnd"), eventId, day: 3,
+      title: "Active Round", course: "Bandon", format: "scramble", pointsAvailable: 4,
+    });
+    await caller.rounds.update({ tripId, roundId: r1.id, status: "active" });
+
+    const r2 = await caller.rounds.create({
+      tripId, id: genId("rnd"), eventId, day: 4,
+      title: "Next Round", course: "Bandon", format: "skins", pointsAvailable: 4,
+    });
+
+    const result = await caller.rounds.activate({ tripId, roundId: r2.id, eventId });
+    expect(result.success).toBe(true);
+
+    const rounds = await caller.rounds.list({ tripId, eventId });
+    const updated1 = rounds.find((r) => r.id === r1.id);
+    const updated2 = rounds.find((r) => r.id === r2.id);
+    expect(updated1?.status).toBe("submitted");
+    expect(updated2?.status).toBe("active");
+
+    // Cleanup
+    await caller.rounds.remove({ tripId, roundId: r1.id });
+    await caller.rounds.remove({ tripId, roundId: r2.id });
+  });
+
+  it("activate — member cannot activate a round", async () => {
+    const memberCaller = ctx.callerAs("member");
+    await expect(
+      memberCaller.rounds.activate({ tripId, roundId: genId("rnd"), eventId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("remove — owner can remove", async () => {
     const caller = ctx.caller();
     const result = await caller.rounds.remove({ tripId, roundId });
