@@ -7,8 +7,8 @@ export const teamAssignmentsRouter = router({
   // -----------------------------------------------------------------------
   // list — all assignments for an event (any member)
   //
-  // Returns both user_id and guest_crew_id fields, plus a computed memberId
-  // (user_id ?? guest_crew_id) for use as a stable key in UI code.
+  // All players (real or guest) have a user_id pointing to a users row.
+  // memberId is always user_id.
   // -----------------------------------------------------------------------
   list: authedProcedure
     .input(z.object({ tripId: z.string(), eventId: z.string() }))
@@ -16,7 +16,7 @@ export const teamAssignmentsRouter = router({
     .query(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("team_assignments")
-        .select("id, event_id, team_id, user_id, guest_crew_id")
+        .select("id, event_id, team_id, user_id")
         .eq("event_id", input.eventId);
 
       if (error) {
@@ -28,15 +28,14 @@ export const teamAssignmentsRouter = router({
 
       return (data ?? []).map((a) => ({
         ...a,
-        memberId: (a.user_id ?? a.guest_crew_id) as string,
+        memberId: a.user_id as string,
       }));
     }),
 
   // -----------------------------------------------------------------------
-  // assign — assign a player (real or ghost) to a team (canEdit)
+  // assign — assign a player to a team (canEdit)
   //
-  // Provide either userId or guestCrewId (not both).
-  // If the player is already assigned, updates their team.
+  // Provide userId. If the player is already assigned, updates their team.
   // -----------------------------------------------------------------------
   assign: authedProcedure
     .input(
@@ -44,32 +43,18 @@ export const teamAssignmentsRouter = router({
         tripId: z.string(),
         eventId: z.string(),
         teamId: z.string(),
-        userId: z.string().optional(),
-        guestCrewId: z.string().optional(),
+        userId: z.string(),
       })
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      if (!input.userId && !input.guestCrewId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Either userId or guestCrewId is required",
-        });
-      }
-
       // Check for existing assignment
-      let existingQuery = ctx.supabase
+      const { data: existing } = await ctx.supabase
         .from("team_assignments")
         .select("id")
-        .eq("event_id", input.eventId);
-
-      if (input.userId) {
-        existingQuery = existingQuery.eq("user_id", input.userId);
-      } else {
-        existingQuery = existingQuery.eq("guest_crew_id", input.guestCrewId!);
-      }
-
-      const { data: existing } = await existingQuery.maybeSingle();
+        .eq("event_id", input.eventId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
 
       if (existing) {
         // Update team on existing assignment
@@ -87,7 +72,7 @@ export const teamAssignmentsRouter = router({
           });
         }
 
-        return { ...data, memberId: (data.user_id ?? data.guest_crew_id) as string };
+        return { ...data, memberId: data.user_id as string };
       }
 
       // New assignment
@@ -97,8 +82,7 @@ export const teamAssignmentsRouter = router({
           id: crypto.randomUUID(),
           event_id: input.eventId,
           team_id: input.teamId,
-          user_id: input.userId ?? null,
-          guest_crew_id: input.guestCrewId ?? null,
+          user_id: input.userId,
         })
         .select()
         .single();
@@ -110,44 +94,27 @@ export const teamAssignmentsRouter = router({
         });
       }
 
-      return { ...data, memberId: (data.user_id ?? data.guest_crew_id) as string };
+      return { ...data, memberId: data.user_id as string };
     }),
 
   // -----------------------------------------------------------------------
   // remove — remove a player from their team (canEdit)
-  //
-  // Provide either userId or guestCrewId.
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         eventId: z.string(),
-        userId: z.string().optional(),
-        guestCrewId: z.string().optional(),
+        userId: z.string(),
       })
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      if (!input.userId && !input.guestCrewId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Either userId or guestCrewId is required",
-        });
-      }
-
-      let query = ctx.supabase
+      const { error } = await ctx.supabase
         .from("team_assignments")
         .delete()
-        .eq("event_id", input.eventId);
-
-      if (input.userId) {
-        query = query.eq("user_id", input.userId);
-      } else {
-        query = query.eq("guest_crew_id", input.guestCrewId!);
-      }
-
-      const { error } = await query;
+        .eq("event_id", input.eventId)
+        .eq("user_id", input.userId);
 
       if (error) {
         throw new TRPCError({

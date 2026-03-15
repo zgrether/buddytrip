@@ -7,8 +7,8 @@ export const tripMembersRouter = router({
   // -----------------------------------------------------------------------
   // list — all members of a trip (any member can view)
   //
-  // Returns both real users and ghost crew in a unified shape.
-  // Use `memberId` as the stable identifier (user_id ?? guest_crew_id).
+  // Returns a unified shape for real users and guests (is_guest=true users).
+  // All members have a non-null user_id pointing to a row in the users table.
   // -----------------------------------------------------------------------
   list: authedProcedure
     .input(z.object({ tripId: z.string() }))
@@ -16,7 +16,7 @@ export const tripMembersRouter = router({
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
         .from("trip_members")
-        .select("id, trip_id, user_id, guest_crew_id, role, status, joined_at")
+        .select("id, trip_id, user_id, role, status, joined_at")
         .eq("trip_id", ctx.tripId)
         .order("joined_at", { ascending: true });
 
@@ -28,34 +28,25 @@ export const tripMembersRouter = router({
       }
 
       const rows = data ?? [];
-      const userIds = rows.filter((m) => m.user_id).map((m) => m.user_id as string);
-      const guestIds = rows.filter((m) => m.guest_crew_id).map((m) => m.guest_crew_id as string);
+      const userIds = rows.map((m) => m.user_id).filter(Boolean) as string[];
 
-      const [usersResult, guestsResult] = await Promise.all([
-        userIds.length > 0
-          ? ctx.supabase.from("users").select("id, name, nickname, email").in("id", userIds)
-          : Promise.resolve({ data: [] as { id: string; name: string | null; nickname: string | null; email: string | null }[] }),
-        guestIds.length > 0
-          ? ctx.supabase.from("guest_crew").select("id, name, email").in("id", guestIds)
-          : Promise.resolve({ data: [] as { id: string; name: string; email: string | null }[] }),
-      ]);
+      const usersResult = userIds.length > 0
+        ? await ctx.supabase.from("users").select("id, name, nickname, email, is_guest").in("id", userIds)
+        : { data: [] as { id: string; name: string | null; nickname: string | null; email: string | null; is_guest: boolean }[] };
 
       const userMap = new Map((usersResult.data ?? []).map((u) => [u.id, u]));
-      const guestMap = new Map((guestsResult.data ?? []).map((g) => [g.id, g]));
 
       return rows.map((m) => {
         const user = m.user_id ? (userMap.get(m.user_id) ?? null) : null;
-        const guestCrew = m.guest_crew_id ? (guestMap.get(m.guest_crew_id) ?? null) : null;
-        const isGuest = !!m.guest_crew_id;
-        const memberId = (m.user_id ?? m.guest_crew_id) as string;
+        const isGuest = user?.is_guest ?? false;
+        const memberId = m.user_id as string;
         const displayName = user
           ? (user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`)
-          : (guestCrew?.name ?? `Guest ${memberId.slice(0, 6)}`);
+          : `Unknown ${memberId.slice(0, 6)}`;
 
         return {
           ...m,
           user,
-          guestCrew,
           memberId,
           isGuest,
           displayName,

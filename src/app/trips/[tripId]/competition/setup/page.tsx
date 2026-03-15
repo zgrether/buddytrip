@@ -46,21 +46,18 @@ interface Round {
 }
 
 interface Member {
-  user_id: string | null;
-  guest_crew_id: string | null;
+  user_id: string;
   memberId: string;
   isGuest: boolean;
   role: string;
   displayName: string;
-  user?: { id: string; name?: string | null; email?: string | null } | null;
-  guestCrew?: { id: string; name: string; email?: string | null } | null;
+  user?: { id: string; name?: string | null; email?: string | null; is_guest?: boolean } | null;
 }
 
 interface TeamAssignment {
   event_id: string;
   team_id: string;
-  user_id: string | null;
-  guest_crew_id: string | null;
+  user_id: string;
   memberId: string;
 }
 
@@ -508,8 +505,7 @@ function TeamsSection({
                           unassignMember.mutate({
                             tripId,
                             eventId,
-                            userId: m.user_id ?? undefined,
-                            guestCrewId: m.guest_crew_id ?? undefined,
+                            userId: m.memberId,
                           });
                         }
                       } else {
@@ -517,8 +513,7 @@ function TeamsSection({
                           tripId,
                           eventId,
                           teamId: val,
-                          userId: m.user_id ?? undefined,
-                          guestCrewId: m.guest_crew_id ?? undefined,
+                          userId: m.memberId,
                         });
                       }
                     }}
