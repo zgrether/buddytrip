@@ -291,10 +291,10 @@ export default function TripMessagesPage() {
       >
         <div className="flex h-14 items-center gap-3 px-4">
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push(`/trips/${tripId}`)}
             className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{ color: "var(--color-bt-text)" }}
-            aria-label="Back to dashboard"
+            aria-label="Back to trip"
           >
             <ArrowLeft size={20} />
           </button>

@@ -246,7 +246,7 @@ export default function LeaderboardPage() {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}>
         <header className="flex items-center gap-3 px-4 py-4">
-          <button onClick={() => router.push("/dashboard")} aria-label="Back to dashboard">
+          <button onClick={() => router.push(`/trips/${tripId}`)} aria-label="Back to trip">
             <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
           </button>
           <h1 className="text-lg font-bold">Competition</h1>
@@ -270,8 +270,8 @@ export default function LeaderboardPage() {
       <header className="flex items-center gap-3 px-4 py-4">
         <button
           data-testid="back-btn"
-          onClick={() => router.push("/dashboard")}
-          aria-label="Back to dashboard"
+          onClick={() => router.push(`/trips/${tripId}`)}
+          aria-label="Back to trip"
         >
           <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
