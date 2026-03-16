@@ -123,7 +123,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
           <button
             key={id}
             data-testid={`nav-${id}`}
-            onClick={() => router.push(href)}
+            onClick={() => router.replace(href)}
             className="relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
           >
