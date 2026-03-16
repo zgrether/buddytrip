@@ -7,20 +7,19 @@ import {
   FileText,
   Flag,
   Zap,
-  Lock,
   ChevronRight,
   Pencil,
-  Trash2,
   Trophy,
   Check,
   Calendar,
   Users,
-  Copy,
+  MessageSquare,
+  MapPin,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { formatDateRange, parseLocalDate } from "@/lib/dates";
+import { formatDateRange } from "@/lib/dates";
+import { getTripStatus } from "@/components/StatusBadge";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -40,13 +39,6 @@ interface IdeaWithVotes {
   votes: { idea_id: string; user_id: string; created_at: string }[];
 }
 
-interface DateWindow {
-  id: string;
-  start_date: string;
-  end_date: string;
-  votes: { window_id: string; user_id: string; answer: string }[];
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function TileIcon({ icon }: { icon?: string | null }) {
@@ -61,12 +53,6 @@ function TileIcon({ icon }: { icon?: string | null }) {
       {icons[icon ?? "file"] ?? <FileText size={16} />}
     </span>
   );
-}
-
-function daysUntil(dateStr: string): number {
-  const target = parseLocalDate(dateStr);
-  const now = new Date();
-  return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 // ── AddTileModal ─────────────────────────────────────────────────────────
@@ -169,316 +155,187 @@ function AddTileModal({
   );
 }
 
-// ── Destination Comparison Panel ─────────────────────────────────────────
+// ── EditTileModal ─────────────────────────────────────────────────────────
 
-function DestinationComparisonPanel({
+function EditTileModal({
   tripId,
-  ideas,
-  currentUserId,
+  tile,
+  onClose,
 }: {
   tripId: string;
-  ideas: IdeaWithVotes[];
-  currentUserId?: string;
-}) {
-  const router = useRouter();
-  const totalVotes = ideas.reduce((sum, idea) => sum + idea.votes.length, 0);
-  const maxVotes = Math.max(1, ...ideas.map((i) => i.votes.length));
-
-  return (
-    <div
-      className="rounded-xl overflow-hidden"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Where are we going?
-          </p>
-          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {ideas.length} idea{ideas.length !== 1 ? "s" : ""} · {totalVotes} vote{totalVotes !== 1 ? "s" : ""} cast
-          </p>
-        </div>
-        <button
-          data-testid="full-comparison-view"
-          onClick={() => router.push(`/trips/${tripId}/compare`)}
-          className="flex items-center gap-1 text-xs font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          Full view <ChevronRight size={14} />
-        </button>
-      </div>
-
-      {/* Idea rows */}
-      <div className="space-y-1 px-4 pb-4">
-        {ideas.map((idea) => {
-          const pct = (idea.votes.length / maxVotes) * 100;
-          const iVoted = idea.votes.some((v) => v.user_id === currentUserId);
-          return (
-            <div key={idea.id} className="flex items-center gap-3 py-1.5">
-              <span
-                className="w-24 truncate text-xs font-medium"
-                style={{ color: iVoted ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
-              >
-                {idea.title}
-              </span>
-              <div className="flex-1">
-                <div
-                  className="h-2 rounded-full"
-                  style={{ background: "var(--color-bt-base)" }}
-                >
-                  <div
-                    className="h-2 rounded-full transition-all"
-                    style={{
-                      width: `${pct}%`,
-                      background: iVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                      minWidth: idea.votes.length > 0 ? "4px" : "0",
-                    }}
-                  />
-                </div>
-              </div>
-              <span
-                className="w-14 text-right text-xs"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
-              </span>
-              {iVoted && (
-                <span className="text-[10px]" style={{ color: "var(--color-bt-accent)" }}>← mine</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Locked Destination Card ──────────────────────────────────────────────
-
-function LockedDestinationCard({
-  trip,
-  isOwner,
-}: {
-  trip: TripData;
-  isOwner: boolean;
+  tile: QuickTile;
+  onClose: () => void;
 }) {
   const utils = trpc.useUtils();
-  const unlockDest = trpc.trips.unlockDestination.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId: trip.id });
-    },
+  const [label, setLabel] = useState(tile.label);
+  const [value, setValue] = useState(tile.value);
+
+  const update = trpc.quickInfoTiles.update.useMutation({
+    onSuccess() { onClose(); },
+    onSettled() { utils.quickInfoTiles.list.invalidate({ tripId }); },
+  });
+
+  const remove = trpc.quickInfoTiles.remove.useMutation({
+    onSuccess() { onClose(); },
+    onSettled() { utils.quickInfoTiles.list.invalidate({ tripId }); },
   });
 
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{ background: "var(--color-bt-tag-bg)", border: "1px solid var(--color-bt-accent-border)" }}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <Check size={16} style={{ color: "var(--color-bt-accent)" }} />
-        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>
-          Destination Locked
-        </p>
-      </div>
-      <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-        {trip.locked_destination_title}
-      </p>
-      {trip.locked_destination_location && trip.locked_destination_location !== trip.locked_destination_title && (
-        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          {trip.locked_destination_location}
-        </p>
-      )}
-      {trip.locked_destination_at && (
-        <p className="mt-1 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Locked {new Date(trip.locked_destination_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-        </p>
-      )}
-      {isOwner && (
-        <button
-          data-testid="reopen-vote-btn"
-          disabled={unlockDest.isPending}
-          onClick={() => unlockDest.mutate({ tripId: trip.id })}
-          className="mt-3 text-xs font-medium disabled:opacity-40"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Reopen vote
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ── Planning Progress Arc ────────────────────────────────────────────────
-
-function PlanningProgressArc({
-  trip,
-  memberCount,
-  membersIn,
-  onTabChange,
-}: {
-  trip: TripData;
-  memberCount: number;
-  membersIn: number;
-  onTabChange?: (tab: string) => void;
-}) {
-  const hasCompetition = !!trip.event_id;
-  const destLocked = !!trip.locked_destination_title;
-  const datesSet = !!(trip.start_date && trip.end_date);
-
-  const steps = [
-    { label: "Destination locked", done: destLocked, tab: "home" },
-    { label: "Dates set", done: datesSet, tab: "schedule" },
-    { label: `Crew confirmed (${membersIn} of ${memberCount} in)`, done: membersIn === memberCount && memberCount > 0, tab: "crew" },
-    ...(hasCompetition
-      ? [{ label: "Competition set up", done: true, tab: "comp" }]
-      : []),
-  ];
-
-  return (
-    <div
-      className="rounded-xl p-4"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Planning Progress
-      </p>
-      <div className="space-y-2">
-        {steps.map((step) => (
-          <button
-            key={step.label}
-            onClick={() => onTabChange?.(step.tab)}
-            className="flex w-full items-center gap-2.5 text-left"
-          >
-            <span
-              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px]"
-              style={{
-                background: step.done ? "var(--color-bt-accent)" : "var(--color-bt-base)",
-                border: step.done ? "none" : "1.5px solid var(--color-bt-border)",
-                color: step.done ? "#fff" : "var(--color-bt-text-dim)",
-              }}
-            >
-              {step.done ? <Check size={10} /> : ""}
-            </span>
-            <span
-              className="text-xs"
-              style={{
-                color: step.done ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
-                textDecoration: step.done ? "line-through" : "none",
-              }}
-            >
-              {step.label}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Date Summary Card ────────────────────────────────────────────────────
-
-function DateSummaryCard({
-  trip,
-  poll,
-  onTabChange,
-}: {
-  trip: TripData;
-  poll: { windows: DateWindow[] } | undefined;
-  onTabChange?: (tab: string) => void;
-}) {
-  const datesSet = !!(trip.start_date && trip.end_date);
-  const windows = poll?.windows ?? [];
-  const hasPoll = windows.length > 0;
-
-  if (datesSet) {
-    const days = trip.start_date ? daysUntil(trip.start_date) : 0;
-    return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
       <div
-        className="rounded-xl p-4"
-        style={{ background: "var(--color-bt-tag-bg)", border: "1px solid var(--color-bt-accent-border)" }}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <Calendar size={14} style={{ color: "var(--color-bt-accent)" }} />
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>
-            Dates Locked
-          </p>
-        </div>
-        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-          {formatDateRange(trip.start_date, trip.end_date)}
-        </p>
-        {days > 0 && (
-          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {days} day{days !== 1 ? "s" : ""} away
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  if (hasPoll) {
-    return (
+        className="absolute inset-0"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+      />
       <div
-        className="rounded-xl p-4"
+        className="relative w-full max-w-lg rounded-2xl p-6 space-y-4"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      >
+        <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Edit Tile
+        </h3>
+        <input
+          placeholder="Label"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+        />
+        <input
+          placeholder="Value"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+        />
+        <div className="flex gap-3">
+          <button
+            onClick={() => remove.mutate({ tripId, tileId: tile.id })}
+            disabled={remove.isPending || update.isPending}
+            className="rounded-xl border px-4 py-2.5 text-sm disabled:opacity-40"
+            style={{ borderColor: "var(--color-bt-danger)", color: "var(--color-bt-danger)" }}
+          >
+            Delete
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border py-2.5 text-sm"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Cancel
+          </button>
+          <button
+            disabled={!label.trim() || !value.trim() || update.isPending}
+            onClick={() => update.mutate({ tripId, tileId: tile.id, label: label.trim(), value: value.trim() })}
+            className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Competition Panel ─────────────────────────────────────────────────────
+
+function CompetitionPanel({ trip, canEdit }: { trip: TripData; canEdit: boolean }) {
+  const router = useRouter();
+  const hasComp = !!trip.event_id;
+
+  const { data: event } = trpc.events.getByTrip.useQuery(
+    { tripId: trip.id },
+    { enabled: hasComp }
+  );
+
+  const { data: teams = [] } = trpc.teams.list.useQuery(
+    { tripId: trip.id, eventId: event?.id ?? "" },
+    { enabled: !!event?.id }
+  );
+
+  const { data: scoreRows = [] } = trpc.groupResults.listScoresByEvent.useQuery(
+    { tripId: trip.id, eventId: event?.id ?? "" },
+    { enabled: !!event?.id }
+  );
+
+  // Aggregate total points per team, sorted descending
+  const teamTotals = teams
+    .map((t) => ({
+      ...t,
+      total: scoreRows
+        .filter((r) => r.team_id === t.id)
+        .reduce((sum, r) => sum + (r.total_points ?? 0), 0),
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  if (hasComp && event) {
+    return (
+      <button
+        data-testid="competition-panel"
+        onClick={() => router.push(`/trips/${trip.id}/leaderboard`)}
+        className="w-full rounded-xl p-4 text-left"
+        style={{ background: "var(--color-bt-tag-bg)", border: "1px solid var(--color-bt-accent-border)" }}
       >
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Calendar size={14} style={{ color: "var(--color-bt-planning)" }} />
-            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-              Dates — Poll open
+            <Trophy size={16} style={{ color: "var(--color-bt-accent)" }} />
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-accent)" }}>
+              {event.title ?? "Competition"}
             </p>
           </div>
+          <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
+            Leaderboard <ChevronRight size={14} />
+          </span>
         </div>
-        {windows.slice(0, 3).map((w) => {
-          const yes = w.votes.filter((v) => v.answer === "yes").length;
-          const no = w.votes.filter((v) => v.answer === "no").length;
-          const start = parseLocalDate(w.start_date);
-          const end = parseLocalDate(w.end_date);
-          const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          return (
-            <p key={w.id} className="text-xs mb-1" style={{ color: "var(--color-bt-text-dim)" }}>
-              {fmt(start)}–{fmt(end)}: {yes} in, {no} no
-            </p>
-          );
-        })}
-        <button
-          data-testid="see-full-poll"
-          onClick={() => onTabChange?.("schedule")}
-          className="mt-2 flex items-center gap-1 text-xs font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          See full poll <ChevronRight size={12} />
-        </button>
-      </div>
+        {teamTotals.length > 0 ? (
+          <div className="flex gap-3">
+            {teamTotals.map((team) => (
+              <div
+                key={team.id}
+                className="flex-1 rounded-lg p-2 text-center"
+                style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <p
+                  className="text-[10px] font-semibold truncate mb-0.5"
+                  style={{ color: team.color }}
+                >
+                  {team.short_name}
+                </p>
+                <p className="text-lg font-bold" style={{ color: "var(--color-bt-text)" }}>
+                  {team.total}
+                </p>
+                <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>pts</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>No scores yet</p>
+        )}
+      </button>
     );
   }
 
-  // No dates, no poll
-  return (
-    <div
-      className="rounded-xl p-4"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <Calendar size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          Dates
-        </p>
-      </div>
-      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        Not set yet
-      </p>
+  if (!hasComp && canEdit) {
+    return (
       <button
-        data-testid="go-set-dates"
-        onClick={() => onTabChange?.("schedule")}
-        className="mt-2 text-xs font-medium"
-        style={{ color: "var(--color-bt-accent)" }}
+        data-testid="home-setup-competition-btn"
+        onClick={() => router.push(`/trips/${trip.id}/competition/setup`)}
+        className="w-full rounded-xl p-4 text-center"
+        style={{ border: "2px dashed var(--color-bt-border)", background: "transparent" }}
       >
-        Set dates →
+        <Trophy size={20} className="mx-auto mb-2" style={{ color: "var(--color-bt-text-dim)" }} />
+        <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Add a Competition
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: "var(--color-bt-text-dim)" }}>
+          Your group already has a rivalry. Give it a scoreboard.
+        </p>
       </button>
-    </div>
-  );
+    );
+  }
+
+  return null;
 }
 
 // ── Quick Info Tiles Section ─────────────────────────────────────────────
@@ -490,22 +347,10 @@ function QuickInfoSection({
   tripId: string;
   canEdit: boolean;
 }) {
-  const utils = trpc.useUtils();
   const [showAddTile, setShowAddTile] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingTile, setEditingTile] = useState<QuickTile | null>(null);
 
   const { data: tiles = [] } = trpc.quickInfoTiles.list.useQuery({ tripId });
-
-  const deleteTile = trpc.quickInfoTiles.remove.useMutation({
-    onSuccess: () => utils.quickInfoTiles.list.invalidate({ tripId }),
-  });
-
-  function handleCopy(tile: QuickTile) {
-    navigator.clipboard.writeText(tile.value).then(() => {
-      setCopiedId(tile.id);
-      setTimeout(() => setCopiedId(null), 2000);
-    });
-  }
 
   if (tiles.length === 0 && !canEdit) return null;
 
@@ -534,11 +379,10 @@ function QuickInfoSection({
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {(tiles as QuickTile[]).map((tile) => (
-            <button
+            <div
               key={tile.id}
               data-testid={`tile-${tile.id}`}
-              onClick={() => handleCopy(tile)}
-              className="group relative rounded-xl p-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+              className="group relative rounded-xl p-3"
               style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
               <div className="mb-1 flex items-center gap-1.5">
@@ -547,31 +391,302 @@ function QuickInfoSection({
                   {tile.label}
                 </span>
               </div>
-              <p className="text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
-                {copiedId === tile.id ? "Copied!" : tile.value}
+              <p className="text-xs font-medium pr-4" style={{ color: "var(--color-bt-text)" }}>
+                {tile.value}
               </p>
-              {copiedId === tile.id && (
-                <Copy size={10} className="absolute right-2 top-2" style={{ color: "var(--color-bt-accent)" }} />
-              )}
-              {canEdit && copiedId !== tile.id && (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteTile.mutate({ tripId, tileId: tile.id });
-                  }}
-                  className="absolute right-1.5 top-1.5 hidden rounded p-0.5 group-hover:flex cursor-pointer"
+              {canEdit && (
+                <button
+                  data-testid={`tile-edit-${tile.id}`}
+                  onClick={() => setEditingTile(tile)}
+                  className="absolute right-1.5 top-1.5 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  <Trash2 size={10} />
-                </span>
+                  <Pencil size={10} />
+                </button>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}
 
       {showAddTile && (
         <AddTileModal tripId={tripId} onClose={() => setShowAddTile(false)} />
+      )}
+      {editingTile && (
+        <EditTileModal
+          tripId={tripId}
+          tile={editingTile}
+          onClose={() => setEditingTile(null)}
+        />
+      )}
+
+    </section>
+  );
+}
+
+// ── Planning Arc ─────────────────────────────────────────────────────────
+
+type ArcCardState = "done" | "inProgress" | "none";
+
+function ArcCard({
+  icon,
+  label,
+  note,
+  state,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  note: string;
+  state: ArcCardState;
+  onClick: () => void;
+}) {
+  const isDone = state === "done";
+  const isInProgress = state === "inProgress";
+
+  return (
+    <button
+      onClick={onClick}
+      className="flex-shrink-0 w-32 rounded-xl p-3 text-left"
+      style={{
+        background: isDone
+          ? "var(--color-bt-tag-bg)"
+          : isInProgress
+          ? "var(--color-bt-warning-faint)"
+          : "var(--color-bt-card)",
+        border: `1px solid ${
+          isDone
+            ? "var(--color-bt-accent-border)"
+            : isInProgress
+            ? "var(--color-bt-warning-border)"
+            : "var(--color-bt-border)"
+        }`,
+      }}
+    >
+      <div className="mb-2">
+        {isDone ? (
+          <Check size={16} style={{ color: "var(--color-bt-accent)" }} />
+        ) : (
+          <span
+            style={{
+              color: isInProgress ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+            }}
+          >
+            {icon}
+          </span>
+        )}
+      </div>
+      <p
+        className="text-xs font-semibold mb-1"
+        style={{
+          color: isDone
+            ? "var(--color-bt-accent)"
+            : isInProgress
+            ? "var(--color-bt-warning)"
+            : "var(--color-bt-text-dim)",
+        }}
+      >
+        {label}
+      </p>
+      <p className="text-[10px] leading-tight" style={{ color: "var(--color-bt-text-dim)" }}>
+        {note}
+      </p>
+    </button>
+  );
+}
+
+function PlanningArc({
+  trip,
+  ideas,
+  poll,
+  tripMembers,
+  reservations,
+  onTabChange,
+}: {
+  trip: TripData;
+  ideas: IdeaWithVotes[];
+  poll: { windows: { id: string; start_date: string; end_date: string }[] } | undefined;
+  tripMembers: { status: string }[];
+  reservations: unknown[];
+  onTabChange?: (tab: string) => void;
+}) {
+  const router = useRouter();
+
+  // Destination card
+  const destLocked = !!trip.locked_destination_title;
+  const destVoting = !!trip.comparison_mode && !trip.locked_destination_title;
+  const destState: ArcCardState = destLocked ? "done" : destVoting ? "inProgress" : "none";
+  const destNote = destLocked
+    ? trip.locked_destination_title!
+    : destVoting
+    ? `${ideas.length} idea${ideas.length !== 1 ? "s" : ""} · voting`
+    : "Not set";
+
+  // Dates card
+  const datesLocked = !!(trip.start_date && trip.end_date);
+  const pollOpen = (poll?.windows.length ?? 0) > 0 && !datesLocked;
+  const datesState: ArcCardState = datesLocked ? "done" : pollOpen ? "inProgress" : "none";
+  const datesNote = datesLocked
+    ? formatDateRange(trip.start_date, trip.end_date)
+    : pollOpen
+    ? `Poll active · ${poll!.windows.length} option${poll!.windows.length !== 1 ? "s" : ""}`
+    : "Not set";
+
+  // Crew card
+  const confirmed = tripMembers.filter((m) => m.status === "in").length;
+  const hasAnyone = tripMembers.length > 1;
+  const crewState: ArcCardState = confirmed >= 4 ? "done" : hasAnyone && confirmed < 4 ? "inProgress" : "none";
+  const crewNote = `${confirmed} confirmed`;
+
+  // Schedule card
+  const bookingCount = reservations.length;
+  const scheduleState: ArcCardState = bookingCount > 0 ? "inProgress" : "none";
+  const scheduleNote =
+    bookingCount > 0
+      ? `${bookingCount} booking${bookingCount !== 1 ? "s" : ""}`
+      : "Not booked yet";
+
+  return (
+    <section>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        Planning
+      </p>
+      <div
+        className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4"
+        style={{ scrollbarWidth: "none" }}
+      >
+        <ArcCard
+          icon={<MapPin size={16} />}
+          label="Destination"
+          note={destNote}
+          state={destState}
+          onClick={() => router.push(`/trips/${trip.id}/compare`)}
+        />
+        <ArcCard
+          icon={<Calendar size={16} />}
+          label="Dates"
+          note={datesNote}
+          state={datesState}
+          onClick={() => onTabChange?.("schedule")}
+        />
+        <ArcCard
+          icon={<Users size={16} />}
+          label="Crew"
+          note={crewNote}
+          state={crewState}
+          onClick={() => onTabChange?.("crew")}
+        />
+        <ArcCard
+          icon={<Hotel size={16} />}
+          label="Logistics"
+          note={scheduleNote}
+          state={scheduleState}
+          onClick={() => onTabChange?.("schedule")}
+        />
+      </div>
+    </section>
+  );
+}
+
+// ── About Card ───────────────────────────────────────────────────────────
+
+function AboutCard({ trip }: { trip: TripData }) {
+  const hasContent = !!(
+    trip.description ||
+    trip.location ||
+    trip.accommodation ||
+    (trip.activities && trip.activities.length > 0)
+  );
+
+  if (!hasContent) return null;
+
+  return (
+    <section
+      className="rounded-xl p-4"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        About
+      </p>
+      {trip.description && (
+        <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+          {trip.description}
+        </p>
+      )}
+      {trip.location && (
+        <div className="flex items-center gap-1.5 mt-2">
+          <MapPin size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>{trip.location}</p>
+        </div>
+      )}
+      {trip.accommodation && (
+        <div className="flex items-center gap-1.5 mt-1.5">
+          <Hotel size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>{trip.accommodation}</p>
+        </div>
+      )}
+      {trip.activities && trip.activities.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {trip.activities.map((act) => (
+            <span
+              key={act}
+              className="rounded-full px-2 py-0.5 text-[10px]"
+              style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)" }}
+            >
+              {act}
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── Messages Panel ───────────────────────────────────────────────────────
+
+function MessagesPanel({ tripId }: { tripId: string }) {
+  const router = useRouter();
+  const { data: messages = [] } = trpc.messages.list.useQuery({
+    tripId,
+    channel: "trip",
+    limit: 3,
+  });
+
+  return (
+    <section
+      className="rounded-xl overflow-hidden"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+        <div className="flex items-center gap-2">
+          <MessageSquare size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            Messages
+          </p>
+        </div>
+        <button
+          data-testid="messages-see-all"
+          onClick={() => router.push(`/trips/${tripId}/messages`)}
+          className="flex items-center gap-1 text-xs font-medium"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          See all <ChevronRight size={14} />
+        </button>
+      </div>
+      {messages.length > 0 ? (
+        <div className="px-4 pb-4 space-y-2">
+          {messages.map((msg) => (
+            <p key={msg.id} className="text-xs truncate" style={{ color: "var(--color-bt-text-dim)" }}>
+              {msg.text}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <div className="px-4 pb-4">
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            No messages yet. Start the conversation.
+          </p>
+        </div>
       )}
     </section>
   );
@@ -582,91 +697,42 @@ function QuickInfoSection({
 export function HomeTab({
   trip,
   canEdit: canEditProp,
-  isOwner,
   onTabChange,
 }: TabProps & { onTabChange?: (tab: string) => void }) {
-  const router = useRouter();
-  const currentUser = useCurrentUser();
-
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
+  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
 
-  const membersIn = members.filter((m) => m.status === "in").length;
-  const isComparisonMode = !!trip.comparison_mode && !trip.locked_destination_title;
-  const isLocked = !!trip.locked_destination_title;
+  const status = getTripStatus(trip);
+  const isCompleted = status === "past";
+  const showPlanningArc = canEditProp && !isCompleted;
 
   return (
     <div className="space-y-4 px-4">
-      {/* Destination comparison panel (when voting active) */}
-      {isComparisonMode && (
-        <DestinationComparisonPanel
-          tripId={trip.id}
-          ideas={ideas as IdeaWithVotes[]}
-          currentUserId={currentUser?.id}
-        />
-      )}
+      {/* 1. Competition panel */}
+      <CompetitionPanel trip={trip} canEdit={canEditProp} />
 
-      {/* Locked destination card */}
-      {isLocked && (
-        <LockedDestinationCard trip={trip} isOwner={isOwner ?? false} />
-      )}
-
-      {/* Quick info tiles */}
+      {/* 2. Quick Info Tiles */}
       <QuickInfoSection tripId={trip.id} canEdit={canEditProp} />
 
-      {/* Planning progress arc (canEdit only) */}
-      {canEditProp && (
-        <PlanningProgressArc
+      {/* 3. Planning Arc — canEdit only, hidden when completed */}
+      {showPlanningArc && (
+        <PlanningArc
           trip={trip}
-          memberCount={members.length}
-          membersIn={membersIn}
+          ideas={ideas as IdeaWithVotes[]}
+          poll={poll}
+          tripMembers={members}
+          reservations={reservations}
           onTabChange={onTabChange}
         />
       )}
 
-      {/* Date summary card */}
-      <DateSummaryCard
-        trip={trip}
-        poll={poll as { windows: DateWindow[] } | undefined}
-        onTabChange={onTabChange}
-      />
+      {/* 4. About card */}
+      <AboutCard trip={trip} />
 
-      {/* Competition setup CTA (Planners only, no event yet) */}
-      {canEditProp && !trip.event_id && (
-        <div
-          className="flex items-center gap-4 rounded-xl p-4"
-          style={{ background: "var(--color-bt-tag-bg)", border: "1px solid var(--color-bt-accent-border)" }}
-        >
-          <Trophy size={24} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
-          <div className="flex-1">
-            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Add a competition
-            </p>
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Set up teams, rounds, and scoring for this trip.
-            </p>
-          </div>
-          <button
-            data-testid="home-setup-competition-btn"
-            onClick={() => router.push(`/trips/${trip.id}/competition/setup`)}
-            className="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            Set Up
-          </button>
-        </div>
-      )}
-
-      {/* Empty state hint */}
-      {canEditProp && !trip.notes && !trip.accommodation && !isLocked && !isComparisonMode && (
-        <div className="mt-4 text-center">
-          <Pencil size={32} className="mx-auto mb-3" style={{ color: "var(--color-bt-border)" }} />
-          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            Start planning — set a destination, add dates, or invite your crew.
-          </p>
-        </div>
-      )}
+      {/* 5. Messages panel */}
+      <MessagesPanel tripId={trip.id} />
     </div>
   );
 }
