@@ -416,7 +416,7 @@ function QuickInfoSection({
                 <button
                   data-testid={`tile-edit-${tile.id}`}
                   onClick={() => setEditingTile(tile)}
-                  className="absolute right-1.5 top-1.5 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute right-1.5 top-1.5 rounded p-0.5"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <Pencil size={10} />
