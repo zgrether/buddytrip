@@ -60,62 +60,50 @@ export function LocationHero({
       />
 
       <div className="relative z-10 px-5 pb-5 pt-5">
-        {/* City name large if we have a location */}
-        {parsed && (
-          <div className="mb-3">
-            <p className="text-2xl font-bold text-white">{parsed.city}</p>
-            {parsed.region && (
-              <p className="mt-0.5 text-sm font-medium text-white/60">{parsed.region}</p>
-            )}
-          </div>
-        )}
-
-        {/* Divider between city and trip info */}
-        {parsed && (
-          <div className="mb-3 border-t border-white/15" />
-        )}
-
         {/* Trip title + status */}
         <div className="flex items-center gap-2">
           <h1
             data-testid="trip-title"
-            className="text-lg font-bold text-white"
+            className="text-2xl font-bold text-white"
           >
             {tripName}
           </h1>
           <StatusBadge status={status} />
         </div>
 
-        {/* Destination + dates sub-line */}
-        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-white/60">
+        {/* Destination */}
+        <div className="mt-1.5 flex items-center gap-1 text-sm text-white/60">
           {lockedTitle ? (
             <span className="flex items-center gap-1">
-              <MapPin size={11} />
+              <MapPin size={13} />
               {lockedTitle}
               {location && location !== lockedTitle && `, ${location}`}
             </span>
           ) : location ? (
             <span className="flex items-center gap-1">
-              <MapPin size={11} />
+              <MapPin size={13} />
               {location}
             </span>
           ) : (
             <span className="text-white/40">Destination: TBD</span>
           )}
+        </div>
 
+        {/* Dates */}
+        <div className="mt-1 flex items-center gap-1 text-xs text-white/50">
           {dateRange && dateRange !== "Dates TBD" ? (
             <span className="flex items-center gap-1">
               <Calendar size={11} />
               {dateRange}
             </span>
           ) : (
-            <span className="text-white/40">Dates: TBD</span>
+            <span>Dates: TBD</span>
           )}
         </div>
 
         {/* Description */}
         {description && (
-          <p className="mt-2 text-xs text-white/50">
+          <p className="mt-2 text-xs text-white/45">
             {description}
           </p>
         )}
