@@ -2,9 +2,10 @@
 
 import { useState, useEffect, startTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, LogOut, Save } from "lucide-react";
+import { LogOut, Save } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
+import { TopNav } from "@/components/TopNav";
 
 // ── ProfilePage ───────────────────────────────────────────────────────────
 
@@ -59,26 +60,10 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Header */}
-      <header
-        className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <button
-          onClick={() => router.back()}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text)" }}
-          aria-label="Back"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <h1
-          className="flex-1 text-base font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Profile
-        </h1>
-      </header>
+      <TopNav
+        avatarInitial={initial}
+        onProfileClick={() => router.push("/profile")}
+      />
 
       <main className="mx-auto max-w-lg px-4 pb-24 pt-8">
         {isLoading ? (
