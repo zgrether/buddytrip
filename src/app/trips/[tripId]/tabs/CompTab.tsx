@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Trophy, Users, Calendar, ChevronRight, Flag, BarChart3, CheckCircle, Lock } from "lucide-react";
+import { Trophy, Users, Calendar, ChevronRight, Flag, BarChart3, CheckCircle, Lock, Play } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { TabProps } from "./types";
 
@@ -63,6 +63,27 @@ export function CompTab({ trip, canEdit }: TabProps) {
       await utils.rounds.list.cancel({ tripId: trip.id, eventId });
       const prev = utils.rounds.list.getData({ tripId: trip.id, eventId });
       utils.rounds.list.setData({ tripId: trip.id, eventId }, (prev ?? []).map((r) => (r.id === vars.roundId ? { ...r, status: vars.status ?? r.status } : r)));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      const eventId = event?.id ?? "";
+      if (context?.prev !== undefined) utils.rounds.list.setData({ tripId: trip.id, eventId }, context.prev);
+    },
+    onSettled() {
+      utils.rounds.list.invalidate({ tripId: trip.id, eventId: event?.id ?? "" });
+    },
+  });
+
+  const activateRound = trpc.rounds.activate.useMutation({
+    async onMutate(vars) {
+      const eventId = event?.id ?? "";
+      await utils.rounds.list.cancel({ tripId: trip.id, eventId });
+      const prev = utils.rounds.list.getData({ tripId: trip.id, eventId });
+      utils.rounds.list.setData({ tripId: trip.id, eventId }, (prev ?? []).map((r) => {
+        if (r.id === vars.roundId) return { ...r, status: "active" };
+        if (r.status === "active") return { ...r, status: "submitted" };
+        return r;
+      }));
       return { prev };
     },
     onError(_err, _vars, context) {
@@ -284,6 +305,26 @@ export function CompTab({ trip, canEdit }: TabProps) {
                     )}
                   </div>
 
+                  {/* Make Current button for upcoming rounds (owner/planner only) */}
+                  {canEdit && round.status === "upcoming" && (
+                    <button
+                      data-testid={`activate-round-${round.id}`}
+                      onClick={() =>
+                        activateRound.mutate({
+                          roundId: round.id,
+                          tripId: trip.id,
+                          eventId: event.id,
+                        })
+                      }
+                      disabled={activateRound.isPending}
+                      className="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity disabled:opacity-50"
+                      style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
+                    >
+                      <Play size={11} />
+                      Make Current
+                    </button>
+                  )}
+
                   {/* Close Round button for submitted rounds (owner/planner only) */}
                   {canEdit && round.status === "submitted" && (
                     <button
@@ -297,17 +338,17 @@ export function CompTab({ trip, canEdit }: TabProps) {
                       }
                       disabled={closeRound.isPending}
                       className="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity disabled:opacity-50"
-                      style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+                      style={{ background: "#f59e0b22", color: "#f59e0b", border: "1px solid #f59e0b44" }}
                     >
                       <CheckCircle size={12} />
-                      Close Round
+                      Close Round ✓
                     </button>
                   )}
 
                   {round.status === "closed" && (
                     <div className="mt-2 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                       <Lock size={10} />
-                      Officially closed
+                      Closed ✓
                     </div>
                   )}
                 </div>

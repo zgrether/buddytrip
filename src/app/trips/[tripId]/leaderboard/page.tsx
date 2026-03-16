@@ -669,11 +669,24 @@ interface GroupsProps {
 
 function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntry }: GroupsProps) {
   const activeRounds = rounds.filter((r) => r.status === "active" || r.status === "submitted");
-  const displayRounds = activeRounds.length > 0 ? activeRounds : rounds;
+
+  if (activeRounds.length === 0) {
+    return (
+      <div className="flex flex-col items-center py-12 text-center" data-testid="groups-tab">
+        <Flag size={28} className="mb-3" style={{ color: "var(--color-bt-text-dim)" }} />
+        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+          No round in progress
+        </p>
+        <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          The competition owner can start a round from the Competition tab.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5" data-testid="groups-tab">
-      {displayRounds.map((round) => {
+      {activeRounds.map((round) => {
         const isClosed = round.status === "closed";
         const isSubmitted = round.status === "submitted";
 
@@ -783,11 +796,6 @@ function GroupsTab({ rounds, playGroups, roundsWithResults, canEdit, onScoreEntr
         );
       })}
 
-      {displayRounds.length === 0 && (
-        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          No rounds scheduled yet.
-        </p>
-      )}
     </div>
   );
 }

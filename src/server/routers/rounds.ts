@@ -127,6 +127,30 @@ export const roundsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // activate — atomically move active round → submitted, target → active
+  //
+  // Uses the activate_round RPC so the two updates are atomic.
+  // -----------------------------------------------------------------------
+  activate: authedProcedure
+    .input(z.object({ tripId: z.string(), roundId: z.string(), eventId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase.rpc("activate_round", {
+        p_round_id: input.roundId,
+        p_event_id: input.eventId,
+      });
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to activate round: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // remove — delete a round (canEdit)
   // -----------------------------------------------------------------------
   remove: authedProcedure

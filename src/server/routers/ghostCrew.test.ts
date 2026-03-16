@@ -4,6 +4,13 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 let ctx: TestContext;
 let tripId: string;
 
+// Guest users created during this run — must be cleaned up explicitly because
+// the users row outlives the trip_members row (persists for billing history).
+const guestUserIds: string[] = [];
+
+// Unique suffix so parallel / re-run tests never collide on the email unique constraint.
+const RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
 describe("ghostCrew router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
@@ -13,6 +20,11 @@ describe("ghostCrew router", () => {
   });
 
   afterAll(async () => {
+    // Delete guest users rows created in this test run before cleanup()
+    // so the unique email constraint doesn't trip future runs.
+    if (guestUserIds.length > 0) {
+      await ctx.admin.from("users").delete().in("id", guestUserIds).eq("is_guest", true);
+    }
     await ctx.cleanup();
   });
 
@@ -24,6 +36,7 @@ describe("ghostCrew router", () => {
       tripId,
       name: "Andy",
     });
+    guestUserIds.push(ghost.id);
     expect(ghost.name).toBe("Andy");
     expect(ghost.email).toBeNull();
     expect(ghost.role).toBe("Member");
@@ -32,13 +45,15 @@ describe("ghostCrew router", () => {
 
   it("create — planner can add guest with optional email", async () => {
     const caller = ctx.callerAs("planner");
+    const bobEmail = `bob-ghost-${RUN_ID}@example.com`;
     const ghost = await caller.ghostCrew.create({
       tripId,
       name: "Bob",
-      email: "bob-ghost-test@example.com",
+      email: bobEmail,
     });
+    guestUserIds.push(ghost.id);
     expect(ghost.name).toBe("Bob");
-    expect(ghost.email).toBe("bob-ghost-test@example.com");
+    expect(ghost.email).toBe(bobEmail);
     expect(ghost.is_guest).toBe(true);
   });
 
@@ -111,12 +126,13 @@ describe("ghostCrew router", () => {
     const plannerCaller = ctx.callerAs("planner");
     const ghosts = await plannerCaller.ghostCrew.list({ tripId });
     const ghost = ghosts[0];
+    const andrewEmail = `andrew-ghost-${RUN_ID}@example.com`;
     const updated = await plannerCaller.ghostCrew.update({
       tripId,
       guestUserId: ghost.id,
-      email: "andrew-ghost@example.com",
+      email: andrewEmail,
     });
-    expect(updated.email).toBe("andrew-ghost@example.com");
+    expect(updated.email).toBe(andrewEmail);
   });
 
   it("update — member cannot edit guest", async () => {
@@ -140,6 +156,7 @@ describe("ghostCrew router", () => {
       tripId,
       name: "TempGuest",
     });
+    guestUserIds.push(ghost.id);
 
     const ownerCaller = ctx.caller();
     const result = await ownerCaller.ghostCrew.remove({
