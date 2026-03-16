@@ -3,8 +3,9 @@ import { test, expect } from "@playwright/test";
 /**
  * TripDetail E2E — happy path
  *
- * Covers the 5-tab shell: renders trip header, switches tabs, shows comp tab
- * only when event_id is present, and shows the More tab danger zone for owners.
+ * Covers the SPEC 2 structure: trip header with LocationHero, inline tab bar
+ * (Home/Schedule/Crew/Competition), context-aware bottom nav, settings modal,
+ * and the planning panels on the Home tab.
  */
 
 const MOCK_USER_ID = "user-test-001";
@@ -32,6 +33,14 @@ const MOCK_TRIP = {
   created_at: new Date().toISOString(),
 };
 
+const MOCK_TRIP_LOCKED = {
+  ...MOCK_TRIP,
+  id: "trip-locked-001",
+  locked_destination_title: "St Andrews",
+  locked_destination_location: "St Andrews, Scotland",
+  locked_destination_at: new Date().toISOString(),
+};
+
 const MOCK_TRIP_WITH_EVENT = {
   ...MOCK_TRIP,
   id: "trip-with-event-001",
@@ -41,20 +50,28 @@ const MOCK_TRIP_WITH_EVENT = {
 
 const MOCK_MEMBERS = [
   {
+    id: "member-001",
     trip_id: TRIP_ID,
     user_id: MOCK_USER_ID,
     role: "Owner",
     status: "in",
     joined_at: new Date().toISOString(),
-    user: { id: MOCK_USER_ID, name: "Test User", nickname: null, email: "test@example.com" },
+    user: { id: MOCK_USER_ID, name: "Test User", nickname: null, email: "test@example.com", is_guest: false },
+    memberId: MOCK_USER_ID,
+    isGuest: false,
+    displayName: "Test User",
   },
   {
+    id: "member-002",
     trip_id: TRIP_ID,
     user_id: "user-002",
     role: "Member",
     status: "maybe",
     joined_at: new Date().toISOString(),
-    user: { id: "user-002", name: "Jane Doe", nickname: null, email: "jane@example.com" },
+    user: { id: "user-002", name: "Jane Doe", nickname: null, email: "jane@example.com", is_guest: false },
+    memberId: "user-002",
+    isGuest: false,
+    displayName: "Jane Doe",
   },
 ];
 
@@ -66,6 +83,8 @@ const MOCK_QUICK_TILES = [
     value: "Fairmont St Andrews",
     icon: "hotel",
     sort_order: 0,
+    created_by: null,
+    created_at: new Date().toISOString(),
   },
 ];
 
@@ -138,7 +157,25 @@ function setupMocks(page: import("@playwright/test").Page, tripData = MOCK_TRIP)
         return;
       }
 
+      if (url.includes("ideas.list")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ result: { data: [] } }]),
+        });
+        return;
+      }
+
       if (url.includes("reservations.list")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ result: { data: [] } }]),
+        });
+        return;
+      }
+
+      if (url.includes("expenses.list")) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -166,29 +203,59 @@ function setupMocks(page: import("@playwright/test").Page, tripData = MOCK_TRIP)
   ]);
 }
 
-test.describe("TripDetail shell", () => {
-  test("renders trip title and header", async ({ page }) => {
+test.describe("TripDetail — SPEC 2 structure", () => {
+  test("renders trip title and header with TBD state", async ({ page }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
 
     await expect(page.getByTestId("trip-title")).toContainText(
       "Scotland Golf Adventure"
     );
+
+    // Should show location since trip has one
+    await expect(page.getByText("St Andrews, Scotland")).toBeVisible();
   });
 
-  test("renders bottom navigation with 4 tabs (no comp when no event_id)", async ({
+  test("shows inline tab bar with 4 tabs: Home, Schedule, Crew, Competition", async ({
     page,
   }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
 
+    // Inline tab bar (in body, not bottom nav)
     await expect(page.getByTestId("tab-home")).toBeVisible();
     await expect(page.getByTestId("tab-schedule")).toBeVisible();
     await expect(page.getByTestId("tab-crew")).toBeVisible();
-    await expect(page.getByTestId("tab-more")).toBeVisible();
+    await expect(page.getByTestId("tab-comp")).toBeVisible();
+  });
 
-    // Comp tab should NOT be present when event_id is null
-    await expect(page.getByTestId("tab-comp")).not.toBeVisible();
+  test("shows trip bottom nav with Trip Home and Messages", async ({
+    page,
+  }) => {
+    await setupMocks(page);
+    await page.goto(`/trips/${TRIP_ID}`);
+
+    // Context-aware bottom nav for inside a trip
+    await expect(page.getByTestId("nav-trip-home")).toBeVisible();
+    await expect(page.getByTestId("nav-messages")).toBeVisible();
+    // Live should be hidden (no event_id)
+    await expect(page.getByTestId("nav-live")).not.toBeVisible();
+  });
+
+  test("shows settings icon for owner and opens settings modal", async ({
+    page,
+  }) => {
+    await setupMocks(page);
+    await page.goto(`/trips/${TRIP_ID}`);
+
+    const settingsBtn = page.getByTestId("trip-settings-btn");
+    await expect(settingsBtn).toBeVisible();
+
+    await settingsBtn.click();
+
+    // Settings modal should appear with edit form and delete button
+    await expect(page.getByTestId("edit-title")).toBeVisible();
+    await expect(page.getByTestId("delete-trip-btn")).toBeVisible();
   });
 
   test("switches to Crew tab and shows members list", async ({ page }) => {
@@ -206,7 +273,7 @@ test.describe("TripDetail shell", () => {
     await expect(page.getByTestId("rsvp-out")).toBeVisible();
   });
 
-  test("switches to Schedule tab and shows empty date poll", async ({
+  test("switches to Schedule tab and shows date poll + expenses", async ({
     page,
   }) => {
     await setupMocks(page);
@@ -214,28 +281,49 @@ test.describe("TripDetail shell", () => {
 
     await page.getByTestId("tab-schedule").click();
 
-    // Should show "No date options yet"
+    // Should show date poll section
     await expect(page.getByText("No date options yet")).toBeVisible();
+
+    // Expenses section should be present (moved from More tab)
+    await expect(page.getByText("Expenses")).toBeVisible();
+    await expect(page.getByText("No expenses recorded yet")).toBeVisible();
   });
 
-  test("switches to More tab and shows edit form and delete button for owner", async ({
+  test("shows planning progress arc for owner", async ({ page }) => {
+    await setupMocks(page);
+    await page.goto(`/trips/${TRIP_ID}`);
+
+    // Planning progress arc visible for canEdit users
+    await expect(page.getByText("Planning Progress")).toBeVisible();
+    await expect(page.getByText(/Destination locked/)).toBeVisible();
+    await expect(page.getByText(/Dates set/)).toBeVisible();
+  });
+
+  test("shows date summary card on Home tab", async ({ page }) => {
+    await setupMocks(page);
+    await page.goto(`/trips/${TRIP_ID}`);
+
+    // Trip has dates set, so should show "Dates Locked" card
+    await expect(page.getByText("Dates Locked")).toBeVisible();
+  });
+
+  test("shows comp tab always and displays setup CTA when no event", async ({
     page,
   }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
 
-    await page.getByTestId("tab-more").click();
+    // Competition tab is always visible now
+    await page.getByTestId("tab-comp").click();
 
-    // Edit form visible for owner (who is also canEdit)
-    await expect(page.getByTestId("edit-title")).toBeVisible();
-    await expect(page.getByTestId("save-trip-btn")).toBeVisible();
-
-    // Delete button visible for owner
-    await expect(page.getByTestId("delete-trip-btn")).toBeVisible();
+    // No event — should show setup CTA
+    await expect(page.getByText("No competition set up yet")).toBeVisible();
+    await expect(page.getByTestId("setup-competition-btn")).toBeVisible();
   });
 
-  test("shows comp tab when trip has event_id", async ({ page }) => {
-    // Override mocks for a trip with an event
+  test("shows comp tab with event info when trip has event_id", async ({
+    page,
+  }) => {
     await Promise.all([
       page.route("**/auth/v1/**", async (route) => {
         const url = route.request().url();
@@ -267,13 +355,11 @@ test.describe("TripDetail shell", () => {
           await route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify([
-              {
-                result: {
-                  data: [{ ...MOCK_MEMBERS[0], trip_id: MOCK_TRIP_WITH_EVENT.id }],
-                },
+            body: JSON.stringify([{
+              result: {
+                data: [{ ...MOCK_MEMBERS[0], trip_id: MOCK_TRIP_WITH_EVENT.id }],
               },
-            ]),
+            }]),
           });
           return;
         }
@@ -281,35 +367,24 @@ test.describe("TripDetail shell", () => {
           await route.fulfill({
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify([
-              {
-                result: {
-                  data: {
-                    id: "event-test-001",
-                    title: "Ryder Cup Classic",
-                    subtitle: "Europe vs USA",
-                    motto: "May the best team win",
-                    location: "St Andrews",
-                    dates: "Jun 15–18, 2026",
-                    status: "upcoming",
-                    competition_type: "RYDER_CUP",
-                    trip_id: MOCK_TRIP_WITH_EVENT.id,
-                  },
+            body: JSON.stringify([{
+              result: {
+                data: {
+                  id: "event-test-001",
+                  title: "Ryder Cup Classic",
+                  subtitle: "Europe vs USA",
+                  motto: "May the best team win",
+                  location: "St Andrews",
+                  dates: "Jun 15–18, 2026",
+                  status: "upcoming",
+                  trip_id: MOCK_TRIP_WITH_EVENT.id,
                 },
               },
-            ]),
+            }]),
           });
           return;
         }
-        if (url.includes("teams.list")) {
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify([{ result: { data: [] } }]),
-          });
-          return;
-        }
-        if (url.includes("rounds.list")) {
+        if (url.includes("teams.list") || url.includes("rounds.list")) {
           await route.fulfill({
             status: 200,
             contentType: "application/json",
@@ -327,8 +402,8 @@ test.describe("TripDetail shell", () => {
 
     await page.goto(`/trips/${MOCK_TRIP_WITH_EVENT.id}`);
 
-    // Comp tab should be visible when event_id is set
-    await expect(page.getByTestId("tab-comp")).toBeVisible();
+    // Bottom nav should show Live link when event_id exists
+    await expect(page.getByTestId("nav-live")).toBeVisible();
 
     // Click comp tab and verify event info
     await page.getByTestId("tab-comp").click();

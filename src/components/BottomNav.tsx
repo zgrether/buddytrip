@@ -1,36 +1,48 @@
 "use client";
 
 import type { FC } from "react";
-import { Home, Calendar, Users, Trophy, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { Home, Plus, Activity, MessageSquare, type LucideIcon } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 
-export type TabId = "home" | "schedule" | "crew" | "comp" | "more";
+// ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
+// This is the old "tab" concept — now handled by TripTabBar.tsx
+// Re-export TabId for backwards compat during transition
+export type TabId = "home" | "schedule" | "crew" | "comp";
 
-interface Tab {
-  id: TabId;
+// ── Bottom nav item ────────────────────────────────────────────────────────
+
+interface NavItem {
+  id: string;
   label: string;
   Icon: LucideIcon;
+  href: string;
+  badge?: number;
+  hidden?: boolean;
 }
 
-const ALL_TABS: Tab[] = [
-  { id: "home", label: "Home", Icon: Home },
-  { id: "schedule", label: "Schedule", Icon: Calendar },
-  { id: "crew", label: "Crew", Icon: Users },
-  { id: "comp", label: "Comp", Icon: Trophy },
-  { id: "more", label: "More", Icon: MoreHorizontal },
-];
+// ── Outside-trip bottom nav (Dashboard, TripNew, etc.) ─────────────────────
 
-interface BottomNavProps {
-  activeTab: TabId;
-  onTabChange: (tab: TabId) => void;
-  showComp?: boolean;
+interface GlobalBottomNavProps {
+  activeTripId?: string | null; // most recent active trip for "Live" link
 }
 
-export const BottomNav: FC<BottomNavProps> = ({
-  activeTab,
-  onTabChange,
-  showComp = false,
-}) => {
-  const tabs = showComp ? ALL_TABS : ALL_TABS.filter((t) => t.id !== "comp");
+export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const items: NavItem[] = [
+    { id: "home", label: "Home", Icon: Home, href: "/dashboard" },
+    { id: "new", label: "New Trip", Icon: Plus, href: "/trips/new" },
+    {
+      id: "live",
+      label: "Live",
+      Icon: Activity,
+      href: activeTripId ? `/trips/${activeTripId}/leaderboard` : "#",
+      hidden: !activeTripId,
+    },
+  ];
+
+  const visibleItems = items.filter((i) => !i.hidden);
 
   return (
     <nav
@@ -41,27 +53,92 @@ export const BottomNav: FC<BottomNavProps> = ({
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      {tabs.map(({ id, label, Icon }) => {
-        const active = activeTab === id;
+      {visibleItems.map(({ id, label, Icon, href }) => {
+        const active = pathname === href || (id === "home" && pathname === "/dashboard");
         return (
           <button
             key={id}
-            data-testid={`tab-${id}`}
-            onClick={() => onTabChange(id)}
+            data-testid={`nav-${id}`}
+            onClick={() => router.push(href)}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-            aria-pressed={active}
           >
-            <Icon
-              size={22}
-              style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-            />
-            <span
-              className="text-[10px] font-medium"
-              style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-            >
-              {label}
-            </span>
+            <Icon size={22} />
+            <span className="text-[10px] font-medium">{label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+};
+
+// ── Inside-trip bottom nav ─────────────────────────────────────────────────
+
+interface TripBottomNavProps {
+  tripId: string;
+  eventId?: string | null;
+  unreadMessages?: number;
+}
+
+export const TripBottomNav: FC<TripBottomNavProps> = ({
+  tripId,
+  eventId,
+  unreadMessages = 0,
+}) => {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const items: NavItem[] = [
+    { id: "trip-home", label: "Trip Home", Icon: Home, href: `/trips/${tripId}` },
+    {
+      id: "messages",
+      label: "Messages",
+      Icon: MessageSquare,
+      href: `/trips/${tripId}/messages`,
+      badge: unreadMessages,
+    },
+    {
+      id: "live",
+      label: "Live",
+      Icon: Activity,
+      href: `/trips/${tripId}/leaderboard`,
+      hidden: !eventId,
+    },
+  ];
+
+  const visibleItems = items.filter((i) => !i.hidden);
+
+  return (
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 mx-auto flex max-w-lg items-stretch"
+      style={{
+        background: "var(--color-bt-card)",
+        borderTop: "1px solid var(--color-bt-border)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
+      {visibleItems.map(({ id, label, Icon, href, badge }) => {
+        const active =
+          pathname === href ||
+          (id === "trip-home" && pathname === `/trips/${tripId}`);
+        return (
+          <button
+            key={id}
+            data-testid={`nav-${id}`}
+            onClick={() => router.push(href)}
+            className="relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
+            style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+          >
+            <Icon size={22} />
+            <span className="text-[10px] font-medium">{label}</span>
+            {badge != null && badge > 0 && (
+              <span
+                className="absolute right-1/4 top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+                style={{ background: "var(--color-bt-danger)" }}
+              >
+                {badge > 99 ? "99+" : badge}
+              </span>
+            )}
           </button>
         );
       })}
