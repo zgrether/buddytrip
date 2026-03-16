@@ -11,10 +11,13 @@ describe("suggestDestinations", () => {
     mockFetch.mockReset();
   });
 
-  it("returns empty array when ANTHROPIC_API_KEY is not set", async () => {
+  it("returns mock suggestions when ANTHROPIC_API_KEY is not set", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     const result = await suggestDestinations("6 guys, links lovers");
-    expect(result).toEqual([]);
+    expect(result).toHaveLength(3);
+    expect(result[0].title).toBe("Scottsdale Golf Getaway");
+    expect(result[1].location).toBe("Myrtle Beach, SC");
+    expect(result[2].title).toBe("Pinehurst Village");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
