@@ -13,7 +13,6 @@ import {
   Check,
   Calendar,
   Users,
-  MessageSquare,
   MapPin,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -642,56 +641,6 @@ function AboutCard({ trip }: { trip: TripData }) {
   );
 }
 
-// ── Messages Panel ───────────────────────────────────────────────────────
-
-function MessagesPanel({ tripId }: { tripId: string }) {
-  const router = useRouter();
-  const { data: messages = [] } = trpc.messages.list.useQuery({
-    tripId,
-    channel: "trip",
-    limit: 3,
-  });
-
-  return (
-    <section
-      className="rounded-xl overflow-hidden"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2">
-          <MessageSquare size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Messages
-          </p>
-        </div>
-        <button
-          data-testid="messages-see-all"
-          onClick={() => router.push(`/trips/${tripId}/messages`)}
-          className="flex items-center gap-1 text-xs font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          See all <ChevronRight size={14} />
-        </button>
-      </div>
-      {messages.length > 0 ? (
-        <div className="px-4 pb-4 space-y-2">
-          {messages.map((msg) => (
-            <p key={msg.id} className="text-xs truncate" style={{ color: "var(--color-bt-text-dim)" }}>
-              {msg.text}
-            </p>
-          ))}
-        </div>
-      ) : (
-        <div className="px-4 pb-4">
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            No messages yet. Start the conversation.
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
-
 // ── HomeTab ──────────────────────────────────────────────────────────────
 
 export function HomeTab({
@@ -731,8 +680,6 @@ export function HomeTab({
       {/* 4. About card */}
       <AboutCard trip={trip} />
 
-      {/* 5. Messages panel */}
-      <MessagesPanel tripId={trip.id} />
     </div>
   );
 }
