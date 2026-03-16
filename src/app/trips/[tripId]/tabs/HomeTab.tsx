@@ -9,6 +9,7 @@ import {
   Zap,
   ChevronRight,
   Pencil,
+  X,
   Trophy,
   Check,
   Calendar,
@@ -98,19 +99,28 @@ function AddTileModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0"
         style={{ background: "var(--color-bt-overlay)" }}
         onClick={onClose}
       />
       <div
-        className="relative w-full max-w-lg rounded-2xl p-6 space-y-4"
+        className="relative w-full max-w-sm rounded-2xl p-5 space-y-4"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
-        <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Add Info Tile
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Add Info Tile
+          </h3>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={18} />
+          </button>
+        </div>
         <input
           placeholder="Label (e.g. Hotel)"
           value={label}
@@ -180,19 +190,28 @@ function EditTileModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0"
         style={{ background: "var(--color-bt-overlay)" }}
         onClick={onClose}
       />
       <div
-        className="relative w-full max-w-lg rounded-2xl p-6 space-y-4"
+        className="relative w-full max-w-sm rounded-2xl p-5 space-y-4"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
-        <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Edit Tile
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Edit Tile
+          </h3>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={18} />
+          </button>
+        </div>
         <input
           placeholder="Label"
           value={label}
@@ -341,17 +360,17 @@ function CompetitionPanel({ trip, canEdit }: { trip: TripData; canEdit: boolean 
 
 function QuickInfoSection({
   tripId,
-  canEdit,
+  isOwner,
 }: {
   tripId: string;
-  canEdit: boolean;
+  isOwner: boolean;
 }) {
   const [showAddTile, setShowAddTile] = useState(false);
   const [editingTile, setEditingTile] = useState<QuickTile | null>(null);
 
   const { data: tiles = [] } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
-  if (tiles.length === 0 && !canEdit) return null;
+  if (tiles.length === 0 && !isOwner) return null;
 
   return (
     <section>
@@ -359,7 +378,7 @@ function QuickInfoSection({
         <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
           Quick Info
         </h2>
-        {canEdit && (
+        {isOwner && (
           <button
             data-testid="add-tile-btn"
             onClick={() => setShowAddTile(true)}
@@ -393,7 +412,7 @@ function QuickInfoSection({
               <p className="text-xs font-medium pr-4" style={{ color: "var(--color-bt-text)" }}>
                 {tile.value}
               </p>
-              {canEdit && (
+              {isOwner && (
                 <button
                   data-testid={`tile-edit-${tile.id}`}
                   onClick={() => setEditingTile(tile)}
@@ -612,6 +631,7 @@ function AboutCard({ trip }: { trip: TripData }) {
 export function HomeTab({
   trip,
   canEdit: canEditProp,
+  isOwner,
   onTabChange,
 }: TabProps & { onTabChange?: (tab: string) => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
@@ -629,7 +649,7 @@ export function HomeTab({
       <CompetitionPanel trip={trip} canEdit={canEditProp} />
 
       {/* 2. Quick Info Tiles */}
-      <QuickInfoSection tripId={trip.id} canEdit={canEditProp} />
+      <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
 
       {/* 3. Planning Arc — canEdit only, hidden when completed */}
       {showPlanningArc && (
