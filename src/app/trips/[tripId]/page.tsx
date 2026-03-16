@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -21,47 +21,6 @@ export default function TripDetailPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
-
-  const TABS: TabId[] = ["home", "schedule", "crew", "comp"];
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const gestureDir = useRef<"horizontal" | "vertical" | null>(null);
-  const [dragOffset, setDragOffset] = useState(0);
-
-  function handleTouchStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    gestureDir.current = null;
-  }
-
-  function handleTouchMove(e: React.TouchEvent) {
-    if (touchStartX.current === null || touchStartY.current === null) return;
-    const dx = e.touches[0].clientX - touchStartX.current;
-    const dy = e.touches[0].clientY - touchStartY.current;
-
-    // Lock gesture direction on first meaningful movement
-    if (gestureDir.current === null && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
-      gestureDir.current = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
-    }
-    if (gestureDir.current !== "horizontal") return;
-
-    const idx = TABS.indexOf(activeTab);
-    const atEdge = (dx > 0 && idx === 0) || (dx < 0 && idx === TABS.length - 1);
-    // Rubber-band at edges, clamp at 60px in the middle
-    setDragOffset(atEdge ? dx * 0.15 : Math.max(-60, Math.min(60, dx)));
-  }
-
-  function handleTouchEnd(e: React.TouchEvent) {
-    if (touchStartX.current === null) return;
-    const delta = e.changedTouches[0].clientX - touchStartX.current;
-    touchStartX.current = null;
-    touchStartY.current = null;
-    setDragOffset(0); // spring back (transition fires here)
-    if (gestureDir.current !== "horizontal" || Math.abs(delta) < 50) return;
-    const idx = TABS.indexOf(activeTab);
-    if (delta < 0 && idx < TABS.length - 1) setActiveTab(TABS[idx + 1]);
-    if (delta > 0 && idx > 0) setActiveTab(TABS[idx - 1]);
-  }
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -158,16 +117,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main
-        className="mx-auto max-w-lg pb-24 pt-4"
-        style={{
-          transform: `translateX(${dragOffset}px)`,
-          transition: dragOffset === 0 ? "transform 0.25s ease-out" : "none",
-        }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      <main className="mx-auto max-w-lg pb-24 pt-4">
         {activeTab === "home" && (
           <HomeTab
             trip={trip}
