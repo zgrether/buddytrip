@@ -2,23 +2,25 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, Calendar, Lock } from "lucide-react";
+import { ArrowLeft, MapPin, Calendar, MoreHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
-import { BottomNav, type TabId } from "@/components/BottomNav";
+import { TripBottomNav, type TabId } from "@/components/BottomNav";
+import { TripTabBar } from "@/components/TripTabBar";
 import { StatusBadge, getTripStatus } from "@/components/StatusBadge";
-// Tab content components (filled in tasks 2.4–2.8)
+import { LocationHero } from "@/components/LocationHero";
+import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
-import { MoreTab } from "./tabs/MoreTab";
 import { formatDateRange } from "@/lib/dates";
 
 export default function TripDetailPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [showSettings, setShowSettings] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -60,8 +62,10 @@ export default function TripDetailPage() {
     );
   }
 
-  const showComp = !!trip.event_id;
   const status = getTripStatus(trip);
+  const isLocked = !!trip.locked_destination_title;
+  const destLocation = trip.locked_destination_location ?? trip.location;
+  const hasDates = !!(trip.start_date || trip.end_date);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -69,13 +73,12 @@ export default function TripDetailPage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <header
+      {/* ── Top bar (back button) ─────────────────────────────────────────── */}
+      <div
         className="sticky top-0 z-40"
-        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
+        style={{ background: "var(--color-bt-base)" }}
       >
-        {/* Row 1: back + title */}
-        <div className="flex h-14 items-center gap-3 px-4">
+        <div className="flex h-12 items-center justify-between px-4">
           <button
             onClick={() => router.push("/dashboard")}
             className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
@@ -85,10 +88,36 @@ export default function TripDetailPage() {
             <ArrowLeft size={20} />
           </button>
 
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          {isOwner && (
+            <button
+              data-testid="trip-settings-btn"
+              onClick={() => setShowSettings(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              aria-label="Trip settings"
+            >
+              <MoreHorizontal size={20} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Trip header card ──────────────────────────────────────────────── */}
+      <div className="mx-auto max-w-lg px-4">
+        {/* LocationHero when locked */}
+        {isLocked && destLocation && (
+          <LocationHero
+            location={destLocation}
+            tripName={trip.title}
+          />
+        )}
+
+        {/* Trip info */}
+        <div className={isLocked && destLocation ? "mt-3" : ""}>
+          <div className="flex items-center gap-2">
             <h1
               data-testid="trip-title"
-              className="truncate text-base font-semibold"
+              className="text-lg font-bold"
               style={{ color: "var(--color-bt-text)" }}
             >
               {trip.title}
@@ -96,37 +125,64 @@ export default function TripDetailPage() {
             <StatusBadge status={status} />
           </div>
 
-          {trip.locked_destination_title && (
-            <Lock size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
-          )}
-        </div>
-
-        {/* Row 2: location + dates */}
-        {(trip.location || trip.start_date || trip.end_date) && (
+          {/* Destination + dates sub-line */}
           <div
-            className="flex items-center gap-4 px-4 pb-3"
+            className="mt-1 flex flex-wrap items-center gap-3 text-xs"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            {trip.location && (
-              <span className="flex items-center gap-1 text-xs">
-                <MapPin size={12} />
+            {isLocked ? (
+              <span className="flex items-center gap-1">
+                <MapPin size={11} />
+                {trip.locked_destination_title}
+                {destLocation && destLocation !== trip.locked_destination_title && `, ${destLocation}`}
+              </span>
+            ) : trip.location ? (
+              <span className="flex items-center gap-1">
+                <MapPin size={11} />
                 {trip.location}
               </span>
+            ) : (
+              <span style={{ color: "var(--color-bt-text-dim)" }}>
+                Destination: TBD
+              </span>
             )}
-            {(trip.start_date || trip.end_date) && (
-              <span className="flex items-center gap-1 text-xs">
-                <Calendar size={12} />
+
+            {hasDates ? (
+              <span className="flex items-center gap-1">
+                <Calendar size={11} />
                 {formatDateRange(trip.start_date, trip.end_date)}
+              </span>
+            ) : (
+              <span style={{ color: "var(--color-bt-text-dim)" }}>
+                Dates: TBD
               </span>
             )}
           </div>
-        )}
-      </header>
+
+          {/* Description */}
+          {trip.description && (
+            <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {trip.description}
+            </p>
+          )}
+        </div>
+
+        {/* ── Tab bar (inline, in body) ────────────────────────────────────── */}
+        <div className="mt-4">
+          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        </div>
+      </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
       <main className="mx-auto max-w-lg pb-24 pt-4">
         {activeTab === "home" && (
-          <HomeTab trip={trip} role={role} canEdit={canEdit} />
+          <HomeTab
+            trip={trip}
+            role={role}
+            canEdit={canEdit}
+            isOwner={isOwner}
+            onTabChange={(tab) => setActiveTab(tab as TabId)}
+          />
         )}
         {activeTab === "schedule" && (
           <ScheduleTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
@@ -137,17 +193,20 @@ export default function TripDetailPage() {
         {activeTab === "comp" && (
           <CompTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
         )}
-        {activeTab === "more" && (
-          <MoreTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
-        )}
       </main>
 
-      {/* ── Bottom navigation ────────────────────────────────────────────── */}
-      <BottomNav
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        showComp={showComp}
-      />
+      {/* ── Bottom navigation (Trip context) ──────────────────────────────── */}
+      <TripBottomNav tripId={tripId} eventId={trip.event_id} />
+
+      {/* ── Settings modal ─────────────────────────────────────────────────── */}
+      {showSettings && (
+        <TripSettingsModal
+          trip={trip}
+          isOwner={isOwner}
+          canEdit={canEdit}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }

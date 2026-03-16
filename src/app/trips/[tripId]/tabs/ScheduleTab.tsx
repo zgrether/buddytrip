@@ -14,6 +14,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { parseLocalDate } from "@/lib/dates";
+import { ExpensesSection, type ExpenseMember } from "./ExpensesSection";
 import type { TabProps } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -108,7 +109,6 @@ function DatePollSection({
           if (w.id !== vars.windowId) return w;
           const existingVote = w.votes.find((v) => v.user_id === currentUser?.id);
           if (existingVote) {
-            // Toggle: if same answer remove it, if different answer update it
             if (existingVote.answer === vars.answer) {
               return { ...w, votes: w.votes.filter((v) => v.user_id !== currentUser?.id) };
             }
@@ -381,6 +381,8 @@ function ReservationsSection({
 // ── ScheduleTab ─────────────────────────────────────────────────────────
 
 export function ScheduleTab({ trip, canEdit }: TabProps) {
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
+
   return (
     <div className="space-y-6 px-4">
       <section>
@@ -401,6 +403,21 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
           Reservations
         </h2>
         <ReservationsSection tripId={trip.id} canEdit={canEdit} />
+      </section>
+
+      {/* Expenses — moved from More tab per SPEC 2 */}
+      <section>
+        <h2
+          className="mb-3 text-sm font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Expenses
+        </h2>
+        <ExpensesSection
+          tripId={trip.id}
+          members={members as ExpenseMember[]}
+          canEdit={canEdit}
+        />
       </section>
     </div>
   );
