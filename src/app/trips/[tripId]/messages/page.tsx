@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Send, MessageSquare, Users } from "lucide-react";
+import { useParams } from "next/navigation";
+import { Send, MessageSquare, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import { TripBottomNav } from "@/components/BottomNav";
+import { TopNav } from "@/components/TopNav";
+import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -121,16 +123,12 @@ function ChatPane({
   // ── Send ────────────────────────────────────────────────────────────────
   const sendMessage = trpc.messages.send.useMutation({
     onSuccess: async (data) => {
-      // Wait for the refetch to complete before removing the optimistic
-      // message. Otherwise the cache is empty during the refetch and the
-      // "no messages" placeholder / old list flashes on screen.
       await utils.messages.list.invalidate({ tripId, channel, teamId });
       setOptimisticMessages((prev) =>
         prev.filter((m) => m.id !== (data as unknown as Message).id)
       );
     },
     onError: (_, variables) => {
-      // Remove failed optimistic message
       setOptimisticMessages((prev) =>
         prev.filter((m) => m.id !== variables.id)
       );
@@ -138,8 +136,6 @@ function ChatPane({
   });
 
   const handleSend = useCallback(() => {
-    // Read from DOM ref as source of truth — guards against native events
-    // that update the DOM without firing React's synthetic onChange.
     const current = textareaRef.current?.value ?? text;
     const trimmed = current.trim();
     if (!trimmed || sendMessage.isPending) return;
@@ -147,7 +143,6 @@ function ChatPane({
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Optimistic message
     setOptimisticMessages((prev) => [
       ...prev,
       {
@@ -244,7 +239,6 @@ type ChatChannel = "trip" | "team";
 
 export default function TripMessagesPage() {
   const { tripId } = useParams<{ tripId: string }>();
-  const router = useRouter();
   const currentUser = useCurrentUser();
   const myUserId = currentUser?.id ?? "";
 
@@ -252,6 +246,7 @@ export default function TripMessagesPage() {
   const [activeTeamId, setActiveTeamId] = useState<string | undefined>();
 
   // ── Data ──────────────────────────────────────────────────────────────
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: event } = trpc.events.getByTrip.useQuery({ tripId });
   const { data: myAssignments = [] } = trpc.teamAssignments.list.useQuery(
@@ -284,75 +279,60 @@ export default function TripMessagesPage() {
       className="flex h-dvh flex-col"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Header */}
-      <header
-        className="flex-shrink-0"
-        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <div className="flex h-14 items-center gap-3 px-4">
-          <button
-            onClick={() => router.push(`/trips/${tripId}`)}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text)" }}
-            aria-label="Back to trip"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <h1
-            data-testid="messages-heading"
-            className="flex-1 text-base font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {activeChannel === "team" && activeTeam
-              ? `${activeTeam.name} Chat`
-              : "Trip Chat"}
-          </h1>
-        </div>
+      {/* Top nav + breadcrumb */}
+      <TopNav />
+      <TripBreadcrumb
+        tripId={tripId}
+        tripTitle={trip?.title ?? "…"}
+        pageName="Messages"
+      />
 
-        {/* Channel selector */}
-        <div className="flex gap-1 px-4 pb-3">
+      {/* Channel selector */}
+      <div
+        className="flex-shrink-0 flex gap-1 px-4 py-2"
+        style={{ borderBottom: "1px solid var(--color-bt-border)", background: "var(--color-bt-card)" }}
+      >
+        <button
+          data-testid="channel-trip"
+          onClick={() => setActiveChannel("trip")}
+          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
+          style={{
+            background:
+              activeChannel === "trip" ? "var(--color-bt-accent-faint)" : "transparent",
+            border: `1px solid ${activeChannel === "trip" ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+            color: activeChannel === "trip" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+          }}
+        >
+          <MessageSquare size={12} />
+          Trip
+        </button>
+
+        {myTeams.map((team) => (
           <button
-            data-testid="channel-trip"
-            onClick={() => setActiveChannel("trip")}
+            key={team.id}
+            data-testid={`channel-team-${team.id}`}
+            onClick={() => {
+              setActiveChannel("team");
+              setActiveTeamId(team.id);
+            }}
             className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
             style={{
               background:
-                activeChannel === "trip" ? "var(--color-bt-accent-faint)" : "transparent",
-              border: `1px solid ${activeChannel === "trip" ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-              color: activeChannel === "trip" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                activeChannel === "team" && resolvedTeamId === team.id
+                  ? `${team.color}22`
+                  : "transparent",
+              border: `1px solid ${activeChannel === "team" && resolvedTeamId === team.id ? team.color : "var(--color-bt-border)"}`,
+              color:
+                activeChannel === "team" && resolvedTeamId === team.id
+                  ? team.color
+                  : "var(--color-bt-text-dim)",
             }}
           >
-            <MessageSquare size={12} />
-            Trip
+            <Users size={12} />
+            {team.short_name}
           </button>
-
-          {myTeams.map((team) => (
-            <button
-              key={team.id}
-              data-testid={`channel-team-${team.id}`}
-              onClick={() => {
-                setActiveChannel("team");
-                setActiveTeamId(team.id);
-              }}
-              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all"
-              style={{
-                background:
-                  activeChannel === "team" && resolvedTeamId === team.id
-                    ? `${team.color}22`
-                    : "transparent",
-                border: `1px solid ${activeChannel === "team" && resolvedTeamId === team.id ? team.color : "var(--color-bt-border)"}`,
-                color:
-                  activeChannel === "team" && resolvedTeamId === team.id
-                    ? team.color
-                    : "var(--color-bt-text-dim)",
-              }}
-            >
-              <Users size={12} />
-              {team.short_name}
-            </button>
-          ))}
-        </div>
-      </header>
+        ))}
+      </div>
 
       {/* Chat pane — key forces re-mount when channel changes */}
       {myUserId && (
