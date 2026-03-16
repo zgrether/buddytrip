@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
-  ArrowLeft,
   Trophy,
   Users,
   Info,
@@ -17,6 +16,8 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav } from "@/components/BottomNav";
+import { TopNav } from "@/components/TopNav";
+import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
   computeScores,
   computeRemaining,
@@ -52,7 +53,6 @@ const FORMAT_LABEL: Record<string, string> = {
 
 export default function LeaderboardPage() {
   const params = useParams();
-  const router = useRouter();
   const tripId = params.tripId as string;
   const [tab, setTab] = useState<TabId>("overview");
 
@@ -245,19 +245,32 @@ export default function LeaderboardPage() {
   if (!event) {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}>
-        <header className="flex items-center gap-3 px-4 py-4">
-          <button onClick={() => router.push(`/trips/${tripId}`)} aria-label="Back to trip">
-            <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-          </button>
-          <h1 className="text-lg font-bold">Competition</h1>
-        </header>
-        <p className="px-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+        <TopNav />
+        <TripBreadcrumb tripId={tripId} tripTitle={trip?.title ?? "…"} pageName="Competition" />
+        <p className="px-4 pt-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No competition set up yet.
         </p>
         <TripBottomNav tripId={tripId} />
       </div>
     );
   }
+
+  const shareButton = (
+    <button
+      data-testid="share-btn"
+      onClick={() => shareLink.mutate({ tripId, eventId })}
+      disabled={shareLink.isPending}
+      className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all"
+      style={{
+        background: shareCopied ? "var(--color-bt-accent-faint)" : shareError ? "var(--color-bt-danger-bg)" : "var(--color-bt-subtle-border)",
+        color: shareCopied ? "var(--color-bt-accent)" : shareError ? "var(--color-bt-danger)" : "var(--color-bt-text-dim)",
+      }}
+      aria-label="Share scoreboard"
+    >
+      {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+      {shareCopied ? "Copied!" : shareError ? "Copy failed" : "Share"}
+    </button>
+  );
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -266,38 +279,14 @@ export default function LeaderboardPage() {
       className="mx-auto min-h-screen max-w-xl pb-24"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-4">
-        <button
-          data-testid="back-btn"
-          onClick={() => router.push(`/trips/${tripId}`)}
-          aria-label="Back to trip"
-        >
-          <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-bold">{event.title}</h1>
-          {event.subtitle && (
-            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {event.subtitle}
-            </p>
-          )}
-        </div>
-        <button
-          data-testid="share-btn"
-          onClick={() => shareLink.mutate({ tripId, eventId })}
-          disabled={shareLink.isPending}
-          className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-all"
-          style={{
-            background: shareCopied ? "var(--color-bt-accent-faint)" : shareError ? "var(--color-bt-danger-bg)" : "var(--color-bt-subtle-border)",
-            color: shareCopied ? "var(--color-bt-accent)" : shareError ? "var(--color-bt-danger)" : "var(--color-bt-text-dim)",
-          }}
-          aria-label="Share scoreboard"
-        >
-          {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
-          {shareCopied ? "Copied!" : shareError ? "Copy failed" : "Share"}
-        </button>
-      </header>
+      {/* Top nav + breadcrumb */}
+      <TopNav />
+      <TripBreadcrumb
+        tripId={tripId}
+        tripTitle={trip?.title ?? "…"}
+        pageName="Competition"
+        rightSlot={shareButton}
+      />
 
       {/* Tab bar */}
       <div

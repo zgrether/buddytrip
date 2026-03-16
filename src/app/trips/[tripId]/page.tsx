@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MoreHorizontal, Save, X } from "lucide-react";
+import { MoreHorizontal, Save, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -10,6 +10,8 @@ import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { LocationHero } from "@/components/LocationHero";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
+import { TopNav } from "@/components/TopNav";
+import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
@@ -164,43 +166,34 @@ export default function TripDetailPage() {
   const status = getTripStatus(trip);
   const destLocation = trip.locked_destination_location ?? trip.location;
 
+  const settingsButton = isOwner ? (
+    <button
+      data-testid="trip-settings-btn"
+      onClick={() => setShowSettings(true)}
+      className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+      style={{ color: "var(--color-bt-text-dim)" }}
+      aria-label="Trip settings"
+    >
+      <MoreHorizontal size={18} />
+    </button>
+  ) : null;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* ── Top bar ───────────────────────────────────────────────────────── */}
-      <div
-        className="sticky top-0 z-40"
-        style={{ background: "var(--color-bt-base)" }}
-      >
-        <div className="flex h-12 items-center justify-between px-4">
-          <button
-            onClick={() => activeTab === "home" ? router.push("/dashboard") : setActiveTab("home")}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text)" }}
-            aria-label={activeTab === "home" ? "Back to dashboard" : "Back to home"}
-          >
-            <ArrowLeft size={20} />
-          </button>
-
-          {isOwner && (
-            <button
-              data-testid="trip-settings-btn"
-              onClick={() => setShowSettings(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              aria-label="Trip settings"
-            >
-              <MoreHorizontal size={20} />
-            </button>
-          )}
-        </div>
-      </div>
+      {/* ── Top nav + breadcrumb ──────────────────────────────────────────── */}
+      <TopNav />
+      <TripBreadcrumb
+        tripId={tripId}
+        tripTitle={trip.title}
+        rightSlot={settingsButton}
+      />
 
       {/* ── Trip hero card ────────────────────────────────────────────────── */}
-      <div className="mx-auto max-w-lg px-4">
+      <div className="mx-auto max-w-lg px-4 pt-4">
         <LocationHero
           tripName={trip.title}
           status={status}
