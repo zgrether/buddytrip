@@ -202,9 +202,9 @@ function ChatPane({
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar — pb-16 leaves room for the fixed bottom nav */}
+      {/* Input bar — sits in flex flow above the nav spacer */}
       <div
-        className="px-4 pb-16 pt-3"
+        className="flex-shrink-0 px-4 pt-3 pb-3"
         style={{ borderTop: "1px solid var(--color-bt-border)", background: "var(--color-bt-base)" }}
       >
         <div
@@ -281,7 +281,7 @@ export default function TripMessagesPage() {
 
   return (
     <div
-      className="flex h-screen flex-col"
+      className="flex h-dvh flex-col"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Header */}
@@ -366,7 +366,10 @@ export default function TripMessagesPage() {
         />
       )}
 
-      {/* Bottom navigation */}
+      {/* Spacer so the fixed bottom nav doesn't overlap the input bar */}
+      <div className="flex-shrink-0 h-16" style={{ paddingBottom: "env(safe-area-inset-bottom)" }} />
+
+      {/* Bottom navigation (fixed — renders on top of spacer) */}
       <TripBottomNav tripId={tripId} />
     </div>
   );
