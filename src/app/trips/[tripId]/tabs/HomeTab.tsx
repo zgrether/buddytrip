@@ -590,14 +590,7 @@ function PlanningArc({
 // ── About Card ───────────────────────────────────────────────────────────
 
 function AboutCard({ trip }: { trip: TripData }) {
-  const hasContent = !!(
-    trip.description ||
-    trip.location ||
-    trip.accommodation ||
-    (trip.activities && trip.activities.length > 0)
-  );
-
-  if (!hasContent) return null;
+  if (!trip.description) return null;
 
   return (
     <section
@@ -607,36 +600,9 @@ function AboutCard({ trip }: { trip: TripData }) {
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
         About
       </p>
-      {trip.description && (
-        <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-          {trip.description}
-        </p>
-      )}
-      {trip.location && (
-        <div className="flex items-center gap-1.5 mt-2">
-          <MapPin size={12} style={{ color: "var(--color-bt-text-dim)" }} />
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>{trip.location}</p>
-        </div>
-      )}
-      {trip.accommodation && (
-        <div className="flex items-center gap-1.5 mt-1.5">
-          <Hotel size={12} style={{ color: "var(--color-bt-text-dim)" }} />
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>{trip.accommodation}</p>
-        </div>
-      )}
-      {trip.activities && trip.activities.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {trip.activities.map((act) => (
-            <span
-              key={act}
-              className="rounded-full px-2 py-0.5 text-[10px]"
-              style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)" }}
-            >
-              {act}
-            </span>
-          ))}
-        </div>
-      )}
+      <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+        {trip.description}
+      </p>
     </section>
   );
 }

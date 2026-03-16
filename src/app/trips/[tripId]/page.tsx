@@ -125,7 +125,6 @@ export default function TripDetailPage() {
           location={destLocation || trip.location}
           lockedTitle={trip.locked_destination_title}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
-          description={trip.description}
         />
 
         {/* ── Tab bar (inline, in body) ────────────────────────────────────── */}
