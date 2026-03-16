@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from "react";
-import { Home, Plus, Activity, MessageSquare, type LucideIcon } from "lucide-react";
+import { Home, Plus, Trophy, Activity, MessageSquare, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
 // ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
@@ -98,15 +98,12 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       badge: unreadMessages,
     },
     {
-      id: "live",
-      label: "Live",
-      Icon: Activity,
+      id: "competition",
+      label: "Competition",
+      Icon: Trophy,
       href: `/trips/${tripId}/leaderboard`,
-      hidden: !eventId,
     },
   ];
-
-  const visibleItems = items.filter((i) => !i.hidden);
 
   return (
     <nav
@@ -117,10 +114,11 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      {visibleItems.map(({ id, label, Icon, href, badge }) => {
+      {items.map(({ id, label, Icon, href, badge }) => {
         const active =
-          pathname === href ||
-          (id === "trip-home" && pathname === `/trips/${tripId}`);
+          id === "trip-home"
+            ? pathname === `/trips/${tripId}` || pathname === `/trips/${tripId}/compare`
+            : pathname === href;
         return (
           <button
             key={id}

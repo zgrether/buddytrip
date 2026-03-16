@@ -6,6 +6,7 @@ import { ArrowLeft, Send, MessageSquare, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
+import { TripBottomNav } from "@/components/BottomNav";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -201,9 +202,9 @@ function ChatPane({
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
+      {/* Input bar — pb-16 leaves room for the fixed bottom nav */}
       <div
-        className="px-4 pb-6 pt-3"
+        className="px-4 pb-16 pt-3"
         style={{ borderTop: "1px solid var(--color-bt-border)", background: "var(--color-bt-base)" }}
       >
         <div
@@ -290,10 +291,10 @@ export default function TripMessagesPage() {
       >
         <div className="flex h-14 items-center gap-3 px-4">
           <button
-            onClick={() => router.push(`/trips/${tripId}`)}
+            onClick={() => router.push("/dashboard")}
             className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{ color: "var(--color-bt-text)" }}
-            aria-label="Back to trip"
+            aria-label="Back to dashboard"
           >
             <ArrowLeft size={20} />
           </button>
@@ -364,6 +365,9 @@ export default function TripMessagesPage() {
           memberNames={memberNames}
         />
       )}
+
+      {/* Bottom navigation */}
+      <TripBottomNav tripId={tripId} />
     </div>
   );
 }

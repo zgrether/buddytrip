@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
+import { TripBottomNav } from "@/components/BottomNav";
 import {
   computeScores,
   computeRemaining,
@@ -245,14 +246,15 @@ export default function LeaderboardPage() {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}>
         <header className="flex items-center gap-3 px-4 py-4">
-          <button onClick={() => router.back()} aria-label="Back">
+          <button onClick={() => router.push("/dashboard")} aria-label="Back to dashboard">
             <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
           </button>
-          <h1 className="text-lg font-bold">Leaderboard</h1>
+          <h1 className="text-lg font-bold">Competition</h1>
         </header>
         <p className="px-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No competition set up yet.
         </p>
+        <TripBottomNav tripId={tripId} />
       </div>
     );
   }
@@ -261,15 +263,15 @@ export default function LeaderboardPage() {
 
   return (
     <div
-      className="mx-auto min-h-screen max-w-xl pb-8"
+      className="mx-auto min-h-screen max-w-xl pb-24"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Header */}
       <header className="flex items-center gap-3 px-4 py-4">
         <button
           data-testid="back-btn"
-          onClick={() => router.push(`/trips/${tripId}`)}
-          aria-label="Back to trip"
+          onClick={() => router.push("/dashboard")}
+          aria-label="Back to dashboard"
         >
           <ArrowLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
@@ -364,6 +366,9 @@ export default function LeaderboardPage() {
           />
         )}
       </div>
+
+      {/* Bottom navigation */}
+      <TripBottomNav tripId={tripId} eventId={eventId} />
 
       {/* Score entry bottom sheet */}
       {scoreEntry && (
