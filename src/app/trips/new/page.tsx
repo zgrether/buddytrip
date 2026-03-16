@@ -841,7 +841,7 @@ export default function TripNewPage() {
         })),
       });
 
-      router.push(`/trips/${tripId}`);
+      router.replace(`/trips/${tripId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
       setIsSubmitting(false);
@@ -883,7 +883,7 @@ export default function TripNewPage() {
         ideas: [...userIdeas, ...aiIdeas],
       });
 
-      router.push(`/trips/${tripId}`);
+      router.replace(`/trips/${tripId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
       setIsSubmitting(false);
