@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { X, Check, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrambleFormat } from "./scoring-formats/ScrambleFormat";
@@ -67,6 +67,10 @@ export function ScoreEntry({
     return teams.map((t) => ({ teamId: t.id, points: 0 }));
   });
 
+  // Keep a ref in sync so handleSubmit always reads the latest scores
+  // regardless of React's render/memo timing.
+  const scoresRef = useRef(scores);
+
   const submitMutation = trpc.groupResults.submit.useMutation({
     onSuccess: () => {
       onSubmitted();
@@ -75,9 +79,11 @@ export function ScoreEntry({
 
   const handleScoreChange = useCallback(
     (teamId: string, points: number) => {
-      setScores((prev) =>
-        prev.map((s) => (s.teamId === teamId ? { ...s, points } : s))
-      );
+      setScores((prev) => {
+        const next = prev.map((s) => (s.teamId === teamId ? { ...s, points } : s));
+        scoresRef.current = next;
+        return next;
+      });
     },
     []
   );
@@ -88,9 +94,9 @@ export function ScoreEntry({
       eventId,
       roundId,
       groupId,
-      scores,
+      scores: scoresRef.current,
     });
-  }, [submitMutation, tripId, eventId, roundId, groupId, scores]);
+  }, [submitMutation, tripId, eventId, roundId, groupId]);
 
   const renderFormat = () => {
     switch (format) {
