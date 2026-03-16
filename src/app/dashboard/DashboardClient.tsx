@@ -133,7 +133,6 @@ export default function DashboardClient() {
     >
       <TopNav
         title="BuddyTrip"
-        showAdd
         notifications={allNotifications}
         unreadCount={totalUnread}
         onMarkAllRead={handleMarkAllRead}

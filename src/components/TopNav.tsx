@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Plus } from "lucide-react";
+import { Bell } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface Notification {
@@ -17,7 +17,6 @@ interface Notification {
 
 interface TopNavProps {
   title?: string;
-  showAdd?: boolean;
   notifications?: Notification[];
   onMarkAllRead?: () => void;
   unreadCount?: number;
@@ -38,7 +37,6 @@ function notificationLabel(n: Notification): string {
 
 export const TopNav: FC<TopNavProps> = ({
   title = "BuddyTrip",
-  showAdd = false,
   notifications = [],
   onMarkAllRead,
   unreadCount = 0,
@@ -70,36 +68,16 @@ export const TopNav: FC<TopNavProps> = ({
       className="sticky top-0 z-40 flex h-14 items-center justify-between px-4"
       style={{ background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-border)" }}
     >
-      <span className="text-lg font-bold" style={{ color: "var(--color-bt-accent)" }}>
+      <button
+        onClick={() => router.push("/dashboard")}
+        className="text-lg font-bold transition-opacity hover:opacity-80"
+        style={{ color: "var(--color-bt-accent)" }}
+        aria-label="Go to dashboard"
+      >
         {title}
-      </span>
+      </button>
 
       <div className="flex items-center gap-2">
-        <ThemeToggle />
-
-        {showAdd && (
-          <button
-            aria-label="New trip"
-            onClick={() => router.push("/trips/new")}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            <Plus size={20} />
-          </button>
-        )}
-
-        {avatarInitial && (
-          <button
-            aria-label="Profile"
-            data-testid="profile-avatar-btn"
-            onClick={onProfileClick}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-colors hover:opacity-80"
-            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-          >
-            {avatarInitial}
-          </button>
-        )}
-
         <div ref={ref} className="relative">
           <button
             aria-label="Notifications"
@@ -193,6 +171,20 @@ export const TopNav: FC<TopNavProps> = ({
             </div>
           )}
         </div>
+
+        <ThemeToggle />
+
+        {avatarInitial && (
+          <button
+            aria-label="Profile"
+            data-testid="profile-avatar-btn"
+            onClick={onProfileClick}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-colors hover:opacity-80"
+            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+          >
+            {avatarInitial}
+          </button>
+        )}
       </div>
     </header>
   );
