@@ -53,6 +53,23 @@ describe("users router", () => {
     expect(results[0].id).toBe(ctx.user.id);
   });
 
+  it("search finds users by name", async () => {
+    // First set a known name, then search by it
+    const caller = ctx.caller();
+    await caller.users.updateMe({ name: "SearchTestUser" });
+    const results = await caller.users.search({ query: "SearchTestUser" });
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results.some((r) => r.id === ctx.user.id)).toBe(true);
+  });
+
+  it("search finds users by nickname", async () => {
+    const caller = ctx.caller();
+    await caller.users.updateMe({ nickname: "SearchNick" });
+    const results = await caller.users.search({ query: "SearchNick" });
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results.some((r) => r.id === ctx.user.id)).toBe(true);
+  });
+
   it("search returns empty for no matches", async () => {
     const caller = ctx.caller();
     const results = await caller.users.search({

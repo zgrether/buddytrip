@@ -2,7 +2,17 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, X, Search, Plus, Check } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  X,
+  Search,
+  Plus,
+  Check,
+  MapPin,
+  Vote,
+  Loader2,
+} from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -14,27 +24,32 @@ interface PendingInvite {
   role: "Planner" | "Member";
 }
 
+interface SuggestedDestination {
+  title: string;
+  location: string;
+  description: string;
+  costTier: string;
+}
+
 // ── Step 1 — Trip name + co-planner invites ───────────────────────────────
 
 function Step1({
   tripName,
   onTripNameChange,
-  description,
-  onDescriptionChange,
+  nameError,
+  onNameBlur,
   invites,
   onAddInvite,
   onRemoveInvite,
-  onRoleChange,
   onNext,
 }: {
   tripName: string;
   onTripNameChange: (v: string) => void;
-  description: string;
-  onDescriptionChange: (v: string) => void;
+  nameError: string;
+  onNameBlur: () => void;
   invites: PendingInvite[];
   onAddInvite: (u: PendingInvite) => void;
   onRemoveInvite: (userId: string) => void;
-  onRoleChange: (userId: string, role: "Planner" | "Member") => void;
   onNext: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -49,6 +64,9 @@ function Step1({
   const filteredResults = searchResults.filter(
     (r) => !invites.some((i) => i.userId === r.id)
   );
+
+  const hasNoMatch =
+    !isFetching && query.length >= 2 && filteredResults.length === 0;
 
   return (
     <div className="space-y-6">
@@ -66,75 +84,73 @@ function Step1({
           data-testid="trip-name-input"
           type="text"
           required
+          autoFocus
           value={tripName}
           onChange={(e) => onTripNameChange(e.target.value)}
-          placeholder="e.g. Augusta Golf Weekend"
+          onBlur={onNameBlur}
+          placeholder="BBMI 2027, Tyler's Bachelor Party..."
           maxLength={200}
           className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
           style={{
             background: "var(--color-bt-card)",
-            borderColor: "var(--color-bt-border)",
+            borderColor: nameError
+              ? "var(--color-bt-danger)"
+              : "var(--color-bt-border)",
             color: "var(--color-bt-text)",
           }}
         />
-      </div>
-
-      {/* Description */}
-      <div>
-        <label
-          htmlFor="trip-desc"
-          className="mb-1.5 block text-sm font-medium"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Description{" "}
-          <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
-        </label>
-        <textarea
-          id="trip-desc"
-          value={description}
-          onChange={(e) => onDescriptionChange(e.target.value)}
-          placeholder="Add a brief description…"
-          maxLength={2000}
-          rows={3}
-          className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
-          style={{
-            background: "var(--color-bt-card)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
+        {nameError && (
+          <p
+            className="mt-1 text-xs"
+            style={{ color: "var(--color-bt-danger)" }}
+          >
+            {nameError}
+          </p>
+        )}
       </div>
 
       {/* Invite co-planners */}
       <div>
-        <label className="mb-1.5 block text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-          Invite people{" "}
+        <label
+          className="mb-1.5 block text-sm font-medium"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          Invite Co-planners{" "}
           <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
         </label>
 
         <div ref={searchRef} className="relative">
           <div
             className="flex items-center gap-2 rounded-lg border px-3 py-2"
-            style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+            style={{
+              background: "var(--color-bt-card)",
+              borderColor: "var(--color-bt-border)",
+            }}
           >
-            <Search size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+            <Search
+              size={16}
+              style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
+            />
             <input
               data-testid="invite-search"
-              type="email"
+              type="text"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setShowResults(true);
               }}
               onFocus={() => setShowResults(true)}
-              placeholder="Search by email…"
+              placeholder="Name, nickname, or email"
               className="flex-1 bg-transparent text-sm outline-none"
               style={{ color: "var(--color-bt-text)" }}
             />
             {isFetching && (
               <div
                 className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"
-                style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
+                style={{
+                  borderColor: "var(--color-bt-accent)",
+                  borderTopColor: "transparent",
+                }}
               />
             )}
           </div>
@@ -143,11 +159,24 @@ function Step1({
           {showResults && query.length >= 2 && (
             <div
               className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg shadow-xl"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
             >
-              {filteredResults.length === 0 ? (
-                <div className="px-4 py-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {isFetching ? "Searching…" : "No users found"}
+              {hasNoMatch ? (
+                <div
+                  className="px-4 py-3 text-sm"
+                  style={{ color: "var(--color-bt-danger)" }}
+                >
+                  No BuddyTrip account found for that name or email
+                </div>
+              ) : isFetching ? (
+                <div
+                  className="px-4 py-3 text-sm"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Searching...
                 </div>
               ) : (
                 filteredResults.map((user) => (
@@ -157,9 +186,10 @@ function Step1({
                     onClick={() => {
                       onAddInvite({
                         userId: user.id,
-                        name: user.name ?? user.email,
+                        name:
+                          user.nickname ?? user.name ?? user.email,
                         email: user.email,
-                        role: "Member",
+                        role: "Planner",
                       });
                       setQuery("");
                       setShowResults(false);
@@ -168,19 +198,42 @@ function Step1({
                   >
                     <div
                       className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-                      style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                      style={{
+                        background: "var(--color-bt-tag-bg)",
+                        color: "var(--color-bt-accent)",
+                      }}
                     >
-                      {(user.name ?? user.email).charAt(0).toUpperCase()}
+                      {(user.nickname ?? user.name ?? user.email)
+                        .charAt(0)
+                        .toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                      <p
+                        className="text-sm font-medium"
+                        style={{ color: "var(--color-bt-text)" }}
+                      >
                         {user.name ?? "—"}
+                        {user.nickname && (
+                          <span
+                            className="ml-1 text-xs"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          >
+                            ({user.nickname})
+                          </span>
+                        )}
                       </p>
-                      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
                         {user.email}
                       </p>
                     </div>
-                    <Plus size={16} className="ml-auto" style={{ color: "var(--color-bt-accent)" }} />
+                    <Plus
+                      size={16}
+                      className="ml-auto"
+                      style={{ color: "var(--color-bt-accent)" }}
+                    />
                   </button>
                 ))
               )}
@@ -188,56 +241,37 @@ function Step1({
           )}
         </div>
 
-        {/* Pending invites */}
+        <p
+          className="mt-1.5 text-xs"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Co-planners can help manage the trip. You can invite the rest of the
+          crew later.
+        </p>
+
+        {/* Pending invites as chips */}
         {invites.length > 0 && (
-          <ul className="mt-3 space-y-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {invites.map((invite) => (
-              <li
+              <span
                 key={invite.userId}
                 data-testid={`invite-${invite.userId}`}
-                className="flex items-center gap-3 rounded-lg border px-3 py-2"
-                style={{ background: "var(--color-bt-tag-bg)", borderColor: "var(--color-bt-accent-border)" }}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm"
+                style={{
+                  background: "var(--color-bt-tag-bg)",
+                  color: "var(--color-bt-accent)",
+                }}
               >
-                <div
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-                  style={{ background: "var(--color-bt-card)", color: "var(--color-bt-accent)" }}
-                >
-                  {invite.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                    {invite.name}
-                  </p>
-                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {invite.email}
-                  </p>
-                </div>
-                {/* Role selector */}
-                <select
-                  value={invite.role}
-                  onChange={(e) =>
-                    onRoleChange(invite.userId, e.target.value as "Planner" | "Member")
-                  }
-                  className="rounded border px-2 py-1 text-xs outline-none"
-                  style={{
-                    background: "var(--color-bt-card)",
-                    borderColor: "var(--color-bt-border)",
-                    color: "var(--color-bt-text)",
-                  }}
-                >
-                  <option value="Planner">Planner</option>
-                  <option value="Member">Member</option>
-                </select>
+                {invite.name}
                 <button
                   onClick={() => onRemoveInvite(invite.userId)}
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
+                  className="flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
                 >
-                  <X size={14} />
+                  <X size={12} />
                 </button>
-              </li>
+              </span>
             ))}
-          </ul>
+          </div>
         )}
       </div>
 
@@ -247,156 +281,369 @@ function Step1({
         onClick={onNext}
         disabled={!tripName.trim()}
         className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-        style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        style={{
+          background: "var(--color-bt-accent)",
+          color: "var(--color-bt-base)",
+        }}
       >
         Next
         <ArrowRight size={16} />
+      </button>
+
+      {/* Skip link for co-planners */}
+      <button
+        onClick={onNext}
+        disabled={!tripName.trim()}
+        className="w-full text-center text-sm transition-opacity disabled:opacity-40"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Skip for now &rarr;
       </button>
     </div>
   );
 }
 
-// ── Step 2 — Destination ──────────────────────────────────────────────────
+// ── Step 2 — Where are you headed? ────────────────────────────────────────
+
+type DestinationChoice = null | "known" | "vote";
 
 function Step2({
-  location,
-  onLocationChange,
-  startDate,
-  onStartDateChange,
-  endDate,
-  onEndDateChange,
+  choice,
+  onChoiceChange,
+  destination,
+  onDestinationChange,
+  voteDests,
+  onAddVoteDest,
+  onRemoveVoteDest,
+  crewDescription,
+  onCrewDescriptionChange,
   onBack,
   onSubmit,
   isSubmitting,
+  validationError,
 }: {
-  location: string;
-  onLocationChange: (v: string) => void;
-  startDate: string;
-  onStartDateChange: (v: string) => void;
-  endDate: string;
-  onEndDateChange: (v: string) => void;
+  choice: DestinationChoice;
+  onChoiceChange: (c: DestinationChoice) => void;
+  destination: string;
+  onDestinationChange: (v: string) => void;
+  voteDests: string[];
+  onAddVoteDest: (d: string) => void;
+  onRemoveVoteDest: (idx: number) => void;
+  crewDescription: string;
+  onCrewDescriptionChange: (v: string) => void;
   onBack: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
+  validationError: string;
 }) {
+  const [destInput, setDestInput] = useState("");
+
+  const handleAddDest = () => {
+    const trimmed = destInput.trim();
+    if (trimmed) {
+      onAddVoteDest(trimmed);
+      setDestInput("");
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Location */}
-      <div>
-        <label
-          htmlFor="trip-location"
-          className="mb-1.5 block text-sm font-medium"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Destination{" "}
-          <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
-        </label>
-        <input
-          id="trip-location"
-          data-testid="trip-location-input"
-          type="text"
-          value={location}
-          onChange={(e) => onLocationChange(e.target.value)}
-          placeholder="e.g. Pebble Beach, CA"
-          maxLength={500}
-          className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        <p className="mt-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          You can also let members vote on a destination — skip this if you&apos;re
-          still deciding.
-        </p>
-      </div>
+      {/* Back button */}
+      <button
+        data-testid="step2-back"
+        onClick={onBack}
+        className="flex items-center gap-1 text-sm transition-colors"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <ArrowLeft size={16} />
+        Back
+      </button>
 
-      {/* Dates */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label
-            htmlFor="start-date"
-            className="mb-1.5 block text-sm font-medium"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            Start date
-          </label>
-          <input
-            id="start-date"
-            data-testid="trip-start-date"
-            type="date"
-            value={startDate}
-            onChange={(e) => onStartDateChange(e.target.value)}
-            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
+      {/* Choice cards */}
+      {choice === null && (
+        <div className="space-y-3">
+          {/* Choice A — Known destination */}
+          <button
+            data-testid="choice-known"
+            onClick={() => onChoiceChange("known")}
+            className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
             style={{
               background: "var(--color-bt-card)",
               borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-              colorScheme: "inherit",
             }}
-          />
-        </div>
-        <div>
-          <label
-            htmlFor="end-date"
-            className="mb-1.5 block text-sm font-medium"
-            style={{ color: "var(--color-bt-text)" }}
           >
-            End date
-          </label>
-          <input
-            id="end-date"
-            data-testid="trip-end-date"
-            type="date"
-            value={endDate}
-            min={startDate || undefined}
-            onChange={(e) => onEndDateChange(e.target.value)}
-            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
-            style={{
-              background: "var(--color-bt-card)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-              colorScheme: "inherit",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Buttons */}
-      <div className="flex gap-3">
-        <button
-          data-testid="step2-back"
-          onClick={onBack}
-          className="flex items-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-        >
-          <ArrowLeft size={16} />
-          Back
-        </button>
-        <button
-          data-testid="step2-create"
-          onClick={onSubmit}
-          disabled={isSubmitting}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {isSubmitting ? (
-            <>
-              <span
-                className="h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"
-                style={{ borderColor: "var(--color-bt-base)", borderTopColor: "transparent" }}
+            <div
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
+              style={{ background: "var(--color-bt-tag-bg)" }}
+            >
+              <MapPin
+                size={24}
+                style={{ color: "var(--color-bt-accent)" }}
               />
-              Creating…
-            </>
-          ) : (
-            <>
-              <Check size={16} />
-              Create Trip
-            </>
+            </div>
+            <div>
+              <p
+                className="text-base font-semibold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                Yes, we&apos;re going to...
+              </p>
+              <p
+                className="text-sm"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                I know the destination
+              </p>
+            </div>
+          </button>
+
+          {/* Choice B — Vote */}
+          <button
+            data-testid="choice-vote"
+            onClick={() => onChoiceChange("vote")}
+            className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
+            style={{
+              background: "var(--color-bt-card)",
+              borderColor: "var(--color-bt-border)",
+            }}
+          >
+            <div
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
+              style={{ background: "var(--color-bt-tag-bg)" }}
+            >
+              <Vote
+                size={24}
+                style={{ color: "var(--color-bt-accent)" }}
+              />
+            </div>
+            <div>
+              <p
+                className="text-base font-semibold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                Let&apos;s put it to a vote
+              </p>
+              <p
+                className="text-sm"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Compare destinations and let the crew decide
+              </p>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Choice A — Known destination expanded */}
+      {choice === "known" && (
+        <div className="space-y-4">
+          <button
+            onClick={() => onChoiceChange(null)}
+            className="text-sm"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            &larr; Change choice
+          </button>
+
+          <div>
+            <label
+              htmlFor="dest-known"
+              className="mb-1.5 block text-sm font-medium"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Where are you going?
+            </label>
+            <input
+              id="dest-known"
+              data-testid="destination-input"
+              type="text"
+              autoFocus
+              value={destination}
+              onChange={(e) => onDestinationChange(e.target.value)}
+              placeholder="Bandon Dunes, OR"
+              maxLength={500}
+              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+              style={{
+                background: "var(--color-bt-card)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
+
+          <button
+            data-testid="create-trip-known"
+            onClick={onSubmit}
+            disabled={isSubmitting || !destination.trim()}
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+            }}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2
+                  size={16}
+                  className="animate-spin"
+                />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Create Trip
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Choice B — Vote expanded */}
+      {choice === "vote" && (
+        <div className="space-y-5">
+          <button
+            onClick={() => onChoiceChange(null)}
+            className="text-sm"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            &larr; Change choice
+          </button>
+
+          {/* Sub-section 1: Add destinations to compare */}
+          <div>
+            <p
+              className="mb-2 text-sm font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Add destinations to compare
+            </p>
+
+            <div className="flex gap-2">
+              <input
+                data-testid="vote-dest-input"
+                type="text"
+                value={destInput}
+                onChange={(e) => setDestInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddDest();
+                  }
+                }}
+                placeholder="Enter a destination"
+                maxLength={500}
+                className="flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                style={{
+                  background: "var(--color-bt-card)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+              <button
+                data-testid="add-vote-dest"
+                onClick={handleAddDest}
+                disabled={!destInput.trim()}
+                className="rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-base)",
+                }}
+              >
+                Add
+              </button>
+            </div>
+
+            {/* Destination chips */}
+            {voteDests.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {voteDests.map((d, i) => (
+                  <span
+                    key={i}
+                    data-testid={`vote-dest-chip-${i}`}
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm"
+                    style={{
+                      background: "var(--color-bt-tag-bg)",
+                      color: "var(--color-bt-accent)",
+                    }}
+                  >
+                    {d}
+                    <button
+                      onClick={() => onRemoveVoteDest(i)}
+                      className="flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Sub-section 2: Tell us about your trip and crew */}
+          <div>
+            <p
+              className="mb-2 text-sm font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Tell us about your trip and crew
+            </p>
+            <textarea
+              data-testid="crew-description"
+              value={crewDescription}
+              onChange={(e) => onCrewDescriptionChange(e.target.value)}
+              placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year..."
+              rows={3}
+              maxLength={2000}
+              className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+              style={{
+                background: "var(--color-bt-card)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+            <p
+              className="mt-1 text-xs"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Claude will suggest 3 destination ideas based on this
+            </p>
+          </div>
+
+          {validationError && (
+            <p
+              className="text-sm"
+              style={{ color: "var(--color-bt-danger)" }}
+              data-testid="validation-error"
+            >
+              {validationError}
+            </p>
           )}
-        </button>
-      </div>
+
+          <button
+            data-testid="create-trip-vote"
+            onClick={onSubmit}
+            disabled={isSubmitting}
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+            }}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Creating your trip...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Create Trip
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -407,67 +654,182 @@ export default function TripNewPage() {
   const router = useRouter();
   const utils = trpc.useUtils();
 
+  // Step 1 state
   const [step, setStep] = useState(1);
   const [tripName, setTripName] = useState("");
-  const [description, setDescription] = useState("");
+  const [nameError, setNameError] = useState("");
   const [invites, setInvites] = useState<PendingInvite[]>([]);
-  const [location, setLocation] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+
+  // Step 2 state
+  const [choice, setChoice] = useState<DestinationChoice>(null);
+  const [destination, setDestination] = useState("");
+  const [voteDests, setVoteDests] = useState<string[]>([]);
+  const [crewDescription, setCrewDescription] = useState("");
+  const [validationError, setValidationError] = useState("");
+
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const createTrip = trpc.trips.create.useMutation({
     onSuccess: () => utils.trips.list.invalidate(),
   });
 
-  const addMember = trpc.tripMembers.add.useMutation();
+  const handleNameBlur = () => {
+    if (!tripName.trim()) {
+      setNameError("Trip needs a name");
+    } else {
+      setNameError("");
+    }
+  };
 
-  const isSubmitting = createTrip.isPending || addMember.isPending;
+  const handleNext = () => {
+    if (!tripName.trim()) {
+      setNameError("Trip needs a name");
+      return;
+    }
+    setNameError("");
+    setStep(2);
+  };
 
-  const handleSubmit = async () => {
+  const handleSubmitKnown = async () => {
     setError("");
+    setIsSubmitting(true);
     const tripId = crypto.randomUUID();
+    const dest = destination.trim();
+
     try {
       await createTrip.mutateAsync({
         id: tripId,
         title: tripName.trim(),
-        description: description.trim() || undefined,
-        location: location.trim() || null,
-        startDate: startDate || null,
-        endDate: endDate || null,
+        comparisonMode: false,
+        lockedDestination: { title: dest, location: dest },
+        coplanners: invites.map((i) => ({
+          userId: i.userId,
+          role: i.role,
+        })),
       });
-
-      // Add invited members (fail-soft per member)
-      for (const invite of invites) {
-        try {
-          await addMember.mutateAsync({
-            tripId,
-            userId: invite.userId,
-            role: invite.role,
-          });
-        } catch {
-          // Non-fatal: trip still created
-        }
-      }
 
       router.push(`/trips/${tripId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitVote = async () => {
+    setValidationError("");
+    setError("");
+
+    // Validate: need at least one dest or a crew description
+    if (voteDests.length === 0 && !crewDescription.trim()) {
+      setValidationError(
+        "Add at least one destination or describe your crew so we can suggest some."
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    const tripId = crypto.randomUUID();
+
+    try {
+      // Build user-entered ideas
+      const userIdeas = voteDests.map((d, i) => ({
+        id: `idea-${Date.now()}-${i}`,
+        title: d,
+        location: d,
+        source: "manual" as const,
+      }));
+
+      // Fetch AI suggestions if crew description provided
+      let aiIdeas: Array<{
+        id: string;
+        title: string;
+        location: string;
+        description: string;
+        costTier: string;
+        source: "ai";
+      }> = [];
+
+      if (crewDescription.trim()) {
+        try {
+          const res = await fetch("/api/ai/suggest-destinations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              crewDescription: crewDescription.trim(),
+            }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            aiIdeas = (data.suggestions ?? []).map(
+              (s: SuggestedDestination, i: number) => ({
+                id: `idea-ai-${Date.now()}-${i}`,
+                title: s.title,
+                location: s.location,
+                description: s.description,
+                costTier: s.costTier,
+                source: "ai" as const,
+              })
+            );
+          }
+        } catch {
+          // AI suggestions are best-effort; proceed without them
+        }
+      }
+
+      await createTrip.mutateAsync({
+        id: tripId,
+        title: tripName.trim(),
+        comparisonMode: true,
+        coplanners: invites.map((i) => ({
+          userId: i.userId,
+          role: i.role,
+        })),
+        ideas: [...userIdeas, ...aiIdeas],
+      });
+
+      router.push(`/trips/${tripId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create trip");
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (choice === "known") {
+      handleSubmitKnown();
+    } else if (choice === "vote") {
+      handleSubmitVote();
     }
   };
 
   return (
     <div
       className="min-h-screen"
-      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
+      style={{
+        background: "var(--color-bt-base)",
+        color: "var(--color-bt-text)",
+      }}
     >
       {/* Header */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-border)" }}
+        style={{
+          background: "var(--color-bt-base)",
+          borderBottom: "1px solid var(--color-bt-border)",
+        }}
       >
         <button
-          onClick={() => (step === 1 ? router.back() : setStep(1))}
+          onClick={() => {
+            if (step === 2 && choice !== null) {
+              setChoice(null);
+            } else if (step === 2) {
+              setStep(1);
+            } else {
+              router.back();
+            }
+          }}
           className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
           style={{ color: "var(--color-bt-text)" }}
           aria-label="Back"
@@ -481,9 +843,12 @@ export default function TripNewPage() {
           {[1, 2].map((s) => (
             <span
               key={s}
-              className="h-2 w-2 rounded-full transition-all"
+              className="h-2 rounded-full transition-all"
               style={{
-                background: s === step ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                background:
+                  s === step
+                    ? "var(--color-bt-accent)"
+                    : "var(--color-bt-border)",
                 width: s === step ? "20px" : "8px",
               }}
             />
@@ -493,17 +858,29 @@ export default function TripNewPage() {
 
       <main className="mx-auto max-w-lg px-4 pt-6 pb-16">
         {/* Step label */}
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p
+          className="mb-1 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
           Step {step} of 2
         </p>
-        <h2 className="mb-6 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-          {step === 1 ? "Name your trip" : "Where are you going?"}
+        <h2
+          className="mb-6 text-xl font-bold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {step === 1
+            ? "Let's get started"
+            : "Where are you headed?"}
         </h2>
 
         {error && (
           <div
             className="mb-4 rounded-lg border px-4 py-3 text-sm"
-            style={{ background: "var(--color-bt-danger-bg)", borderColor: "var(--color-bt-danger-border)", color: "var(--color-bt-danger)" }}
+            style={{
+              background: "var(--color-bt-danger-bg)",
+              borderColor: "var(--color-bt-danger-border)",
+              color: "var(--color-bt-danger)",
+            }}
           >
             {error}
           </div>
@@ -512,32 +889,36 @@ export default function TripNewPage() {
         {step === 1 ? (
           <Step1
             tripName={tripName}
-            onTripNameChange={setTripName}
-            description={description}
-            onDescriptionChange={setDescription}
+            onTripNameChange={(v) => {
+              setTripName(v);
+              if (v.trim()) setNameError("");
+            }}
+            nameError={nameError}
+            onNameBlur={handleNameBlur}
             invites={invites}
             onAddInvite={(u) => setInvites((prev) => [...prev, u])}
             onRemoveInvite={(id) =>
               setInvites((prev) => prev.filter((i) => i.userId !== id))
             }
-            onRoleChange={(id, role) =>
-              setInvites((prev) =>
-                prev.map((i) => (i.userId === id ? { ...i, role } : i))
-              )
-            }
-            onNext={() => setStep(2)}
+            onNext={handleNext}
           />
         ) : (
           <Step2
-            location={location}
-            onLocationChange={setLocation}
-            startDate={startDate}
-            onStartDateChange={setStartDate}
-            endDate={endDate}
-            onEndDateChange={setEndDate}
+            choice={choice}
+            onChoiceChange={setChoice}
+            destination={destination}
+            onDestinationChange={setDestination}
+            voteDests={voteDests}
+            onAddVoteDest={(d) => setVoteDests((prev) => [...prev, d])}
+            onRemoveVoteDest={(idx) =>
+              setVoteDests((prev) => prev.filter((_, i) => i !== idx))
+            }
+            crewDescription={crewDescription}
+            onCrewDescriptionChange={setCrewDescription}
             onBack={() => setStep(1)}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
+            validationError={validationError}
           />
         )}
       </main>

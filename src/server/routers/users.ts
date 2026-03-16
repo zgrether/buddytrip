@@ -72,10 +72,14 @@ export const usersRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
+      const q = input.query.trim();
+      const pattern = `%${q}%`;
+
+      // Search across name, nickname, and email
       const { data, error } = await ctx.supabase
         .from("users")
         .select("id, name, nickname, email")
-        .ilike("email", `%${input.query}%`)
+        .or(`name.ilike.${pattern},nickname.ilike.${pattern},email.ilike.${pattern}`)
         .limit(10);
 
       if (error) {

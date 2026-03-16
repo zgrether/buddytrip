@@ -78,9 +78,36 @@ export const tripsRouter = router({
         startDate: z.string().nullable().optional(),
         endDate: z.string().nullable().optional(),
         seriesId: z.string().nullable().optional(),
+        comparisonMode: z.boolean().optional(),
+        lockedDestination: z
+          .object({
+            title: z.string().min(1),
+            location: z.string().min(1),
+          })
+          .nullable()
+          .optional(),
+        // Co-planners to add as Planner role
+        coplanners: z
+          .array(z.object({ userId: z.string(), role: z.enum(["Planner", "Member"]) }))
+          .optional(),
+        // Ideas to seed on the trip (user-entered + AI suggestions)
+        ideas: z
+          .array(
+            z.object({
+              id: z.string().min(1),
+              title: z.string().min(1),
+              location: z.string().min(1),
+              description: z.string().optional(),
+              costTier: z.string().nullable().optional(),
+              source: z.enum(["manual", "ai"]).optional(),
+            })
+          )
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const now = new Date().toISOString();
+
       // Step 1: Insert the trip WITHOUT .select() — PostgREST's
       // INSERT ... RETURNING requires the SELECT policy to pass on the
       // new row, but the SELECT policy is `is_trip_member(id)` which is
@@ -89,10 +116,14 @@ export const tripsRouter = router({
         id: input.id,
         title: input.title,
         description: input.description ?? "",
-        location: input.location ?? null,
+        location: input.lockedDestination?.location ?? input.location ?? null,
         start_date: input.startDate ?? null,
         end_date: input.endDate ?? null,
         series_id: input.seriesId ?? null,
+        comparison_mode: input.comparisonMode ?? false,
+        locked_destination_title: input.lockedDestination?.title ?? null,
+        locked_destination_location: input.lockedDestination?.location ?? null,
+        locked_destination_at: input.lockedDestination ? now : null,
       });
 
       if (error) {
@@ -121,7 +152,34 @@ export const tripsRouter = router({
         });
       }
 
-      // Step 3: Now fetch the trip — SELECT policy passes because
+      // Step 3: Add co-planners (fail-soft per member)
+      if (input.coplanners?.length) {
+        for (const cp of input.coplanners) {
+          await ctx.supabase.from("trip_members").insert({
+            trip_id: input.id,
+            user_id: cp.userId,
+            role: cp.role,
+            status: "in",
+          });
+        }
+      }
+
+      // Step 4: Seed ideas (fail-soft)
+      if (input.ideas?.length) {
+        for (const idea of input.ideas) {
+          await ctx.supabase.from("ideas").insert({
+            id: idea.id,
+            trip_id: input.id,
+            title: idea.title,
+            location: idea.location,
+            description: idea.description ?? "",
+            cost_tier: idea.costTier ?? null,
+            source: idea.source ?? "manual",
+          });
+        }
+      }
+
+      // Step 5: Now fetch the trip — SELECT policy passes because
       // the creator is a trip_member
       const { data: trip, error: fetchErr } = await ctx.supabase
         .from("trips")
