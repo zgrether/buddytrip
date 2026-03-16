@@ -9,7 +9,6 @@ interface LocationHeroProps {
   location?: string | null;       // display location (locked or trip.location)
   lockedTitle?: string | null;     // locked destination title
   dateRange?: string;              // formatted date range string
-  description?: string | null;
 }
 
 /**
@@ -38,7 +37,6 @@ export function LocationHero({
   location,
   lockedTitle,
   dateRange,
-  description,
 }: LocationHeroProps) {
   // Use location for gradient hue, fall back to trip name
   const hueSource = location ?? tripName;
@@ -101,12 +99,6 @@ export function LocationHero({
           )}
         </div>
 
-        {/* Description */}
-        {description && (
-          <p className="mt-2 text-xs text-white/45">
-            {description}
-          </p>
-        )}
       </div>
     </div>
   );
