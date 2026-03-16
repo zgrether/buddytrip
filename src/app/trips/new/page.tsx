@@ -12,6 +12,8 @@ import {
   MapPin,
   Vote,
   Loader2,
+  Sparkles,
+  Trash2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
@@ -290,15 +292,6 @@ function Step1({
         <ArrowRight size={16} />
       </button>
 
-      {/* Skip link for co-planners */}
-      <button
-        onClick={onNext}
-        disabled={!tripName.trim()}
-        className="w-full text-center text-sm transition-opacity disabled:opacity-40"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Skip for now &rarr;
-      </button>
     </div>
   );
 }
@@ -306,6 +299,15 @@ function Step1({
 // ── Step 2 — Where are you headed? ────────────────────────────────────────
 
 type DestinationChoice = null | "known" | "vote";
+
+interface AiIdea {
+  id: string;
+  title: string;
+  location: string;
+  description: string;
+  costTier: string;
+  source: "ai";
+}
 
 function Step2({
   choice,
@@ -317,6 +319,8 @@ function Step2({
   onRemoveVoteDest,
   crewDescription,
   onCrewDescriptionChange,
+  aiIdeas,
+  onAiIdeasChange,
   onBack,
   onSubmit,
   isSubmitting,
@@ -331,12 +335,16 @@ function Step2({
   onRemoveVoteDest: (idx: number) => void;
   crewDescription: string;
   onCrewDescriptionChange: (v: string) => void;
+  aiIdeas: AiIdea[];
+  onAiIdeasChange: (ideas: AiIdea[]) => void;
   onBack: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
   validationError: string;
 }) {
   const [destInput, setDestInput] = useState("");
+  const [isFetchingAi, setIsFetchingAi] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const handleAddDest = () => {
     const trimmed = destInput.trim();
@@ -346,8 +354,51 @@ function Step2({
     }
   };
 
+  const handleRequestAiIdeas = async () => {
+    setAiError("");
+    setIsFetchingAi(true);
+    try {
+      const res = await fetch("/api/ai/suggest-destinations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crewDescription: crewDescription.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        setAiError("Failed to get AI suggestions. Please try again.");
+        return;
+      }
+
+      const data = await res.json();
+      const ideas: AiIdea[] = (data.suggestions ?? []).map(
+        (s: SuggestedDestination, i: number) => ({
+          id: `idea-ai-${Date.now()}-${i}`,
+          title: s.title,
+          location: s.location,
+          description: s.description,
+          costTier: s.costTier,
+          source: "ai" as const,
+        })
+      );
+      onAiIdeasChange(ideas);
+    } catch {
+      setAiError("Failed to get AI suggestions. Please try again.");
+    } finally {
+      setIsFetchingAi(false);
+    }
+  };
+
+  const handleRemoveAiIdea = (id: string) => {
+    onAiIdeasChange(aiIdeas.filter((idea) => idea.id !== id));
+  };
+
+  // For vote mode: need at least one dest (manual or AI) to create
+  const hasAnyIdeas = voteDests.length > 0 || aiIdeas.length > 0;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Back button */}
       <button
         data-testid="step2-back"
@@ -359,17 +410,20 @@ function Step2({
         Back
       </button>
 
-      {/* Choice cards */}
-      {choice === null && (
-        <div className="space-y-3">
-          {/* Choice A — Known destination */}
+      {/* Choice cards — always visible */}
+      <div className="space-y-3">
+        {/* Choice A — Known destination */}
+        <div>
           <button
             data-testid="choice-known"
-            onClick={() => onChoiceChange("known")}
+            onClick={() => onChoiceChange(choice === "known" ? null : "known")}
             className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
             style={{
               background: "var(--color-bt-card)",
-              borderColor: "var(--color-bt-border)",
+              borderColor:
+                choice === "known"
+                  ? "var(--color-bt-accent)"
+                  : "var(--color-bt-border)",
             }}
           >
             <div
@@ -397,14 +451,73 @@ function Step2({
             </div>
           </button>
 
-          {/* Choice B — Vote */}
+          {/* Known destination form — revealed inline */}
+          {choice === "known" && (
+            <div className="mt-3 space-y-4 pl-4 border-l-2" style={{ borderColor: "var(--color-bt-accent)" }}>
+              <div>
+                <label
+                  htmlFor="dest-known"
+                  className="mb-1.5 block text-sm font-medium"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  Where are you going?
+                </label>
+                <input
+                  id="dest-known"
+                  data-testid="destination-input"
+                  type="text"
+                  autoFocus
+                  value={destination}
+                  onChange={(e) => onDestinationChange(e.target.value)}
+                  placeholder="Bandon Dunes, OR"
+                  maxLength={500}
+                  className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                  }}
+                />
+              </div>
+
+              <button
+                data-testid="create-trip-known"
+                onClick={onSubmit}
+                disabled={isSubmitting || !destination.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-base)",
+                }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Check size={16} />
+                    Create Trip
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Choice B — Vote */}
+        <div>
           <button
             data-testid="choice-vote"
-            onClick={() => onChoiceChange("vote")}
+            onClick={() => onChoiceChange(choice === "vote" ? null : "vote")}
             className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
             style={{
               background: "var(--color-bt-card)",
-              borderColor: "var(--color-bt-border)",
+              borderColor:
+                choice === "vote"
+                  ? "var(--color-bt-accent)"
+                  : "var(--color-bt-border)",
             }}
           >
             <div
@@ -431,219 +544,237 @@ function Step2({
               </p>
             </div>
           </button>
-        </div>
-      )}
 
-      {/* Choice A — Known destination expanded */}
-      {choice === "known" && (
-        <div className="space-y-4">
-          <button
-            onClick={() => onChoiceChange(null)}
-            className="text-sm"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            &larr; Change choice
-          </button>
+          {/* Vote form — revealed inline */}
+          {choice === "vote" && (
+            <div className="mt-3 space-y-5 pl-4 border-l-2" style={{ borderColor: "var(--color-bt-accent)" }}>
+              {/* Sub-section 1: Add destinations to compare */}
+              <div>
+                <p
+                  className="mb-2 text-sm font-semibold"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  Add destinations to compare
+                </p>
 
-          <div>
-            <label
-              htmlFor="dest-known"
-              className="mb-1.5 block text-sm font-medium"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              Where are you going?
-            </label>
-            <input
-              id="dest-known"
-              data-testid="destination-input"
-              type="text"
-              autoFocus
-              value={destination}
-              onChange={(e) => onDestinationChange(e.target.value)}
-              placeholder="Bandon Dunes, OR"
-              maxLength={500}
-              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
-              style={{
-                background: "var(--color-bt-card)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-          </div>
+                <div className="flex gap-2">
+                  <input
+                    data-testid="vote-dest-input"
+                    type="text"
+                    value={destInput}
+                    onChange={(e) => setDestInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddDest();
+                      }
+                    }}
+                    placeholder="Enter a destination"
+                    maxLength={500}
+                    className="flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                    style={{
+                      background: "var(--color-bt-card)",
+                      borderColor: "var(--color-bt-border)",
+                      color: "var(--color-bt-text)",
+                    }}
+                  />
+                  <button
+                    data-testid="add-vote-dest"
+                    onClick={handleAddDest}
+                    disabled={!destInput.trim()}
+                    className="rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+                    style={{
+                      background: "var(--color-bt-accent)",
+                      color: "var(--color-bt-base)",
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
 
-          <button
-            data-testid="create-trip-known"
-            onClick={onSubmit}
-            disabled={isSubmitting || !destination.trim()}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-            }}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2
-                  size={16}
-                  className="animate-spin"
+                {/* Destination chips */}
+                {voteDests.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {voteDests.map((d, i) => (
+                      <span
+                        key={i}
+                        data-testid={`vote-dest-chip-${i}`}
+                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm"
+                        style={{
+                          background: "var(--color-bt-tag-bg)",
+                          color: "var(--color-bt-accent)",
+                        }}
+                      >
+                        {d}
+                        <button
+                          onClick={() => onRemoveVoteDest(i)}
+                          className="flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-section 2: Tell us about your trip and crew */}
+              <div>
+                <p
+                  className="mb-2 text-sm font-semibold"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  Tell us about your trip and crew
+                </p>
+                <textarea
+                  data-testid="crew-description"
+                  value={crewDescription}
+                  onChange={(e) => onCrewDescriptionChange(e.target.value)}
+                  placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year..."
+                  rows={3}
+                  maxLength={2000}
+                  className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                  }}
                 />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Check size={16} />
-                Create Trip
-              </>
-            )}
-          </button>
-        </div>
-      )}
 
-      {/* Choice B — Vote expanded */}
-      {choice === "vote" && (
-        <div className="space-y-5">
-          <button
-            onClick={() => onChoiceChange(null)}
-            className="text-sm"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            &larr; Change choice
-          </button>
+                {/* Get AI Ideas button */}
+                <button
+                  data-testid="get-ai-ideas"
+                  onClick={handleRequestAiIdeas}
+                  disabled={!crewDescription.trim() || isFetchingAi}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+                  style={{
+                    background: "var(--color-bt-tag-bg)",
+                    color: "var(--color-bt-accent)",
+                  }}
+                >
+                  {isFetchingAi ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Getting AI ideas...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Get AI Ideas
+                    </>
+                  )}
+                </button>
 
-          {/* Sub-section 1: Add destinations to compare */}
-          <div>
-            <p
-              className="mb-2 text-sm font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              Add destinations to compare
-            </p>
+                {aiError && (
+                  <p
+                    className="mt-1 text-xs"
+                    style={{ color: "var(--color-bt-danger)" }}
+                  >
+                    {aiError}
+                  </p>
+                )}
+              </div>
 
-            <div className="flex gap-2">
-              <input
-                data-testid="vote-dest-input"
-                type="text"
-                value={destInput}
-                onChange={(e) => setDestInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddDest();
-                  }
-                }}
-                placeholder="Enter a destination"
-                maxLength={500}
-                className="flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
-                style={{
-                  background: "var(--color-bt-card)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
+              {/* AI Ideas display */}
+              {aiIdeas.length > 0 && (
+                <div>
+                  <p
+                    className="mb-2 text-sm font-semibold"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    AI-suggested destinations
+                  </p>
+                  <div className="space-y-2">
+                    {aiIdeas.map((idea) => (
+                      <div
+                        key={idea.id}
+                        data-testid={`ai-idea-${idea.id}`}
+                        className="flex items-start gap-3 rounded-lg border p-3"
+                        style={{
+                          background: "var(--color-bt-card)",
+                          borderColor: "var(--color-bt-border)",
+                        }}
+                      >
+                        <Sparkles
+                          size={16}
+                          className="mt-0.5 flex-shrink-0"
+                          style={{ color: "var(--color-bt-accent)" }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="text-sm font-medium"
+                            style={{ color: "var(--color-bt-text)" }}
+                          >
+                            {idea.title}
+                          </p>
+                          <p
+                            className="text-xs"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          >
+                            {idea.location}
+                            {idea.costTier && ` · ${idea.costTier}`}
+                          </p>
+                          {idea.description && (
+                            <p
+                              className="mt-1 text-xs"
+                              style={{ color: "var(--color-bt-text-dim)" }}
+                            >
+                              {idea.description}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleRemoveAiIdea(idea.id)}
+                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+                          aria-label={`Remove ${idea.title}`}
+                        >
+                          <Trash2
+                            size={14}
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {validationError && (
+                <p
+                  className="text-sm"
+                  style={{ color: "var(--color-bt-danger)" }}
+                  data-testid="validation-error"
+                >
+                  {validationError}
+                </p>
+              )}
+
               <button
-                data-testid="add-vote-dest"
-                onClick={handleAddDest}
-                disabled={!destInput.trim()}
-                className="rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+                data-testid="create-trip-vote"
+                onClick={onSubmit}
+                disabled={isSubmitting || !hasAnyIdeas}
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
                 style={{
                   background: "var(--color-bt-accent)",
                   color: "var(--color-bt-base)",
                 }}
               >
-                Add
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Creating your trip...
+                  </>
+                ) : (
+                  <>
+                    <Check size={16} />
+                    Create Trip
+                  </>
+                )}
               </button>
             </div>
-
-            {/* Destination chips */}
-            {voteDests.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {voteDests.map((d, i) => (
-                  <span
-                    key={i}
-                    data-testid={`vote-dest-chip-${i}`}
-                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm"
-                    style={{
-                      background: "var(--color-bt-tag-bg)",
-                      color: "var(--color-bt-accent)",
-                    }}
-                  >
-                    {d}
-                    <button
-                      onClick={() => onRemoveVoteDest(i)}
-                      className="flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Sub-section 2: Tell us about your trip and crew */}
-          <div>
-            <p
-              className="mb-2 text-sm font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              Tell us about your trip and crew
-            </p>
-            <textarea
-              data-testid="crew-description"
-              value={crewDescription}
-              onChange={(e) => onCrewDescriptionChange(e.target.value)}
-              placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year..."
-              rows={3}
-              maxLength={2000}
-              className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
-              style={{
-                background: "var(--color-bt-card)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <p
-              className="mt-1 text-xs"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Claude will suggest 3 destination ideas based on this
-            </p>
-          </div>
-
-          {validationError && (
-            <p
-              className="text-sm"
-              style={{ color: "var(--color-bt-danger)" }}
-              data-testid="validation-error"
-            >
-              {validationError}
-            </p>
           )}
-
-          <button
-            data-testid="create-trip-vote"
-            onClick={onSubmit}
-            disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-            }}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Creating your trip...
-              </>
-            ) : (
-              <>
-                <Check size={16} />
-                Create Trip
-              </>
-            )}
-          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -665,6 +796,7 @@ export default function TripNewPage() {
   const [destination, setDestination] = useState("");
   const [voteDests, setVoteDests] = useState<string[]>([]);
   const [crewDescription, setCrewDescription] = useState("");
+  const [aiIdeas, setAiIdeas] = useState<AiIdea[]>([]);
   const [validationError, setValidationError] = useState("");
 
   const [error, setError] = useState("");
@@ -720,10 +852,10 @@ export default function TripNewPage() {
     setValidationError("");
     setError("");
 
-    // Validate: need at least one dest or a crew description
-    if (voteDests.length === 0 && !crewDescription.trim()) {
+    // Validate: need at least one idea (manual or AI)
+    if (voteDests.length === 0 && aiIdeas.length === 0) {
       setValidationError(
-        "Add at least one destination or describe your crew so we can suggest some."
+        "Add at least one destination or get AI ideas before creating the trip."
       );
       return;
     }
@@ -739,44 +871,6 @@ export default function TripNewPage() {
         location: d,
         source: "manual" as const,
       }));
-
-      // Fetch AI suggestions if crew description provided
-      let aiIdeas: Array<{
-        id: string;
-        title: string;
-        location: string;
-        description: string;
-        costTier: string;
-        source: "ai";
-      }> = [];
-
-      if (crewDescription.trim()) {
-        try {
-          const res = await fetch("/api/ai/suggest-destinations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              crewDescription: crewDescription.trim(),
-            }),
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            aiIdeas = (data.suggestions ?? []).map(
-              (s: SuggestedDestination, i: number) => ({
-                id: `idea-ai-${Date.now()}-${i}`,
-                title: s.title,
-                location: s.location,
-                description: s.description,
-                costTier: s.costTier,
-                source: "ai" as const,
-              })
-            );
-          }
-        } catch {
-          // AI suggestions are best-effort; proceed without them
-        }
-      }
 
       await createTrip.mutateAsync({
         id: tripId,
@@ -822,9 +916,7 @@ export default function TripNewPage() {
       >
         <button
           onClick={() => {
-            if (step === 2 && choice !== null) {
-              setChoice(null);
-            } else if (step === 2) {
+            if (step === 2) {
               setStep(1);
             } else {
               router.back();
@@ -915,6 +1007,8 @@ export default function TripNewPage() {
             }
             crewDescription={crewDescription}
             onCrewDescriptionChange={setCrewDescription}
+            aiIdeas={aiIdeas}
+            onAiIdeasChange={setAiIdeas}
             onBack={() => setStep(1)}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
