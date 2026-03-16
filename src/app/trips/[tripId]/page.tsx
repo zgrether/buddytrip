@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Save, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -16,11 +16,110 @@ import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
 import { formatDateRange } from "@/lib/dates";
 
+// ── EditTripDetailsModal ──────────────────────────────────────────────────
+
+function EditTripDetailsModal({
+  trip,
+  onClose,
+}: {
+  trip: { id: string; title: string; description?: string | null };
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [title, setTitle] = useState(trip.title);
+  const [description, setDescription] = useState(trip.description ?? "");
+
+  const updateTrip = trpc.trips.update.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId: trip.id });
+      utils.trips.list.invalidate();
+      onClose();
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+      />
+      <div
+        className="relative w-full max-w-sm rounded-2xl p-5 space-y-4"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Edit Trip
+          </h2>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Name</label>
+          <input
+            data-testid="edit-title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Description</label>
+          <textarea
+            data-testid="edit-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)", resize: "none" }}
+          />
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border py-2.5 text-sm"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="save-trip-btn"
+            disabled={!title.trim() || updateTrip.isPending}
+            onClick={() => updateTrip.mutate({
+              tripId: trip.id,
+              title: title.trim(),
+              description: description.trim() || undefined,
+            })}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            <Save size={14} />
+            {updateTrip.isPending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TripDetailPage ────────────────────────────────────────────────────────
+
 export default function TripDetailPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
+  const [showEditDetails, setShowEditDetails] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -71,7 +170,7 @@ export default function TripDetailPage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* ── Top bar (back button) ─────────────────────────────────────────── */}
+      {/* ── Top bar ───────────────────────────────────────────────────────── */}
       <div
         className="sticky top-0 z-40"
         style={{ background: "var(--color-bt-base)" }}
@@ -100,7 +199,7 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      {/* ── Trip hero card ───────────────────────────────────────────────── */}
+      {/* ── Trip hero card ────────────────────────────────────────────────── */}
       <div className="mx-auto max-w-lg px-4">
         <LocationHero
           tripName={trip.title}
@@ -108,9 +207,10 @@ export default function TripDetailPage() {
           location={destLocation || trip.location}
           lockedTitle={trip.locked_destination_title}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
+          onEdit={canEdit ? () => setShowEditDetails(true) : undefined}
         />
 
-        {/* ── Tab bar (inline, in body) ────────────────────────────────────── */}
+        {/* ── Tab bar ───────────────────────────────────────────────────── */}
         <div className="mt-4">
           <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
@@ -138,15 +238,22 @@ export default function TripDetailPage() {
         )}
       </main>
 
-      {/* ── Bottom navigation (Trip context) ──────────────────────────────── */}
+      {/* ── Bottom navigation ─────────────────────────────────────────────── */}
       <TripBottomNav tripId={tripId} eventId={trip.event_id} />
 
-      {/* ── Settings modal ─────────────────────────────────────────────────── */}
+      {/* ── Edit trip details modal ───────────────────────────────────────── */}
+      {showEditDetails && (
+        <EditTripDetailsModal
+          trip={trip}
+          onClose={() => setShowEditDetails(false)}
+        />
+      )}
+
+      {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && (
         <TripSettingsModal
           trip={trip}
           isOwner={isOwner}
-          canEdit={canEdit}
           onClose={() => setShowSettings(false)}
         />
       )}
