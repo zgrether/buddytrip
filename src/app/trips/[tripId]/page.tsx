@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MapPin, Calendar, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
-import { StatusBadge, getTripStatus } from "@/components/StatusBadge";
+import { getTripStatus } from "@/components/StatusBadge";
 import { LocationHero } from "@/components/LocationHero";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { HomeTab } from "./tabs/HomeTab";
@@ -63,9 +63,7 @@ export default function TripDetailPage() {
   }
 
   const status = getTripStatus(trip);
-  const isLocked = !!trip.locked_destination_title;
   const destLocation = trip.locked_destination_location ?? trip.location;
-  const hasDates = !!(trip.start_date || trip.end_date);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -102,70 +100,16 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      {/* ── Trip header card ──────────────────────────────────────────────── */}
+      {/* ── Trip hero card ───────────────────────────────────────────────── */}
       <div className="mx-auto max-w-lg px-4">
-        {/* LocationHero when locked */}
-        {isLocked && destLocation && (
-          <LocationHero
-            location={destLocation}
-            tripName={trip.title}
-          />
-        )}
-
-        {/* Trip info */}
-        <div className={isLocked && destLocation ? "mt-3" : ""}>
-          <div className="flex items-center gap-2">
-            <h1
-              data-testid="trip-title"
-              className="text-lg font-bold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              {trip.title}
-            </h1>
-            <StatusBadge status={status} />
-          </div>
-
-          {/* Destination + dates sub-line */}
-          <div
-            className="mt-1 flex flex-wrap items-center gap-3 text-xs"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {isLocked ? (
-              <span className="flex items-center gap-1">
-                <MapPin size={11} />
-                {trip.locked_destination_title}
-                {destLocation && destLocation !== trip.locked_destination_title && `, ${destLocation}`}
-              </span>
-            ) : trip.location ? (
-              <span className="flex items-center gap-1">
-                <MapPin size={11} />
-                {trip.location}
-              </span>
-            ) : (
-              <span style={{ color: "var(--color-bt-text-dim)" }}>
-                Destination: TBD
-              </span>
-            )}
-
-            {hasDates ? (
-              <span className="flex items-center gap-1">
-                <Calendar size={11} />
-                {formatDateRange(trip.start_date, trip.end_date)}
-              </span>
-            ) : (
-              <span style={{ color: "var(--color-bt-text-dim)" }}>
-                Dates: TBD
-              </span>
-            )}
-          </div>
-
-          {/* Description */}
-          {trip.description && (
-            <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {trip.description}
-            </p>
-          )}
-        </div>
+        <LocationHero
+          tripName={trip.title}
+          status={status}
+          location={destLocation || trip.location}
+          lockedTitle={trip.locked_destination_title}
+          dateRange={formatDateRange(trip.start_date, trip.end_date)}
+          description={trip.description}
+        />
 
         {/* ── Tab bar (inline, in body) ────────────────────────────────────── */}
         <div className="mt-4">
