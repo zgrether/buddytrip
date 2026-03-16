@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -21,6 +21,23 @@ export default function TripDetailPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
+
+  const TABS: TabId[] = ["home", "schedule", "crew", "comp"];
+  const touchStartX = useRef<number | null>(null);
+
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(delta) < 50) return;
+    const idx = TABS.indexOf(activeTab);
+    if (delta < 0 && idx < TABS.length - 1) setActiveTab(TABS[idx + 1]);
+    if (delta > 0 && idx > 0) setActiveTab(TABS[idx - 1]);
+  }
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -78,10 +95,10 @@ export default function TripDetailPage() {
       >
         <div className="flex h-12 items-center justify-between px-4">
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() => activeTab === "home" ? router.push("/dashboard") : setActiveTab("home")}
             className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{ color: "var(--color-bt-text)" }}
-            aria-label="Back to dashboard"
+            aria-label={activeTab === "home" ? "Back to dashboard" : "Back to home"}
           >
             <ArrowLeft size={20} />
           </button>
@@ -118,7 +135,11 @@ export default function TripDetailPage() {
       </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-lg pb-24 pt-4">
+      <main
+        className="mx-auto max-w-lg pb-24 pt-4"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         {activeTab === "home" && (
           <HomeTab
             trip={trip}
