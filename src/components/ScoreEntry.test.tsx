@@ -58,4 +58,41 @@ describe("ScoreEntry — score logic", () => {
     expect(result.points).toBeGreaterThanOrEqual(0);
     expect(result.points).toBeLessThanOrEqual(1);
   });
+
+  it("scoresRef pattern: latest score is captured even when submit fires before re-render", () => {
+    // Simulates the ref-based pattern used in ScoreEntry to prevent stale closures.
+    // Without the ref, handleSubmit would capture the scores at the time useCallback
+    // was last re-created, potentially missing a score update that happened in the
+    // same tick as the submit click.
+    let scores = [
+      { teamId: "team-a", points: 0 },
+      { teamId: "team-b", points: 0 },
+    ];
+    // The ref always points to the latest value
+    const scoresRef = { current: scores };
+
+    // Simulate handleScoreChange updating state + ref together
+    const handleScoreChange = (teamId: string, points: number) => {
+      const next = scores.map((s) => (s.teamId === teamId ? { ...s, points } : s));
+      scoresRef.current = next;
+      scores = next; // state update (in React, this would trigger re-render)
+    };
+
+    // A stale handleSubmit that closed over the OLD scores (before any change)
+    const staleSubmitCapture = [...scores]; // closed-over value — all zeros
+    const staleHandleSubmit = () => staleSubmitCapture;
+
+    // The fixed handleSubmit always reads from ref
+    const fixedHandleSubmit = () => scoresRef.current;
+
+    // User changes team-a to 0.5 then immediately submits
+    handleScoreChange("team-a", 0.5);
+
+    // Stale closure returns all-zero scores — the bug
+    expect(staleHandleSubmit()[0].points).toBe(0);
+
+    // Ref-based submit returns the updated score — the fix
+    expect(fixedHandleSubmit()[0].points).toBe(0.5);
+    expect(fixedHandleSubmit()[1].points).toBe(0);
+  });
 });
