@@ -16,7 +16,6 @@ import {
   DollarSign,
   MessageSquare,
   Send,
-  Vote,
   Sparkles,
   Loader2,
   Trash2,
@@ -676,6 +675,17 @@ function CurrentDestinationCard({ title, location }: { title: string; location?:
   );
 }
 
+// ── LocalIdea ─────────────────────────────────────────────────────────────
+
+interface LocalIdea {
+  id: string;
+  title: string;
+  location: string;
+  description?: string;
+  costTier?: string;
+  source: "manual" | "ai";
+}
+
 // ── ChangeDestinationInput ────────────────────────────────────────────────
 
 function ChangeDestinationInput({ tripId }: { tripId: string }) {
@@ -916,70 +926,19 @@ function ChangeDestinationInput({ tripId }: { tripId: string }) {
 
 // ── EmptyStateOnboarding ─────────────────────────────────────────────────
 
-type DestinationChoice = null | "known" | "explore";
-
-interface LocalIdea {
-  id: string;
-  title: string;
-  location: string;
-  description?: string;
-  costTier?: string;
-  source: "manual" | "ai";
-}
-
-function EmptyStateOnboarding({
-  tripId,
-  isOwner,
-}: {
-  tripId: string;
-  isOwner: boolean;
-}) {
-  const router = useRouter();
+function EmptyStateOnboarding({ tripId }: { tripId: string }) {
   const utils = trpc.useUtils();
 
-  // Which top-level choice has the user made
-  const [choice, setChoice] = useState<DestinationChoice>(null);
-
-  // ── "known" path state ───────────────────────────────────────────────
-  const [destination, setDestination] = useState("");
-
-  // ── "explore" path state ─────────────────────────────────────────────
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
   const [destInput, setDestInput] = useState("");
-  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [showAiPrompt, setShowAiPrompt] = useState(true);
   const [crewDescription, setCrewDescription] = useState("");
   const [isFetchingAi, setIsFetchingAi] = useState(false);
   const [aiError, setAiError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ── Mutations ────────────────────────────────────────────────────────
-  const lockDest = trpc.trips.lockDestination.useMutation({
-    async onMutate(vars) {
-      await utils.trips.getById.cancel({ tripId });
-      const prev = utils.trips.getById.getData({ tripId });
-      if (prev) {
-        utils.trips.getById.setData({ tripId }, {
-          ...prev,
-          locked_destination_title: vars.title,
-          locked_destination_location: vars.location,
-        });
-      }
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.trips.getById.setData({ tripId }, context.prev);
-    },
-    onSuccess() {
-      router.push(`/trips/${tripId}`);
-    },
-    onSettled() {
-      utils.trips.getById.invalidate({ tripId });
-    },
-  });
-
   const createIdea = trpc.ideas.create.useMutation();
 
-  // ── Handlers ─────────────────────────────────────────────────────────
   const handleAddManual = () => {
     const t = destInput.trim();
     if (!t) return;
@@ -1011,7 +970,6 @@ function EmptyStateOnboarding({
           source: "ai" as const,
         })
       );
-      // Merge AI ideas into the unified list (dedup by title)
       setLocalIdeas((prev) => {
         const existingTitles = new Set(prev.map((x) => x.title.toLowerCase()));
         return [...prev, ...incoming.filter((x) => !existingTitles.has(x.title.toLowerCase()))];
@@ -1042,94 +1000,92 @@ function EmptyStateOnboarding({
         )
       );
       utils.ideas.list.invalidate({ tripId });
+      setLocalIdeas([]);
     } catch {
+      // keep local ideas so user can retry
+    } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ── "known" path ─────────────────────────────────────────────────────
-  if (choice === "known") {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <button
-          onClick={() => setChoice(null)}
-          className="mb-6 flex items-center gap-1.5 text-sm transition-colors"
-          style={{ color: "var(--color-bt-text-dim)" }}
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+        Idea zone
+      </h2>
+      <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+        Build a list of options, then the crew can vote and discuss.
+      </p>
+
+      {/* ── AI suggestions — primary, open by default ── */}
+      {showAiPrompt ? (
+        <div
+          className="rounded-xl border p-4"
+          style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
         >
-          ← Back
-        </button>
-        <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-          Where are you headed?
-        </h2>
-        <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Enter your destination and we&apos;ll get the trip set up.
-        </p>
-        <input
-          autoFocus
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && destination.trim()) {
-              lockDest.mutate({ tripId, title: destination.trim(), location: destination.trim() });
-            }
-          }}
-          placeholder="Bandon Dunes, OR"
-          maxLength={500}
-          className="mb-4 w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
-          style={{
-            background: "var(--color-bt-card)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        <button
-          onClick={() => {
-            if (destination.trim()) {
-              lockDest.mutate({ tripId, title: destination.trim(), location: destination.trim() });
-            }
-          }}
-          disabled={lockDest.isPending || !destination.trim()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {lockDest.isPending ? (
-            <><Loader2 size={16} className="animate-spin" /> Setting destination…</>
-          ) : (
-            <><Check size={16} /> Set destination</>
+          <div className="mb-1 flex items-center gap-1.5">
+            <Sparkles size={14} style={{ color: "var(--color-bt-accent)" }} />
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Get AI suggestions
+            </p>
+          </div>
+          <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+            Tell us about your crew and we&apos;ll suggest some ideas to kick things off.
+          </p>
+          <textarea
+            autoFocus
+            value={crewDescription}
+            onChange={(e) => setCrewDescription(e.target.value)}
+            placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year…"
+            rows={3}
+            maxLength={2000}
+            className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+            style={{
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          />
+          {aiError && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>{aiError}</p>
           )}
-        </button>
-      </div>
-    );
-  }
-
-  // ── "explore" path ───────────────────────────────────────────────────
-  if (choice === "explore") {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+          <button
+            onClick={handleFetchAi}
+            disabled={!crewDescription.trim() || isFetchingAi}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {isFetchingAi ? (
+              <><Loader2 size={15} className="animate-spin" /> Thinking…</>
+            ) : (
+              <><Sparkles size={15} /> Suggest destinations</>
+            )}
+          </button>
+        </div>
+      ) : (
         <button
-          onClick={() => setChoice(null)}
-          className="mb-6 flex items-center gap-1.5 text-sm transition-colors"
-          style={{ color: "var(--color-bt-text-dim)" }}
+          onClick={() => setShowAiPrompt(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors"
+          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
         >
-          ← Back
+          <Sparkles size={15} />
+          Get more AI suggestions
         </button>
-        <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-          Add destinations to compare
-        </h2>
-        <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Build a list of options, then the crew can vote on their favorite.
-        </p>
+      )}
 
-        {/* Add input */}
+      {/* ── Manual add — secondary ── */}
+      <div className="mt-5">
+        <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+          or add your own idea
+        </p>
         <div className="flex gap-2">
           <input
-            autoFocus
             value={destInput}
             onChange={(e) => setDestInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); handleAddManual(); }
             }}
-            placeholder="Type a destination and press Add"
+            placeholder="Destination name"
             maxLength={500}
             className="flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
             style={{
@@ -1147,206 +1103,59 @@ function EmptyStateOnboarding({
             Add
           </button>
         </div>
+      </div>
 
-        {/* Unified idea list */}
-        {localIdeas.length > 0 ? (
-          <div className="mt-4 space-y-2">
-            {localIdeas.map((idea) => (
-              <div
-                key={idea.id}
-                className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-                style={{
-                  background: "var(--color-bt-card)",
-                  borderColor: "var(--color-bt-border)",
-                }}
-              >
-                {idea.source === "ai" ? (
-                  <Sparkles
-                    size={14}
-                    className="flex-shrink-0"
-                    style={{ color: "var(--color-bt-accent)" }}
-                  />
-                ) : (
-                  <MapPin
-                    size={14}
-                    className="flex-shrink-0"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                    {idea.title}
-                  </p>
-                  {idea.description && (
-                    <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {idea.description}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={() => setLocalIdeas((prev) => prev.filter((i) => i.id !== idea.id))}
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
-                  aria-label={`Remove ${idea.title}`}
-                >
-                  <X size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            No ideas yet — type one above or get AI suggestions below.
-          </p>
-        )}
-
-        {/* AI suggestions section */}
-        <div className="mt-5">
-          {!showAiPrompt ? (
-            <button
-              onClick={() => setShowAiPrompt(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors"
-              style={{
-                background: "var(--color-bt-tag-bg)",
-                color: "var(--color-bt-accent)",
-              }}
-            >
-              <Sparkles size={15} />
-              Get AI suggestions
-            </button>
-          ) : (
+      {/* ── Staged ideas list ── */}
+      {localIdeas.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {localIdeas.map((idea) => (
             <div
-              className="rounded-xl border p-4"
-              style={{
-                background: "var(--color-bt-card)",
-                borderColor: "var(--color-bt-border)",
-              }}
+              key={idea.id}
+              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
+              style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
             >
-              <p className="mb-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                We&apos;d love to help
-              </p>
-              <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                Give us a quick blurb about your trip and crew and we&apos;ll add some fresh ideas to your list.
-              </p>
-              <textarea
-                autoFocus
-                value={crewDescription}
-                onChange={(e) => setCrewDescription(e.target.value)}
-                placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year…"
-                rows={3}
-                maxLength={2000}
-                className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
-                style={{
-                  background: "var(--color-bt-base)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-              {aiError && (
-                <p className="mt-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>
-                  {aiError}
-                </p>
+              {idea.source === "ai" ? (
+                <Sparkles size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+              ) : (
+                <MapPin size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
               )}
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={() => { setShowAiPrompt(false); setCrewDescription(""); setAiError(""); }}
-                  className="rounded-lg border px-4 py-2 text-sm"
-                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleFetchAi}
-                  disabled={!crewDescription.trim() || isFetchingAi}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-opacity disabled:opacity-40"
-                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                >
-                  {isFetchingAi ? (
-                    <><Loader2 size={15} className="animate-spin" /> Thinking…</>
-                  ) : (
-                    <><Sparkles size={15} /> Suggest destinations</>
-                  )}
-                </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  {idea.title}
+                </p>
+                {idea.description && (
+                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {idea.description}
+                  </p>
+                )}
               </div>
+              <button
+                onClick={() => setLocalIdeas((prev) => prev.filter((i) => i.id !== idea.id))}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+                aria-label={`Remove ${idea.title}`}
+              >
+                <X size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
             </div>
-          )}
+          ))}
         </div>
+      )}
 
-        {/* Compare CTA */}
-        {localIdeas.length > 0 && (
-          <button
-            onClick={handleCompare}
-            disabled={isSubmitting}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {isSubmitting ? (
-              <><Loader2 size={16} className="animate-spin" /> Saving…</>
-            ) : (
-              <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
-            )}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // ── Choice screen ────────────────────────────────────────────────────
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-        Where are you headed?
-      </h2>
-      <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-        Let&apos;s figure out the destination for this trip.
-      </p>
-
-      <div className="space-y-3">
-        {/* Option A — only owners can lock a destination */}
-        {isOwner && (
-          <button
-            onClick={() => setChoice("known")}
-            className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
-            style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-          >
-            <div
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
-              style={{ background: "var(--color-bt-tag-bg)" }}
-            >
-              <MapPin size={24} style={{ color: "var(--color-bt-accent)" }} />
-            </div>
-            <div>
-              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                We already know where we&apos;re going
-              </p>
-              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                Set the destination and get planning
-              </p>
-            </div>
-          </button>
-        )}
-
-        {/* Option B */}
+      {/* ── Compare CTA ── */}
+      {localIdeas.length > 0 && (
         <button
-          onClick={() => setChoice("explore")}
-          className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
-          style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+          onClick={handleCompare}
+          disabled={isSubmitting}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
-          <div
-            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "var(--color-bt-tag-bg)" }}
-          >
-            <Vote size={24} style={{ color: "var(--color-bt-accent)" }} />
-          </div>
-          <div>
-            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              We&apos;re still figuring it out
-            </p>
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Add options and let the crew vote
-            </p>
-          </div>
+          {isSubmitting ? (
+            <><Loader2 size={16} className="animate-spin" /> Saving…</>
+          ) : (
+            <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
+          )}
         </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -1492,7 +1301,7 @@ export default function IdeaComparisonPage() {
           </div>
         ) : ideasTyped.length === 0 ? (
           canEdit ? (
-            <EmptyStateOnboarding tripId={tripId} isOwner={isOwner} />
+            <EmptyStateOnboarding tripId={tripId} />
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
