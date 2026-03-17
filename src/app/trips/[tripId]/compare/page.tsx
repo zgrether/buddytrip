@@ -92,10 +92,10 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
           {comments.map((c) => {
             const isMe = c.user_id === currentUser?.id;
             const initials = isMe
-              ? (currentUser?.name ?? currentUser?.email ?? "?").charAt(0).toUpperCase()
+              ? (currentUser?.email ?? "?").charAt(0).toUpperCase()
               : "?";
             const label = isMe
-              ? (currentUser?.nickname ?? currentUser?.name ?? currentUser?.email ?? "You")
+              ? (currentUser?.email ?? "You")
               : c.user_id.slice(0, 8);
             return (
               <div key={c.id} className="flex gap-2">
@@ -135,7 +135,7 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
               className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
               style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
             >
-              {(currentUser?.name ?? currentUser?.email ?? "?").charAt(0).toUpperCase()}
+              {(currentUser?.email ?? "?").charAt(0).toUpperCase()}
             </div>
             <input
               value={text}
