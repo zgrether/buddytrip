@@ -14,7 +14,6 @@ import {
   X,
   DollarSign,
   MessageSquare,
-  Send,
   Sparkles,
   Loader2,
   Trash2,
@@ -52,7 +51,9 @@ interface Idea {
 
 function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string }) {
   const [text, setText] = useState("");
-  const [open, setOpen] = useState(false);
+  // null = not manually toggled; derive from data. true/false = user override.
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
 
@@ -64,6 +65,9 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
     },
   });
 
+  // Auto-expand when comments exist unless the user has manually toggled
+  const open = manualOpen !== null ? manualOpen : comments.length > 0;
+
   const fmtDate = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
@@ -71,11 +75,13 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
       d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   };
 
+  const visibleComments = showAll ? comments : comments.slice(0, 3);
+
   return (
     <div>
       {/* Toggle */}
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setManualOpen(!open)}
         className="flex items-center gap-1.5 text-sm"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
@@ -86,8 +92,8 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
 
       {open && (
         <div className="mt-3 space-y-3">
-          {/* Comment list */}
-          {comments.map((c) => {
+          {/* Comment list — first 3 auto-expanded */}
+          {visibleComments.map((c) => {
             const isMe = c.user_id === currentUser?.id;
             const initials = isMe
               ? (currentUser?.email ?? "?").charAt(0).toUpperCase()
@@ -118,6 +124,16 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
               </div>
             );
           })}
+
+          {comments.length > 3 && !showAll && (
+            <button
+              onClick={() => setShowAll(true)}
+              className="text-xs"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Show {comments.length - 3} more comment{comments.length - 3 !== 1 ? "s" : ""}
+            </button>
+          )}
 
           {/* Input */}
           <form
@@ -176,54 +192,71 @@ function hashToHue(str: string): number {
 function IdeaCard({
   idea,
   tripId,
-  isVoted,
   canEdit,
   isOwner,
-  totalMembers,
   isLocked,
   onLock,
+  onDelete,
 }: {
   idea: Idea;
   tripId: string;
-  isVoted: boolean;
   canEdit: boolean;
   isOwner: boolean;
-  totalMembers: number;
   isLocked?: boolean;
   onLock: (idea: Idea) => void;
+  onDelete: (idea: Idea) => void;
 }) {
   const utils = trpc.useUtils();
-  const currentUser = useCurrentUser();
+  const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | null>(null);
+  const [editDraft, setEditDraft] = useState("");
 
-  const vote = trpc.ideas.vote.useMutation({
-    async onMutate({ ideaId }) {
-      await utils.ideas.list.cancel({ tripId });
-      const prev = utils.ideas.list.getData({ tripId });
-      utils.ideas.list.setData({ tripId }, (prev ?? []).map((idea) => {
-        if (idea.id !== ideaId) return idea;
-        const alreadyVoted = idea.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
-        return {
-          ...idea,
-          votes: alreadyVoted
-            ? idea.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id)
-            : [...idea.votes, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }],
-        };
-      }));
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
-    },
-    onSettled() {
+  const updateIdea = trpc.ideas.update.useMutation({
+    onSuccess() {
       utils.ideas.list.invalidate({ tripId });
+      setEditingField(null);
     },
   });
 
-  const removeIdea = trpc.ideas.remove.useMutation({
-    onSuccess: () => utils.ideas.list.invalidate({ tripId }),
-  });
+  const startEdit = (field: typeof editingField, value: string) => {
+    setEditingField(field);
+    setEditDraft(value);
+  };
+
+  const saveEdit = () => {
+    if (!editingField) return;
+    const trimmed = editDraft.trim();
+    if ((editingField === "title" || editingField === "location") && !trimmed) return;
+    if (editingField === "pros" || editingField === "cons") {
+      const items = trimmed ? trimmed.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+      updateIdea.mutate({ tripId, ideaId: idea.id, [editingField]: items });
+    } else {
+      updateIdea.mutate({ tripId, ideaId: idea.id, [editingField]: trimmed });
+    }
+  };
+
+  const cancelEdit = () => setEditingField(null);
 
   const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
+
+  const inlineEditControls = (
+    <div className="mt-1.5 flex gap-2">
+      <button
+        onClick={saveEdit}
+        disabled={updateIdea.isPending}
+        className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40"
+        style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+      >
+        {updateIdea.isPending ? "Saving…" : "Save"}
+      </button>
+      <button
+        onClick={cancelEdit}
+        className="rounded-md px-2.5 py-1 text-xs"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
 
   return (
     <div
@@ -238,7 +271,6 @@ function IdeaCard({
           background: `linear-gradient(160deg, hsl(${hue}, 50%, 18%) 0%, hsl(${(hue + 40) % 360}, 40%, 10%) 100%)`,
         }}
       >
-        {/* Picked badge */}
         {isLocked && (
           <div className="absolute right-3 top-3">
             <span
@@ -251,13 +283,59 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Title block at bottom of hero */}
         <div className="absolute bottom-0 left-0 right-0 p-4">
-          <p className="text-2xl font-bold text-white">{idea.title}</p>
-          {idea.location && idea.location !== idea.title && (
-            <p className="mt-1 flex items-center gap-1 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
+          {editingField === "title" ? (
+            <div>
+              <input
+                autoFocus
+                value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
+                className="w-full rounded-lg bg-black/30 px-2 py-1 text-2xl font-bold text-white outline-none placeholder:text-white/40 focus:ring-1 focus:ring-white/40"
+              />
+              <div className="mt-1.5 flex gap-2">
+                <button onClick={saveEdit} disabled={updateIdea.isPending} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ background: "rgba(255,255,255,0.9)", color: "#000" }}>
+                  {updateIdea.isPending ? "Saving…" : "Save"}
+                </button>
+                <button onClick={cancelEdit} className="rounded-md px-2.5 py-1 text-xs text-white/70">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <p
+              className={`text-2xl font-bold text-white${canEdit ? " cursor-pointer hover:opacity-80" : ""}`}
+              onClick={canEdit ? () => startEdit("title", idea.title) : undefined}
+            >
+              {idea.title}
+            </p>
+          )}
+
+          {editingField === "location" ? (
+            <div className="mt-1">
+              <input
+                autoFocus
+                value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
+                placeholder="City, State"
+                className="w-full rounded-lg bg-black/30 px-2 py-1 text-sm text-white outline-none placeholder:text-white/40 focus:ring-1 focus:ring-white/40"
+              />
+              <div className="mt-1.5 flex gap-2">
+                <button onClick={saveEdit} disabled={updateIdea.isPending} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ background: "rgba(255,255,255,0.9)", color: "#000" }}>
+                  {updateIdea.isPending ? "Saving…" : "Save"}
+                </button>
+                <button onClick={cancelEdit} className="rounded-md px-2.5 py-1 text-xs text-white/70">Cancel</button>
+              </div>
+            </div>
+          ) : editingField !== "title" && (
+            <p
+              className={`mt-1 flex items-center gap-1 text-sm${canEdit ? " cursor-pointer hover:opacity-80" : ""}`}
+              style={{ color: idea.location && idea.location !== idea.title ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)" }}
+              onClick={canEdit ? () => startEdit("location", idea.location ?? "") : undefined}
+            >
               <MapPin size={12} />
-              {idea.location}
+              {idea.location && idea.location !== idea.title
+                ? idea.location
+                : <span className="italic">{canEdit ? "Add location…" : ""}</span>}
             </p>
           )}
         </div>
@@ -266,35 +344,73 @@ function IdeaCard({
       {/* ── Body ──────────────────────────────────────────────────────── */}
       <div className="space-y-4 p-4">
         {/* Description */}
-        {idea.description ? (
-          <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-            {idea.description}
-          </p>
-        ) : canEdit ? (
-          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            + Add a description — what&apos;s the pitch?
-          </p>
-        ) : null}
+        {editingField === "description" ? (
+          <div>
+            <textarea
+              autoFocus
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+              rows={3}
+              placeholder="What's the pitch for this destination?"
+              className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-accent)", color: "var(--color-bt-text)" }}
+            />
+            {inlineEditControls}
+          </div>
+        ) : (
+          <div
+            onClick={canEdit ? () => startEdit("description", idea.description ?? "") : undefined}
+            className={canEdit ? "cursor-pointer" : ""}
+          >
+            {idea.description ? (
+              <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+                {idea.description}
+              </p>
+            ) : canEdit ? (
+              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                + Add a description — what&apos;s the pitch?
+              </p>
+            ) : null}
+          </div>
+        )}
 
         {/* Pros */}
         {((idea.pros && idea.pros.length > 0) || canEdit) && (
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-                + PROS
-              </p>
-            </div>
-            {idea.pros && idea.pros.length > 0 ? (
-              <ul className="space-y-1">
-                {idea.pros.map((p, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                    <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-                    {p}
-                  </li>
-                ))}
-              </ul>
+            <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>+ PROS</p>
+            {editingField === "pros" ? (
+              <div>
+                <textarea
+                  autoFocus
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                  rows={3}
+                  placeholder="One pro per line"
+                  className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-accent)", color: "var(--color-bt-text)" }}
+                />
+                {inlineEditControls}
+              </div>
             ) : (
-              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
+              <div
+                onClick={canEdit ? () => startEdit("pros", (idea.pros ?? []).join("\n")) : undefined}
+                className={canEdit ? "cursor-pointer" : ""}
+              >
+                {idea.pros && idea.pros.length > 0 ? (
+                  <ul className="space-y-1">
+                    {idea.pros.map((p, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                        <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -302,22 +418,39 @@ function IdeaCard({
         {/* Cons */}
         {((idea.cons && idea.cons.length > 0) || canEdit) && (
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>
-                × CONS
-              </p>
-            </div>
-            {idea.cons && idea.cons.length > 0 ? (
-              <ul className="space-y-1">
-                {idea.cons.map((c, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                    <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
-                    {c}
-                  </li>
-                ))}
-              </ul>
+            <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>× CONS</p>
+            {editingField === "cons" ? (
+              <div>
+                <textarea
+                  autoFocus
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                  rows={3}
+                  placeholder="One con per line"
+                  className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-danger)", color: "var(--color-bt-text)" }}
+                />
+                {inlineEditControls}
+              </div>
             ) : (
-              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
+              <div
+                onClick={canEdit ? () => startEdit("cons", (idea.cons ?? []).join("\n")) : undefined}
+                className={canEdit ? "cursor-pointer" : ""}
+              >
+                {idea.cons && idea.cons.length > 0 ? (
+                  <ul className="space-y-1">
+                    {idea.cons.map((c, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                        <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -381,57 +514,96 @@ function IdeaCard({
       </div>
 
       {/* ── Footer actions ────────────────────────────────────────────── */}
-      <div
-        className="flex items-center gap-2 px-4 py-3"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
-      >
-        {/* Your pick — vote toggle */}
-        <button
-          data-testid={`vote-idea-${idea.id}`}
-          disabled={vote.isPending}
-          onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-40"
-          style={{
-            background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-base)",
-            border: `1px solid ${isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-            color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-          }}
+      {(isOwner || canEdit) && (
+        <div
+          className="flex items-center gap-2 px-4 py-3"
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
-          <Check size={14} />
-          Your pick
-        </button>
-
-        {/* Lock In — owner only */}
-        {isOwner && (
-          <button
-            data-testid={`lock-idea-${idea.id}`}
-            onClick={() => onLock(idea)}
-            className="flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
-            style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
-          >
-            <Lock size={13} />
-            Lock In
-          </button>
-        )}
-
-        {/* Delete — canEdit */}
-        {canEdit && (
-          <button
-            data-testid={`remove-idea-${idea.id}`}
-            onClick={() => removeIdea.mutate({ tripId, ideaId: idea.id })}
-            disabled={removeIdea.isPending}
-            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <Trash2 size={15} />
-          </button>
-        )}
-      </div>
+          {isOwner && (
+            <button
+              data-testid={`lock-idea-${idea.id}`}
+              onClick={() => onLock(idea)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
+              style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
+            >
+              <Lock size={13} />
+              Set as destination
+            </button>
+          )}
+          {canEdit && (
+            <button
+              data-testid={`remove-idea-${idea.id}`}
+              onClick={() => onDelete(idea)}
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── AddIdeaModal ──────────────────────────────────────────────────────────
+// ── DeleteConfirmModal ────────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  tripId,
+  idea,
+  onClose,
+}: {
+  tripId: string;
+  idea: Idea;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const removeIdea = trpc.ideas.remove.useMutation({
+    onSuccess() {
+      utils.ideas.list.invalidate({ tripId });
+      onClose();
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl p-5"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="mb-2 text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Remove {idea.title}?
+        </p>
+        <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          This will permanently delete this idea along with all its votes and comments. You can&apos;t recover any of that.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border py-2.5 text-sm"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="confirm-remove-idea-btn"
+            disabled={removeIdea.isPending}
+            onClick={() => removeIdea.mutate({ tripId, ideaId: idea.id })}
+            className="flex-1 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
+            style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+          >
+            {removeIdea.isPending ? "Removing…" : "Yes, remove it"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── LockConfirmModal ──────────────────────────────────────────────────────
 
@@ -482,12 +654,12 @@ function LockConfirmModal({
           className="mb-2 text-base font-semibold"
           style={{ color: "var(--color-bt-text)" }}
         >
-          Lock Destination?
+          Set as destination?
         </p>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           This will set{" "}
           <strong style={{ color: "var(--color-bt-text)" }}>{idea.title}</strong> as the
-          final destination. This can be unlocked later from the More tab.
+          final destination. This can be changed later from the More tab.
         </p>
         <div className="flex gap-2">
           <button
@@ -510,9 +682,81 @@ function LockConfirmModal({
             className="flex-1 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            {lockDest.isPending ? "Locking…" : "Lock It"}
+            {lockDest.isPending ? "Setting…" : "Set destination"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── VotingPanel ───────────────────────────────────────────────────────────
+
+function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: Idea[]; currentUserId: string | undefined }) {
+  const utils = trpc.useUtils();
+
+  const vote = trpc.ideas.vote.useMutation({
+    async onMutate({ ideaId }) {
+      await utils.ideas.list.cancel({ tripId });
+      const prev = utils.ideas.list.getData({ tripId });
+      utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
+        if (i.id !== ideaId) return i;
+        const alreadyVoted = i.votes.some((v: { user_id: string }) => v.user_id === currentUserId);
+        return {
+          ...i,
+          votes: alreadyVoted
+            ? i.votes.filter((v: { user_id: string }) => v.user_id !== currentUserId)
+            : [...i.votes, { idea_id: ideaId, user_id: currentUserId ?? "", created_at: new Date().toISOString() }],
+        };
+      }));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.ideas.list.invalidate({ tripId });
+    },
+  });
+
+  return (
+    <div
+      className="mb-6 rounded-2xl border p-4"
+      style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+    >
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        Crew votes
+      </p>
+      <div className="space-y-2">
+        {ideas.map((idea) => {
+          const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
+          return (
+            <div key={idea.id} className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  {idea.title}
+                </p>
+                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <button
+                data-testid={`vote-idea-${idea.id}`}
+                disabled={vote.isPending}
+                onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
+                className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-40"
+                style={{
+                  background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-base)",
+                  border: `1px solid ${isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                  color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                }}
+              >
+                <ThumbsUp size={12} />
+                {isVoted ? "My pick" : "Pick"}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1048,6 +1292,7 @@ export default function IdeaComparisonPage() {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [lockIdea, setLockIdea] = useState<Idea | null>(null);
+  const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
 
   useEffect(() => {
     if (showAddModal) {
@@ -1057,7 +1302,6 @@ export default function IdeaComparisonPage() {
   }, [showAddModal]);
 
   const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
 
   if (isLoading) {
@@ -1127,15 +1371,11 @@ export default function IdeaComparisonPage() {
                       <IdeaCard
                         idea={lockedIdea}
                         tripId={tripId}
-                        isVoted={
-                          !!currentUser?.id &&
-                          lockedIdea.votes.some((v) => v.user_id === currentUser.id)
-                        }
                         canEdit={canEdit}
                         isOwner={isOwner}
-                        totalMembers={members.length}
                         isLocked={true}
                         onLock={setLockIdea}
+                        onDelete={setDeleteIdea}
                       />
                     ) : (
                       <CurrentDestinationCard
@@ -1160,14 +1400,10 @@ export default function IdeaComparisonPage() {
                             key={idea.id}
                             idea={idea}
                             tripId={tripId}
-                            isVoted={
-                              !!currentUser?.id &&
-                              idea.votes.some((v) => v.user_id === currentUser.id)
-                            }
                             canEdit={canEdit}
                             isOwner={isOwner}
-                            totalMembers={members.length}
                             onLock={setLockIdea}
+                            onDelete={setDeleteIdea}
                           />
                         ))}
                       </div>
@@ -1194,6 +1430,7 @@ export default function IdeaComparisonPage() {
         ) : (
           /* Vertical stacked expanded cards */
           <div className="flex flex-col gap-4">
+            <VotingPanel tripId={tripId} ideas={ideasTyped} currentUserId={currentUser?.id} />
             {canEdit && (
               <div className="flex justify-end">
                 <button
@@ -1211,14 +1448,10 @@ export default function IdeaComparisonPage() {
                 key={idea.id}
                 idea={idea}
                 tripId={tripId}
-                isVoted={
-                  !!currentUser?.id &&
-                  idea.votes.some((v) => v.user_id === currentUser.id)
-                }
                 canEdit={canEdit}
                 isOwner={isOwner}
-                totalMembers={members.length}
                 onLock={setLockIdea}
+                onDelete={setDeleteIdea}
               />
             ))}
           </div>
@@ -1258,6 +1491,13 @@ export default function IdeaComparisonPage() {
           tripId={tripId}
           idea={lockIdea}
           onClose={() => setLockIdea(null)}
+        />
+      )}
+      {deleteIdea && (
+        <DeleteConfirmModal
+          tripId={tripId}
+          idea={deleteIdea}
+          onClose={() => setDeleteIdea(null)}
         />
       )}
     </div>
