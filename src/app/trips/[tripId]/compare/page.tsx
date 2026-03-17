@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
 import { TripBreadcrumb } from "@/components/TripBreadcrumb";
@@ -890,7 +890,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             Idea zone
           </h2>
           <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            Build a list of options, then the crew can vote and discuss.
+            Build a list of options, then the crew can discuss and vote.
           </p>
         </>
       )}
@@ -904,7 +904,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           <div className="mb-1 flex items-center gap-1.5">
             <Sparkles size={14} style={{ color: "var(--color-bt-accent)" }} />
             <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Get AI suggestions
+              Ask Buddy
             </p>
           </div>
           <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -936,7 +936,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             {isFetchingAi ? (
               <><Loader2 size={15} className="animate-spin" /> Thinking…</>
             ) : (
-              <><Sparkles size={15} /> Suggest destinations</>
+              <><Sparkles size={15} /> Ask Buddy</>
             )}
           </button>
         </div>
@@ -947,7 +947,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
         >
           <Sparkles size={15} />
-          Get more AI suggestions
+          Ask Buddy for more
         </button>
       )}
 
@@ -1049,6 +1049,13 @@ export default function IdeaComparisonPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [lockIdea, setLockIdea] = useState<Idea | null>(null);
 
+  useEffect(() => {
+    if (showAddModal) {
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = ""; };
+    }
+  }, [showAddModal]);
+
   const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
@@ -1078,11 +1085,18 @@ export default function IdeaComparisonPage() {
       <TripBreadcrumb
         tripId={tripId}
         tripTitle={trip?.title ?? "Trip"}
-        pageName="Compare Destinations"
+        pageName="Idea Zone"
       />
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
       <main className="mx-auto max-w-2xl p-4">
+        <button
+          onClick={() => router.push(`/trips/${tripId}`)}
+          className="mb-4 text-sm transition-opacity hover:opacity-70"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          ← {trip?.title ?? "Back to trip"}
+        </button>
         {trip?.locked_destination_title && canEdit ? (
           /* Change-destination mode: explore input above the ideas list */
           <div>
@@ -1214,13 +1228,13 @@ export default function IdeaComparisonPage() {
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {showAddModal && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ background: "var(--color-bt-overlay)" }}
           onClick={() => setShowAddModal(false)}
         >
           <div
-            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl"
-            style={{ background: "var(--color-bt-base)", borderTop: "1px solid var(--color-bt-border)" }}
+            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl"
+            style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-0">
