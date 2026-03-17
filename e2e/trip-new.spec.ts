@@ -39,14 +39,6 @@ test.describe("TripNew wizard", () => {
         });
         return;
       }
-      if (url.includes("tripMembers.add")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([{ result: { data: { trip_id: NEW_TRIP_ID } } }]),
-        });
-        return;
-      }
       if (url.includes("trips.list")) {
         await route.fulfill({
           status: 200,
@@ -59,16 +51,16 @@ test.describe("TripNew wizard", () => {
     });
   });
 
-  test("step 1: name input and invite flow", async ({ page }) => {
+  test("name input and invite flow", async ({ page }) => {
     await page.goto("/trips/new");
 
-    // Step 1 should be visible
+    // Form should be visible
     await expect(page.locator('[data-testid="trip-name-input"]')).toBeVisible();
-    await expect(page.locator('[data-testid="step1-next"]')).toBeDisabled();
+    await expect(page.locator('[data-testid="create-trip-btn"]')).toBeDisabled();
 
     // Type a name
     await page.locator('[data-testid="trip-name-input"]').fill("Scotland Golf Adventure");
-    await expect(page.locator('[data-testid="step1-next"]')).toBeEnabled();
+    await expect(page.locator('[data-testid="create-trip-btn"]')).toBeEnabled();
 
     // Search for a co-planner
     await page.locator('[data-testid="invite-search"]').fill("alice@");
@@ -81,36 +73,13 @@ test.describe("TripNew wizard", () => {
     await expect(
       page.locator(`[data-testid="invite-${MOCK_USER.id}"]`)
     ).toBeVisible();
-
-    // Advance to step 2
-    await page.locator('[data-testid="step1-next"]').click();
-    await expect(page.locator('[data-testid="trip-location-input"]')).toBeVisible();
-  });
-
-  test("step 2: can go back to step 1", async ({ page }) => {
-    await page.goto("/trips/new");
-    await page.locator('[data-testid="trip-name-input"]').fill("Test Trip");
-    await page.locator('[data-testid="step1-next"]').click();
-
-    await expect(page.locator('[data-testid="trip-location-input"]')).toBeVisible();
-    await page.locator('[data-testid="step2-back"]').click();
-    await expect(page.locator('[data-testid="trip-name-input"]')).toBeVisible();
-    await expect(page.locator('[data-testid="trip-name-input"]')).toHaveValue("Test Trip");
   });
 
   test("happy path: create trip navigates to trip detail", async ({ page }) => {
     await page.goto("/trips/new");
 
-    // Step 1
     await page.locator('[data-testid="trip-name-input"]').fill("Scotland Golf Adventure");
-    await page.locator('[data-testid="step1-next"]').click();
-
-    // Step 2
-    await page.locator('[data-testid="trip-location-input"]').fill("St Andrews, Scotland");
-    await page.locator('[data-testid="trip-start-date"]').fill("2026-09-01");
-    await page.locator('[data-testid="trip-end-date"]').fill("2026-09-08");
-
-    await page.locator('[data-testid="step2-create"]').click();
+    await page.locator('[data-testid="create-trip-btn"]').click();
 
     // Should navigate to the new trip
     await expect(page).toHaveURL(new RegExp(`/trips/${NEW_TRIP_ID}`), {
