@@ -385,21 +385,23 @@ function QuickInfoSection({
 
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          Quick Info
-        </h2>
-        {isOwner && (
-          <button
-            data-testid="add-tile-btn"
-            onClick={() => setShowAddTile(true)}
-            className="flex items-center gap-1 text-xs"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            <Plus size={14} /> Add
-          </button>
-        )}
-      </div>
+      {tiles.length > 0 && (
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            Quick Info
+          </h2>
+          {isOwner && (
+            <button
+              data-testid="add-tile-btn"
+              onClick={() => setShowAddTile(true)}
+              className="flex items-center gap-1 text-xs"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              <Plus size={14} /> Add
+            </button>
+          )}
+        </div>
+      )}
 
       {tiles.length === 0 ? (
         <button
