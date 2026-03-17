@@ -54,7 +54,9 @@ interface Idea {
 
 function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string }) {
   const [text, setText] = useState("");
+  const [open, setOpen] = useState(false);
   const utils = trpc.useUtils();
+  const currentUser = useCurrentUser();
 
   const { data: comments = [] } = trpc.ideaComments.list.useQuery({ tripId, ideaId });
   const addComment = trpc.ideaComments.create.useMutation({
@@ -64,66 +66,111 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
     },
   });
 
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
+      " · " +
+      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+
   return (
     <div>
-      <p
-        className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider"
+      {/* Toggle */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 text-sm"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        <MessageSquare size={10} />
-        Comments
-      </p>
+        <MessageSquare size={14} />
+        {comments.length} comment{comments.length !== 1 ? "s" : ""}
+        <span className="text-[10px]">{open ? "▲" : "▼"}</span>
+      </button>
 
-      {comments.length > 0 && (
-        <div className="mb-3 space-y-2">
-          {comments.map((c) => (
-            <p
-              key={c.id}
-              className="rounded-lg px-3 py-2 text-xs leading-relaxed"
+      {open && (
+        <div className="mt-3 space-y-3">
+          {/* Comment list */}
+          {comments.map((c) => {
+            const isMe = c.user_id === currentUser?.id;
+            const initials = isMe
+              ? (currentUser?.name ?? currentUser?.email ?? "?").charAt(0).toUpperCase()
+              : "?";
+            const label = isMe
+              ? (currentUser?.nickname ?? currentUser?.name ?? currentUser?.email ?? "You")
+              : c.user_id.slice(0, 8);
+            return (
+              <div key={c.id} className="flex gap-2">
+                <div
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                >
+                  {initials}
+                </div>
+                <div
+                  className="flex-1 rounded-xl px-3 py-2"
+                  style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+                >
+                  <p className="mb-1 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                    <span className="font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                      {label}
+                    </span>
+                    {" · "}{fmtDate(c.created_at)}
+                  </p>
+                  <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>{c.text}</p>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Input */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const t = text.trim();
+              if (!t) return;
+              addComment.mutate({ tripId, ideaId, id: crypto.randomUUID(), text: t });
+            }}
+            className="flex gap-2"
+          >
+            <div
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+              style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+            >
+              {(currentUser?.name ?? currentUser?.email ?? "?").charAt(0).toUpperCase()}
+            </div>
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Write a comment..."
+              className="min-w-0 flex-1 rounded-xl border px-3 py-1.5 text-sm outline-none"
               style={{
                 background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
                 color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
               }}
+            />
+            <button
+              type="submit"
+              disabled={addComment.isPending || !text.trim()}
+              className="rounded-xl px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
-              {c.text}
-            </p>
-          ))}
+              Send
+            </button>
+          </form>
         </div>
       )}
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const t = text.trim();
-          if (!t) return;
-          addComment.mutate({ tripId, ideaId, id: crypto.randomUUID(), text: t });
-        }}
-        className="flex gap-2"
-      >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Add a comment…"
-          className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs outline-none"
-          style={{
-            background: "var(--color-bt-base)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        <button
-          type="submit"
-          disabled={addComment.isPending || !text.trim()}
-          className="flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          aria-label="Post comment"
-        >
-          <Send size={12} />
-        </button>
-      </form>
     </div>
   );
+}
+
+// ── IdeaCard helpers ──────────────────────────────────────────────────────
+
+function hashToHue(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash) % 360;
 }
 
 // ── IdeaCard ─────────────────────────────────────────────────────────────
@@ -135,6 +182,7 @@ function IdeaCard({
   canEdit,
   isOwner,
   totalMembers,
+  isLocked,
   onLock,
 }: {
   idea: Idea;
@@ -143,6 +191,7 @@ function IdeaCard({
   canEdit: boolean;
   isOwner: boolean;
   totalMembers: number;
+  isLocked?: boolean;
   onLock: (idea: Idea) => void;
 }) {
   const utils = trpc.useUtils();
@@ -171,90 +220,120 @@ function IdeaCard({
       utils.ideas.list.invalidate({ tripId });
     },
   });
+
   const removeIdea = trpc.ideas.remove.useMutation({
     onSuccess: () => utils.ideas.list.invalidate({ tripId }),
   });
 
-  const voteCount = idea.votes.length;
-  const votePercent = totalMembers > 0 ? (voteCount / totalMembers) * 100 : 0;
+  const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
 
   return (
     <div
       data-testid={`idea-card-${idea.id}`}
-      className="flex flex-col rounded-xl overflow-hidden"
+      className="overflow-hidden rounded-2xl"
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
-      {/* Header */}
-      <div className="p-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p
-              className="truncate text-sm font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
+      {/* ── Hero ──────────────────────────────────────────────────────── */}
+      <div
+        className="relative min-h-[160px]"
+        style={{
+          background: `linear-gradient(160deg, hsl(${hue}, 50%, 18%) 0%, hsl(${(hue + 40) % 360}, 40%, 10%) 100%)`,
+        }}
+      >
+        {/* Picked badge */}
+        {isLocked && (
+          <div className="absolute right-3 top-3">
+            <span
+              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
-              {idea.title}
-            </p>
-            <p
-              className="mt-0.5 flex items-center gap-1 truncate text-xs"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <MapPin size={10} />
+              <Check size={11} />
+              Picked
+            </span>
+          </div>
+        )}
+
+        {/* Title block at bottom of hero */}
+        <div className="absolute bottom-0 left-0 right-0 p-4">
+          <p className="text-2xl font-bold text-white">{idea.title}</p>
+          {idea.location && idea.location !== idea.title && (
+            <p className="mt-1 flex items-center gap-1 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
+              <MapPin size={12} />
               {idea.location}
             </p>
-          </div>
-          <div className="flex flex-shrink-0 items-center gap-1.5">
-            {idea.cost_tier && (
-              <span
-                className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-              >
-                <DollarSign size={9} />
-                {idea.cost_tier}
-              </span>
-            )}
-            {canEdit && (
-              <button
-                data-testid={`remove-idea-${idea.id}`}
-                onClick={() =>
-                  removeIdea.mutate({ tripId, ideaId: idea.id })
-                }
-                className="flex h-5 w-5 items-center justify-center rounded-full opacity-50 transition-opacity hover:opacity-100"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Body */}
-      <div className="flex flex-1 flex-col gap-2.5 p-3">
-        {idea.description && (
-          <p className="text-xs leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+      {/* ── Body ──────────────────────────────────────────────────────── */}
+      <div className="space-y-4 p-4">
+        {/* Description */}
+        {idea.description ? (
+          <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
             {idea.description}
           </p>
+        ) : canEdit ? (
+          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+            + Add a description — what&apos;s the pitch?
+          </p>
+        ) : null}
+
+        {/* Pros */}
+        {((idea.pros && idea.pros.length > 0) || canEdit) && (
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                + PROS
+              </p>
+            </div>
+            {idea.pros && idea.pros.length > 0 ? (
+              <ul className="space-y-1">
+                {idea.pros.map((p, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+                    {p}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
+            )}
+          </div>
         )}
 
+        {/* Cons */}
+        {((idea.cons && idea.cons.length > 0) || canEdit) && (
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>
+                × CONS
+              </p>
+            </div>
+            {idea.cons && idea.cons.length > 0 ? (
+              <ul className="space-y-1">
+                {idea.cons.map((c, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
+            )}
+          </div>
+        )}
+
+        {/* Golf courses */}
         {idea.golf_courses && idea.golf_courses.length > 0 && (
           <div>
-            <p
-              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
               Courses
             </p>
-            <div className="flex flex-col gap-0.5">
+            <div className="space-y-0.5">
               {idea.golf_courses.map((c, i) => (
-                <span
-                  key={i}
-                  className="flex items-center gap-1 text-xs"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  <Flag
-                    size={10}
-                    style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
-                  />
+                <span key={i} className="flex items-center gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                  <Flag size={11} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
                   {c}
                 </span>
               ))}
@@ -262,148 +341,91 @@ function IdeaCard({
           </div>
         )}
 
+        {/* Activities */}
         {idea.activities && idea.activities.length > 0 && (
-          <div>
-            <p
-              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Activities
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {idea.activities.map((a, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px]"
-                  style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)" }}
-                >
-                  <Zap size={8} />
-                  {a}
-                </span>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-1.5">
+            {idea.activities.map((a, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <Zap size={9} />
+                {a}
+              </span>
+            ))}
           </div>
         )}
 
-        {idea.pros && idea.pros.length > 0 && (
-          <div>
-            <p
-              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              Pros
-            </p>
-            <ul className="space-y-0.5">
-              {idea.pros.map((p, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-1 text-xs"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  <Star
-                    size={9}
-                    className="mt-0.5 flex-shrink-0"
-                    style={{ color: "var(--color-bt-accent)" }}
-                  />
-                  {p}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {idea.cons && idea.cons.length > 0 && (
-          <div>
-            <p
-              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-danger)" }}
-            >
-              Cons
-            </p>
-            <ul className="space-y-0.5">
-              {idea.cons.map((c, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-1 text-xs"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <X
-                    size={9}
-                    className="mt-0.5 flex-shrink-0"
-                    style={{ color: "var(--color-bt-danger)" }}
-                  />
-                  {c}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
+        {/* Accommodation */}
         {idea.accommodation && (
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             🏨 {idea.accommodation}
           </p>
         )}
 
+        {/* Cost tier */}
+        {idea.cost_tier && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+          >
+            <DollarSign size={10} />
+            {idea.cost_tier}
+          </span>
+        )}
+
+        {/* Divider before comments */}
+        <div style={{ borderTop: "1px solid var(--color-bt-border)" }} />
+
         {/* Comments */}
-        <div
-          className="rounded-lg p-3"
-          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <CommentsSection tripId={tripId} ideaId={idea.id} />
-        </div>
+        <CommentsSection tripId={tripId} ideaId={idea.id} />
       </div>
 
-      {/* Footer */}
-      <div className="p-3" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-        {/* Vote progress bar */}
-        <div className="mb-2">
-          <div
-            className="mb-1 flex justify-between text-[10px]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <span>
-              {voteCount} vote{voteCount !== 1 ? "s" : ""}
-            </span>
-            <span>{Math.round(votePercent)}%</span>
-          </div>
-          <div
-            className="h-1 w-full overflow-hidden rounded-full"
-            style={{ background: "var(--color-bt-border)" }}
-          >
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${votePercent}%`, background: "var(--color-bt-accent)" }}
-            />
-          </div>
-        </div>
-
-        {/* Vote toggle */}
+      {/* ── Footer actions ────────────────────────────────────────────── */}
+      <div
+        className="flex items-center gap-2 px-4 py-3"
+        style={{ borderTop: "1px solid var(--color-bt-border)" }}
+      >
+        {/* Your pick — vote toggle */}
         <button
           data-testid={`vote-idea-${idea.id}`}
           disabled={vote.isPending}
           onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-all disabled:opacity-40"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold transition-all disabled:opacity-40"
           style={{
-            background: isVoted ? "var(--color-bt-tag-bg)" : "var(--color-bt-base)",
+            background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-base)",
             border: `1px solid ${isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-            color: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+            color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
           }}
         >
-          <ThumbsUp size={12} />
-          {isVoted ? "Voted" : "Vote"}
+          <Check size={14} />
+          Your pick
         </button>
 
-        {/* Lock destination (Owner only) */}
+        {/* Lock In — owner only */}
         {isOwner && (
           <button
             data-testid={`lock-idea-${idea.id}`}
             onClick={() => onLock(idea)}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-all hover:bg-[var(--color-bt-hover)]"
+            className="flex items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
             style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
           >
-            <Lock size={12} />
-            Lock as Destination
+            <Lock size={13} />
+            Lock In
+          </button>
+        )}
+
+        {/* Delete — canEdit */}
+        {canEdit && (
+          <button
+            data-testid={`remove-idea-${idea.id}`}
+            onClick={() => removeIdea.mutate({ tripId, ideaId: idea.id })}
+            disabled={removeIdea.isPending}
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <Trash2 size={15} />
           </button>
         )}
       </div>
@@ -1425,6 +1447,7 @@ export default function IdeaComparisonPage() {
                         canEdit={canEdit}
                         isOwner={isOwner}
                         totalMembers={members.length}
+                        isLocked={true}
                         onLock={setLockIdea}
                       />
                     ) : (
