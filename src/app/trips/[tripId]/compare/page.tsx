@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
 import { TripBreadcrumb } from "@/components/TripBreadcrumb";
@@ -14,7 +14,6 @@ import {
   X,
   DollarSign,
   MessageSquare,
-  Send,
   Sparkles,
   Loader2,
   Trash2,
@@ -52,9 +51,9 @@ interface Idea {
 
 function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string }) {
   const [text, setText] = useState("");
-  const [open, setOpen] = useState(false);
+  // null = not manually toggled; derive from data. true/false = user override.
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const autoExpandedRef = useRef(false);
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
 
@@ -66,12 +65,8 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
     },
   });
 
-  useEffect(() => {
-    if (!autoExpandedRef.current && comments.length > 0) {
-      setOpen(true);
-      autoExpandedRef.current = true;
-    }
-  }, [comments.length]);
+  // Auto-expand when comments exist unless the user has manually toggled
+  const open = manualOpen !== null ? manualOpen : comments.length > 0;
 
   const fmtDate = (iso: string) => {
     const d = new Date(iso);
@@ -86,7 +81,7 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
     <div>
       {/* Toggle */}
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setManualOpen(!open)}
         className="flex items-center gap-1.5 text-sm"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
@@ -1307,7 +1302,6 @@ export default function IdeaComparisonPage() {
   }, [showAddModal]);
 
   const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
 
   if (isLoading) {
