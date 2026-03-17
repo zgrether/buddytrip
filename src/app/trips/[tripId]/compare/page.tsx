@@ -16,6 +16,11 @@ import {
   DollarSign,
   MessageSquare,
   Send,
+  Vote,
+  Sparkles,
+  Loader2,
+  Trash2,
+  Check,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -619,6 +624,385 @@ function LockConfirmModal({
   );
 }
 
+// ── EmptyStateOnboarding ─────────────────────────────────────────────────
+
+type DestinationChoice = null | "known" | "vote";
+
+interface AiIdea {
+  id: string;
+  title: string;
+  location: string;
+  description: string;
+  costTier: string;
+}
+
+function EmptyStateOnboarding({
+  tripId,
+  isOwner,
+}: {
+  tripId: string;
+  isOwner: boolean;
+}) {
+  const router = useRouter();
+  const utils = trpc.useUtils();
+
+  const [choice, setChoice] = useState<DestinationChoice>(null);
+  const [destination, setDestination] = useState("");
+  const [destInput, setDestInput] = useState("");
+  const [crewDescription, setCrewDescription] = useState("");
+  const [pendingAiIdeas, setPendingAiIdeas] = useState<AiIdea[]>([]);
+  const [isFetchingAi, setIsFetchingAi] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  const lockDest = trpc.trips.lockDestination.useMutation({
+    async onMutate(vars) {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      if (prev) {
+        utils.trips.getById.setData({ tripId }, {
+          ...prev,
+          locked_destination_title: vars.title,
+          locked_destination_location: vars.location,
+        });
+      }
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.trips.getById.setData({ tripId }, context.prev);
+    },
+    onSuccess() {
+      router.push(`/trips/${tripId}`);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+    },
+  });
+
+  const createIdea = trpc.ideas.create.useMutation({
+    async onMutate(vars) {
+      await utils.ideas.list.cancel({ tripId });
+      const prev = utils.ideas.list.getData({ tripId });
+      utils.ideas.list.setData({ tripId }, [
+        ...(prev ?? []),
+        {
+          id: vars.id,
+          trip_id: tripId,
+          title: vars.title,
+          location: vars.location,
+          description: vars.description ?? null,
+          golf_courses: null,
+          activities: null,
+          cost_tier: vars.costTier ?? null,
+          pros: null,
+          cons: null,
+          accommodation: null,
+          notes: null,
+          image_url: null,
+          votes: [],
+        },
+      ]);
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.ideas.list.invalidate({ tripId });
+    },
+  });
+
+  const handleAddManual = () => {
+    const t = destInput.trim();
+    if (!t) return;
+    createIdea.mutate({ tripId, id: crypto.randomUUID(), title: t, location: t });
+    setDestInput("");
+  };
+
+  const handleFetchAi = async () => {
+    setAiError("");
+    setIsFetchingAi(true);
+    try {
+      const res = await fetch("/api/ai/suggest-destinations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ crewDescription: crewDescription.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const ideas: AiIdea[] = (data.suggestions ?? []).map(
+        (s: { title: string; location: string; description: string; costTier: string }, i: number) => ({
+          id: `ai-${Date.now()}-${i}`,
+          title: s.title,
+          location: s.location,
+          description: s.description,
+          costTier: s.costTier,
+        })
+      );
+      setPendingAiIdeas(ideas);
+    } catch {
+      setAiError("Failed to get AI suggestions. Please try again.");
+    } finally {
+      setIsFetchingAi(false);
+    }
+  };
+
+  const handleAddAiIdeas = () => {
+    pendingAiIdeas.forEach((idea) => {
+      createIdea.mutate({
+        tripId,
+        id: crypto.randomUUID(),
+        title: idea.title,
+        location: idea.location,
+        description: idea.description,
+        costTier: idea.costTier,
+      });
+    });
+    setPendingAiIdeas([]);
+  };
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-3 px-4 py-8">
+      <h2 className="text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+        Where are you headed?
+      </h2>
+      <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+        Set a destination or add ideas and let the crew vote.
+      </p>
+
+      {/* ── Option A: Known destination (owner only) ─────────────────── */}
+      {isOwner && (
+        <div>
+          <button
+            onClick={() => setChoice(choice === "known" ? null : "known")}
+            className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
+            style={{
+              background: "var(--color-bt-card)",
+              borderColor: choice === "known" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+            }}
+          >
+            <div
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
+              style={{ background: "var(--color-bt-tag-bg)" }}
+            >
+              <MapPin size={24} style={{ color: "var(--color-bt-accent)" }} />
+            </div>
+            <div>
+              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Yes, we&apos;re going to…
+              </p>
+              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                I know the destination
+              </p>
+            </div>
+          </button>
+
+          {choice === "known" && (
+            <div
+              className="mt-3 space-y-3 border-l-2 pl-4"
+              style={{ borderColor: "var(--color-bt-accent)" }}
+            >
+              <input
+                autoFocus
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && destination.trim()) {
+                    lockDest.mutate({ tripId, title: destination.trim(), location: destination.trim() });
+                  }
+                }}
+                placeholder="Bandon Dunes, OR"
+                maxLength={500}
+                className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                style={{
+                  background: "var(--color-bt-card)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (destination.trim()) {
+                    lockDest.mutate({ tripId, title: destination.trim(), location: destination.trim() });
+                  }
+                }}
+                disabled={lockDest.isPending || !destination.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {lockDest.isPending ? (
+                  <><Loader2 size={16} className="animate-spin" /> Locking…</>
+                ) : (
+                  <><Check size={16} /> Lock as Destination</>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Option B: Vote ────────────────────────────────────────────── */}
+      <div>
+        <button
+          onClick={() => setChoice(choice === "vote" ? null : "vote")}
+          className="flex w-full items-center gap-4 rounded-xl border-2 p-5 text-left transition-all hover:border-[var(--color-bt-accent)]"
+          style={{
+            background: "var(--color-bt-card)",
+            borderColor: choice === "vote" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+          }}
+        >
+          <div
+            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
+            style={{ background: "var(--color-bt-tag-bg)" }}
+          >
+            <Vote size={24} style={{ color: "var(--color-bt-accent)" }} />
+          </div>
+          <div>
+            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Let&apos;s put it to a vote
+            </p>
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Compare destinations and let the crew decide
+            </p>
+          </div>
+        </button>
+
+        {choice === "vote" && (
+          <div
+            className="mt-3 space-y-5 border-l-2 pl-4"
+            style={{ borderColor: "var(--color-bt-accent)" }}
+          >
+            {/* Manual add */}
+            <div>
+              <p className="mb-2 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Add a destination to compare
+              </p>
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={destInput}
+                  onChange={(e) => setDestInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); handleAddManual(); }
+                  }}
+                  placeholder="Enter a destination"
+                  maxLength={500}
+                  className="flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                  }}
+                />
+                <button
+                  onClick={handleAddManual}
+                  disabled={!destInput.trim() || createIdea.isPending}
+                  className="rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            {/* AI suggestions */}
+            <div>
+              <p className="mb-2 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Get AI suggestions
+              </p>
+              <textarea
+                value={crewDescription}
+                onChange={(e) => setCrewDescription(e.target.value)}
+                placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year…"
+                rows={3}
+                maxLength={2000}
+                className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                style={{
+                  background: "var(--color-bt-card)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+              <button
+                onClick={handleFetchAi}
+                disabled={!crewDescription.trim() || isFetchingAi}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+                style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+              >
+                {isFetchingAi ? (
+                  <><Loader2 size={16} className="animate-spin" /> Getting ideas…</>
+                ) : (
+                  <><Sparkles size={16} /> Get AI Ideas</>
+                )}
+              </button>
+              {aiError && (
+                <p className="mt-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>
+                  {aiError}
+                </p>
+              )}
+            </div>
+
+            {/* Pending AI suggestions */}
+            {pendingAiIdeas.length > 0 && (
+              <div>
+                <p className="mb-2 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                  AI-suggested destinations
+                </p>
+                <div className="space-y-2">
+                  {pendingAiIdeas.map((idea) => (
+                    <div
+                      key={idea.id}
+                      className="flex items-start gap-3 rounded-lg border p-3"
+                      style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+                    >
+                      <Sparkles
+                        size={16}
+                        className="mt-0.5 flex-shrink-0"
+                        style={{ color: "var(--color-bt-accent)" }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                          {idea.title}
+                        </p>
+                        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {idea.location}{idea.costTier && ` · ${idea.costTier}`}
+                        </p>
+                        {idea.description && (
+                          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {idea.description}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setPendingAiIdeas((prev) => prev.filter((i) => i.id !== idea.id))}
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+                        aria-label={`Remove ${idea.title}`}
+                      >
+                        <Trash2 size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={handleAddAiIdeas}
+                  disabled={createIdea.isPending}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                >
+                  {createIdea.isPending ? (
+                    <><Loader2 size={16} className="animate-spin" /> Adding…</>
+                  ) : (
+                    <><Plus size={16} /> Add {pendingAiIdeas.length} destination{pendingAiIdeas.length !== 1 ? "s" : ""} to compare</>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── IdeaComparisonPage ────────────────────────────────────────────────────
 
 export default function IdeaComparisonPage() {
@@ -650,7 +1034,8 @@ export default function IdeaComparisonPage() {
 
   const ideasTyped = ideas as Idea[];
 
-  const addIdeaButton = canEdit ? (
+  // Only show the + button when ideas already exist (empty state has its own add UI)
+  const addIdeaButton = canEdit && ideasTyped.length > 0 ? (
     <button
       data-testid="add-idea-btn"
       onClick={() => setShowAddModal(true)}
@@ -678,17 +1063,19 @@ export default function IdeaComparisonPage() {
       {/* ── Main ────────────────────────────────────────────────────────── */}
       <main className="p-4">
         {ideasTyped.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
-            <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              No destination ideas yet
-            </p>
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {canEdit
-                ? "Tap + to add the first destination idea"
-                : "Waiting for a planner to add ideas."}
-            </p>
-          </div>
+          canEdit ? (
+            <EmptyStateOnboarding tripId={tripId} isOwner={isOwner} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
+              <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                No destination ideas yet
+              </p>
+              <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                Waiting for a planner to add ideas.
+              </p>
+            </div>
+          )
         ) : (
           /* Vertical stacked expanded cards */
           <div className="flex flex-col gap-4">
