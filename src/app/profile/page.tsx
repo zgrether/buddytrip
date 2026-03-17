@@ -60,10 +60,7 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav
-        avatarInitial={initial}
-        onProfileClick={() => router.push("/profile")}
-      />
+      <TopNav />
 
       <main className="mx-auto max-w-2xl px-4 pb-24 pt-8">
         {isLoading ? (

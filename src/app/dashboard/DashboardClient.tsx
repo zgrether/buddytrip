@@ -136,8 +136,6 @@ export default function DashboardClient() {
         notifications={allNotifications}
         unreadCount={totalUnread}
         onMarkAllRead={handleMarkAllRead}
-        avatarInitial={avatarInitial}
-        onProfileClick={() => router.push("/profile")}
       />
 
       <main className="mx-auto max-w-2xl px-4 pb-24 pt-4">

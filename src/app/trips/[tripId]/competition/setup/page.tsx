@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { UserMenu } from "@/components/UserMenu";
 import {
   ArrowLeft,
   Flag,
@@ -1192,6 +1193,7 @@ export default function CompetitionSetupPage() {
         >
           Competition Setup
         </h1>
+        <UserMenu />
       </header>
 
       {/* Tab bar */}

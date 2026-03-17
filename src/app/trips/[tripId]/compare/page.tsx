@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { UserMenu } from "@/components/UserMenu";
 import {
   ArrowLeft,
   ThumbsUp,
@@ -608,6 +609,7 @@ export default function IdeaComparisonPage() {
             <Plus size={20} />
           </button>
         )}
+        <UserMenu />
       </header>
 
       {/* ── Main ────────────────────────────────────────────────────────── */}

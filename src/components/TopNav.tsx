@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { UserMenu } from "./UserMenu";
 
 interface Notification {
   id: string;
@@ -20,9 +21,6 @@ interface TopNavProps {
   notifications?: Notification[];
   onMarkAllRead?: () => void;
   unreadCount?: number;
-  /** Single character shown in the avatar button; omit to hide the button */
-  avatarInitial?: string;
-  onProfileClick?: () => void;
 }
 
 function notificationLabel(n: Notification): string {
@@ -40,8 +38,6 @@ export const TopNav: FC<TopNavProps> = ({
   notifications = [],
   onMarkAllRead,
   unreadCount = 0,
-  avatarInitial,
-  onProfileClick,
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -86,7 +82,7 @@ export const TopNav: FC<TopNavProps> = ({
             className="relative flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{ color: "var(--color-bt-text)" }}
           >
-            <Bell size={20} />
+            <Bell size={20} strokeWidth={1.5} />
             {unreadCount > 0 && (
               <span
                 data-testid="notification-badge"
@@ -173,18 +169,7 @@ export const TopNav: FC<TopNavProps> = ({
         </div>
 
         <ThemeToggle />
-
-        {avatarInitial && (
-          <button
-            aria-label="Profile"
-            data-testid="profile-avatar-btn"
-            onClick={onProfileClick}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-colors hover:opacity-80"
-            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-          >
-            {avatarInitial}
-          </button>
-        )}
+        <UserMenu />
       </div>
     </header>
   );
