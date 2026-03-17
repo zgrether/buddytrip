@@ -1010,6 +1010,40 @@ function PlanningSection({
               Where are you headed? Set a destination or brainstorm ideas with the crew.
             </p>
 
+            {/* Ideas teaser — shown when ideas already exist in the DB */}
+            {ideas.length > 0 && (
+              <button
+                onClick={() => router.push(`/trips/${trip.id}/compare`)}
+                className="w-full overflow-hidden rounded-xl border text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ borderColor: "var(--color-bt-border)" }}
+              >
+                <p
+                  className="px-3 pt-2.5 text-xs font-medium"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Working on {ideas.length} idea{ideas.length !== 1 ? "s" : ""}…
+                </p>
+                <div className="flex gap-1.5 overflow-x-auto px-3 pb-3 pt-2">
+                  {ideas.slice(0, 5).map((idea) => {
+                    const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
+                    return (
+                      <div
+                        key={idea.id}
+                        className="flex-shrink-0 rounded-lg px-2.5 py-1.5"
+                        style={{
+                          background: `linear-gradient(135deg, hsl(${hue}, 50%, 18%), hsl(${(hue + 40) % 360}, 40%, 10%))`,
+                        }}
+                      >
+                        <p className="max-w-[96px] truncate text-xs font-medium text-white">
+                          {idea.title}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </button>
+            )}
+
             <div className="flex flex-col gap-2">
               {canEdit && (
                 <button
