@@ -14,6 +14,8 @@ import {
   Plus,
   X,
   DollarSign,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -41,6 +43,82 @@ interface Idea {
   notes?: string | null;
   image_url?: string | null;
   votes: IdeaVote[];
+}
+
+// ── CommentsSection ───────────────────────────────────────────────────────
+
+function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string }) {
+  const [text, setText] = useState("");
+  const utils = trpc.useUtils();
+
+  const { data: comments = [] } = trpc.ideaComments.list.useQuery({ tripId, ideaId });
+  const addComment = trpc.ideaComments.create.useMutation({
+    onSuccess() {
+      setText("");
+      utils.ideaComments.list.invalidate({ tripId, ideaId });
+    },
+  });
+
+  return (
+    <div>
+      <p
+        className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <MessageSquare size={10} />
+        Comments
+      </p>
+
+      {comments.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {comments.map((c) => (
+            <p
+              key={c.id}
+              className="rounded-lg px-3 py-2 text-xs leading-relaxed"
+              style={{
+                background: "var(--color-bt-base)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              {c.text}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const t = text.trim();
+          if (!t) return;
+          addComment.mutate({ tripId, ideaId, id: crypto.randomUUID(), text: t });
+        }}
+        className="flex gap-2"
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add a comment…"
+          className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs outline-none"
+          style={{
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        />
+        <button
+          type="submit"
+          disabled={addComment.isPending || !text.trim()}
+          className="flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          aria-label="Post comment"
+        >
+          <Send size={12} />
+        </button>
+      </form>
+    </div>
+  );
 }
 
 // ── IdeaCard ─────────────────────────────────────────────────────────────
@@ -261,6 +339,14 @@ function IdeaCard({
             🏨 {idea.accommodation}
           </p>
         )}
+
+        {/* Comments */}
+        <div
+          className="rounded-lg p-3"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <CommentsSection tripId={tripId} ideaId={idea.id} />
+        </div>
       </div>
 
       {/* Footer */}
@@ -604,23 +690,22 @@ export default function IdeaComparisonPage() {
             </p>
           </div>
         ) : (
-          /* Horizontal scroll for side-by-side comparison */
-          <div className="flex gap-3 overflow-x-auto pb-4">
+          /* Vertical stacked expanded cards */
+          <div className="flex flex-col gap-4">
             {ideasTyped.map((idea) => (
-              <div key={idea.id} className="w-56 flex-shrink-0">
-                <IdeaCard
-                  idea={idea}
-                  tripId={tripId}
-                  isVoted={
-                    !!currentUser?.id &&
-                    idea.votes.some((v) => v.user_id === currentUser.id)
-                  }
-                  canEdit={canEdit}
-                  isOwner={isOwner}
-                  totalMembers={members.length}
-                  onLock={setLockIdea}
-                />
-              </div>
+              <IdeaCard
+                key={idea.id}
+                idea={idea}
+                tripId={tripId}
+                isVoted={
+                  !!currentUser?.id &&
+                  idea.votes.some((v) => v.user_id === currentUser.id)
+                }
+                canEdit={canEdit}
+                isOwner={isOwner}
+                totalMembers={members.length}
+                onLock={setLockIdea}
+              />
             ))}
           </div>
         )}
