@@ -19,7 +19,6 @@ import {
   ThumbsUp,
   Loader2,
   Lock,
-  LayoutGrid,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -493,97 +492,6 @@ function SetDestinationModal({
           {lock.isPending && <Loader2 size={14} className="animate-spin" />}
           Set Destination
         </button>
-      </div>
-    </div>
-  );
-}
-
-// ── IdeaGridCard ──────────────────────────────────────────────────────────
-
-function IdeaGridCard({
-  idea,
-  tripId,
-  isOwner,
-  onLock,
-}: {
-  idea: IdeaWithVotes;
-  tripId: string;
-  isOwner: boolean;
-  onLock: () => void;
-}) {
-  const currentUser = useCurrentUser();
-  const utils = trpc.useUtils();
-
-  const vote = trpc.ideas.vote.useMutation({
-    async onMutate({ ideaId }) {
-      await utils.ideas.list.cancel({ tripId });
-      const prev = utils.ideas.list.getData({ tripId });
-      utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
-        if (i.id !== ideaId) return i;
-        const alreadyVoted = i.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
-        return {
-          ...i,
-          votes: alreadyVoted
-            ? i.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id)
-            : [...i.votes, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }],
-        };
-      }));
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
-    },
-    onSettled() {
-      utils.ideas.list.invalidate({ tripId });
-    },
-  });
-
-  const isVoted = !!currentUser?.id && idea.votes.some((v) => v.user_id === currentUser.id);
-  const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
-
-  return (
-    <div
-      className="overflow-hidden rounded-2xl"
-      style={{ border: "1px solid var(--color-bt-border)" }}
-    >
-      {/* Gradient hero */}
-      <div
-        className="relative flex min-h-[110px] items-end p-3"
-        style={{
-          background: `linear-gradient(160deg, hsl(${hue}, 50%, 18%) 0%, hsl(${(hue + 40) % 360}, 40%, 10%) 100%)`,
-        }}
-      >
-        <p className="text-base font-bold text-white leading-tight">{idea.title}</p>
-      </div>
-
-      {/* Action buttons */}
-      <div
-        className="flex items-center gap-2 p-2"
-        style={{ background: "var(--color-bt-card)" }}
-      >
-        <button
-          onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
-          disabled={vote.isPending}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all disabled:opacity-40"
-          style={{
-            background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-tag-bg)",
-            color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-accent)",
-          }}
-        >
-          <ThumbsUp size={12} />
-          Vote
-        </button>
-
-        {isOwner && (
-          <button
-            onClick={onLock}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            <Lock size={12} />
-            Lock
-          </button>
-        )}
       </div>
     </div>
   );
@@ -1096,60 +1004,35 @@ function PlanningSection({
             )}
           </div>
         ) : (
-          /* No destination set — grid of ideas + set destination CTA */
+          /* No destination set */
           <div className="space-y-3">
-            {/* Header row */}
-            <div className="flex items-center justify-between">
-              <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                {ideas.length > 0 ? "Where are we going?" : "No ideas yet — be the first!"}
-              </p>
-              {ideas.length > 0 && (
-                <button
-                  onClick={() => router.push(`/trips/${trip.id}/compare`)}
-                  className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium"
-                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                >
-                  <LayoutGrid size={11} />
-                  Full view
-                </button>
-              )}
-            </div>
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Where are you headed? Set a destination or brainstorm ideas with the crew.
+            </p>
 
-            {/* 2-column idea grid */}
-            {ideas.length > 0 && (
-              <div className="grid grid-cols-2 gap-2">
-                {ideas.map((idea) => (
-                  <IdeaGridCard
-                    key={idea.id}
-                    idea={idea}
-                    tripId={trip.id}
-                    isOwner={isOwner}
-                    onLock={() => { router.push(`/trips/${trip.id}/compare`); }}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* CTAs */}
-            <div className="flex flex-col items-center gap-2 pt-1">
-              <button
-                onClick={() => router.push(`/trips/${trip.id}/compare`)}
-                className="flex items-center gap-1.5 text-sm font-medium"
-                style={{ color: "var(--color-bt-accent)" }}
-              >
-                <Plus size={14} />
-                Add another destination
-              </button>
-
+            <div className="flex flex-col gap-2">
               {canEdit && (
                 <button
                   onClick={() => setShowSetDest(true)}
-                  className="text-xs"
-                  style={{ color: "var(--color-bt-text-dim)" }}
+                  className="flex w-full items-center justify-center rounded-xl py-2.5 text-sm font-semibold transition-opacity"
+                  style={{
+                    background: "var(--color-bt-accent)",
+                    color: "var(--color-bt-base)",
+                  }}
                 >
-                  or just set the destination →
+                  Set destination
                 </button>
               )}
+              <button
+                onClick={() => router.push(`/trips/${trip.id}/compare`)}
+                className="flex w-full items-center justify-center rounded-xl border py-2.5 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              >
+                Head to the idea zone →
+              </button>
             </div>
 
             {showSetDest && (
