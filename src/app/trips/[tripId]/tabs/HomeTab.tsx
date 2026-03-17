@@ -17,6 +17,7 @@ import {
   Users,
   MapPin,
   ThumbsUp,
+  Loader2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -399,6 +400,198 @@ function CompetitionPreviewModal({
             No thanks
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── SetDestinationModal ──────────────────────────────────────────────────
+
+function SetDestinationModal({
+  tripId,
+  onClose,
+}: {
+  tripId: string;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState("");
+
+  const lock = trpc.trips.lockDestination.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      onClose();
+    },
+    onError(e) {
+      setError(e.message ?? "Failed to save");
+    },
+  });
+
+  const handleSave = () => {
+    const t = title.trim();
+    if (!t) return;
+    lock.mutate({ tripId, title: t, location: t });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+      />
+      <div
+        className="relative w-full max-w-sm space-y-4 rounded-2xl p-5"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Set Destination
+          </h3>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        <div
+          className="flex items-center gap-2 rounded-lg border px-3 py-2.5"
+          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)" }}
+        >
+          <MapPin size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+          <input
+            autoFocus
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSave()}
+            placeholder="Scottsdale, AZ"
+            maxLength={200}
+            className="flex-1 bg-transparent text-sm outline-none"
+            style={{ color: "var(--color-bt-text)" }}
+          />
+        </div>
+
+        {error && (
+          <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
+            {error}
+          </p>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={lock.isPending || !title.trim()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {lock.isPending && <Loader2 size={14} className="animate-spin" />}
+          Set Destination
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── VerticalIdeaRow ───────────────────────────────────────────────────────
+
+function VerticalIdeaRow({
+  idea,
+  tripId,
+  totalMembers,
+}: {
+  idea: IdeaWithVotes;
+  tripId: string;
+  totalMembers: number;
+}) {
+  const currentUser = useCurrentUser();
+  const utils = trpc.useUtils();
+
+  const vote = trpc.ideas.vote.useMutation({
+    async onMutate({ ideaId }) {
+      await utils.ideas.list.cancel({ tripId });
+      const prev = utils.ideas.list.getData({ tripId });
+      utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
+        if (i.id !== ideaId) return i;
+        const alreadyVoted = i.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
+        return {
+          ...i,
+          votes: alreadyVoted
+            ? i.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id)
+            : [...i.votes, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }],
+        };
+      }));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.ideas.list.invalidate({ tripId });
+    },
+  });
+
+  const isVoted = !!currentUser?.id && idea.votes.some((v) => v.user_id === currentUser.id);
+  const voteCount = idea.votes.length;
+  const votePercent = totalMembers > 0 ? (voteCount / totalMembers) * 100 : 0;
+  const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
+
+  return (
+    <div
+      className="flex items-center overflow-hidden rounded-xl"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      {/* Gradient color strip */}
+      <div
+        className="w-1.5 self-stretch flex-shrink-0"
+        style={{
+          background: `linear-gradient(180deg, hsl(${hue}, 55%, 45%) 0%, hsl(${(hue + 30) % 360}, 45%, 30%) 100%)`,
+        }}
+      />
+
+      {/* Text */}
+      <div className="min-w-0 flex-1 px-3 py-2.5">
+        <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          {idea.title}
+        </p>
+        {idea.location && idea.location !== idea.title && (
+          <p
+            className="mt-0.5 flex items-center gap-0.5 truncate text-[11px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <MapPin size={9} />
+            {idea.location}
+          </p>
+        )}
+        <div
+          className="mt-1.5 h-1 w-16 overflow-hidden rounded-full"
+          style={{ background: "var(--color-bt-border)" }}
+        >
+          <div
+            className="h-full rounded-full transition-all duration-300"
+            style={{ width: `${votePercent}%`, background: "var(--color-bt-accent)" }}
+          />
+        </div>
+      </div>
+
+      {/* Vote button */}
+      <div className="flex-shrink-0 pr-3">
+        <button
+          onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
+          disabled={vote.isPending}
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-all disabled:opacity-40"
+          style={{
+            background: isVoted ? "var(--color-bt-tag-bg)" : "transparent",
+            border: `1px solid ${isVoted ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+            color: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+          }}
+        >
+          <ThumbsUp size={10} />
+          {voteCount}
+        </button>
       </div>
     </div>
   );
@@ -835,6 +1028,7 @@ function PlanningSection({
 }) {
   const router = useRouter();
   const [openRow, setOpenRow] = useState<string | null>(null);
+  const [showSetDest, setShowSetDest] = useState(false);
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   // ── Destination ──────────────────────────────────────────────────────
@@ -909,47 +1103,56 @@ function PlanningSection({
               </button>
             )}
           </div>
-        ) : destVoting && ideas.length > 0 ? (
-          <div className="space-y-3">
-            <div
-              className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1"
-              style={{ scrollbarWidth: "none" }}
-            >
-              {ideas.map((idea) => (
-                <MiniIdeaHero
-                  key={idea.id}
-                  idea={idea}
-                  tripId={trip.id}
-                  totalMembers={tripMembers.length}
-                />
-              ))}
-              {canEdit && (
-                <button
-                  onClick={() => router.push(`/trips/${trip.id}/compare`)}
-                  className="flex w-32 flex-shrink-0 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-4 transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                >
-                  <Plus size={18} />
-                  <span className="text-center text-xs leading-tight">Add destination</span>
-                </button>
-              )}
-            </div>
-            <button
-              onClick={() => router.push(`/trips/${trip.id}/compare`)}
-              className="flex items-center gap-1 text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              Full view <ChevronRight size={13} />
-            </button>
-          </div>
         ) : (
-          <button
-            onClick={() => router.push(`/trips/${trip.id}/compare`)}
-            className="text-sm font-medium"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            {canEdit ? "Set destination →" : "View destination →"}
-          </button>
+          /* No destination set — set it directly or brainstorm ideas */
+          <div className="space-y-4">
+            {canEdit && (
+              <>
+                <button
+                  onClick={() => setShowSetDest(true)}
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  Set destination →
+                </button>
+                {showSetDest && (
+                  <SetDestinationModal
+                    tripId={trip.id}
+                    onClose={() => setShowSetDest(false)}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Idea brainstorm section */}
+            <div className="space-y-2">
+              <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                or all great trips start with an idea...
+              </p>
+
+              {ideas.length > 0 && (
+                <div className="space-y-2">
+                  {ideas.map((idea) => (
+                    <VerticalIdeaRow
+                      key={idea.id}
+                      idea={idea}
+                      tripId={trip.id}
+                      totalMembers={tripMembers.length}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <button
+                onClick={() => router.push(`/trips/${trip.id}/compare`)}
+                className="flex items-center gap-1 pt-1 text-xs font-medium"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                {ideas.length > 0 ? "Discuss all ideas" : "Add some ideas"}
+                <ChevronRight size={12} />
+              </button>
+            </div>
+          </div>
         )}
       </PlanningRow>
 
