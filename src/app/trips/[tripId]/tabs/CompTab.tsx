@@ -14,8 +14,8 @@ import {
   Trash2,
   Pencil,
   ArrowLeft,
-  MapPin,
   LayoutGrid,
+  Calendar,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
@@ -24,7 +24,7 @@ import type { TabProps } from "./types";
 // ── Types ─────────────────────────────────────────────────────────────────
 
 type RoundFormat = "scramble" | "stableford" | "sabotage" | "skins" | "match_play" | "singles";
-type Section = "event" | "teams" | "courses" | "groups";
+type Section = "competition" | "events" | "teams" | "courses" | "groups";
 
 interface Team {
   id: string;
@@ -109,6 +109,7 @@ function SetupTile({
   done,
   locked,
   canEdit,
+  fullWidth,
   onClick,
 }: {
   icon: typeof Trophy;
@@ -117,13 +118,51 @@ function SetupTile({
   done: boolean;
   locked: boolean;
   canEdit: boolean;
+  fullWidth?: boolean;
   onClick: () => void;
 }) {
-  const isClickable = !locked && canEdit;
+  const isClickable = (!locked && canEdit) || done;
+
+  if (fullWidth) {
+    return (
+      <button
+        data-testid={`comp-tile-${label.toLowerCase()}`}
+        onClick={isClickable ? onClick : undefined}
+        disabled={locked}
+        className="relative flex w-full items-center gap-4 rounded-xl px-5 py-4 text-left transition-opacity disabled:opacity-40"
+        style={{
+          border: done
+            ? "1px solid var(--color-bt-accent-border)"
+            : "2px dashed var(--color-bt-border)",
+          background: done ? "var(--color-bt-card)" : "transparent",
+        }}
+      >
+        <Icon
+          size={28}
+          style={{ color: done ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", flexShrink: 0 }}
+        />
+        <div className="min-w-0 flex-1">
+          <p
+            className="text-sm font-semibold"
+            style={{ color: done ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
+          >
+            {label}
+          </p>
+          <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {detail ?? (canEdit ? "Tap to set up" : "Not configured")}
+          </p>
+        </div>
+        {done && (
+          <CheckCircle size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+        )}
+      </button>
+    );
+  }
+
   return (
     <button
       data-testid={`comp-tile-${label.toLowerCase()}`}
-      onClick={isClickable ? onClick : done ? onClick : undefined}
+      onClick={isClickable ? onClick : undefined}
       disabled={locked}
       className="relative flex w-full flex-col items-center rounded-xl p-5 text-center transition-opacity disabled:opacity-40"
       style={{
@@ -164,7 +203,7 @@ function SetupTile({
         </p>
       ) : locked ? (
         <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          Set up event first
+          Set up competition first
         </p>
       ) : (
         <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -197,14 +236,15 @@ function StatusPill({ status }: { status: string | null | undefined }) {
   );
 }
 
-// ── EventSection ──────────────────────────────────────────────────────────
+// ── CompetitionSection ────────────────────────────────────────────────────
 
-function EventSection({
+function CompetitionSection({
   tripId,
   tripTitle,
   tripLocation,
   tripDates,
   event,
+  onSaved,
 }: {
   tripId: string;
   tripTitle: string;
@@ -214,15 +254,15 @@ function EventSection({
     id: string;
     title: string;
     subtitle?: string | null;
-    motto?: string | null;
     competition_type?: string | null;
   } | null;
+  onSaved?: () => void;
 }) {
   const utils = trpc.useUtils();
+  const isNew = !event;
 
   const [title, setTitle] = useState(event?.title ?? tripTitle);
-  const [subtitle, setSubtitle] = useState(event?.subtitle ?? "");
-  const [motto, setMotto] = useState(event?.motto ?? "");
+  const [tagline, setTagline] = useState(event?.subtitle ?? "");
   const [compType, setCompType] = useState<"RYDER_CUP" | "NORMAL">(
     (event?.competition_type as "RYDER_CUP" | "NORMAL") ?? "RYDER_CUP"
   );
@@ -231,6 +271,7 @@ function EventSection({
     onSuccess: () => {
       utils.events.getByTrip.invalidate({ tripId });
       utils.trips.getById.invalidate({ tripId });
+      if (isNew) onSaved?.();
     },
   });
 
@@ -241,8 +282,7 @@ function EventSection({
       tripId,
       id: event?.id ?? crypto.randomUUID(),
       title: title.trim(),
-      subtitle: subtitle.trim() || undefined,
-      motto: motto.trim() || undefined,
+      subtitle: tagline.trim() || undefined,
       location: tripLocation,
       dates: tripDates,
       competitionType: compType,
@@ -274,24 +314,8 @@ function EventSection({
           Tagline
         </label>
         <input
-          value={subtitle}
-          onChange={(e) => setSubtitle(e.target.value)}
-          placeholder="e.g. Annual Golf Weekend"
-          className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-base)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-      </div>
-      <div>
-        <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          Motto
-        </label>
-        <input
-          value={motto}
-          onChange={(e) => setMotto(e.target.value)}
+          value={tagline}
+          onChange={(e) => setTagline(e.target.value)}
           placeholder="e.g. May the best man win"
           className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
           style={{
@@ -303,7 +327,7 @@ function EventSection({
       </div>
       <div>
         <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          Format
+          Scoring Format
         </label>
         <div className="flex gap-2">
           {(["RYDER_CUP", "NORMAL"] as const).map((t) => (
@@ -316,24 +340,13 @@ function EventSection({
                 background:
                   compType === t ? "var(--color-bt-accent-faint)" : "var(--color-bt-base)",
                 border: `1px solid ${compType === t ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-                color:
-                  compType === t ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                color: compType === t ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
               }}
             >
               {t === "RYDER_CUP" ? "Ryder Cup" : "Standard"}
             </button>
           ))}
         </div>
-      </div>
-      {/* Read-only context from trip */}
-      <div
-        className="flex items-center gap-3 rounded-lg px-3 py-2"
-        style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-      >
-        <MapPin size={12} style={{ color: "var(--color-bt-text-dim)" }} />
-        <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          {tripLocation} · {tripDates}
-        </span>
       </div>
       <button
         type="submit"
@@ -345,6 +358,196 @@ function EventSection({
         {upsertEvent.isPending ? "Saving…" : event ? "Update Competition" : "Create Competition"}
       </button>
     </form>
+  );
+}
+
+// ── EventTypesSection ─────────────────────────────────────────────────────
+
+const EVENT_TYPES: { value: RoundFormat; label: string; golf: boolean }[] = [
+  { value: "scramble", label: "Scramble", golf: true },
+  { value: "stableford", label: "Stableford", golf: true },
+  { value: "skins", label: "Skins", golf: true },
+  { value: "match_play", label: "Match Play", golf: true },
+  { value: "singles", label: "Singles", golf: true },
+  { value: "sabotage", label: "Sabotage", golf: true },
+];
+
+function EventTypesSection({
+  tripId,
+  eventId,
+  rounds,
+}: {
+  tripId: string;
+  eventId: string;
+  rounds: Round[];
+}) {
+  const utils = trpc.useUtils();
+  const [showAdd, setShowAdd] = useState(false);
+  const [title, setTitle] = useState("");
+  const [format, setFormat] = useState<RoundFormat>("scramble");
+  const [points, setPoints] = useState("10");
+
+  const createRound = trpc.rounds.create.useMutation({
+    onSuccess: () => {
+      utils.rounds.list.invalidate({ tripId, eventId });
+      setShowAdd(false);
+      setTitle("");
+      setFormat("scramble");
+      setPoints("10");
+    },
+  });
+
+  const removeRound = trpc.rounds.remove.useMutation({
+    onSuccess: () => utils.rounds.list.invalidate({ tripId, eventId }),
+  });
+
+  return (
+    <div className="space-y-3">
+      {rounds.length === 0 ? (
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          No events yet. Add the activities your group will compete in.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {rounds.map((round, i) => (
+            <div
+              key={round.id}
+              data-testid={`event-type-row-${round.id}`}
+              className="flex items-center gap-3 rounded-xl px-4 py-3"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <div
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+              >
+                {i + 1}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  {round.title}
+                </p>
+                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {FORMAT_LABEL[round.format] ?? round.format}
+                  {round.points_available > 0 && ` · ${round.points_available} pts`}
+                </p>
+              </div>
+              <button
+                data-testid={`remove-event-type-${round.id}`}
+                onClick={() => removeRound.mutate({ tripId, roundId: round.id })}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdd ? (
+        <div
+          className="space-y-3 rounded-xl p-4"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+            Add Event
+          </p>
+          <input
+            data-testid="event-type-title-input"
+            placeholder="e.g. Day 1 Scramble, Wiffle Ball, Corn Hole"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          />
+          <div>
+            <label className="mb-1.5 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Type
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {EVENT_TYPES.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setFormat(t.value)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+                  style={{
+                    background:
+                      format === t.value
+                        ? "var(--color-bt-accent-faint)"
+                        : "var(--color-bt-base)",
+                    border: `1px solid ${format === t.value ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                    color: format === t.value ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Points
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={points}
+              onChange={(e) => setPoints(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowAdd(false)}
+              className="flex-1 rounded-lg border py-2 text-sm"
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+            >
+              Cancel
+            </button>
+            <button
+              data-testid="add-event-type-btn"
+              disabled={!title.trim() || createRound.isPending}
+              onClick={() => {
+                createRound.mutate({
+                  tripId,
+                  id: crypto.randomUUID(),
+                  eventId,
+                  day: rounds.length + 1,
+                  title: title.trim(),
+                  course: "",
+                  format,
+                  pointsAvailable: Number(points),
+                });
+              }}
+              className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Add Event
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          data-testid="show-add-event-type-btn"
+          onClick={() => setShowAdd(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
+        >
+          <Plus size={16} />
+          Add Event
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1290,7 +1493,8 @@ function GroupsSection({
 // ── Section label map ─────────────────────────────────────────────────────
 
 const SECTION_LABELS: Record<Section, string> = {
-  event: "Competition",
+  competition: "Competition",
+  events: "Events",
   teams: "Teams",
   courses: "Courses",
   groups: "Play Groups",
@@ -1365,29 +1569,38 @@ export function CompTab({ trip, canEdit }: TabProps) {
         </div>
 
         <div className="px-4">
-          {section === "event" && (
-            <EventSection
+          {section === "competition" && (
+            <CompetitionSection
               tripId={trip.id}
               tripTitle={trip.title}
               tripLocation={tripLocation}
               tripDates={tripDates}
               event={event ?? null}
+              onSaved={() => setSection(null)}
             />
           )}
 
-          {section !== "event" && !event && (
+          {section !== "competition" && !event && (
             <div className="py-8 text-center">
               <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
                 Set up the competition first.
               </p>
               <button
-                onClick={() => setSection("event")}
+                onClick={() => setSection("competition")}
                 className="mt-3 text-sm font-medium"
                 style={{ color: "var(--color-bt-accent)" }}
               >
                 Set up competition →
               </button>
             </div>
+          )}
+
+          {section === "events" && event && (
+            <EventTypesSection
+              tripId={trip.id}
+              eventId={event.id}
+              rounds={rounds as Round[]}
+            />
           )}
 
           {section === "teams" && event && (
@@ -1440,16 +1653,43 @@ export function CompTab({ trip, canEdit }: TabProps) {
         </button>
       )}
 
+      {/* Competition tile — full width, prerequisite for everything else */}
+      <SetupTile
+        icon={Trophy}
+        label="Competition"
+        detail={event?.title ?? null}
+        done={!!event}
+        locked={false}
+        canEdit={canEdit}
+        fullWidth
+        onClick={() => setSection("competition")}
+      />
+
       {/* 2×2 setup grid */}
       <div className="grid grid-cols-2 gap-3">
         <SetupTile
-          icon={Trophy}
-          label="Event"
-          detail={event?.title ?? null}
-          done={!!event}
-          locked={false}
+          icon={Calendar}
+          label="Events"
+          detail={
+            rounds.length > 0 ? `${rounds.length} event${rounds.length !== 1 ? "s" : ""}` : null
+          }
+          done={rounds.length > 0}
+          locked={!event}
           canEdit={canEdit}
-          onClick={() => setSection("event")}
+          onClick={() => setSection("events")}
+        />
+        <SetupTile
+          icon={Flag}
+          label="Courses"
+          detail={
+            rounds.filter((r) => r.course).length > 0
+              ? `${rounds.filter((r) => r.course).length} scheduled`
+              : null
+          }
+          done={rounds.some((r) => r.course)}
+          locked={!event || rounds.length === 0}
+          canEdit={canEdit}
+          onClick={() => setSection("courses")}
         />
         <SetupTile
           icon={Users}
@@ -1461,17 +1701,6 @@ export function CompTab({ trip, canEdit }: TabProps) {
           locked={!event}
           canEdit={canEdit}
           onClick={() => setSection("teams")}
-        />
-        <SetupTile
-          icon={Flag}
-          label="Courses"
-          detail={
-            rounds.length > 0 ? `${rounds.length} round${rounds.length !== 1 ? "s" : ""}` : null
-          }
-          done={rounds.length > 0}
-          locked={!event}
-          canEdit={canEdit}
-          onClick={() => setSection("courses")}
         />
         <SetupTile
           icon={LayoutGrid}
