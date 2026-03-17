@@ -276,7 +276,7 @@ export default function LeaderboardPage() {
 
   return (
     <div
-      className="mx-auto min-h-screen max-w-xl pb-24"
+      className="mx-auto min-h-screen max-w-2xl pb-24"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Top nav + breadcrumb */}
