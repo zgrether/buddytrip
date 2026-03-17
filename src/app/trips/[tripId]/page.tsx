@@ -122,6 +122,7 @@ export default function TripDetailPage() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
   const [showEditDetails, setShowEditDetails] = useState(false);
+  const [compUnlocked, setCompUnlocked] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -165,6 +166,7 @@ export default function TripDetailPage() {
 
   const status = getTripStatus(trip);
   const destLocation = trip.locked_destination_location ?? trip.location;
+  const showComp = !!trip.event_id || compUnlocked;
 
   const settingsButton = isOwner ? (
     <button
@@ -204,7 +206,7 @@ export default function TripDetailPage() {
 
         {/* ── Tab bar ───────────────────────────────────────────────────── */}
         <div className="mt-4">
-          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={!!trip.event_id} />
+          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={showComp} />
         </div>
       </div>
 
@@ -218,6 +220,7 @@ export default function TripDetailPage() {
             isOwner={isOwner}
             onTabChange={(tab) => setActiveTab(tab as TabId)}
             onEdit={canEdit ? () => setShowEditDetails(true) : undefined}
+            onEnableComp={canEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
           />
         )}
         {activeTab === "schedule" && (
@@ -232,7 +235,7 @@ export default function TripDetailPage() {
       </main>
 
       {/* ── Bottom navigation ─────────────────────────────────────────────── */}
-      <TripBottomNav tripId={tripId} eventId={trip.event_id} />
+      <TripBottomNav tripId={tripId} eventId={trip.event_id} showComp={showComp} />
 
       {/* ── Edit trip details modal ───────────────────────────────────────── */}
       {showEditDetails && (
