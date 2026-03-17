@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin, Calendar, Pencil } from "lucide-react";
+import { MapPin, Calendar } from "lucide-react";
 import { StatusBadge, type TripStatus } from "@/components/StatusBadge";
 
 interface LocationHeroProps {
@@ -9,7 +9,6 @@ interface LocationHeroProps {
   location?: string | null;       // display location (locked or trip.location)
   lockedTitle?: string | null;     // locked destination title
   dateRange?: string;              // formatted date range string
-  onEdit?: () => void;
 }
 
 /**
@@ -38,7 +37,6 @@ export function LocationHero({
   location,
   lockedTitle,
   dateRange,
-  onEdit,
 }: LocationHeroProps) {
   // Use location for gradient hue, fall back to trip name
   const hueSource = location ?? tripName;
@@ -60,19 +58,6 @@ export function LocationHero({
       />
 
       <div className="relative z-10 px-5 pb-5 pt-5">
-        {/* Edit button */}
-        {onEdit && (
-          <button
-            data-testid="edit-trip-details-btn"
-            onClick={onEdit}
-            className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-white/20"
-            style={{ color: "rgba(255,255,255,0.6)" }}
-            aria-label="Edit trip details"
-          >
-            <Pencil size={13} />
-          </button>
-        )}
-
         {/* Trip title + status */}
         <div className="flex items-center gap-2">
           <h1

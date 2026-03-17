@@ -200,7 +200,6 @@ export default function TripDetailPage() {
           location={destLocation || trip.location}
           lockedTitle={trip.locked_destination_title}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
-          onEdit={canEdit ? () => setShowEditDetails(true) : undefined}
         />
 
         {/* ── Tab bar ───────────────────────────────────────────────────── */}
@@ -218,6 +217,7 @@ export default function TripDetailPage() {
             canEdit={canEdit}
             isOwner={isOwner}
             onTabChange={(tab) => setActiveTab(tab as TabId)}
+            onEdit={canEdit ? () => setShowEditDetails(true) : undefined}
           />
         )}
         {activeTab === "schedule" && (

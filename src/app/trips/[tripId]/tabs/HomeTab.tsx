@@ -608,7 +608,7 @@ function PlanningArc({
 
 // ── About Card ───────────────────────────────────────────────────────────
 
-function AboutCard({ trip }: { trip: TripData }) {
+function AboutCard({ trip, onEdit }: { trip: TripData; onEdit?: () => void }) {
   if (!trip.description) return null;
 
   return (
@@ -616,9 +616,22 @@ function AboutCard({ trip }: { trip: TripData }) {
       className="rounded-xl p-4"
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        About
-      </p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          About
+        </p>
+        {onEdit && (
+          <button
+            data-testid="edit-trip-details-btn"
+            onClick={onEdit}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-black/10"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Edit trip details"
+          >
+            <Pencil size={12} />
+          </button>
+        )}
+      </div>
       <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
         {trip.description}
       </p>
@@ -633,7 +646,8 @@ export function HomeTab({
   canEdit: canEditProp,
   isOwner,
   onTabChange,
-}: TabProps & { onTabChange?: (tab: string) => void }) {
+  onEdit,
+}: TabProps & { onTabChange?: (tab: string) => void; onEdit?: () => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
@@ -664,7 +678,7 @@ export function HomeTab({
       )}
 
       {/* 4. About card */}
-      <AboutCard trip={trip} />
+      <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
 
     </div>
   );
