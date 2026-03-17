@@ -18,6 +18,8 @@ import {
   MapPin,
   ThumbsUp,
   Loader2,
+  Lock,
+  LayoutGrid,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -496,16 +498,18 @@ function SetDestinationModal({
   );
 }
 
-// ── VerticalIdeaRow ───────────────────────────────────────────────────────
+// ── IdeaGridCard ──────────────────────────────────────────────────────────
 
-function VerticalIdeaRow({
+function IdeaGridCard({
   idea,
   tripId,
-  totalMembers,
+  isOwner,
+  onLock,
 }: {
   idea: IdeaWithVotes;
   tripId: string;
-  totalMembers: number;
+  isOwner: boolean;
+  onLock: () => void;
 }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
@@ -535,63 +539,51 @@ function VerticalIdeaRow({
   });
 
   const isVoted = !!currentUser?.id && idea.votes.some((v) => v.user_id === currentUser.id);
-  const voteCount = idea.votes.length;
-  const votePercent = totalMembers > 0 ? (voteCount / totalMembers) * 100 : 0;
   const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
 
   return (
     <div
-      className="flex items-center overflow-hidden rounded-xl"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      className="overflow-hidden rounded-2xl"
+      style={{ border: "1px solid var(--color-bt-border)" }}
     >
-      {/* Gradient color strip */}
+      {/* Gradient hero */}
       <div
-        className="w-1.5 self-stretch flex-shrink-0"
+        className="relative flex min-h-[110px] items-end p-3"
         style={{
-          background: `linear-gradient(180deg, hsl(${hue}, 55%, 45%) 0%, hsl(${(hue + 30) % 360}, 45%, 30%) 100%)`,
+          background: `linear-gradient(160deg, hsl(${hue}, 50%, 18%) 0%, hsl(${(hue + 40) % 360}, 40%, 10%) 100%)`,
         }}
-      />
-
-      {/* Text */}
-      <div className="min-w-0 flex-1 px-3 py-2.5">
-        <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          {idea.title}
-        </p>
-        {idea.location && idea.location !== idea.title && (
-          <p
-            className="mt-0.5 flex items-center gap-0.5 truncate text-[11px]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <MapPin size={9} />
-            {idea.location}
-          </p>
-        )}
-        <div
-          className="mt-1.5 h-1 w-16 overflow-hidden rounded-full"
-          style={{ background: "var(--color-bt-border)" }}
-        >
-          <div
-            className="h-full rounded-full transition-all duration-300"
-            style={{ width: `${votePercent}%`, background: "var(--color-bt-accent)" }}
-          />
-        </div>
+      >
+        <p className="text-base font-bold text-white leading-tight">{idea.title}</p>
       </div>
 
-      {/* Vote button */}
-      <div className="flex-shrink-0 pr-3">
+      {/* Action buttons */}
+      <div
+        className="flex items-center gap-2 p-2"
+        style={{ background: "var(--color-bt-card)" }}
+      >
         <button
           onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
           disabled={vote.isPending}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-all disabled:opacity-40"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all disabled:opacity-40"
           style={{
-            background: isVoted ? "var(--color-bt-tag-bg)" : "transparent",
-            border: `1px solid ${isVoted ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-            color: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+            background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-tag-bg)",
+            color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-accent)",
           }}
         >
-          <ThumbsUp size={10} />
-          {voteCount}
+          <ThumbsUp size={12} />
+          Vote
         </button>
+
+        {isOwner && (
+          <button
+            onClick={onLock}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            <Lock size={12} />
+            Lock
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1104,54 +1096,68 @@ function PlanningSection({
             )}
           </div>
         ) : (
-          /* No destination set — set it directly or brainstorm ideas */
-          <div className="space-y-4">
-            {canEdit && (
-              <>
+          /* No destination set — grid of ideas + set destination CTA */
+          <div className="space-y-3">
+            {/* Header row */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                {ideas.length > 0 ? "Where are we going?" : "No ideas yet — be the first!"}
+              </p>
+              {ideas.length > 0 && (
                 <button
-                  onClick={() => setShowSetDest(true)}
-                  className="text-sm font-medium"
-                  style={{ color: "var(--color-bt-accent)" }}
+                  onClick={() => router.push(`/trips/${trip.id}/compare`)}
+                  className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
                 >
-                  Set destination →
+                  <LayoutGrid size={11} />
+                  Full view
                 </button>
-                {showSetDest && (
-                  <SetDestinationModal
+              )}
+            </div>
+
+            {/* 2-column idea grid */}
+            {ideas.length > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                {ideas.map((idea) => (
+                  <IdeaGridCard
+                    key={idea.id}
+                    idea={idea}
                     tripId={trip.id}
-                    onClose={() => setShowSetDest(false)}
+                    isOwner={isOwner}
+                    onLock={() => { router.push(`/trips/${trip.id}/compare`); }}
                   />
-                )}
-              </>
+                ))}
+              </div>
             )}
 
-            {/* Idea brainstorm section */}
-            <div className="space-y-2">
-              <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                or all great trips start with an idea...
-              </p>
-
-              {ideas.length > 0 && (
-                <div className="space-y-2">
-                  {ideas.map((idea) => (
-                    <VerticalIdeaRow
-                      key={idea.id}
-                      idea={idea}
-                      tripId={trip.id}
-                      totalMembers={tripMembers.length}
-                    />
-                  ))}
-                </div>
-              )}
-
+            {/* CTAs */}
+            <div className="flex flex-col items-center gap-2 pt-1">
               <button
                 onClick={() => router.push(`/trips/${trip.id}/compare`)}
-                className="flex items-center gap-1 pt-1 text-xs font-medium"
+                className="flex items-center gap-1.5 text-sm font-medium"
                 style={{ color: "var(--color-bt-accent)" }}
               >
-                {ideas.length > 0 ? "Discuss all ideas" : "Add some ideas"}
-                <ChevronRight size={12} />
+                <Plus size={14} />
+                Add another destination
               </button>
+
+              {canEdit && (
+                <button
+                  onClick={() => setShowSetDest(true)}
+                  className="text-xs"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  or just set the destination →
+                </button>
+              )}
             </div>
+
+            {showSetDest && (
+              <SetDestinationModal
+                tripId={trip.id}
+                onClose={() => setShowSetDest(false)}
+              />
+            )}
           </div>
         )}
       </PlanningRow>
