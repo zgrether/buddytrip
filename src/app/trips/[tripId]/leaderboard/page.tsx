@@ -276,7 +276,7 @@ export default function LeaderboardPage() {
 
   return (
     <div
-      className="mx-auto min-h-screen max-w-2xl pb-24"
+      className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Top nav + breadcrumb */}
@@ -288,6 +288,7 @@ export default function LeaderboardPage() {
         rightSlot={shareButton}
       />
 
+      <div className="mx-auto max-w-2xl pb-24">
       {/* Tab bar */}
       <div
         className="flex border-b px-2"
@@ -354,6 +355,7 @@ export default function LeaderboardPage() {
             teamById={teamById}
           />
         )}
+      </div>
       </div>
 
       {/* Bottom navigation */}
