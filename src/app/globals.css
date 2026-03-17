@@ -89,3 +89,13 @@ body {
   color: var(--color-bt-text);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+button,
+[role="button"],
+a,
+label[for],
+select,
+summary,
+[tabindex]:not([tabindex="-1"]) {
+  cursor: pointer;
+}
