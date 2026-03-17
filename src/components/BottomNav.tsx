@@ -80,12 +80,14 @@ interface TripBottomNavProps {
   tripId: string;
   eventId?: string | null;
   unreadMessages?: number;
+  showComp?: boolean;
 }
 
 export const TripBottomNav: FC<TripBottomNavProps> = ({
   tripId,
   eventId,
   unreadMessages = 0,
+  showComp,
 }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -104,7 +106,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       label: "Competition",
       Icon: Trophy,
       href: `/trips/${tripId}/leaderboard`,
-      hidden: !eventId,
+      hidden: showComp !== undefined ? !showComp : !eventId,
     },
   ];
 
