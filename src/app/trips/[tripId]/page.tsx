@@ -204,7 +204,7 @@ export default function TripDetailPage() {
 
         {/* ── Tab bar ───────────────────────────────────────────────────── */}
         <div className="mt-4">
-          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={!!trip.event_id} />
         </div>
       </div>
 

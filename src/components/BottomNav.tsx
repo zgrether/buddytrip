@@ -104,6 +104,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       label: "Competition",
       Icon: Trophy,
       href: `/trips/${tripId}/leaderboard`,
+      hidden: !eventId,
     },
   ];
 
@@ -117,7 +118,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       }}
     >
       <div className="mx-auto flex max-w-2xl items-stretch">
-      {items.map(({ id, label, Icon, href, badge }) => {
+      {items.filter((i) => !i.hidden).map(({ id, label, Icon, href, badge }) => {
         const active =
           id === "trip-home"
             ? pathname === `/trips/${tripId}` || pathname === `/trips/${tripId}/compare`

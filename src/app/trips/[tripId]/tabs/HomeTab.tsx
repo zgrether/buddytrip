@@ -261,7 +261,15 @@ function EditTileModal({
 
 // ── Competition Panel ─────────────────────────────────────────────────────
 
-function CompetitionPanel({ trip, canEdit }: { trip: TripData; canEdit: boolean }) {
+function CompetitionPanel({
+  trip,
+  canEdit,
+  onSetupComp,
+}: {
+  trip: TripData;
+  canEdit: boolean;
+  onSetupComp?: () => void;
+}) {
   const router = useRouter();
   const hasComp = !!trip.event_id;
 
@@ -341,7 +349,7 @@ function CompetitionPanel({ trip, canEdit }: { trip: TripData; canEdit: boolean 
     return (
       <button
         data-testid="home-setup-competition-btn"
-        onClick={() => router.push(`/trips/${trip.id}/competition/setup`)}
+        onClick={onSetupComp}
         className="w-full rounded-xl p-4 text-center"
         style={{ border: "2px dashed var(--color-bt-border)", background: "transparent" }}
       >
@@ -394,9 +402,36 @@ function QuickInfoSection({
       </div>
 
       {tiles.length === 0 ? (
-        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          No quick info yet. Add tiles for hotel info, tee times, etc.
-        </p>
+        <button
+          data-testid="quick-info-empty-btn"
+          onClick={() => setShowAddTile(true)}
+          className="w-full rounded-xl p-4"
+          style={{ border: "2px dashed var(--color-bt-border)", background: "transparent" }}
+        >
+          {/* Skeleton tile previews */}
+          <div className="mb-3 flex justify-center gap-2">
+            {[
+              { label: "Door code", value: "1234#" },
+              { label: "Check-in", value: "3:00 PM" },
+              { label: "Address", value: "42 Oak St" },
+            ].map((ex) => (
+              <div
+                key={ex.label}
+                className="flex-1 rounded-lg p-2 text-left opacity-40"
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <p className="text-[9px] mb-0.5" style={{ color: "var(--color-bt-text-dim)" }}>{ex.label}</p>
+                <p className="text-[10px] font-medium" style={{ color: "var(--color-bt-text)" }}>{ex.value}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Add Quick Info
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--color-bt-text-dim)" }}>
+            Door codes, check-in times, street addresses — the stuff everyone always asks about.
+          </p>
+        </button>
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {(tiles as QuickTile[]).map((tile) => (
@@ -879,7 +914,26 @@ function PlanningSection({
 // ── About Card ───────────────────────────────────────────────────────────
 
 function AboutCard({ trip, onEdit }: { trip: TripData; onEdit?: () => void }) {
-  if (!trip.description) return null;
+  if (!trip.description && !onEdit) return null;
+
+  if (!trip.description) {
+    return (
+      <button
+        data-testid="edit-trip-details-btn"
+        onClick={onEdit}
+        className="w-full rounded-xl p-4 text-center"
+        style={{ border: "2px dashed var(--color-bt-border)", background: "transparent" }}
+      >
+        <Pencil size={20} className="mx-auto mb-2" style={{ color: "var(--color-bt-text-dim)" }} />
+        <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Add a Trip Description
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: "var(--color-bt-text-dim)" }}>
+          You&apos;re planning something epic. Get your crew excited with a little backstory.
+        </p>
+      </button>
+    );
+  }
 
   return (
     <section
@@ -928,13 +982,7 @@ export function HomeTab({
 
   return (
     <div className="space-y-4 px-4">
-      {/* 1. Competition panel */}
-      <CompetitionPanel trip={trip} canEdit={canEditProp} />
-
-      {/* 2. Quick Info Tiles */}
-      <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-
-      {/* 3. Planning rows */}
+      {/* 1. Planning rows — primary focus, visible first */}
       {!isCompleted && (
         <PlanningSection
           trip={trip}
@@ -947,6 +995,16 @@ export function HomeTab({
           onTabChange={onTabChange}
         />
       )}
+
+      {/* 2. Competition panel */}
+      <CompetitionPanel
+        trip={trip}
+        canEdit={canEditProp}
+        onSetupComp={() => onTabChange?.("comp")}
+      />
+
+      {/* 3. Quick Info Tiles */}
+      <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
 
       {/* 4. About card */}
       <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />

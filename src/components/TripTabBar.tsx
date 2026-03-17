@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import type { TabId } from "./BottomNav";
 
-const TABS: { id: TabId; label: string }[] = [
+const ALL_TABS: { id: TabId; label: string }[] = [
   { id: "home", label: "Home" },
   { id: "schedule", label: "Schedule" },
   { id: "crew", label: "Crew" },
@@ -13,15 +13,17 @@ const TABS: { id: TabId; label: string }[] = [
 interface TripTabBarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  showComp?: boolean;
 }
 
-export const TripTabBar: FC<TripTabBarProps> = ({ activeTab, onTabChange }) => {
+export const TripTabBar: FC<TripTabBarProps> = ({ activeTab, onTabChange, showComp = false }) => {
+  const tabs = showComp ? ALL_TABS : ALL_TABS.filter((t) => t.id !== "comp");
   return (
     <div
       className="flex border-b"
       style={{ borderColor: "var(--color-bt-border)" }}
     >
-      {TABS.map(({ id, label }) => {
+      {tabs.map(({ id, label }) => {
         const active = activeTab === id;
         return (
           <button
