@@ -1393,32 +1393,79 @@ export default function IdeaComparisonPage() {
           <div>
             <ChangeDestinationInput tripId={tripId} />
 
-            {/* Ideas already in the comparison */}
-            {ideasTyped.length > 0 ? (
-              <div className="flex flex-col gap-4">
-                {ideasTyped.map((idea) => (
-                  <IdeaCard
-                    key={idea.id}
-                    idea={idea}
-                    tripId={tripId}
-                    isVoted={
-                      !!currentUser?.id &&
-                      idea.votes.some((v) => v.user_id === currentUser.id)
-                    }
-                    canEdit={canEdit}
-                    isOwner={isOwner}
-                    totalMembers={members.length}
-                    onLock={setLockIdea}
-                  />
-                ))}
-              </div>
-            ) : (
-              /* Locked via fast-path with no ideas yet — show a simple current-destination card */
-              <CurrentDestinationCard
-                title={trip.locked_destination_title}
-                location={trip.locked_destination_location}
-              />
-            )}
+            {/* Current destination pinned at top, other ideas below */}
+            {(() => {
+              const lockedTitle = (trip.locked_destination_title ?? "").toLowerCase();
+              const lockedIdea = ideasTyped.find(
+                (i) => i.title.toLowerCase() === lockedTitle,
+              );
+              const otherIdeas = ideasTyped.filter((i) => i.id !== lockedIdea?.id);
+
+              return (
+                <div className="mt-4 flex flex-col gap-6">
+                  {/* ── Current Destination ───────────────────────────────── */}
+                  <div>
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <Lock size={13} style={{ color: "var(--color-bt-accent)" }} />
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wider"
+                        style={{ color: "var(--color-bt-accent)" }}
+                      >
+                        Current Destination
+                      </span>
+                    </div>
+                    {lockedIdea ? (
+                      <IdeaCard
+                        idea={lockedIdea}
+                        tripId={tripId}
+                        isVoted={
+                          !!currentUser?.id &&
+                          lockedIdea.votes.some((v) => v.user_id === currentUser.id)
+                        }
+                        canEdit={canEdit}
+                        isOwner={isOwner}
+                        totalMembers={members.length}
+                        onLock={setLockIdea}
+                      />
+                    ) : (
+                      <CurrentDestinationCard
+                        title={trip.locked_destination_title}
+                        location={trip.locked_destination_location}
+                      />
+                    )}
+                  </div>
+
+                  {/* ── Other Ideas ───────────────────────────────────────── */}
+                  {otherIdeas.length > 0 && (
+                    <div>
+                      <p
+                        className="mb-2 text-[10px] font-semibold uppercase tracking-wider"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        Other Ideas
+                      </p>
+                      <div className="flex flex-col gap-4">
+                        {otherIdeas.map((idea) => (
+                          <IdeaCard
+                            key={idea.id}
+                            idea={idea}
+                            tripId={tripId}
+                            isVoted={
+                              !!currentUser?.id &&
+                              idea.votes.some((v) => v.user_id === currentUser.id)
+                            }
+                            canEdit={canEdit}
+                            isOwner={isOwner}
+                            totalMembers={members.length}
+                            onLock={setLockIdea}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : ideasTyped.length === 0 ? (
           canEdit ? (
