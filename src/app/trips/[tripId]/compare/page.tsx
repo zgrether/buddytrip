@@ -11,7 +11,6 @@ import {
   Star,
   Flag,
   Zap,
-  Plus,
   X,
   DollarSign,
   MessageSquare,
@@ -434,132 +433,6 @@ function IdeaCard({
 
 // ── AddIdeaModal ──────────────────────────────────────────────────────────
 
-function AddIdeaModal({
-  tripId,
-  onClose,
-}: {
-  tripId: string;
-  onClose: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const createIdea = trpc.ideas.create.useMutation({
-    async onMutate(vars) {
-      await utils.ideas.list.cancel({ tripId });
-      const prev = utils.ideas.list.getData({ tripId });
-      utils.ideas.list.setData({ tripId }, [
-        ...(prev ?? []),
-        {
-          id: vars.id,
-          trip_id: tripId,
-          title: vars.title,
-          location: vars.location,
-          description: vars.description ?? null,
-          golf_courses: vars.golfCourses ?? null,
-          activities: vars.activities ?? null,
-          cost_tier: vars.costTier ?? null,
-          pros: vars.pros ?? null,
-          cons: vars.cons ?? null,
-          accommodation: vars.accommodation ?? null,
-          notes: vars.notes ?? null,
-          image_url: vars.imageUrl ?? null,
-          votes: [],
-        },
-      ]);
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
-    },
-    onSuccess() {
-      onClose();
-    },
-    onSettled() {
-      utils.ideas.list.invalidate({ tripId });
-    },
-  });
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-t-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p
-          className="mb-4 text-base font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Add Destination Idea
-        </p>
-        <form
-          data-testid="add-idea-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const fd = new FormData(e.currentTarget);
-            const t = (fd.get("title") as string).trim();
-            const l = (fd.get("location") as string).trim();
-            if (!t || !l) return;
-            createIdea.mutate({
-              tripId,
-              id: crypto.randomUUID(),
-              title: t,
-              location: l,
-            });
-          }}
-        >
-          <div className="space-y-3">
-            <input
-              name="title"
-              required
-              placeholder="Destination name"
-              autoFocus
-              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
-              style={{
-                background: "var(--color-bt-base)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <input
-              name="location"
-              required
-              placeholder="Location (e.g. Bandon, OR)"
-              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none"
-              style={{
-                background: "var(--color-bt-base)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 rounded-lg border py-2.5 text-sm"
-                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={createIdea.isPending}
-                className="flex-1 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {createIdea.isPending ? "Adding…" : "Add Idea"}
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 // ── LockConfirmModal ──────────────────────────────────────────────────────
 
 function LockConfirmModal({
@@ -926,7 +799,7 @@ function ChangeDestinationInput({ tripId }: { tripId: string }) {
 
 // ── EmptyStateOnboarding ─────────────────────────────────────────────────
 
-function EmptyStateOnboarding({ tripId }: { tripId: string }) {
+function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: () => void }) {
   const utils = trpc.useUtils();
 
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
@@ -1001,6 +874,7 @@ function EmptyStateOnboarding({ tripId }: { tripId: string }) {
       );
       utils.ideas.list.invalidate({ tripId });
       setLocalIdeas([]);
+      onClose?.();
     } catch {
       // keep local ideas so user can retry
     } finally {
@@ -1010,12 +884,16 @@ function EmptyStateOnboarding({ tripId }: { tripId: string }) {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-        Idea zone
-      </h2>
-      <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-        Build a list of options, then the crew can vote and discuss.
-      </p>
+      {!onClose && (
+        <>
+          <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+            Idea zone
+          </h2>
+          <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+            Build a list of options, then the crew can vote and discuss.
+          </p>
+        </>
+      )}
 
       {/* ── AI suggestions — primary, open by default ── */}
       {showAiPrompt ? (
@@ -1191,19 +1069,6 @@ export default function IdeaComparisonPage() {
 
   const ideasTyped = ideas as Idea[];
 
-  // Only show the + button when ideas already exist (empty state has its own add UI)
-  const addIdeaButton = canEdit && ideasTyped.length > 0 ? (
-    <button
-      data-testid="add-idea-btn"
-      onClick={() => setShowAddModal(true)}
-      className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-      style={{ color: "var(--color-bt-accent)" }}
-      aria-label="Add idea"
-    >
-      <Plus size={18} />
-    </button>
-  ) : undefined;
-
   return (
     <div
       className="min-h-screen"
@@ -1214,7 +1079,6 @@ export default function IdeaComparisonPage() {
         tripId={tripId}
         tripTitle={trip?.title ?? "Trip"}
         pageName="Compare Destinations"
-        rightSlot={addIdeaButton}
       />
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
@@ -1316,6 +1180,18 @@ export default function IdeaComparisonPage() {
         ) : (
           /* Vertical stacked expanded cards */
           <div className="flex flex-col gap-4">
+            {canEdit && (
+              <div className="flex justify-end">
+                <button
+                  data-testid="add-idea-btn"
+                  onClick={() => setShowAddModal(true)}
+                  className="text-sm font-medium transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  + Add idea
+                </button>
+              </div>
+            )}
             {ideasTyped.map((idea) => (
               <IdeaCard
                 key={idea.id}
@@ -1337,10 +1213,31 @@ export default function IdeaComparisonPage() {
 
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {showAddModal && (
-        <AddIdeaModal
-          tripId={tripId}
-          onClose={() => setShowAddModal(false)}
-        />
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl"
+            style={{ background: "var(--color-bt-base)", borderTop: "1px solid var(--color-bt-border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-0">
+              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Add ideas
+              </p>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <EmptyStateOnboarding tripId={tripId} onClose={() => setShowAddModal(false)} />
+          </div>
+        </div>
       )}
       {lockIdea && (
         <LockConfirmModal
