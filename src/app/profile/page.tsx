@@ -65,7 +65,7 @@ export default function ProfilePage() {
         onProfileClick={() => router.push("/profile")}
       />
 
-      <main className="mx-auto max-w-lg px-4 pb-24 pt-8">
+      <main className="mx-auto max-w-2xl px-4 pb-24 pt-8">
         {isLoading ? (
           <div className="flex justify-center py-12">
             <div

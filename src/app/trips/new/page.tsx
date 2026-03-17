@@ -948,7 +948,7 @@ export default function TripNewPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-lg px-4 pt-6 pb-16">
+      <main className="mx-auto max-w-2xl px-4 pt-6 pb-16">
         {/* Step label */}
         <p
           className="mb-1 text-xs font-semibold uppercase tracking-wider"

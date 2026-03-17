@@ -53,7 +53,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      <div className="mx-auto flex max-w-lg items-stretch">
+      <div className="mx-auto flex max-w-2xl items-stretch">
       {visibleItems.map(({ id, label, Icon, href }) => {
         const active = pathname === href || (id === "home" && pathname === "/dashboard");
         return (
@@ -116,7 +116,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      <div className="mx-auto flex max-w-lg items-stretch">
+      <div className="mx-auto flex max-w-2xl items-stretch">
       {items.map(({ id, label, Icon, href, badge }) => {
         const active =
           id === "trip-home"
