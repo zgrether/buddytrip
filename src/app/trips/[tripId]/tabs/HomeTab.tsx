@@ -1036,18 +1036,18 @@ function PlanningSection({
                     >
                       Working on {ideas.length} idea{ideas.length !== 1 ? "s" : ""}…
                     </p>
-                    <div className="flex gap-1.5 overflow-x-auto px-3 pb-2.5 pt-2">
+                    <div className="flex flex-col gap-1.5 px-3 pb-2.5 pt-2">
                       {ideas.slice(0, 5).map((idea) => {
                         const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
                         return (
                           <div
                             key={idea.id}
-                            className="flex-shrink-0 rounded-lg px-2.5 py-1.5"
+                            className="w-full rounded-lg px-2.5 py-1.5"
                             style={{
                               background: `linear-gradient(135deg, hsl(${hue}, 50%, 18%), hsl(${(hue + 40) % 360}, 40%, 10%))`,
                             }}
                           >
-                            <p className="max-w-[96px] truncate text-xs font-medium text-white">
+                            <p className="truncate text-xs font-medium text-white">
                               {idea.title}
                             </p>
                           </div>
