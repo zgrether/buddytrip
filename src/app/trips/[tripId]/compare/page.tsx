@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { TopNav } from "@/components/TopNav";
+import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
-  ArrowLeft,
   ThumbsUp,
   Lock,
   MapPin,
@@ -545,6 +546,7 @@ export default function IdeaComparisonPage() {
 
   const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
 
   if (isLoading) {
     return (
@@ -562,56 +564,33 @@ export default function IdeaComparisonPage() {
 
   const ideasTyped = ideas as Idea[];
 
+  const addIdeaButton = canEdit ? (
+    <button
+      data-testid="add-idea-btn"
+      onClick={() => setShowAddModal(true)}
+      className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+      style={{ color: "var(--color-bt-accent)" }}
+      aria-label="Add idea"
+    >
+      <Plus size={18} />
+    </button>
+  ) : undefined;
+
   return (
     <div
-      className="flex min-h-screen flex-col"
+      className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header
-        className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <button
-          onClick={() => router.push(`/trips/${tripId}`)}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text)" }}
-          aria-label="Back to trip"
-        >
-          <ArrowLeft size={20} />
-        </button>
-
-        <h1
-          data-testid="compare-heading"
-          className="flex-1 text-base font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Compare Destinations
-          {ideasTyped.length > 0 && (
-            <span
-              className="ml-2 text-sm font-normal"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              ({ideasTyped.length})
-            </span>
-          )}
-        </h1>
-
-        {canEdit && (
-          <button
-            data-testid="add-idea-btn"
-            onClick={() => setShowAddModal(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-accent)" }}
-            aria-label="Add idea"
-          >
-            <Plus size={20} />
-          </button>
-        )}
-      </header>
+      <TopNav />
+      <TripBreadcrumb
+        tripId={tripId}
+        tripTitle={trip?.title ?? "Trip"}
+        pageName="Compare Destinations"
+        rightSlot={addIdeaButton}
+      />
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
-      <main className="flex-1 p-4">
+      <main className="p-4">
         {ideasTyped.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />

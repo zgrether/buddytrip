@@ -46,13 +46,14 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 mx-auto flex max-w-lg items-stretch"
+      className="fixed bottom-0 left-0 right-0 z-40"
       style={{
         background: "var(--color-bt-card)",
         borderTop: "1px solid var(--color-bt-border)",
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
+      <div className="mx-auto flex max-w-2xl items-stretch">
       {visibleItems.map(({ id, label, Icon, href }) => {
         const active = pathname === href || (id === "home" && pathname === "/dashboard");
         return (
@@ -68,6 +69,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
           </button>
         );
       })}
+      </div>
     </nav>
   );
 };
@@ -107,13 +109,14 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 mx-auto flex max-w-lg items-stretch"
+      className="fixed bottom-0 left-0 right-0 z-40"
       style={{
         background: "var(--color-bt-card)",
         borderTop: "1px solid var(--color-bt-border)",
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
+      <div className="mx-auto flex max-w-2xl items-stretch">
       {items.map(({ id, label, Icon, href, badge }) => {
         const active =
           id === "trip-home"
@@ -143,6 +146,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
           </button>
         );
       })}
+      </div>
     </nav>
   );
 };

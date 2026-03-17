@@ -193,7 +193,7 @@ export default function TripDetailPage() {
       />
 
       {/* ── Trip hero card ────────────────────────────────────────────────── */}
-      <div className="mx-auto max-w-lg px-4 pt-4">
+      <div className="mx-auto max-w-2xl px-4 pt-4">
         <LocationHero
           tripName={trip.title}
           status={status}
@@ -210,7 +210,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-lg pb-24 pt-4">
+      <main className="mx-auto max-w-2xl pb-24 pt-4">
         {activeTab === "home" && (
           <HomeTab
             trip={trip}

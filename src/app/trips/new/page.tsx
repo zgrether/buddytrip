@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { UserMenu } from "@/components/UserMenu";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -931,24 +932,27 @@ export default function TripNewPage() {
         <h1 className="text-base font-semibold">New Trip</h1>
 
         {/* Step indicator */}
-        <div className="ml-auto flex items-center gap-1.5">
-          {[1, 2].map((s) => (
-            <span
-              key={s}
-              className="h-2 rounded-full transition-all"
-              style={{
-                background:
-                  s === step
-                    ? "var(--color-bt-accent)"
-                    : "var(--color-bt-border)",
-                width: s === step ? "20px" : "8px",
-              }}
-            />
-          ))}
+        <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            {[1, 2].map((s) => (
+              <span
+                key={s}
+                className="h-2 rounded-full transition-all"
+                style={{
+                  background:
+                    s === step
+                      ? "var(--color-bt-accent)"
+                      : "var(--color-bt-border)",
+                  width: s === step ? "20px" : "8px",
+                }}
+              />
+            ))}
+          </div>
+          <UserMenu />
         </div>
       </header>
 
-      <main className="mx-auto max-w-lg px-4 pt-6 pb-16">
+      <main className="mx-auto max-w-2xl px-4 pt-6 pb-16">
         {/* Step label */}
         <p
           className="mb-1 text-xs font-semibold uppercase tracking-wider"

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { TopNav } from "@/components/TopNav";
+import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
-  ArrowLeft,
   Flag,
   Pencil,
   Plus,
@@ -1116,7 +1117,6 @@ type SetupTab = "event" | "teams" | "rounds" | "groups";
 
 export default function CompetitionSetupPage() {
   const { tripId } = useParams<{ tripId: string }>();
-  const router = useRouter();
   useTripRole(tripId);
 
   const [activeTab, setActiveTab] = useState<SetupTab>("event");
@@ -1146,6 +1146,8 @@ export default function CompetitionSetupPage() {
     { enabled: !!event?.id }
   );
 
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
+
   if (eventLoading) {
     return (
       <div
@@ -1169,30 +1171,15 @@ export default function CompetitionSetupPage() {
 
   return (
     <div
-      className="flex min-h-screen flex-col"
+      className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Header */}
-      <header
-        className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <button
-          onClick={() => router.push(`/trips/${tripId}`)}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text)" }}
-          aria-label="Back to trip"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <h1
-          data-testid="setup-heading"
-          className="flex-1 text-base font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Competition Setup
-        </h1>
-      </header>
+      <TopNav />
+      <TripBreadcrumb
+        tripId={tripId}
+        tripTitle={trip?.title ?? "Trip"}
+        pageName="Competition Setup"
+      />
 
       {/* Tab bar */}
       <div
@@ -1217,7 +1204,7 @@ export default function CompetitionSetupPage() {
       </div>
 
       {/* Content */}
-      <main className="flex-1 p-4">
+      <main className="p-4">
         {activeTab === "event" && (
           <EventSection tripId={tripId} event={event ?? null} />
         )}
