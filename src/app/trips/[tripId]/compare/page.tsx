@@ -206,7 +206,6 @@ function IdeaCard({
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
-  const router = useRouter();
   const utils = trpc.useUtils();
   const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -215,6 +214,12 @@ function IdeaCard({
     onSuccess() {
       utils.ideas.list.invalidate({ tripId });
       setEditingField(null);
+    },
+  });
+
+  const unlockDest = trpc.trips.unlockDestination.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
     },
   });
 
@@ -523,8 +528,9 @@ function IdeaCard({
           {isOwner && (
             isLocked ? (
               <button
-                onClick={() => router.push(`/trips/${tripId}`)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
+                onClick={() => unlockDest.mutate({ tripId })}
+                disabled={unlockDest.isPending}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)] disabled:opacity-50"
                 style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
               >
                 Return to discussion
