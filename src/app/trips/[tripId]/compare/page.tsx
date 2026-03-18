@@ -206,6 +206,7 @@ function IdeaCard({
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
+  const router = useRouter();
   const utils = trpc.useUtils();
   const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -520,15 +521,25 @@ function IdeaCard({
           style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
           {isOwner && (
-            <button
-              data-testid={`lock-idea-${idea.id}`}
-              onClick={() => onLock(idea)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
-              style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
-            >
-              <Lock size={13} />
-              Set as destination
-            </button>
+            isLocked ? (
+              <button
+                onClick={() => router.push(`/trips/${tripId}`)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
+                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+              >
+                Return to discussion
+              </button>
+            ) : (
+              <button
+                data-testid={`lock-idea-${idea.id}`}
+                onClick={() => onLock(idea)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
+                style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
+              >
+                <Lock size={13} />
+                Set as destination
+              </button>
+            )
           )}
           {canEdit && (
             <button
@@ -1341,79 +1352,7 @@ export default function IdeaComparisonPage() {
         >
           ← {trip?.title ?? "Back to trip"}
         </button>
-        {trip?.locked_destination_title && canEdit ? (
-          /* Change-destination mode: explore input above the ideas list */
-          <div>
-            <ChangeDestinationInput tripId={tripId} />
-
-            {/* Current destination pinned at top, other ideas below */}
-            {(() => {
-              const lockedTitle = (trip.locked_destination_title ?? "").toLowerCase();
-              const lockedIdea = ideasTyped.find(
-                (i) => i.title.toLowerCase() === lockedTitle,
-              );
-              const otherIdeas = ideasTyped.filter((i) => i.id !== lockedIdea?.id);
-
-              return (
-                <div className="mt-4 flex flex-col gap-6">
-                  {/* ── Current Destination ───────────────────────────────── */}
-                  <div>
-                    <div className="mb-2 flex items-center gap-1.5">
-                      <Lock size={13} style={{ color: "var(--color-bt-accent)" }} />
-                      <span
-                        className="text-[10px] font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--color-bt-accent)" }}
-                      >
-                        Current Destination
-                      </span>
-                    </div>
-                    {lockedIdea ? (
-                      <IdeaCard
-                        idea={lockedIdea}
-                        tripId={tripId}
-                        canEdit={canEdit}
-                        isOwner={isOwner}
-                        isLocked={true}
-                        onLock={setLockIdea}
-                        onDelete={setDeleteIdea}
-                      />
-                    ) : (
-                      <CurrentDestinationCard
-                        title={trip.locked_destination_title}
-                        location={trip.locked_destination_location}
-                      />
-                    )}
-                  </div>
-
-                  {/* ── Other Ideas ───────────────────────────────────────── */}
-                  {otherIdeas.length > 0 && (
-                    <div>
-                      <p
-                        className="mb-2 text-[10px] font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        Other Ideas
-                      </p>
-                      <div className="flex flex-col gap-4">
-                        {otherIdeas.map((idea) => (
-                          <IdeaCard
-                            key={idea.id}
-                            idea={idea}
-                            tripId={tripId}
-                            canEdit={canEdit}
-                            isOwner={isOwner}
-                            onLock={setLockIdea}
-                            onDelete={setDeleteIdea}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        ) : ideasTyped.length === 0 ? (
+        {ideasTyped.length === 0 ? (
           canEdit ? (
             <EmptyStateOnboarding tripId={tripId} />
           ) : (
@@ -1428,33 +1367,83 @@ export default function IdeaComparisonPage() {
             </div>
           )
         ) : (
-          /* Vertical stacked expanded cards */
-          <div className="flex flex-col gap-4">
-            <VotingPanel tripId={tripId} ideas={ideasTyped} currentUserId={currentUser?.id} />
-            {canEdit && (
-              <div className="flex justify-end">
-                <button
-                  data-testid="add-idea-btn"
-                  onClick={() => setShowAddModal(true)}
-                  className="text-sm font-medium transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-accent)" }}
-                >
-                  + Add idea
-                </button>
+          /* Unified layout — locked idea pinned at top when destination is set */
+          (() => {
+            const lockedTitle = (trip?.locked_destination_title ?? "").toLowerCase();
+            const lockedIdea = lockedTitle
+              ? ideasTyped.find((i) => i.title.toLowerCase() === lockedTitle)
+              : undefined;
+            const otherIdeas = lockedIdea
+              ? ideasTyped.filter((i) => i.id !== lockedIdea.id)
+              : ideasTyped;
+
+            return (
+              <div className="flex flex-col gap-4">
+                <VotingPanel tripId={tripId} ideas={ideasTyped} currentUserId={currentUser?.id} />
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button
+                      data-testid="add-idea-btn"
+                      onClick={() => setShowAddModal(true)}
+                      className="text-sm font-medium transition-opacity hover:opacity-70"
+                      style={{ color: "var(--color-bt-accent)" }}
+                    >
+                      + Add idea
+                    </button>
+                  </div>
+                )}
+
+                {/* Current destination pinned at top */}
+                {lockedIdea && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <Lock size={13} style={{ color: "var(--color-bt-accent)" }} />
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wider"
+                        style={{ color: "var(--color-bt-accent)" }}
+                      >
+                        Current Destination
+                      </span>
+                    </div>
+                    <IdeaCard
+                      idea={lockedIdea}
+                      tripId={tripId}
+                      canEdit={canEdit}
+                      isOwner={isOwner}
+                      isLocked={true}
+                      onLock={setLockIdea}
+                      onDelete={setDeleteIdea}
+                    />
+                  </div>
+                )}
+
+                {/* Other ideas */}
+                {otherIdeas.length > 0 && (
+                  <div className="flex flex-col gap-4">
+                    {lockedIdea && (
+                      <p
+                        className="text-[10px] font-semibold uppercase tracking-wider"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        Other Ideas
+                      </p>
+                    )}
+                    {otherIdeas.map((idea) => (
+                      <IdeaCard
+                        key={idea.id}
+                        idea={idea}
+                        tripId={tripId}
+                        canEdit={canEdit}
+                        isOwner={isOwner}
+                        onLock={setLockIdea}
+                        onDelete={setDeleteIdea}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-            {ideasTyped.map((idea) => (
-              <IdeaCard
-                key={idea.id}
-                idea={idea}
-                tripId={tripId}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                onLock={setLockIdea}
-                onDelete={setDeleteIdea}
-              />
-            ))}
-          </div>
+            );
+          })()
         )}
       </main>
 
