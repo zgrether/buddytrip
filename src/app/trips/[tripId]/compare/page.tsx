@@ -717,14 +717,15 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
       await utils.ideas.list.cancel({ tripId });
       const prev = utils.ideas.list.getData({ tripId });
       utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
-        if (i.id !== ideaId) return i;
-        const alreadyVoted = i.votes.some((v: { user_id: string }) => v.user_id === currentUserId);
-        return {
-          ...i,
-          votes: alreadyVoted
-            ? i.votes.filter((v: { user_id: string }) => v.user_id !== currentUserId)
-            : [...i.votes, { idea_id: ideaId, user_id: currentUserId ?? "", created_at: new Date().toISOString() }],
-        };
+        const clickingCurrentPick = i.id === ideaId && i.votes.some((v: { user_id: string }) => v.user_id === currentUserId);
+        if (clickingCurrentPick) {
+          // Unvote
+          return { ...i, votes: i.votes.filter((v: { user_id: string }) => v.user_id !== currentUserId) };
+        }
+        // Remove my vote from every idea (single-pick), then add to target
+        const withoutMe = i.votes.filter((v: { user_id: string }) => v.user_id !== currentUserId);
+        if (i.id !== ideaId) return { ...i, votes: withoutMe };
+        return { ...i, votes: [...withoutMe, { idea_id: ideaId, user_id: currentUserId ?? "", created_at: new Date().toISOString() }] };
       }));
       return { prev };
     },
