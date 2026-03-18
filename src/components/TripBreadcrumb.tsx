@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
 interface TripBreadcrumbProps {
   tripId: string;
@@ -21,44 +21,31 @@ export function TripBreadcrumb({
 }: TripBreadcrumbProps) {
   const router = useRouter();
 
+  // Sub-pages (messages, leaderboard, compare) → trip home
+  // Trip home → dashboard
+  const backHref = pageName ? `/trips/${tripId}` : "/dashboard";
+  const backLabel = pageName ? tripTitle : "Trips";
+
   return (
     <div
       className="flex h-10 items-center justify-between px-4"
       style={{ borderBottom: "1px solid var(--color-bt-border)" }}
     >
-      <div className="flex min-w-0 items-center gap-1 text-sm">
+      <div className="flex min-w-0 items-center gap-2 text-sm">
         <button
-          onClick={() => router.push("/dashboard")}
-          className="flex-shrink-0 transition-opacity hover:opacity-70"
+          onClick={() => router.push(backHref)}
+          className="flex flex-shrink-0 items-center gap-0.5 transition-opacity hover:opacity-70"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Trips
+          <ChevronLeft size={16} className="-ml-1" />
+          <span className="max-w-[160px] truncate">{backLabel}</span>
         </button>
-
-        <ChevronRight size={13} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-
-        {pageName ? (
-          <button
-            onClick={() => router.push(`/trips/${tripId}`)}
-            className="min-w-0 truncate transition-opacity hover:opacity-70"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {tripTitle}
-          </button>
-        ) : (
-          <span
-            className="min-w-0 truncate font-medium"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {tripTitle}
-          </span>
-        )}
 
         {pageName && (
           <>
-            <ChevronRight size={13} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+            <span style={{ color: "var(--color-bt-border)" }}>·</span>
             <span
-              className="flex-shrink-0 font-medium"
+              className="truncate font-medium"
               style={{ color: "var(--color-bt-text)" }}
             >
               {pageName}
