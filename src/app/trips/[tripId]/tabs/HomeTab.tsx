@@ -25,6 +25,7 @@ import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { hashToHue } from "@/components/LocationHero";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -732,14 +733,6 @@ function QuickInfoSection({
 // ── Planning Section (expandable rows) ───────────────────────────────────
 
 type ArcCardState = "done" | "inProgress" | "none";
-
-function hashToHue(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash) % 360;
-}
 
 function MiniIdeaHero({
   idea,

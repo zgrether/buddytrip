@@ -67,7 +67,7 @@ describe("TripBottomNav — back navigation contract", () => {
     const items = [
       { id: "trip-home", href: `/trips/${tripId}` },
       { id: "messages", href: `/trips/${tripId}/messages` },
-      { id: "competition", href: `/trips/${tripId}/leaderboard` },
+      { id: "live", href: `/trips/${tripId}/leaderboard` },
     ];
     expect(items[0].href).toBe("/trips/trip-123");
     expect(items[1].href).toBe("/trips/trip-123/messages");

@@ -22,6 +22,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { hashToHue } from "@/components/LocationHero";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -175,16 +176,6 @@ function CommentsSection({ tripId, ideaId }: { tripId: string; ideaId: string })
       )}
     </div>
   );
-}
-
-// ── IdeaCard helpers ──────────────────────────────────────────────────────
-
-function hashToHue(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash) % 360;
 }
 
 // ── IdeaCard ─────────────────────────────────────────────────────────────

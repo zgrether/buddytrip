@@ -8,7 +8,7 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
-import { LocationHero } from "@/components/LocationHero";
+import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
 import { TripBreadcrumb } from "@/components/TripBreadcrumb";
@@ -164,9 +164,18 @@ export default function TripDetailPage() {
     );
   }
 
+  const utils = trpc.useUtils();
   const status = getTripStatus(trip);
   const destLocation = trip.locked_destination_location ?? trip.location;
   const showComp = !!trip.event_id || compUnlocked;
+  const isLocked = !!trip.locked_destination_title;
+
+  const lockDestination = trpc.trips.lockDestination.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId: trip.id });
+      utils.trips.list.invalidate();
+    },
+  });
 
   const settingsButton = isOwner ? (
     <button
@@ -194,14 +203,25 @@ export default function TripDetailPage() {
         rightSlot={settingsButton}
       />
 
-      {/* ── Trip hero card ────────────────────────────────────────────────── */}
+      {/* ── Trip header card ──────────────────────────────────────────────── */}
       <div className="mx-auto max-w-2xl px-4 pt-4">
-        <LocationHero
+        <TripHeader
           tripName={trip.title}
           status={status}
           location={destLocation || trip.location}
           lockedTitle={trip.locked_destination_title}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
+          isLocked={isLocked}
+          canEdit={canEdit}
+          settingsSlot={settingsButton}
+          onDestinationChange={(value) => {
+            lockDestination.mutate({
+              tripId: trip.id,
+              title: value,
+              location: value,
+            });
+          }}
+          onDatesTap={() => setActiveTab("schedule")}
         />
 
         {/* ── Tab bar ───────────────────────────────────────────────────── */}
