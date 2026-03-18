@@ -1,21 +1,22 @@
 "use client";
 
-import { MapPin, Calendar } from "lucide-react";
-import { StatusBadge, type TripStatus } from "@/components/StatusBadge";
+import type { ReactNode } from "react";
+import { MapPin } from "lucide-react";
 
 interface LocationHeroProps {
+  /** Location string used to derive the gradient color */
+  location: string;
+  /** Trip name, used as fallback for hue if location is empty */
   tripName: string;
-  status: TripStatus;
-  location?: string | null;       // display location (locked or trip.location)
-  lockedTitle?: string | null;     // locked destination title
-  dateRange?: string;              // formatted date range string
+  /** Content rendered inside the hero card */
+  children: ReactNode;
 }
 
 /**
  * Generates a consistent hue from a string via simple hash.
  * Same destination always produces the same color.
  */
-function hashToHue(str: string): number {
+export function hashToHue(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
@@ -23,7 +24,7 @@ function hashToHue(str: string): number {
   return Math.abs(hash) % 360;
 }
 
-function parseLocation(location: string): { city: string; region: string } {
+export function parseLocation(location: string): { city: string; region: string } {
   const parts = location.split(",").map((s) => s.trim());
   return {
     city: parts[0] || location,
@@ -31,17 +32,14 @@ function parseLocation(location: string): { city: string; region: string } {
   };
 }
 
-export function LocationHero({
-  tripName,
-  status,
-  location,
-  lockedTitle,
-  dateRange,
-}: LocationHeroProps) {
-  // Use location for gradient hue, fall back to trip name
-  const hueSource = location ?? tripName;
+/**
+ * A visual gradient card with a subtle pin icon background.
+ * The gradient hue is deterministic — same location = same color.
+ * Content is passed via children so TripHeader can compose freely.
+ */
+export function LocationHero({ location, tripName, children }: LocationHeroProps) {
+  const hueSource = location || tripName;
   const hue = hashToHue(hueSource.toLowerCase());
-  const parsed = location ? parseLocation(location) : null;
 
   return (
     <div
@@ -49,6 +47,7 @@ export function LocationHero({
       style={{
         background: `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`,
       }}
+      data-testid="location-hero"
     >
       {/* Subtle pin icon background */}
       <MapPin
@@ -58,47 +57,7 @@ export function LocationHero({
       />
 
       <div className="relative z-10 px-5 pb-5 pt-5">
-        {/* Trip title + status */}
-        <div className="flex items-center gap-2">
-          <h1
-            data-testid="trip-title"
-            className="text-2xl font-bold text-white"
-          >
-            {tripName}
-          </h1>
-          <StatusBadge status={status} />
-        </div>
-
-        {/* Destination */}
-        <div className="mt-1.5 flex items-center gap-1 text-sm text-white/60">
-          {lockedTitle ? (
-            <span className="flex items-center gap-1">
-              <MapPin size={13} />
-              {lockedTitle}
-              {location && location !== lockedTitle && `, ${location}`}
-            </span>
-          ) : location ? (
-            <span className="flex items-center gap-1">
-              <MapPin size={13} />
-              {location}
-            </span>
-          ) : (
-            <span className="text-white/40">Destination: TBD</span>
-          )}
-        </div>
-
-        {/* Dates */}
-        <div className="mt-1 flex items-center gap-1 text-xs text-white/50">
-          {dateRange && dateRange !== "Dates TBD" ? (
-            <span className="flex items-center gap-1">
-              <Calendar size={11} />
-              {dateRange}
-            </span>
-          ) : (
-            <span>Dates: TBD</span>
-          )}
-        </div>
-
+        {children}
       </div>
     </div>
   );

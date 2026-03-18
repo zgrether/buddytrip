@@ -1,28 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-/**
- * LocationHero unit tests
- *
- * Tests the pure logic functions: hashToHue and parseLocation.
- * The component rendering is covered by the Playwright E2E test.
- */
-
-// Inline the pure functions for testing (they're not exported from the component)
-function hashToHue(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return Math.abs(hash) % 360;
-}
-
-function parseLocation(location: string): { city: string; region: string } {
-  const parts = location.split(",").map((s) => s.trim());
-  return {
-    city: parts[0] || location,
-    region: parts.slice(1).join(", ") || "",
-  };
-}
+import { hashToHue, parseLocation } from "./LocationHero";
 
 describe("LocationHero — hashToHue", () => {
   it("returns a value between 0 and 359", () => {
