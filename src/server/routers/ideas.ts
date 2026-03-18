@@ -195,13 +195,13 @@ export const ideasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // vote — any member can vote (toggle)
+  // vote — any member can vote; single pick per trip, toggle off to unvote
   // -----------------------------------------------------------------------
   vote: authedProcedure
     .input(z.object({ tripId: z.string(), ideaId: z.string() }))
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      // Check if already voted
+      // Check if this idea is already the user's pick
       const { data: existing } = await ctx.supabase
         .from("idea_votes")
         .select("idea_id")
@@ -210,7 +210,7 @@ export const ideasRouter = router({
         .maybeSingle();
 
       if (existing) {
-        // Remove vote (toggle off)
+        // Clicking current pick — unvote completely
         await ctx.supabase
           .from("idea_votes")
           .delete()
@@ -218,7 +218,14 @@ export const ideasRouter = router({
           .eq("user_id", ctx.user!.id);
         return { voted: false };
       } else {
-        // Add vote
+        // Remove any existing vote on another idea first (single-pick rule)
+        await ctx.supabase
+          .from("idea_votes")
+          .delete()
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", ctx.user!.id);
+
+        // Cast new vote
         const { error } = await ctx.supabase.from("idea_votes").insert({
           trip_id: ctx.tripId,
           idea_id: input.ideaId,
