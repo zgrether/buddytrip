@@ -105,26 +105,30 @@ function MyRsvpButtons({
   );
 }
 
-// ── Add Member Form (unified single input) ────────────────────────────────
+// ── Add Member Form ────────────────────────────────────────────────────────
 
 type MatchState =
   | { kind: "idle" }
   | { kind: "searching" }
   | { kind: "matched"; user: { id: string; name: string | null; nickname: string | null; email: string | null } }
-  | { kind: "no_match"; input: string };
+  | { kind: "no_match" };
 
 function AddMemberForm({
   tripId,
   existingMemberIds,
+  currentUserId,
+  onFrequentAdd,
 }: {
   tripId: string;
   existingMemberIds: string[];
+  currentUserId: string | undefined;
+  onFrequentAdd: (userId: string, name: string) => void;
 }) {
   const utils = trpc.useUtils();
-  const [query, setQuery] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [match, setMatch] = useState<MatchState>({ kind: "idle" });
   const [role, setRole] = useState<"Member" | "Planner">("Member");
-  const [guestName, setGuestName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -132,18 +136,21 @@ function AddMemberForm({
     setTimeout(() => setToast(null), 2500);
   };
 
+  // Search by email if present, otherwise by name
+  const searchQuery = email.trim() || name.trim();
   const { refetch: searchUsers, isFetching } = trpc.users.search.useQuery(
-    { query: query.trim() },
+    { query: searchQuery },
     { enabled: false }
   );
 
   const addMember = trpc.tripMembers.add.useMutation({
-    onSuccess(_, vars) {
+    onSuccess() {
       const matchedUser = match.kind === "matched" ? match.user : null;
-      const name = matchedUser?.nickname ?? matchedUser?.name ?? matchedUser?.email ?? "User";
+      const label = matchedUser?.nickname ?? matchedUser?.name ?? matchedUser?.email ?? "User";
       utils.tripMembers.list.invalidate({ tripId });
-      showToast(`${name} added to trip.`);
-      setQuery("");
+      showToast(`${label} added to trip.`);
+      setName("");
+      setEmail("");
       setMatch({ kind: "idle" });
       setRole("Member");
     },
@@ -155,9 +162,9 @@ function AddMemberForm({
   const createGuest = trpc.ghostCrew.create.useMutation({
     onSuccess() {
       utils.tripMembers.list.invalidate({ tripId });
-      showToast(`${guestName || query} added as guest.`);
-      setQuery("");
-      setGuestName("");
+      showToast(`${name.trim() || email.trim()} added as guest.`);
+      setName("");
+      setEmail("");
       setMatch({ kind: "idle" });
       setRole("Member");
     },
@@ -167,7 +174,7 @@ function AddMemberForm({
   });
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    if (!searchQuery) return;
     setMatch({ kind: "searching" });
     const result = await searchUsers();
     const users = result.data ?? [];
@@ -175,15 +182,15 @@ function AddMemberForm({
     if (available.length > 0) {
       setMatch({ kind: "matched", user: available[0] });
     } else {
-      setMatch({ kind: "no_match", input: query.trim() });
+      setMatch({ kind: "no_match" });
     }
   };
 
   const handleAddGuest = () => {
     createGuest.mutate({
       tripId,
-      name: guestName.trim() || query.trim(),
-      email: query.includes("@") ? query.trim() : undefined,
+      name: name.trim(),
+      email: email.trim() || undefined,
       role,
     });
   };
@@ -197,48 +204,71 @@ function AddMemberForm({
   const displayName = (u: { name: string | null; nickname: string | null; email: string | null }) =>
     u.nickname ?? u.name ?? u.email ?? "Unknown";
 
+  const resetMatch = () => setMatch({ kind: "idle" });
+
   return (
     <div
-      className="space-y-3 rounded-xl p-4"
+      className="space-y-4 rounded-xl p-4"
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
       <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
         Add Crew Member
       </p>
 
-      {/* Input row */}
-      <div className="flex gap-2">
+      {/* Frequently trips with — inside the card */}
+      {currentUserId && (
+        <FrequentTripmates
+          tripId={tripId}
+          currentUserId={currentUserId}
+          onAdd={onFrequentAdd}
+        />
+      )}
+
+      {/* Name + Email fields */}
+      <div className="space-y-2">
         <input
-          data-testid="add-member-input"
+          data-testid="add-member-name-input"
           type="text"
-          placeholder="Name or email"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (match.kind !== "idle") setMatch({ kind: "idle" });
-          }}
+          placeholder="Name"
+          value={name}
+          onChange={(e) => { setName(e.target.value); resetMatch(); }}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          className="min-w-0 flex-1 rounded-lg border py-2 px-3 text-sm outline-none"
+          className="w-full rounded-lg border py-2 px-3 text-sm outline-none"
           style={{
             background: "var(--color-bt-base)",
             borderColor: "var(--color-bt-border)",
             color: "var(--color-bt-text)",
           }}
         />
-        <button
-          data-testid="add-member-search-btn"
-          disabled={!query.trim() || isFetching}
-          onClick={handleSearch}
-          className="rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-40"
+        <input
+          data-testid="add-member-email-input"
+          type="email"
+          placeholder="Email (optional)"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); resetMatch(); }}
+          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          className="w-full rounded-lg border py-2 px-3 text-sm outline-none"
           style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-            border: "1px solid var(--color-bt-accent-border)",
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
           }}
-        >
-          {isFetching ? "…" : "Search"}
-        </button>
+        />
       </div>
+
+      <button
+        data-testid="add-member-search-btn"
+        disabled={!searchQuery || isFetching}
+        onClick={handleSearch}
+        className="w-full rounded-lg py-2 text-sm font-medium disabled:opacity-40"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+          border: "1px solid var(--color-bt-accent-border)",
+        }}
+      >
+        {isFetching ? "Searching…" : "Search"}
+      </button>
 
       {/* Match found — confirmation card */}
       {match.kind === "matched" && (
@@ -304,28 +334,12 @@ function AddMemberForm({
         >
           <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             No BuddyTrip account found for{" "}
-            <span style={{ color: "var(--color-bt-text)" }}>{match.input}</span>.
+            <span style={{ color: "var(--color-bt-text)" }}>{searchQuery}</span>.
           </p>
-
-          {/* Guest name field (prefilled if input was not an email) */}
-          <input
-            data-testid="guest-name-input"
-            type="text"
-            placeholder={`Their name (e.g. ${match.input.includes("@") ? "Andy" : match.input})`}
-            value={guestName}
-            onChange={(e) => setGuestName(e.target.value)}
-            className="w-full rounded-lg border py-1.5 px-3 text-sm outline-none"
-            style={{
-              background: "var(--color-bt-base)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
-
           <div className="flex gap-2">
             <button
               data-testid="add-as-guest-btn"
-              disabled={createGuest.isPending}
+              disabled={!name.trim() || createGuest.isPending}
               onClick={handleAddGuest}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
               style={{
@@ -335,7 +349,7 @@ function AddMemberForm({
               }}
             >
               <Ghost size={12} />
-              {createGuest.isPending ? "Adding…" : `Add ${guestName.trim() || match.input} as a guest`}
+              {createGuest.isPending ? "Adding…" : `Add ${name.trim() || "as a guest"}`}
             </button>
             <button
               data-testid="send-invite-link-btn"
@@ -351,6 +365,11 @@ function AddMemberForm({
               Send invite link
             </button>
           </div>
+          {!name.trim() && (
+            <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
+              Enter a name above to add as guest.
+            </p>
+          )}
         </div>
       )}
 
@@ -380,12 +399,9 @@ function FrequentTripmates({
   if (tripmates.length === 0) return null;
 
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
+    <div>
       <p
-        className="mb-3 text-xs font-semibold uppercase tracking-wider"
+        className="mb-2 text-xs font-semibold uppercase tracking-wider"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         Frequently Trips With
@@ -492,19 +508,17 @@ export function CrewTab({ trip, canEdit, isOwner }: TabProps) {
         {summaryParts.join(" · ")}
       </p>
 
-      {/* Add form + Frequent tripmates (canEdit only) */}
+      {/* Add form (canEdit only) — includes Frequently Trips With inside */}
       {canEdit && (
-        <section className="space-y-3">
-          <AddMemberForm tripId={trip.id} existingMemberIds={existingMemberIds} />
-          {currentUser && (
-            <FrequentTripmates
-              tripId={trip.id}
-              currentUserId={currentUser.id}
-              onAdd={handleAddFrequentTripmate}
-            />
-          )}
+        <section>
+          <AddMemberForm
+            tripId={trip.id}
+            existingMemberIds={existingMemberIds}
+            currentUserId={currentUser?.id}
+            onFrequentAdd={handleAddFrequentTripmate}
+          />
           {toast && (
-            <p className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
+            <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
               {toast}
             </p>
           )}
