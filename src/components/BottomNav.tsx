@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from "react";
-import { Home, Plus, Trophy, Activity, MessageSquare, type LucideIcon } from "lucide-react";
+import { Home, Plus, Activity, MessageSquare, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
 // ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
@@ -102,9 +102,9 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       badge: unreadMessages,
     },
     {
-      id: "competition",
-      label: "Competition",
-      Icon: Trophy,
+      id: "live",
+      label: "Live",
+      Icon: Activity,
       href: `/trips/${tripId}/leaderboard`,
       hidden: showComp !== undefined ? !showComp : !eventId,
     },
