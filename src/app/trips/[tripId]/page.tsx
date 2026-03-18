@@ -133,6 +133,15 @@ export default function TripDetailPage() {
 
   const { role, isOwner, canEdit } = useTripRole(tripId);
 
+  // All hooks must be called before any early returns
+  const utils = trpc.useUtils();
+  const lockDestination = trpc.trips.lockDestination.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+    },
+  });
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -164,18 +173,10 @@ export default function TripDetailPage() {
     );
   }
 
-  const utils = trpc.useUtils();
   const status = getTripStatus(trip);
   const destLocation = trip.locked_destination_location ?? trip.location;
   const showComp = !!trip.event_id || compUnlocked;
   const isLocked = !!trip.locked_destination_title;
-
-  const lockDestination = trpc.trips.lockDestination.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId: trip.id });
-      utils.trips.list.invalidate();
-    },
-  });
 
   const settingsButton = isOwner ? (
     <button
