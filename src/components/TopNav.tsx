@@ -66,7 +66,7 @@ export const TopNav: FC<TopNavProps> = ({
     >
       <button
         onClick={() => router.push("/dashboard")}
-        className="text-lg font-bold transition-opacity hover:opacity-80"
+        className="font-display font-semibold text-lg tracking-wider transition-opacity hover:opacity-80"
         style={{ color: "var(--color-bt-accent)" }}
         aria-label="Go to dashboard"
       >

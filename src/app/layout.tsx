@@ -1,21 +1,23 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Inter } from "next/font/google";
 import { Providers } from "@/lib/providers";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "../../node_modules/next/dist/next-devtools/server/font/geist-latin.woff2",
+const inter = Inter({
+  subsets: ["latin"],
   variable: "--font-geist-sans",
-});
-
-const geistMono = localFont({
-  src: "../../node_modules/next/dist/next-devtools/server/font/geist-mono-latin.woff2",
-  variable: "--font-geist-mono",
 });
 
 export const metadata: Metadata = {
   title: "BuddyTrip",
   description: "Group trip planning and competition app",
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.png', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon-precomposed.png',
+  },
 };
 
 export default function RootLayout({
@@ -26,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${inter.className} antialiased`}
       >
         <Providers>{children}</Providers>
       </body>
