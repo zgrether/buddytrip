@@ -37,10 +37,10 @@
 
 /* ── Dark mode ────────────────────────────────────────────────────────── */
 .dark {
-  --color-bt-base: #111827;
-  --color-bt-base-alt: #111827;
-  --color-bt-card: #161b22;
-  --color-bt-border: #30363d;
+  --color-bt-base: #0d1117;
+  --color-bt-base-alt: #0d1117;
+  --color-bt-card: #1c2333;
+  --color-bt-border: #3a4253;
   --color-bt-text: #ededed;
   --color-bt-text-dim: #8b949e;
   --color-bt-accent: #00d4aa;
