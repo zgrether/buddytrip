@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTheme } from "next-themes";
 import { getLocationInfo } from "@/lib/locationUtils";
 
 interface LocationHeroProps {
@@ -40,14 +41,18 @@ export function parseLocation(location: string): { city: string; region: string 
 export function LocationHero({ location, tripName, children }: LocationHeroProps) {
   const hueSource = location || tripName;
   const hue = hashToHue(hueSource.toLowerCase());
+  const { resolvedTheme } = useTheme();
   const { outline, cityPin, showPin, rotation } = getLocationInfo(location);
+
+  const isDark = resolvedTheme === "dark";
+  const gradient = isDark
+    ? `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`
+    : `linear-gradient(135deg, hsl(${hue}, 45%, 72%) 0%, hsl(${(hue + 30) % 360}, 35%, 62%) 100%)`;
 
   return (
     <div
       className="relative overflow-hidden rounded-2xl"
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`,
-      }}
+      style={{ background: gradient }}
       data-testid="location-hero"
     >
       {/* State outline watermark */}

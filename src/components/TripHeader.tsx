@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, type FC } from "react";
+import { useTheme } from "next-themes";
 import { MapPin, Calendar, MoreHorizontal, Check, X } from "lucide-react";
 import { StatusBadge, type TripStatus } from "@/components/StatusBadge";
 import { LocationHero } from "@/components/LocationHero";
@@ -166,6 +167,13 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   onDestinationChange,
   onDatesTap,
 }) => {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
+  const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
+  const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
+  const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
+
   const displayLocation = lockedTitle
     ? location && location !== lockedTitle
       ? `${lockedTitle}, ${location}`
@@ -178,14 +186,15 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       <div className="flex items-start justify-between">
         <h1
           data-testid="trip-title"
-          className="text-2xl font-bold text-white"
+          className="text-2xl font-bold"
+          style={{ color: titleColor }}
         >
           {tripName}
         </h1>
         <div className="flex items-center gap-2">
           <StatusBadge status={status} />
           {settingsSlot && (
-            <span className="[&_button]:text-white/60 [&_button:hover]:text-white/90">
+            <span style={{ color: subColor }}>
               {settingsSlot}
             </span>
           )}
@@ -193,13 +202,14 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       </div>
 
       {/* Destination */}
-      <div className="mt-1.5 flex items-center gap-1 text-sm text-white/70">
+      <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
         <MapPin size={13} className="shrink-0" />
         {canEdit && onDestinationChange && displayLocation ? (
           <InlineEdit
             value={displayLocation}
             onSave={onDestinationChange}
-            className="text-sm text-white/70"
+            className="text-sm"
+            style={{ color: subColor }}
           />
         ) : (
           <span>{displayLocation || "Destination: TBD"}</span>
@@ -207,12 +217,13 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       </div>
 
       {/* Dates */}
-      <div className="mt-1 flex items-center gap-1 text-xs text-white/50">
+      <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
         <Calendar size={11} className="shrink-0" />
         {canEdit && onDatesTap && dateRange && dateRange !== "Dates TBD" ? (
           <button
             onClick={onDatesTap}
-            className="cursor-pointer text-left underline decoration-dotted underline-offset-2 text-xs text-white/50 hover:text-white/70"
+            className="cursor-pointer text-left underline decoration-dotted underline-offset-2 text-xs"
+            style={{ color: metaColor }}
             data-testid="dates-tap"
           >
             {dateRange}
