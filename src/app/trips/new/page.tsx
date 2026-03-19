@@ -104,7 +104,7 @@ export default function TripNewPage() {
 
       {error && (
         <div
-          className="mx-auto mt-4 max-w-2xl rounded-lg border px-4 py-3 text-sm"
+          className="mx-auto mt-4 max-w-[896px] rounded-lg border px-4 py-3 text-sm"
           style={{
             background: "var(--color-bt-danger-bg)",
             borderColor: "var(--color-bt-danger-border)",
@@ -115,7 +115,7 @@ export default function TripNewPage() {
         </div>
       )}
 
-      <main className="mx-auto max-w-2xl space-y-6 px-4 pb-16 pt-6">
+      <main className="mx-auto max-w-[896px] space-y-6 px-4 pb-16 pt-6">
         <h2 className="text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
           Let&apos;s get started
         </h2>

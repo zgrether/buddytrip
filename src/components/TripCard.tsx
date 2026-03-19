@@ -8,6 +8,7 @@ import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
 import { trpc } from "@/lib/trpc-client";
 import type { TripRole } from "@/server/middleware";
+import { getLocationInfo } from "@/lib/locationUtils";
 
 interface Trip {
   id: string;
@@ -45,6 +46,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const router = useRouter();
   const utils = trpc.useUtils();
   const status = getTripStatus(trip);
+  const locationStr = trip.locked_destination_title ?? trip.location ?? "";
+  const { outline, cityPin, showPin, rotation } = getLocationInfo(locationStr);
 
   const handleClick = () => {
     // Seed the getById cache with data we already have so the detail page
@@ -61,13 +64,42 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
     <button
       data-testid={`trip-card-${trip.id}`}
       onClick={handleClick}
-      className="w-full rounded-xl p-4 text-left transition-all hover:ring-1"
+      className="relative w-full overflow-hidden rounded-xl p-4 text-left shadow-sm transition-all hover:shadow-md"
       style={{
-        background: "var(--color-bt-card)",
-        borderColor: "var(--color-bt-border)",
+        background: "var(--color-bt-tile-bg)",
         border: "1px solid var(--color-bt-border)",
       }}
     >
+      {/* State outline watermark */}
+      {outline && (
+        <div
+          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[45%] items-center justify-end overflow-hidden"
+          aria-hidden="true"
+        >
+          <svg
+            viewBox={outline.viewBox}
+            className="mr-2 h-[80%] w-auto"
+            preserveAspectRatio="xMidYMid meet"
+            style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
+          >
+            <path
+              d={outline.path}
+              style={{
+                fill: "var(--color-bt-state-fill)",
+                stroke: "var(--color-bt-state-stroke)",
+              }}
+              strokeWidth="2"
+            />
+            {showPin && cityPin && (
+              <>
+                <circle cx={cityPin.x} cy={cityPin.y} r="7" fill="rgba(0,212,170,0.25)" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="3.5" fill="#00d4aa" />
+              </>
+            )}
+          </svg>
+        </div>
+      )}
+
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">

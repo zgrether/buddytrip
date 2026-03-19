@@ -32,6 +32,9 @@
   --color-bt-subtle-border: #e1e4e8;
   --color-bt-dim-faint: rgba(101, 109, 118, 0.13);
   --color-bt-planning-border: rgba(74, 100, 168, 0.27);
+  --color-bt-state-fill: rgba(0, 0, 0, 0.06);
+  --color-bt-state-stroke: rgba(0, 0, 0, 0.18);
+  --color-bt-tile-bg: transparent;
   color-scheme: light;
 }
 
@@ -65,6 +68,9 @@
   --color-bt-subtle-border: #21262d;
   --color-bt-dim-faint: rgba(139, 148, 158, 0.13);
   --color-bt-planning-border: rgba(124, 147, 212, 0.27);
+  --color-bt-state-fill: rgba(255, 255, 255, 0.07);
+  --color-bt-state-stroke: rgba(255, 255, 255, 0.22);
+  --color-bt-tile-bg: transparent;
   color-scheme: dark;
 }
 

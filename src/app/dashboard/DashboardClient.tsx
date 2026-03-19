@@ -138,7 +138,27 @@ export default function DashboardClient() {
         onMarkAllRead={handleMarkAllRead}
       />
 
-      <main className="mx-auto max-w-2xl px-4 pb-24 pt-4">
+      <main className="mx-auto max-w-[896px] px-4 pb-24 pt-4">
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="mb-6 flex items-end justify-between">
+          <div>
+            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Welcome back{me?.name ? `, ${me.name.split(" ")[0]}` : ""}
+            </p>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+              My Trips
+            </h1>
+          </div>
+          <button
+            onClick={() => router.push("/trips/new")}
+            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            <Plus size={16} />
+            New Trip
+          </button>
+        </div>
+
         {!hasAnyTrips ? (
           /* ── Empty state ─────────────────────────────────────────────────── */
           <div
@@ -226,18 +246,7 @@ export default function DashboardClient() {
         )}
       </main>
 
-      {/* FAB — create new trip */}
-      {hasAnyTrips && (
-        <button
-          data-testid="fab-new-trip"
-          onClick={() => router.push("/trips/new")}
-          className="fixed bottom-6 right-4 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-opacity hover:opacity-90"
-          style={{ background: "var(--color-bt-accent)" }}
-          aria-label="New trip"
-        >
-          <Plus size={24} style={{ color: "var(--color-bt-base)" }} />
-        </button>
-      )}
+
     </div>
   );
 }

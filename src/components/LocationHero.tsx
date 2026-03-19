@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTheme } from "next-themes";
 import { getLocationInfo } from "@/lib/locationUtils";
 
 interface LocationHeroProps {
@@ -40,14 +41,22 @@ export function parseLocation(location: string): { city: string; region: string 
 export function LocationHero({ location, tripName, children }: LocationHeroProps) {
   const hueSource = location || tripName;
   const hue = hashToHue(hueSource.toLowerCase());
+  const { resolvedTheme } = useTheme();
   const { outline, cityPin, showPin, rotation } = getLocationInfo(location);
+
+  const isDark = resolvedTheme === "dark";
+  const gradient = isDark
+    ? `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`
+    : undefined;
 
   return (
     <div
       className="relative overflow-hidden rounded-2xl"
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`,
-      }}
+      style={
+        gradient
+          ? { background: gradient }
+          : { border: "1px solid var(--color-bt-border)" }
+      }
       data-testid="location-hero"
     >
       {/* State outline watermark */}
@@ -58,20 +67,22 @@ export function LocationHero({ location, tripName, children }: LocationHeroProps
         >
           <svg
             viewBox={outline.viewBox}
-            className="mr-3 h-[85%] w-auto opacity-25"
+            className="mr-3 h-[85%] w-auto"
             preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
             <path
               d={outline.path}
-              fill="rgba(255,255,255,0.6)"
-              stroke="rgba(255,255,255,0.9)"
+              style={{
+                fill: isDark ? "rgba(255,255,255,0.10)" : "var(--color-bt-state-fill)",
+                stroke: isDark ? "rgba(255,255,255,0.30)" : "var(--color-bt-state-stroke)",
+              }}
               strokeWidth="1.5"
             />
             {showPin && cityPin && (
               <>
-                <circle cx={cityPin.x} cy={cityPin.y} r="5" fill="rgba(0,212,170,0.35)" />
-                <circle cx={cityPin.x} cy={cityPin.y} r="2.5" fill="#00d4aa" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="6" fill="rgba(0,212,170,0.30)" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="3" fill="#00d4aa" />
               </>
             )}
           </svg>
