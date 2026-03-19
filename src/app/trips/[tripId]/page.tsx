@@ -214,7 +214,6 @@ export default function TripDetailPage() {
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
           isLocked={isLocked}
           canEdit={canEdit}
-          settingsSlot={settingsButton}
           onDestinationChange={(value) => {
             lockDestination.mutate({
               tripId: trip.id,
