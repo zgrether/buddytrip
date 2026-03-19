@@ -1,18 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState, useEffect } from "react";
-import { MapPin } from "lucide-react";
-import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
-
-/** US states TopoJSON (10m resolution) from us-atlas CDN */
-const US_GEO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
-
-/** US bounding box — used to detect whether coords are within the US */
-const US_BOUNDS = { lonMin: -125, lonMax: -66, latMin: 24, latMax: 50 };
+import { getLocationInfo } from "@/lib/locationUtils";
 
 interface LocationHeroProps {
-  /** Location string used to derive the gradient color and geocode the pin */
+  /** Location string used to derive the gradient color and state watermark */
   location: string;
   /** Trip name, used as fallback for hue if location is empty */
   tripName: string;
@@ -40,61 +32,15 @@ export function parseLocation(location: string): { city: string; region: string 
   };
 }
 
-async function geocodeLocation(query: string): Promise<[number, number] | null> {
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
-      { headers: { "Accept-Language": "en" } }
-    );
-    if (!res.ok) return null;
-    const data: Array<{ lon: string; lat: string }> = await res.json();
-    if (!data.length) return null;
-    return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
-  } catch {
-    return null;
-  }
-}
-
-function isWithinUS(coords: [number, number]): boolean {
-  const [lon, lat] = coords;
-  return (
-    lon >= US_BOUNDS.lonMin &&
-    lon <= US_BOUNDS.lonMax &&
-    lat >= US_BOUNDS.latMin &&
-    lat <= US_BOUNDS.latMax
-  );
-}
-
 /**
- * A hero card that shows a US state-border SVG map with a pin on the destination city.
- * Falls back to a gradient card for non-US or unrecognised locations.
+ * A hero card showing a gradient background with a semi-transparent SVG
+ * outline of the destination state and a pin on the city (US only).
+ * Falls back to a subtle large pin icon for unrecognised/international locations.
  */
 export function LocationHero({ location, tripName, children }: LocationHeroProps) {
   const hueSource = location || tripName;
   const hue = hashToHue(hueSource.toLowerCase());
-  const { city, region } = parseLocation(location);
-
-  const [coords, setCoords] = useState<[number, number] | null>(null);
-  const [geocodeDone, setGeocodeDone] = useState(false);
-
-  useEffect(() => {
-    if (!location) {
-      setGeocodeDone(true);
-      return;
-    }
-    const query = region ? `${city}, ${region}` : city;
-    let cancelled = false;
-    geocodeLocation(query).then((result) => {
-      if (cancelled) return;
-      setCoords(result && isWithinUS(result) ? result : null);
-      setGeocodeDone(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [location, city, region]);
-
-  const showUSMap = geocodeDone && coords !== null;
+  const { outline, cityPin, showPin, rotation } = getLocationInfo(location);
 
   return (
     <div
@@ -104,66 +50,49 @@ export function LocationHero({ location, tripName, children }: LocationHeroProps
       }}
       data-testid="location-hero"
     >
-      {/* US state-border map overlay */}
-      {showUSMap && (
+      {/* State outline watermark */}
+      {outline ? (
         <div
-          className="pointer-events-none absolute inset-0"
+          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[55%] items-center justify-end overflow-hidden"
           aria-hidden="true"
         >
-          <ComposableMap
-            projection="geoAlbersUsa"
-            style={{ width: "100%", height: "100%" }}
+          <svg
+            viewBox={outline.viewBox}
+            className="mr-3 h-[85%] w-auto opacity-25"
+            preserveAspectRatio="xMidYMid meet"
+            style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
-            <Geographies geography={US_GEO_URL}>
-              {({ geographies }) =>
-                geographies.map((geo) => (
-                  <Geography
-                    key={geo.rsmKey}
-                    geography={geo}
-                    style={{
-                      default: {
-                        fill: "rgba(255,255,255,0.08)",
-                        stroke: "rgba(255,255,255,0.45)",
-                        strokeWidth: 0.6,
-                        outline: "none",
-                      },
-                      hover: {
-                        fill: "rgba(255,255,255,0.08)",
-                        stroke: "rgba(255,255,255,0.45)",
-                        strokeWidth: 0.6,
-                        outline: "none",
-                      },
-                      pressed: {
-                        fill: "rgba(255,255,255,0.08)",
-                        stroke: "rgba(255,255,255,0.45)",
-                        strokeWidth: 0.6,
-                        outline: "none",
-                      },
-                    }}
-                  />
-                ))
-              }
-            </Geographies>
-
-            {/* City pin */}
-            <Marker coordinates={coords}>
-              {/* Outer ring */}
-              <circle r={6} fill="rgba(0,212,170,0.3)" stroke="#00d4aa" strokeWidth={1.5} />
-              {/* Center dot */}
-              <circle r={3} fill="#00d4aa" />
-            </Marker>
-          </ComposableMap>
+            <path
+              d={outline.path}
+              fill="rgba(255,255,255,0.6)"
+              stroke="rgba(255,255,255,0.9)"
+              strokeWidth="1.5"
+            />
+            {showPin && cityPin && (
+              <>
+                <circle cx={cityPin.x} cy={cityPin.y} r="5" fill="rgba(0,212,170,0.35)" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="2.5" fill="#00d4aa" />
+              </>
+            )}
+          </svg>
         </div>
-      )}
-
-      {/* Fallback large pin icon (shown while geocoding or for non-US locations) */}
-      {!showUSMap && (
-        <MapPin
-          size={140}
+      ) : (
+        /* Fallback: subtle MapPin outline for unrecognised / international locations */
+        <svg
           className="pointer-events-none absolute -right-4 -top-4 opacity-[0.08]"
-          style={{ color: "#fff" }}
           aria-hidden="true"
-        />
+          width="140"
+          height="140"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="white"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
       )}
 
       <div className="relative z-10 px-5 pb-5 pt-5">
