@@ -350,7 +350,7 @@ export default function TripMessagesPage() {
       <div className="flex-shrink-0 h-16" style={{ paddingBottom: "env(safe-area-inset-bottom)" }} />
 
       {/* Bottom navigation (fixed — renders on top of spacer) */}
-      <TripBottomNav tripId={tripId} />
+      <TripBottomNav tripId={tripId} eventId={event?.id} />
     </div>
   );
 }
