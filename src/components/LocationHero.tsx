@@ -58,20 +58,20 @@ export function LocationHero({ location, tripName, children }: LocationHeroProps
         >
           <svg
             viewBox={outline.viewBox}
-            className="mr-3 h-[85%] w-auto opacity-25"
+            className="mr-3 h-[85%] w-auto"
             preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
             <path
               d={outline.path}
-              fill="rgba(255,255,255,0.6)"
-              stroke="rgba(255,255,255,0.9)"
+              fill="rgba(255,255,255,0.10)"
+              stroke="rgba(255,255,255,0.30)"
               strokeWidth="1.5"
             />
             {showPin && cityPin && (
               <>
-                <circle cx={cityPin.x} cy={cityPin.y} r="5" fill="rgba(0,212,170,0.35)" />
-                <circle cx={cityPin.x} cy={cityPin.y} r="2.5" fill="#00d4aa" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="6" fill="rgba(0,212,170,0.30)" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="3" fill="#00d4aa" />
               </>
             )}
           </svg>

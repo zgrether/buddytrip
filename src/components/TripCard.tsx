@@ -79,20 +79,20 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         >
           <svg
             viewBox={outline.viewBox}
-            className="mr-2 h-[80%] w-auto opacity-[0.07]"
+            className="mr-2 h-[80%] w-auto"
             preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
             <path
               d={outline.path}
-              fill="rgba(255,255,255,0.5)"
-              stroke="rgba(255,255,255,0.9)"
+              fill="rgba(255,255,255,0.04)"
+              stroke="rgba(255,255,255,0.10)"
               strokeWidth="2"
             />
             {showPin && cityPin && (
               <>
-                <circle cx={cityPin.x} cy={cityPin.y} r="6" fill="rgba(0,212,170,0.4)" />
-                <circle cx={cityPin.x} cy={cityPin.y} r="3" fill="#00d4aa" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="7" fill="rgba(0,212,170,0.25)" />
+                <circle cx={cityPin.x} cy={cityPin.y} r="3.5" fill="#00d4aa" />
               </>
             )}
           </svg>
