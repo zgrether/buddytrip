@@ -288,7 +288,7 @@ export default function LeaderboardPage() {
         rightSlot={shareButton}
       />
 
-      <div className="mx-auto max-w-2xl pb-24">
+      <div className="mx-auto max-w-[896px] pb-24">
       {/* Tab bar */}
       <div
         className="flex border-b px-2"

@@ -868,7 +868,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-[896px] px-4 py-8">
       {!onClose && (
         <>
           <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
@@ -1073,7 +1073,7 @@ export default function IdeaComparisonPage() {
       />
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-2xl p-4">
+      <main className="mx-auto max-w-[896px] p-4">
         {ideasTyped.length === 0 ? (
           canEdit ? (
             <EmptyStateOnboarding tripId={tripId} />

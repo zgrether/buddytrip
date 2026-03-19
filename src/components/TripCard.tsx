@@ -64,10 +64,9 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
     <button
       data-testid={`trip-card-${trip.id}`}
       onClick={handleClick}
-      className="relative w-full overflow-hidden rounded-xl p-4 text-left transition-all hover:ring-1"
+      className="relative w-full overflow-hidden rounded-xl p-4 text-left shadow-sm transition-all hover:shadow-md"
       style={{
-        background: "var(--color-bt-card)",
-        borderColor: "var(--color-bt-border)",
+        background: "var(--color-bt-tile-bg)",
         border: "1px solid var(--color-bt-border)",
       }}
     >
@@ -85,8 +84,10 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
           >
             <path
               d={outline.path}
-              fill="rgba(255,255,255,0.04)"
-              stroke="rgba(255,255,255,0.10)"
+              style={{
+                fill: "var(--color-bt-state-fill)",
+                stroke: "var(--color-bt-state-stroke)",
+              }}
               strokeWidth="2"
             />
             {showPin && cityPin && (

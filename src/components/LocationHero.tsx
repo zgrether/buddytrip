@@ -47,12 +47,16 @@ export function LocationHero({ location, tripName, children }: LocationHeroProps
   const isDark = resolvedTheme === "dark";
   const gradient = isDark
     ? `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`
-    : `linear-gradient(135deg, hsl(${hue}, 45%, 72%) 0%, hsl(${(hue + 30) % 360}, 35%, 62%) 100%)`;
+    : undefined;
 
   return (
     <div
       className="relative overflow-hidden rounded-2xl"
-      style={{ background: gradient }}
+      style={
+        gradient
+          ? { background: gradient }
+          : { border: "1px solid var(--color-bt-border)" }
+      }
       data-testid="location-hero"
     >
       {/* State outline watermark */}
@@ -69,8 +73,10 @@ export function LocationHero({ location, tripName, children }: LocationHeroProps
           >
             <path
               d={outline.path}
-              fill="rgba(255,255,255,0.10)"
-              stroke="rgba(255,255,255,0.30)"
+              style={{
+                fill: isDark ? "rgba(255,255,255,0.10)" : "var(--color-bt-state-fill)",
+                stroke: isDark ? "rgba(255,255,255,0.30)" : "var(--color-bt-state-stroke)",
+              }}
               strokeWidth="1.5"
             />
             {showPin && cityPin && (

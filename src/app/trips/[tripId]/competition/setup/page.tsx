@@ -1204,7 +1204,7 @@ export default function CompetitionSetupPage() {
       </div>
 
       {/* Content */}
-      <main className="p-4">
+      <main className="mx-auto max-w-[896px] p-4">
         {activeTab === "event" && (
           <EventSection tripId={tripId} event={event ?? null} />
         )}

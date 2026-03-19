@@ -276,7 +276,7 @@ export default function TripMessagesPage() {
 
   return (
     <div
-      className="flex h-dvh flex-col"
+      className="mx-auto flex h-dvh w-full max-w-[896px] flex-col"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* Top nav + breadcrumb */}
