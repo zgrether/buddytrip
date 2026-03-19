@@ -66,10 +66,13 @@ export const TopNav: FC<TopNavProps> = ({
     >
       <button
         onClick={() => router.push("/dashboard")}
-        className="font-display font-semibold text-lg tracking-wider transition-opacity hover:opacity-80"
-        style={{ color: "var(--color-bt-accent)" }}
+        className="flex items-center gap-2 font-display font-semibold text-lg tracking-wider transition-opacity hover:opacity-80"
+        style={{ color: "#ffffff" }}
         aria-label="Go to dashboard"
       >
+        <svg width="20" height="20" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
+          <path d="M 28 8 L 38 8 L 76 26 L 38 44 L 38 75 L 33 92 L 28 75 Z" fill="currentColor"/>
+        </svg>
         {title}
       </button>
 
