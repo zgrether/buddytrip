@@ -22,6 +22,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -565,6 +566,7 @@ function DeleteConfirmModal({
   idea: Idea;
   onClose: () => void;
 }) {
+  useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const removeIdea = trpc.ideas.remove.useMutation({
     onSuccess() {
@@ -624,6 +626,7 @@ function LockConfirmModal({
   idea: Idea;
   onClose: () => void;
 }) {
+  useModalBackButton(onClose);
   const router = useRouter();
   const utils = trpc.useUtils();
 

@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { X, Check, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrambleFormat } from "./scoring-formats/ScrambleFormat";
 import { StablefordFormat } from "./scoring-formats/StablefordFormat";
 import { SabotageFormat } from "./scoring-formats/SabotageFormat";
@@ -61,6 +62,8 @@ export function ScoreEntry({
   onClose,
   onSubmitted,
 }: ScoreEntryProps) {
+  useModalBackButton(onClose);
+
   // Default scores: use existing or initialize all to 0
   const [scores, setScores] = useState<ScoreEntryResult[]>(() => {
     if (existingScores && existingScores.length > 0) return existingScores;
