@@ -17,6 +17,7 @@ import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
 import { formatDateRange } from "@/lib/dates";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 
 // ── EditTripDetailsModal ──────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ function EditTripDetailsModal({
   trip: { id: string; title: string; description?: string | null };
   onClose: () => void;
 }) {
+  useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const [title, setTitle] = useState(trip.title);
   const [description, setDescription] = useState(trip.description ?? "");

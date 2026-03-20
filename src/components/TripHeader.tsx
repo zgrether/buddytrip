@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, type FC } from "react";
 import { useTheme } from "next-themes";
-import { MapPin, Calendar, MoreHorizontal, Check, X } from "lucide-react";
+import { MapPin, Calendar } from "lucide-react";
 import { StatusBadge, type TripStatus } from "@/components/StatusBadge";
 import { LocationHero } from "@/components/LocationHero";
 

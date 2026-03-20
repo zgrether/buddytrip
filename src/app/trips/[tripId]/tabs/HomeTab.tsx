@@ -18,13 +18,13 @@ import {
   MapPin,
   ThumbsUp,
   Loader2,
-  Lock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
 import type { TabProps, TripData } from "./types";
 
@@ -70,6 +70,7 @@ function AddTileModal({
   tripId: string;
   onClose: () => void;
 }) {
+  useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const [label, setLabel] = useState("");
   const [value, setValue] = useState("");
@@ -181,6 +182,7 @@ function EditTileModal({
   tile: QuickTile;
   onClose: () => void;
 }) {
+  useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const [label, setLabel] = useState(tile.label);
   const [value, setValue] = useState(tile.value);
@@ -271,6 +273,7 @@ function CompetitionPreviewModal({
   onConfirm: () => void;
   onDismiss: () => void;
 }) {
+  useModalBackButton(onDismiss);
   const mockTeams = [
     { short: "USA", color: "#3b82f6", pts: 24, maxPts: 24 },
     { short: "EUR", color: "#ef4444", pts: 18, maxPts: 24 },
@@ -416,6 +419,7 @@ function SetDestinationModal({
   tripId: string;
   onClose: () => void;
 }) {
+  useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
@@ -734,6 +738,7 @@ function QuickInfoSection({
 
 type ArcCardState = "done" | "inProgress" | "none";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function MiniIdeaHero({
   idea,
   tripId,

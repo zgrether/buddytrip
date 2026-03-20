@@ -25,6 +25,7 @@ export default function ProfilePage() {
         setNickname(me.nickname ?? "");
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: re-seed form only when a different user's data loads, not on every name edit
   }, [me?.id]);
   const [saved, setSaved] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);

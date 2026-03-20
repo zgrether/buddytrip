@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 
 interface TripSettingsModalProps {
   trip: {
@@ -17,6 +18,7 @@ interface TripSettingsModalProps {
 export function TripSettingsModal({ trip, isOwner, onClose }: TripSettingsModalProps) {
   const router = useRouter();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  useModalBackButton(onClose);
 
   const deleteTrip = trpc.trips.delete.useMutation({
     onSuccess: () => router.push("/dashboard"),
