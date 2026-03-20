@@ -738,7 +738,8 @@ function QuickInfoSection({
 
 type ArcCardState = "done" | "inProgress" | "none";
 
-function _MiniIdeaHero({
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function MiniIdeaHero({
   idea,
   tripId,
   totalMembers,
