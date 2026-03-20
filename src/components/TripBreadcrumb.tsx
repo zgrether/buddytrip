@@ -21,8 +21,6 @@ export function TripBreadcrumb({
 }: TripBreadcrumbProps) {
   const router = useRouter();
 
-  // Sub-pages (messages, leaderboard, compare) → trip home
-  // Trip home → dashboard
   const backHref = pageName ? `/trips/${tripId}` : "/dashboard";
   const backLabel = pageName ? tripTitle : "Trips";
 
