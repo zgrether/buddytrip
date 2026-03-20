@@ -133,6 +133,18 @@ export default function TripDetailPage() {
 
   const { role, isOwner, canEdit } = useTripRole(tripId);
 
+  // Prefetch event + competition data in parallel with the trip query so
+  // CompetitionPanel in HomeTab gets cache hits instead of waterfalling.
+  const { data: prefetchedEvent } = trpc.events.getByTrip.useQuery({ tripId });
+  trpc.teams.list.useQuery(
+    { tripId, eventId: prefetchedEvent?.id ?? "" },
+    { enabled: !!prefetchedEvent?.id }
+  );
+  trpc.groupResults.listScoresByEvent.useQuery(
+    { tripId, eventId: prefetchedEvent?.id ?? "" },
+    { enabled: !!prefetchedEvent?.id }
+  );
+
   // All hooks must be called before any early returns
   const utils = trpc.useUtils();
   const lockDestination = trpc.trips.lockDestination.useMutation({
