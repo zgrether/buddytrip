@@ -7,13 +7,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 // Mock Supabase
-const mockSelect = vi.fn();
-const mockEq = vi.fn();
-const mockNeq = vi.fn();
-const mockIn = vi.fn();
+const _mockSelect = vi.fn();
+const _mockEq = vi.fn();
+const _mockNeq = vi.fn();
+const _mockIn = vi.fn();
 
 // Build a chainable mock that returns data at each terminal point
-function buildChain(result: { data: unknown[] | null; error: null }) {
+function _buildChain(result: { data: unknown[] | null; error: null }) {
   const chain: Record<string, unknown> = {};
   chain.select = vi.fn().mockReturnValue(chain);
   chain.eq = vi.fn().mockReturnValue(chain);

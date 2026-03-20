@@ -462,7 +462,7 @@ export function CrewTab({ trip, canEdit, isOwner }: TabProps) {
   });
 
   const addMember = trpc.tripMembers.add.useMutation({
-    onSuccess(_, vars) {
+    onSuccess(_, _vars) {
       utils.tripMembers.list.invalidate({ tripId: trip.id });
     },
   });

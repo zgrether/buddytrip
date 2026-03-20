@@ -50,7 +50,7 @@ export default function DashboardClient() {
 
   // ── Current user (for avatar) ──────────────────────────────────────────────
   const { data: me } = trpc.users.getMe.useQuery();
-  const avatarInitial =
+  const _avatarInitial =
     ((me?.name ?? me?.email) || "").charAt(0).toUpperCase() || undefined;
 
   // ── Trips ──────────────────────────────────────────────────────────────────

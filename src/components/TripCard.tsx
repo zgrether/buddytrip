@@ -52,7 +52,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const handleClick = () => {
     // Seed the getById cache with data we already have so the detail page
     // renders immediately instead of showing a loading spinner.
-    const { myRole, myStatus, ...tripData } = trip as Trip & {
+    const { myRole: _myRole, myStatus: _myStatus, ...tripData } = trip as Trip & {
       myStatus?: string | null;
       [key: string]: unknown;
     };

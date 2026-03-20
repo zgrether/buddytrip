@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Intercepts the browser/OS back button while a modal is open and calls
@@ -10,10 +10,13 @@ import { useEffect, useLayoutEffect, useRef } from "react";
  */
 export function useModalBackButton(onClose: () => void) {
   const onCloseRef = useRef(onClose);
-  // Keep ref current without mutating during render (satisfies react-hooks/refs).
-  useLayoutEffect(() => {
+
+  // Keep the ref current without touching it during render.
+  // Separate effect with [onClose] dep so it re-syncs whenever the
+  // parent passes a new callback, without re-registering the popstate handler.
+  useEffect(() => {
     onCloseRef.current = onClose;
-  });
+  }, [onClose]);
 
   useEffect(() => {
     // Push a phantom entry so back has something to pop.
@@ -53,5 +56,5 @@ export function useModalBackButton(onClose: () => void) {
         window.history.back();
       }
     };
-  }, []); // intentionally empty — only runs on mount/unmount
+  }, []); // intentionally empty — the popstate handler reads from the ref
 }

@@ -18,7 +18,6 @@ import {
   MapPin,
   ThumbsUp,
   Loader2,
-  Lock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -739,7 +738,7 @@ function QuickInfoSection({
 
 type ArcCardState = "done" | "inProgress" | "none";
 
-function MiniIdeaHero({
+function _MiniIdeaHero({
   idea,
   tripId,
   totalMembers,

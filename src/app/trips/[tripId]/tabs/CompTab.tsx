@@ -1504,7 +1504,7 @@ const SECTION_LABELS: Record<Section, string> = {
 
 export function CompTab({ trip, canEdit }: TabProps) {
   const router = useRouter();
-  const utils = trpc.useUtils();
+  const _utils = trpc.useUtils();
 
   const [section, setSection] = useState<Section | null>(null);
 

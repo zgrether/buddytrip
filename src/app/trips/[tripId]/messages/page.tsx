@@ -272,7 +272,7 @@ export default function TripMessagesPage() {
 
   // Default to first team if none selected
   const resolvedTeamId = activeTeamId ?? myTeams[0]?.id;
-  const activeTeam = (allTeams as Team[]).find((t) => t.id === resolvedTeamId);
+  const _activeTeam = (allTeams as Team[]).find((t) => t.id === resolvedTeamId);
 
   return (
     <div
