@@ -159,6 +159,25 @@ export default function TripDetailPage() {
     { enabled: !!prefetchEventId }
   );
 
+  // ── Prefetch sub-page queries so Messages/Leaderboard get cache hits ─────
+  // These all need eventId, which we already have above.
+  trpc.teamAssignments.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+  trpc.rounds.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+  trpc.playGroups.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+  trpc.sideEvents.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+
   const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
     || reservationsLoading || tilesLoading || eventLoading || teamsLoading || scoresLoading;
 

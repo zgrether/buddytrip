@@ -1,6 +1,6 @@
 "use client";
 
-import type { FC } from "react";
+import { type FC, useEffect } from "react";
 import { Home, Plus, Activity, MessageSquare, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -109,6 +109,14 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       hidden: showComp !== undefined ? !showComp : !eventId,
     },
   ];
+
+  // Prefetch JS bundles for all nav destinations so tapping is instant.
+  useEffect(() => {
+    items.filter((i) => !i.hidden).forEach(({ href }) => {
+      router.prefetch(href);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable after mount
+  }, [tripId]);
 
   return (
     <nav
