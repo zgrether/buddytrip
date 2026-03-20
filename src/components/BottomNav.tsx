@@ -1,6 +1,6 @@
 "use client";
 
-import type { FC } from "react";
+import { type FC, useEffect } from "react";
 import { Home, Plus, Activity, MessageSquare, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -110,6 +110,14 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
     },
   ];
 
+  // Prefetch JS bundles for all nav destinations so tapping is instant.
+  useEffect(() => {
+    items.filter((i) => !i.hidden).forEach(({ href }) => {
+      router.prefetch(href);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable after mount
+  }, [tripId]);
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40"
@@ -131,11 +139,20 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
             data-testid={`nav-${id}`}
             onClick={() => {
               if (pathname === href) return; // already here
-              // Push when leaving trip home (preserve it in history for back nav).
-              // Replace when moving between sub-pages (don't stack them).
               const onTripHome = pathname === `/trips/${tripId}`;
-              if (onTripHome) router.push(href);
-              else router.replace(href);
+              const goingToTripHome = href === `/trips/${tripId}`;
+              if (goingToTripHome) {
+                // Trip home is already in history (we pushed when we left it).
+                // Use back() to return to that entry instead of creating a
+                // duplicate trip-home entry via replace.
+                router.back();
+              } else if (onTripHome) {
+                // Leaving trip home — push so it stays in history for back nav.
+                router.push(href);
+              } else {
+                // Sub-page → sub-page — replace to avoid stacking.
+                router.replace(href);
+              }
             }}
             className="relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}

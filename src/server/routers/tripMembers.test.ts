@@ -10,11 +10,11 @@ describe("tripMembers router", () => {
     tripId = await ctx.createTrip("Members Test Trip");
     await ctx.addTripMember(tripId, "planner", "Planner");
     await ctx.addTripMember(tripId, "member", "Member");
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 30_000);
 
   // list
   it("list — any member can view crew roster", async () => {

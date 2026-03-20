@@ -135,17 +135,51 @@ export default function TripDetailPage() {
 
   const { role, isOwner, canEdit } = useTripRole(tripId);
 
-  // Prefetch event + competition data in parallel with the trip query so
-  // CompetitionPanel in HomeTab gets cache hits instead of waterfalling.
-  const { data: prefetchedEvent } = trpc.events.getByTrip.useQuery({ tripId });
-  trpc.teams.list.useQuery(
-    { tripId, eventId: prefetchedEvent?.id ?? "" },
-    { enabled: !!prefetchedEvent?.id }
+  // ── Prefetch all HomeTab queries in parallel with the trip query ──────────
+  // All of these only need tripId (available immediately from the URL), so
+  // they fire on first render alongside trips.getById. We track their loading
+  // states so the page waits for ALL data before rendering — no 2-phase pop-in.
+  const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
+  const { isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
+  const { isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
+  const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
+  const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
+
+  // Competition data: events only needs tripId; teams/scores need the eventId
+  // which we grab from the trip object once it resolves (avoids a second round
+  // trip by not waiting for events.getByTrip to return first).
+  const { data: prefetchedEvent, isLoading: eventLoading } = trpc.events.getByTrip.useQuery({ tripId });
+  const prefetchEventId = prefetchedEvent?.id ?? trip?.event_id ?? "";
+  const { isLoading: teamsLoading } = trpc.teams.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
   );
-  trpc.groupResults.listScoresByEvent.useQuery(
-    { tripId, eventId: prefetchedEvent?.id ?? "" },
-    { enabled: !!prefetchedEvent?.id }
+  const { isLoading: scoresLoading } = trpc.groupResults.listScoresByEvent.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
   );
+
+  // ── Prefetch sub-page queries so Messages/Leaderboard get cache hits ─────
+  // These all need eventId, which we already have above.
+  trpc.teamAssignments.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+  trpc.rounds.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+  trpc.playGroups.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+  trpc.sideEvents.list.useQuery(
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
+  );
+
+  const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
+    || reservationsLoading || tilesLoading || eventLoading || teamsLoading || scoresLoading;
 
   // All hooks must be called before any early returns
   const utils = trpc.useUtils();
@@ -157,7 +191,9 @@ export default function TripDetailPage() {
   });
 
   // ── Loading ───────────────────────────────────────────────────────────────
-  if (isLoading) {
+  // Wait for ALL queries (trip + home-tab data) before rendering so every
+  // panel appears at once instead of popping in across two render batches.
+  if (dataLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div
