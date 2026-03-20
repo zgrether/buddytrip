@@ -181,7 +181,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
     : location ?? "";
 
   return (
-    <LocationHero location={location ?? tripName} tripName={tripName}>
+    <LocationHero location={displayLocation || tripName} tripName={tripName}>
       {/* Row 1: trip name + settings + badge */}
       <div className="flex items-start justify-between">
         <h1
