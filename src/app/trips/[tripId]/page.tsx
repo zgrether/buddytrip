@@ -135,9 +135,20 @@ export default function TripDetailPage() {
 
   const { role, isOwner, canEdit } = useTripRole(tripId);
 
-  // Prefetch event + competition data. Use trip.event_id (available as soon as
-  // the trip resolves) so teams and scores fire in parallel with events.getByTrip
-  // rather than waiting for it — eliminates the 2-step waterfall.
+  // ── Prefetch all HomeTab queries in parallel with the trip query ──────────
+  // All of these only need tripId (available immediately from the URL), so
+  // they fire on first render alongside trips.getById. By the time the trip
+  // resolves and HomeTab mounts, the data is already in the TanStack cache —
+  // all 7 home panels render in one batch instead of two.
+  trpc.ideas.list.useQuery({ tripId });
+  trpc.datePoll.get.useQuery({ tripId });
+  trpc.tripMembers.list.useQuery({ tripId });
+  trpc.reservations.list.useQuery({ tripId });
+  trpc.quickInfoTiles.list.useQuery({ tripId });
+
+  // Competition data: events only needs tripId; teams/scores need the eventId
+  // which we grab from the trip object once it resolves (avoids a second round
+  // trip by not waiting for events.getByTrip to return first).
   const { data: prefetchedEvent } = trpc.events.getByTrip.useQuery({ tripId });
   const prefetchEventId = prefetchedEvent?.id ?? trip?.event_id ?? "";
   trpc.teams.list.useQuery(
