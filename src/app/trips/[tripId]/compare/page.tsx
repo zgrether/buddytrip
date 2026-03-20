@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { TopNav } from "@/components/TopNav";
 import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
@@ -24,7 +25,7 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 // ── Curated gradient palette ──────────────────────────────────────────────
-// Hand-picked hues that look good as dark backgrounds with white text.
+// Hand-picked hues that look good as card header gradients.
 // Avoids muddy browns/olives (hue 30-60°) that hashToHue can produce.
 const IDEA_GRADIENTS = [
   { h1: 210, h2: 230 }, // deep blue
@@ -37,9 +38,11 @@ const IDEA_GRADIENTS = [
   { h1: 20,  h2: 40  }, // warm amber
 ];
 
-function ideaGradient(index: number): string {
+function ideaGradient(index: number, isDark: boolean): string {
   const { h1, h2 } = IDEA_GRADIENTS[index % IDEA_GRADIENTS.length];
-  return `linear-gradient(160deg, hsl(${h1}, 50%, 22%) 0%, hsl(${h2}, 40%, 12%) 100%)`;
+  return isDark
+    ? `linear-gradient(160deg, hsl(${h1}, 50%, 22%) 0%, hsl(${h2}, 40%, 12%) 100%)`
+    : `linear-gradient(160deg, hsl(${h1}, 55%, 92%) 0%, hsl(${h2}, 45%, 85%) 100%)`;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -217,6 +220,8 @@ function IdeaCard({
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
   const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -283,7 +288,7 @@ function IdeaCard({
       <div
         className="relative min-h-[160px]"
         style={{
-          background: ideaGradient(index),
+          background: ideaGradient(index, isDark),
         }}
       >
         {isLocked && (
@@ -299,60 +304,75 @@ function IdeaCard({
         )}
 
         <div className="absolute bottom-0 left-0 right-0 p-4">
-          {editingField === "title" ? (
-            <div>
-              <input
-                autoFocus
-                value={editDraft}
-                onChange={(e) => setEditDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
-                className="w-full rounded-lg bg-black/30 px-2 py-1 text-2xl font-bold text-white outline-none placeholder:text-white/40 focus:ring-1 focus:ring-white/40"
-              />
-              <div className="mt-1.5 flex gap-2">
-                <button onClick={saveEdit} disabled={updateIdea.isPending} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ background: "rgba(255,255,255,0.9)", color: "#000" }}>
-                  {updateIdea.isPending ? "Saving…" : "Save"}
-                </button>
-                <button onClick={cancelEdit} className="rounded-md px-2.5 py-1 text-xs text-white/70">Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <p
-              className={`text-2xl font-bold text-white${canEdit ? " cursor-pointer hover:opacity-80" : ""}`}
-              onClick={canEdit ? () => startEdit("title", idea.title) : undefined}
-            >
-              {idea.title}
-            </p>
-          )}
+          {(() => {
+            // Theme-aware text colors for gradient hero
+            const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
+            const subColor = isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.55)";
+            const dimColor = isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)";
+            const inputBg = isDark ? "bg-black/30" : "bg-white/50";
+            const inputText = isDark ? "text-white placeholder:text-white/40" : "text-black placeholder:text-black/40";
+            const cancelColor = isDark ? "text-white/70" : "text-black/50";
 
-          {editingField === "location" ? (
-            <div className="mt-1">
-              <input
-                autoFocus
-                value={editDraft}
-                onChange={(e) => setEditDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
-                placeholder="City, State"
-                className="w-full rounded-lg bg-black/30 px-2 py-1 text-sm text-white outline-none placeholder:text-white/40 focus:ring-1 focus:ring-white/40"
-              />
-              <div className="mt-1.5 flex gap-2">
-                <button onClick={saveEdit} disabled={updateIdea.isPending} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ background: "rgba(255,255,255,0.9)", color: "#000" }}>
-                  {updateIdea.isPending ? "Saving…" : "Save"}
-                </button>
-                <button onClick={cancelEdit} className="rounded-md px-2.5 py-1 text-xs text-white/70">Cancel</button>
-              </div>
-            </div>
-          ) : editingField !== "title" && (
-            <p
-              className={`mt-1 flex items-center gap-1 text-sm${canEdit ? " cursor-pointer hover:opacity-80" : ""}`}
-              style={{ color: idea.location && idea.location !== idea.title ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.4)" }}
-              onClick={canEdit ? () => startEdit("location", idea.location ?? "") : undefined}
-            >
-              <MapPin size={12} />
-              {idea.location && idea.location !== idea.title
-                ? idea.location
-                : <span className="italic">{canEdit ? "Add location…" : ""}</span>}
-            </p>
-          )}
+            return (
+              <>
+                {editingField === "title" ? (
+                  <div>
+                    <input
+                      autoFocus
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
+                      className={`w-full rounded-lg ${inputBg} px-2 py-1 text-2xl font-bold ${inputText} outline-none focus:ring-1 focus:ring-current/40`}
+                    />
+                    <div className="mt-1.5 flex gap-2">
+                      <button onClick={saveEdit} disabled={updateIdea.isPending} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}>
+                        {updateIdea.isPending ? "Saving…" : "Save"}
+                      </button>
+                      <button onClick={cancelEdit} className={`rounded-md px-2.5 py-1 text-xs ${cancelColor}`}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p
+                    className={`text-2xl font-bold${canEdit ? " cursor-pointer hover:opacity-80" : ""}`}
+                    style={{ color: titleColor }}
+                    onClick={canEdit ? () => startEdit("title", idea.title) : undefined}
+                  >
+                    {idea.title}
+                  </p>
+                )}
+
+                {editingField === "location" ? (
+                  <div className="mt-1">
+                    <input
+                      autoFocus
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
+                      placeholder="City, State"
+                      className={`w-full rounded-lg ${inputBg} px-2 py-1 text-sm ${inputText} outline-none focus:ring-1 focus:ring-current/40`}
+                    />
+                    <div className="mt-1.5 flex gap-2">
+                      <button onClick={saveEdit} disabled={updateIdea.isPending} className="rounded-md px-2.5 py-1 text-xs font-semibold disabled:opacity-40" style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}>
+                        {updateIdea.isPending ? "Saving…" : "Save"}
+                      </button>
+                      <button onClick={cancelEdit} className={`rounded-md px-2.5 py-1 text-xs ${cancelColor}`}>Cancel</button>
+                    </div>
+                  </div>
+                ) : editingField !== "title" && (
+                  <p
+                    className={`mt-1 flex items-center gap-1 text-sm${canEdit ? " cursor-pointer hover:opacity-80" : ""}`}
+                    style={{ color: idea.location && idea.location !== idea.title ? subColor : dimColor }}
+                    onClick={canEdit ? () => startEdit("location", idea.location ?? "") : undefined}
+                  >
+                    <MapPin size={12} />
+                    {idea.location && idea.location !== idea.title
+                      ? idea.location
+                      : <span className="italic">{canEdit ? "Add location…" : ""}</span>}
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
 
