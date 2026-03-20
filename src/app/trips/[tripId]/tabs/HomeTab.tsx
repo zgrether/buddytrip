@@ -522,14 +522,19 @@ function CompetitionPanel({
     { enabled: hasComp }
   );
 
+  // Use trip.event_id (available immediately from the trip object) so teams
+  // and scores fire in parallel with events.getByTrip instead of waiting for
+  // it to resolve first — eliminates the 2-step waterfall.
+  const knownEventId = event?.id ?? trip.event_id ?? "";
+
   const { data: teams = [] } = trpc.teams.list.useQuery(
-    { tripId: trip.id, eventId: event?.id ?? "" },
-    { enabled: !!event?.id }
+    { tripId: trip.id, eventId: knownEventId },
+    { enabled: !!knownEventId }
   );
 
   const { data: scoreRows = [] } = trpc.groupResults.listScoresByEvent.useQuery(
-    { tripId: trip.id, eventId: event?.id ?? "" },
-    { enabled: !!event?.id }
+    { tripId: trip.id, eventId: knownEventId },
+    { enabled: !!knownEventId }
   );
 
   // Aggregate total points per team, sorted descending

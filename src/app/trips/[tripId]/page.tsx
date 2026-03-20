@@ -135,16 +135,18 @@ export default function TripDetailPage() {
 
   const { role, isOwner, canEdit } = useTripRole(tripId);
 
-  // Prefetch event + competition data in parallel with the trip query so
-  // CompetitionPanel in HomeTab gets cache hits instead of waterfalling.
+  // Prefetch event + competition data. Use trip.event_id (available as soon as
+  // the trip resolves) so teams and scores fire in parallel with events.getByTrip
+  // rather than waiting for it — eliminates the 2-step waterfall.
   const { data: prefetchedEvent } = trpc.events.getByTrip.useQuery({ tripId });
+  const prefetchEventId = prefetchedEvent?.id ?? trip?.event_id ?? "";
   trpc.teams.list.useQuery(
-    { tripId, eventId: prefetchedEvent?.id ?? "" },
-    { enabled: !!prefetchedEvent?.id }
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
   );
   trpc.groupResults.listScoresByEvent.useQuery(
-    { tripId, eventId: prefetchedEvent?.id ?? "" },
-    { enabled: !!prefetchedEvent?.id }
+    { tripId, eventId: prefetchEventId },
+    { enabled: !!prefetchEventId }
   );
 
   // All hooks must be called before any early returns
