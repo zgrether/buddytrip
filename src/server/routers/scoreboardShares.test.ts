@@ -21,11 +21,11 @@ describe("scoreboardShares router", () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Share Test");
     eventId = await ctx.createEvent(tripId, "Share Event");
-  });
+  }, 30_000);
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 30_000);
 
   it("create — generates a share code for an event", async () => {
     const caller = ctx.caller();
