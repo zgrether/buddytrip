@@ -48,7 +48,13 @@ export async function setup() {
   const result: Record<string, SharedUser> = {};
 
   // List all users once, outside the loop
-  const { data: existing } = await admin.auth.admin.listUsers();
+  const { data: existing, error: listError } = await admin.auth.admin.listUsers();
+  if (listError) {
+    throw new Error(
+      `Failed to list users: ${listError.message}. ` +
+      `If "Legacy API keys are disabled", update SUPABASE_SERVICE_ROLE_KEY to the new format from your Supabase dashboard.`
+    );
+  }
 
   for (const u of USERS) {
     let userId: string | undefined;
@@ -63,7 +69,12 @@ export async function setup() {
         email_confirm: true,
         user_metadata: { name: u.name, nickname: u.nickname },
       });
-      if (error) throw new Error(`Failed to create ${u.key}: ${error.message}`);
+      if (error) {
+        const hint = error.message.includes("Legacy API keys")
+          ? " Update SUPABASE_SERVICE_ROLE_KEY to the new format from your Supabase dashboard."
+          : "";
+        throw new Error(`Failed to create ${u.key}: ${error.message}.${hint}`);
+      }
       userId = data.user.id;
     }
 
