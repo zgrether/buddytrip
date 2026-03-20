@@ -23,7 +23,24 @@ import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { hashToHue } from "@/components/LocationHero";
+// ── Curated gradient palette ──────────────────────────────────────────────
+// Hand-picked hues that look good as dark backgrounds with white text.
+// Avoids muddy browns/olives (hue 30-60°) that hashToHue can produce.
+const IDEA_GRADIENTS = [
+  { h1: 210, h2: 230 }, // deep blue
+  { h1: 160, h2: 180 }, // teal
+  { h1: 270, h2: 290 }, // purple
+  { h1: 340, h2: 360 }, // rose
+  { h1: 140, h2: 165 }, // forest
+  { h1: 195, h2: 220 }, // ocean
+  { h1: 300, h2: 320 }, // magenta
+  { h1: 20,  h2: 40  }, // warm amber
+];
+
+function ideaGradient(index: number): string {
+  const { h1, h2 } = IDEA_GRADIENTS[index % IDEA_GRADIENTS.length];
+  return `linear-gradient(160deg, hsl(${h1}, 50%, 22%) 0%, hsl(${h2}, 40%, 12%) 100%)`;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -187,6 +204,7 @@ function IdeaCard({
   canEdit,
   isOwner,
   isLocked,
+  index = 0,
   onLock,
   onDelete,
 }: {
@@ -195,6 +213,7 @@ function IdeaCard({
   canEdit: boolean;
   isOwner: boolean;
   isLocked?: boolean;
+  index?: number;
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
@@ -234,8 +253,6 @@ function IdeaCard({
 
   const cancelEdit = () => setEditingField(null);
 
-  const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
-
   const inlineEditControls = (
     <div className="mt-1.5 flex gap-2">
       <button
@@ -266,7 +283,7 @@ function IdeaCard({
       <div
         className="relative min-h-[160px]"
         style={{
-          background: `linear-gradient(160deg, hsl(${hue}, 50%, 18%) 0%, hsl(${(hue + 40) % 360}, 40%, 10%) 100%)`,
+          background: ideaGradient(index),
         }}
       >
         {isLocked && (
@@ -1136,6 +1153,7 @@ export default function IdeaComparisonPage() {
                       canEdit={canEdit}
                       isOwner={isOwner}
                       isLocked={true}
+                      index={0}
                       onLock={setLockIdea}
                       onDelete={setDeleteIdea}
                     />
@@ -1153,13 +1171,14 @@ export default function IdeaComparisonPage() {
                         Other Ideas
                       </p>
                     )}
-                    {otherIdeas.map((idea) => (
+                    {otherIdeas.map((idea, i) => (
                       <IdeaCard
                         key={idea.id}
                         idea={idea}
                         tripId={tripId}
                         canEdit={canEdit}
                         isOwner={isOwner}
+                        index={(lockedIdea ? 1 : 0) + i}
                         onLock={setLockIdea}
                         onDelete={setDeleteIdea}
                       />
