@@ -4,73 +4,87 @@
 
 /* ── Light mode (default) ─────────────────────────────────────────────── */
 :root {
-  --color-bt-base: #ffffff;
-  --color-bt-base-alt: #171717;     /* inverted base for accent-on-base text */
-  --color-bt-card: #f6f8fa;
-  --color-bt-border: #d0d7de;
-  --color-bt-text: #171717;
-  --color-bt-text-dim: #656d76;
-  --color-bt-accent: #009e80;       /* darker teal for WCAG-AA on white */
-  --color-bt-accent-dim: #007a63;
-  --color-bt-tag-bg: #e6f9f3;
-  --color-bt-danger: #d32f2f;
-  --color-bt-planning: #4a64a8;
-  --color-bt-blue-bg: #e8edf6;
-  --color-bt-owner: #b37519;
-  --color-bt-ready: #6b4fad;
-  --color-bt-ready-bg: #f0ecf8;
-  --color-bt-past-bg: #f3f3f3;
-  --color-bt-accent-faint: rgba(0, 158, 128, 0.10);
-  --color-bt-accent-border: rgba(0, 158, 128, 0.25);
-  --color-bt-danger-border: rgba(211, 47, 47, 0.20);
-  --color-bt-danger-bg: #fef2f2;
+    --color-bt-base: #ffffff;
+  --color-bt-card: #f8fafc;          /* slightly blue-tinted, lifts better */
+  --color-bt-border: #e2e8f0;        /* softer than current #d0d7de */
+  --color-bt-text: #0f172a;          /* near-black with a hint of navy */
+  --color-bt-text-dim: #64748b;      /* slate-500 — warmer than current */
+
+  --color-bt-accent: #0d9488;        /* teal-600 — same family, more vivid */
+  --color-bt-accent-dim: #0f766e;
+  --color-bt-tag-bg: #f0fdfa;        /* teal-50 */
+  --color-bt-accent-faint: rgba(13, 148, 136, 0.08);
+  --color-bt-accent-border: rgba(13, 148, 136, 0.22);
+
+  --color-bt-planning: #2563eb;      /* blue-600 — full saturation */
+  --color-bt-blue-bg: #eff6ff;       /* blue-50 */
+  --color-bt-planning-border: rgba(37, 99, 235, 0.22);
+
+  --color-bt-ready: #7c3aed;         /* violet-600 — richer purple */
+  --color-bt-ready-bg: #f5f3ff;      /* violet-50 */
+
+  --color-bt-owner: #d97706;         /* amber-600 — more vivid */
   --color-bt-warning: #d97706;
   --color-bt-warning-faint: rgba(217, 119, 6, 0.08);
   --color-bt-warning-border: rgba(217, 119, 6, 0.20);
-  --color-bt-hover: rgba(0, 0, 0, 0.05);
+
+  --color-bt-danger: #dc2626;        /* red-600 */
+  --color-bt-danger-bg: #fef2f2;
+  --color-bt-danger-border: rgba(220, 38, 38, 0.20);
+
+  /* unchanged structural tokens */
+  --color-bt-base-alt: #0f172a;
+  --color-bt-hover: rgba(0, 0, 0, 0.04);
   --color-bt-overlay: rgba(0, 0, 0, 0.5);
-  --color-bt-subtle-border: #e1e4e8;
-  --color-bt-dim-faint: rgba(101, 109, 118, 0.13);
-  --color-bt-planning-border: rgba(74, 100, 168, 0.27);
-  --color-bt-state-fill: rgba(0, 0, 0, 0.06);
-  --color-bt-state-stroke: rgba(0, 0, 0, 0.18);
+  --color-bt-subtle-border: #e2e8f0;
+  --color-bt-dim-faint: rgba(100, 116, 139, 0.12);
+  --color-bt-state-fill: rgba(0, 0, 0, 0.05);
+  --color-bt-state-stroke: rgba(0, 0, 0, 0.15);
   --color-bt-tile-bg: transparent;
+  --color-bt-past-bg: #f8fafc;
+
   color-scheme: light;
 }
 
 /* ── Dark mode ────────────────────────────────────────────────────────── */
 .dark {
-  --color-bt-base: #0d1117;
-  --color-bt-base-alt: #0d1117;
-  --color-bt-card: #1c2333;
-  --color-bt-border: #3a4253;
-  --color-bt-text: #ededed;
-  --color-bt-text-dim: #8b949e;
-  --color-bt-accent: #00d4aa;
-  --color-bt-accent-dim: #009e80;
-  --color-bt-tag-bg: #0d2a22;
-  --color-bt-danger: #ef4444;
-  --color-bt-planning: #7c93d4;
-  --color-bt-blue-bg: #161e35;
-  --color-bt-owner: #f0a84a;
-  --color-bt-ready: #a78bfa;
-  --color-bt-ready-bg: #1e1535;
-  --color-bt-past-bg: #1f1f1f;
-  --color-bt-accent-faint: rgba(0, 212, 170, 0.13);
-  --color-bt-accent-border: rgba(0, 212, 170, 0.27);
-  --color-bt-danger-border: rgba(239, 68, 68, 0.19);
-  --color-bt-danger-bg: #1f1010;
-  --color-bt-warning: #f59e0b;
-  --color-bt-warning-faint: rgba(245, 158, 11, 0.07);
-  --color-bt-warning-border: rgba(245, 158, 11, 0.20);
-  --color-bt-hover: rgba(255, 255, 255, 0.05);
+  --color-bt-base: #0f172a;          /* slate-900 — slightly warmer than #0d1117 */
+  --color-bt-base-alt: #0f172a;
+  --color-bt-card: #1e293b;          /* slate-800 — noticeably different from base */
+  --color-bt-border: #334155;        /* slate-700 */
+  --color-bt-text: #f1f5f9;          /* slate-100 */
+  --color-bt-text-dim: #94a3b8;      /* slate-400 — warmer than current #8b949e */
+
+  --color-bt-accent: #2dd4bf;        /* teal-400 — brighter, more vivid */
+  --color-bt-accent-dim: #14b8a6;    /* teal-500 */
+  --color-bt-tag-bg: #134e4a;        /* teal-900 */
+  --color-bt-accent-faint: rgba(45, 212, 191, 0.12);
+  --color-bt-accent-border: rgba(45, 212, 191, 0.25);
+
+  --color-bt-planning: #60a5fa;      /* blue-400 — vivid on dark */
+  --color-bt-blue-bg: #1e3a5f;
+  --color-bt-planning-border: rgba(96, 165, 250, 0.25);
+
+  --color-bt-ready: #a78bfa;         /* violet-400 — unchanged, already good */
+  --color-bt-ready-bg: #2e1065;
+
+  --color-bt-owner: #fbbf24;         /* amber-400 — brighter */
+  --color-bt-warning: #fbbf24;
+  --color-bt-warning-faint: rgba(251, 191, 36, 0.08);
+  --color-bt-warning-border: rgba(251, 191, 36, 0.20);
+
+  --color-bt-danger: #f87171;        /* red-400 */
+  --color-bt-danger-bg: #450a0a;
+  --color-bt-danger-border: rgba(248, 113, 113, 0.20);
+
+  --color-bt-hover: rgba(255, 255, 255, 0.06);
   --color-bt-overlay: rgba(0, 0, 0, 0.7);
-  --color-bt-subtle-border: #21262d;
-  --color-bt-dim-faint: rgba(139, 148, 158, 0.13);
-  --color-bt-planning-border: rgba(124, 147, 212, 0.27);
-  --color-bt-state-fill: rgba(255, 255, 255, 0.07);
-  --color-bt-state-stroke: rgba(255, 255, 255, 0.22);
+  --color-bt-subtle-border: #1e293b;
+  --color-bt-dim-faint: rgba(148, 163, 184, 0.12);
+  --color-bt-state-fill: rgba(255, 255, 255, 0.06);
+  --color-bt-state-stroke: rgba(255, 255, 255, 0.20);
   --color-bt-tile-bg: transparent;
+  --color-bt-past-bg: #1e293b;
   color-scheme: dark;
 }
 

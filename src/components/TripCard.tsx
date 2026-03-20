@@ -46,7 +46,9 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const router = useRouter();
   const utils = trpc.useUtils();
   const status = getTripStatus(trip);
-  const locationStr = trip.locked_destination_title ?? trip.location ?? "";
+  // Use trip.location for geo-parsing (it's "City, State" format), not
+  // locked_destination_title which is the human-readable name and won't parse.
+  const locationStr = trip.location ?? "";
   const { outline, cityPin, showPin, rotation } = getLocationInfo(locationStr);
 
   const handleClick = () => {
