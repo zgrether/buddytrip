@@ -837,6 +837,12 @@ interface LocalIdea {
   description?: string;
   costTier?: string;
   source: "manual" | "ai" | "catalog";
+  // Catalog-only rich fields — undefined for manual/ai ideas
+  imageUrl?: string;
+  golfCourses?: string[];
+  activities?: string[];
+  accommodation?: string;
+  tips?: string;
 }
 
 // ── EmptyStateOnboarding ─────────────────────────────────────────────────
@@ -886,6 +892,11 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           description: catalogIdea.description,
           costTier: catalogIdea.cost_tier ?? undefined,
           source: "catalog" as const,
+          imageUrl: catalogIdea.image_url ?? undefined,
+          golfCourses: catalogIdea.golf_courses?.length ? catalogIdea.golf_courses : undefined,
+          activities: catalogIdea.activities?.length ? catalogIdea.activities : undefined,
+          accommodation: catalogIdea.accommodation ?? undefined,
+          tips: catalogIdea.tips ?? undefined,
         },
       ]);
       setSelectedCatalogIds((prev) => new Set([...prev, catalogIdea.id]));
@@ -939,6 +950,11 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             location: idea.location,
             description: idea.description,
             costTier: idea.costTier,
+            imageUrl: idea.imageUrl,
+            golfCourses: idea.golfCourses,
+            activities: idea.activities,
+            accommodation: idea.accommodation,
+            notes: idea.tips,
             source: idea.source,
           })
         )
