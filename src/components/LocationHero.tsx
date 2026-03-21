@@ -75,9 +75,8 @@ export function LocationHero({ location, tripName, children }: LocationHeroProps
               d={outline.path}
               style={{
                 fill: isDark ? "rgba(255,255,255,0.10)" : "var(--color-bt-state-fill)",
-                stroke: isDark ? "rgba(255,255,255,0.30)" : "var(--color-bt-state-stroke)",
               }}
-              strokeWidth="1.5"
+              stroke="none"
             />
             {showPin && cityPin && (
               <>
