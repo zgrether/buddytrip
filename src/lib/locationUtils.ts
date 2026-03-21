@@ -57,6 +57,10 @@ const STATE_CENTER_LON: Record<string, number> = {
 
 /** Rotation correction (degrees) to visually un-tilt a state from Albers. */
 function getStateRotation(abbr: string): number {
+  // Alaska and Hawaii are drawn as insets (separate projection / repositioned),
+  // so the Albers convergence formula doesn't apply to them.
+  if (abbr === 'AK' || abbr === 'HI') return 0;
+
   const lon = STATE_CENTER_LON[abbr];
   if (lon == null) return 0;
   return Math.round(ALBERS_N * (lon - ALBERS_CENTRAL_MERIDIAN) * 10) / 10;

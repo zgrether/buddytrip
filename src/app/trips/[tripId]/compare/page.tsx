@@ -24,26 +24,9 @@ import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-// ── Curated gradient palette ──────────────────────────────────────────────
-// Hand-picked hues that look good as card header gradients.
-// Avoids muddy browns/olives (hue 30-60°) that hashToHue can produce.
-const IDEA_GRADIENTS = [
-  { h1: 210, h2: 230 }, // deep blue
-  { h1: 160, h2: 180 }, // teal
-  { h1: 270, h2: 290 }, // purple
-  { h1: 340, h2: 360 }, // rose
-  { h1: 140, h2: 165 }, // forest
-  { h1: 195, h2: 220 }, // ocean
-  { h1: 300, h2: 320 }, // magenta
-  { h1: 20,  h2: 40  }, // warm amber
-];
-
-function ideaGradient(index: number, isDark: boolean): string {
-  const { h1, h2 } = IDEA_GRADIENTS[index % IDEA_GRADIENTS.length];
-  return isDark
-    ? `linear-gradient(160deg, hsl(${h1}, 50%, 22%) 0%, hsl(${h2}, 40%, 12%) 100%)`
-    : `linear-gradient(160deg, hsl(${h1}, 55%, 92%) 0%, hsl(${h2}, 45%, 85%) 100%)`;
-}
+import { ideaGradient } from "@/lib/ideaGradient";
+import { CatalogBrowser } from "./CatalogBrowser";
+import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -207,6 +190,7 @@ function IdeaCard({
   canEdit,
   isOwner,
   isLocked,
+  isLeading,
   index = 0,
   onLock,
   onDelete,
@@ -216,6 +200,7 @@ function IdeaCard({
   canEdit: boolean;
   isOwner: boolean;
   isLocked?: boolean;
+  isLeading?: boolean;
   index?: number;
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
@@ -282,7 +267,11 @@ function IdeaCard({
     <div
       data-testid={`idea-card-${idea.id}`}
       className="overflow-hidden rounded-2xl"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      style={{
+        background: "var(--color-bt-card)",
+        border: `1px solid ${isLeading ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+        boxShadow: isLeading ? "0 0 0 1px var(--color-bt-accent)" : undefined,
+      }}
     >
       {/* ── Hero ──────────────────────────────────────────────────────── */}
       <div
@@ -299,6 +288,16 @@ function IdeaCard({
             >
               <Check size={11} />
               Picked
+            </span>
+          </div>
+        )}
+        {isLeading && !isLocked && (
+          <div className="absolute left-3 top-3">
+            <span
+              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Leading
             </span>
           </div>
         )}
@@ -442,9 +441,9 @@ function IdeaCard({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
-                )}
+                ) : canEdit ? (
+                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>+ Add pros</p>
+                ) : null}
               </div>
             )}
           </div>
@@ -482,9 +481,9 @@ function IdeaCard({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
-                )}
+                ) : canEdit ? (
+                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>+ Add cons</p>
+                ) : null}
               </div>
             )}
           </div>
@@ -777,10 +776,14 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
         Crew votes
       </p>
       <div className="space-y-2">
-        {ideas.map((idea) => {
+        {(() => {
+          const globalMax = Math.max(...ideas.map((i) => i.votes.length), 1);
+          return ideas.map((idea) => {
           const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
+          const barWidth = `${Math.round((idea.votes.length / globalMax) * 100)}%`;
           return (
-            <div key={idea.id} className="flex items-center gap-3">
+            <div key={idea.id}>
+              <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {idea.title}
@@ -803,9 +806,23 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
                 <ThumbsUp size={12} />
                 {isVoted ? "My pick" : "Pick"}
               </button>
+              </div>
+              <div
+                className="mt-1 h-1 overflow-hidden rounded-full"
+                style={{ background: "var(--color-bt-base)", width: "100%" }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: barWidth,
+                    background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                  }}
+                />
+              </div>
             </div>
           );
-        })}
+        });
+        })()}
       </div>
     </div>
   );
@@ -819,7 +836,7 @@ interface LocalIdea {
   location: string;
   description?: string;
   costTier?: string;
-  source: "manual" | "ai";
+  source: "manual" | "ai" | "catalog";
 }
 
 // ── EmptyStateOnboarding ─────────────────────────────────────────────────
@@ -834,6 +851,8 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   const [isFetchingAi, setIsFetchingAi] = useState(false);
   const [aiError, setAiError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(true);
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
 
   const createIdea = trpc.ideas.create.useMutation();
 
@@ -845,6 +864,32 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
       { id: crypto.randomUUID(), title: t, location: t, source: "manual" },
     ]);
     setDestInput("");
+  };
+
+  const handleCatalogSelect = (catalogIdea: CatalogIdea) => {
+    const stagedId = `cat-${catalogIdea.id}`;
+    const alreadyStaged = localIdeas.some((i) => i.id === stagedId);
+    if (alreadyStaged) {
+      setLocalIdeas((prev) => prev.filter((i) => i.id !== stagedId));
+      setSelectedCatalogIds((prev) => {
+        const s = new Set(prev);
+        s.delete(catalogIdea.id);
+        return s;
+      });
+    } else {
+      setLocalIdeas((prev) => [
+        ...prev,
+        {
+          id: stagedId,
+          title: catalogIdea.title,
+          location: catalogIdea.location,
+          description: catalogIdea.description,
+          costTier: catalogIdea.cost_tier ?? undefined,
+          source: "catalog" as const,
+        },
+      ]);
+      setSelectedCatalogIds((prev) => new Set([...prev, catalogIdea.id]));
+    }
   };
 
   const handleFetchAi = async () => {
@@ -894,6 +939,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             location: idea.location,
             description: idea.description,
             costTier: idea.costTier,
+            source: idea.source,
           })
         )
       );
@@ -920,7 +966,102 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </>
       )}
 
-      {/* ── AI suggestions — primary, open by default ── */}
+      {/* ── 1. Catalog browser — hero, shown by default ── */}
+      {showCatalog ? (
+        <div className="mb-4">
+          <CatalogBrowser
+            onSelect={handleCatalogSelect}
+            selectedIds={selectedCatalogIds}
+          />
+          <button
+            onClick={() => setShowCatalog(false)}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Hide catalog
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowCatalog(true)}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors"
+          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+        >
+          Browse destination ideas
+        </button>
+      )}
+
+      {/* ── 2. Staged ideas list ── */}
+      {localIdeas.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {localIdeas.map((idea) => (
+            <div
+              key={idea.id}
+              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
+              style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+            >
+              {idea.source === "ai" ? (
+                <Sparkles size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+              ) : (
+                <MapPin size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  {idea.title}
+                </p>
+                {idea.description && (
+                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {idea.description}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  // Also remove from selectedCatalogIds if it was a catalog idea
+                  if (idea.source === "catalog") {
+                    const catId = idea.id.replace("cat-", "");
+                    setSelectedCatalogIds((prev) => {
+                      const s = new Set(prev);
+                      s.delete(catId);
+                      return s;
+                    });
+                  }
+                  setLocalIdeas((prev) => prev.filter((i) => i.id !== idea.id));
+                }}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+                aria-label={`Remove ${idea.title}`}
+              >
+                <X size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── 3. Compare CTA ── */}
+      {localIdeas.length > 0 && (
+        <button
+          onClick={handleCompare}
+          disabled={isSubmitting}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {isSubmitting ? (
+            <><Loader2 size={16} className="animate-spin" /> Saving…</>
+          ) : (
+            <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
+          )}
+        </button>
+      )}
+
+      {/* ── 4. Divider ── */}
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+        <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>or</span>
+        <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+      </div>
+
+      {/* ── 5. Ask Buddy panel ── */}
       {showAiPrompt ? (
         <div
           className="rounded-xl border p-4"
@@ -936,7 +1077,6 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             Tell us about your crew and we&apos;ll suggest some ideas to kick things off.
           </p>
           <textarea
-            autoFocus
             value={crewDescription}
             onChange={(e) => setCrewDescription(e.target.value)}
             placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year…"
@@ -976,7 +1116,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </button>
       )}
 
-      {/* ── Manual add — secondary ── */}
+      {/* ── 6. Manual add ── */}
       <div className="mt-5">
         <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
           or add your own idea
@@ -1007,58 +1147,6 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           </button>
         </div>
       </div>
-
-      {/* ── Staged ideas list ── */}
-      {localIdeas.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {localIdeas.map((idea) => (
-            <div
-              key={idea.id}
-              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-              style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-            >
-              {idea.source === "ai" ? (
-                <Sparkles size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-              ) : (
-                <MapPin size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  {idea.title}
-                </p>
-                {idea.description && (
-                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {idea.description}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={() => setLocalIdeas((prev) => prev.filter((i) => i.id !== idea.id))}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
-                aria-label={`Remove ${idea.title}`}
-              >
-                <X size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Compare CTA ── */}
-      {localIdeas.length > 0 && (
-        <button
-          onClick={handleCompare}
-          disabled={isSubmitting}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {isSubmitting ? (
-            <><Loader2 size={16} className="animate-spin" /> Saving…</>
-          ) : (
-            <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
-          )}
-        </button>
-      )}
     </div>
   );
 }
@@ -1135,9 +1223,13 @@ export default function IdeaComparisonPage() {
             const lockedIdea = lockedTitle
               ? ideasTyped.find((i) => i.title.toLowerCase() === lockedTitle)
               : undefined;
-            const otherIdeas = lockedIdea
+            const otherIdeas = (lockedIdea
               ? ideasTyped.filter((i) => i.id !== lockedIdea.id)
-              : ideasTyped;
+              : ideasTyped
+            ).sort((a, b) => b.votes.length - a.votes.length);
+            const maxVotes = Math.max(...otherIdeas.map((i) => i.votes.length), 0);
+            const isLeading = (idea: Idea) =>
+              !lockedIdea && maxVotes > 0 && idea.votes.length === maxVotes;
 
             return (
               <div className="flex flex-col gap-4">
@@ -1198,6 +1290,7 @@ export default function IdeaComparisonPage() {
                         tripId={tripId}
                         canEdit={canEdit}
                         isOwner={isOwner}
+                        isLeading={isLeading(idea)}
                         index={(lockedIdea ? 1 : 0) + i}
                         onLock={setLockIdea}
                         onDelete={setDeleteIdea}

@@ -65,6 +65,8 @@ export const ideasRouter = router({
         proposedDates: z
           .array(z.object({ start: z.string(), end: z.string() }))
           .optional(),
+        source: z.enum(["manual", "ai", "catalog"]).optional(),
+        sourceIdeaId: z.string().nullable().optional(),
       })
     )
     .use(requireTripRole("Planner"))
@@ -86,6 +88,8 @@ export const ideasRouter = router({
           accommodation: input.accommodation ?? null,
           notes: input.notes ?? null,
           proposed_dates: JSON.stringify(input.proposedDates ?? []),
+          source: input.source ?? "manual",
+          source_idea_id: input.sourceIdeaId ?? null,
         })
         .select()
         .single();
@@ -239,5 +243,114 @@ export const ideasRouter = router({
         }
         return { voted: true };
       }
+    }),
+
+  // -----------------------------------------------------------------------
+  // catalogList — browse curated destination ideas (any authenticated user)
+  // -----------------------------------------------------------------------
+  catalogList: authedProcedure
+    .input(
+      z.object({
+        categories: z.array(z.string()).optional(),
+        costTier: z.string().optional(),
+        tripLength: z.string().optional(),
+        region: z.string().optional(),
+        search: z.string().optional(),
+        limit: z.number().min(1).max(100).default(20),
+        offset: z.number().min(0).default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      let query = ctx.supabase
+        .from("catalog_ideas")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .range(input.offset, input.offset + input.limit - 1);
+
+      if (input.categories?.length) {
+        query = query.overlaps("categories", input.categories);
+      }
+      if (input.costTier) {
+        query = query.eq("cost_tier", input.costTier);
+      }
+      if (input.tripLength) {
+        query = query.eq("trip_length", input.tripLength);
+      }
+      if (input.region) {
+        query = query.eq("region", input.region);
+      }
+      if (input.search?.trim()) {
+        query = query.textSearch("search_vector", input.search.trim());
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: error.message,
+        });
+      }
+      return data ?? [];
+    }),
+
+  // -----------------------------------------------------------------------
+  // fork — copy an idea from one trip to another (future use)
+  // -----------------------------------------------------------------------
+  fork: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        sourceIdeaId: z.string(),
+        newId: z.string().min(1),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch the source idea
+      const { data: source, error: fetchErr } = await ctx.supabase
+        .from("ideas")
+        .select("*")
+        .eq("id", input.sourceIdeaId)
+        .single();
+
+      if (fetchErr || !source) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Source idea not found",
+        });
+      }
+
+      const { data, error } = await ctx.supabase
+        .from("ideas")
+        .insert({
+          id: input.newId,
+          trip_id: ctx.tripId,
+          title: source.title,
+          location: source.location,
+          description: source.description,
+          golf_courses: source.golf_courses,
+          activities: source.activities,
+          cost_tier: source.cost_tier,
+          pros: source.pros,
+          cons: source.cons,
+          image_url: source.image_url,
+          accommodation: source.accommodation,
+          notes: source.notes,
+          proposed_dates: source.proposed_dates,
+          source: "forked",
+          source_idea_id: input.sourceIdeaId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to fork idea: ${error.message}`,
+        });
+      }
+
+      return data;
     }),
 });
