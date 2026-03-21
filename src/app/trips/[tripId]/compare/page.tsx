@@ -954,7 +954,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   };
 
   return (
-    <div className="mx-auto max-w-[896px] px-4 py-8">
+    <div className={`mx-auto max-w-[896px] px-4 py-8 ${localIdeas.length > 0 ? "pb-24" : ""}`}>
       {!onClose && (
         <>
           <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
@@ -991,77 +991,14 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </button>
       )}
 
-      {/* ── 2. Staged ideas list ── */}
-      {localIdeas.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {localIdeas.map((idea) => (
-            <div
-              key={idea.id}
-              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-              style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-            >
-              {idea.source === "ai" ? (
-                <Sparkles size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-              ) : (
-                <MapPin size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  {idea.title}
-                </p>
-                {idea.description && (
-                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {idea.description}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  // Also remove from selectedCatalogIds if it was a catalog idea
-                  if (idea.source === "catalog") {
-                    const catId = idea.id.replace("cat-", "");
-                    setSelectedCatalogIds((prev) => {
-                      const s = new Set(prev);
-                      s.delete(catId);
-                      return s;
-                    });
-                  }
-                  setLocalIdeas((prev) => prev.filter((i) => i.id !== idea.id));
-                }}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
-                aria-label={`Remove ${idea.title}`}
-              >
-                <X size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── 3. Compare CTA ── */}
-      {localIdeas.length > 0 && (
-        <button
-          onClick={handleCompare}
-          disabled={isSubmitting}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {isSubmitting ? (
-            <><Loader2 size={16} className="animate-spin" /> Saving…</>
-          ) : (
-            <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
-          )}
-        </button>
-      )}
-
-      {/* ── 4. Divider ── */}
+      {/* ── 2. Divider ── */}
       <div className="my-6 flex items-center gap-3">
         <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
         <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>or</span>
         <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
       </div>
 
-      {/* ── 5. Ask Buddy panel ── */}
+      {/* ── 3. Ask Buddy panel ── */}
       {showAiPrompt ? (
         <div
           className="rounded-xl border p-4"
@@ -1116,7 +1053,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </button>
       )}
 
-      {/* ── 6. Manual add ── */}
+      {/* ── 4. Manual add ── */}
       <div className="mt-5">
         <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
           or add your own idea
@@ -1147,6 +1084,43 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           </button>
         </div>
       </div>
+
+      {/* ── 5. Sticky compare bar ── */}
+      {localIdeas.length > 0 && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-6 pt-3"
+          style={{
+            background: "linear-gradient(to top, var(--color-bt-base) 70%, transparent)",
+          }}
+        >
+          <button
+            onClick={handleCompare}
+            disabled={isSubmitting}
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold shadow-lg transition-opacity disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+              maxWidth: 896,
+              margin: "0 auto",
+            }}
+          >
+            {isSubmitting ? (
+              <><Loader2 size={16} className="animate-spin" /> Saving…</>
+            ) : (
+              <>
+                Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →
+                <span
+                  className="ml-1 rounded-full px-2 py-0.5 text-xs font-bold"
+                  style={{ background: "rgba(0,0,0,0.2)" }}
+                >
+                  {localIdeas[0]?.title.split(" ").slice(0, 2).join(" ")}
+                  {localIdeas.length > 1 ? ` +${localIdeas.length - 1}` : ""}
+                </span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
