@@ -430,8 +430,8 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Pros — render when content exists OR actively editing */}
-        {((idea.pros && idea.pros.length > 0) || editingField === "pros") && (
+        {/* Pros — always rendered for editors; hidden for members when empty */}
+        {((idea.pros && idea.pros.length > 0) || editingField === "pros" || canEdit) && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>+ PROS</p>
             {editingField === "pros" ? (
@@ -448,25 +448,33 @@ function IdeaCard({
                 />
                 {inlineEditControls}
               </div>
-            ) : (
+            ) : idea.pros && idea.pros.length > 0 ? (
               <ul
                 className="space-y-1"
-                onClick={canEdit ? () => startEdit("pros", (idea.pros ?? []).join("\n")) : undefined}
+                onClick={canEdit ? () => startEdit("pros", idea.pros!.join("\n")) : undefined}
                 style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {(idea.pros ?? []).map((p, i) => (
+                {idea.pros.map((p, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
                     <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
                     {p}
                   </li>
                 ))}
               </ul>
+            ) : (
+              <button
+                onClick={() => startEdit("pros", "")}
+                className="text-xs transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                + Add pros
+              </button>
             )}
           </div>
         )}
 
-        {/* Cons — render when content exists OR actively editing */}
-        {((idea.cons && idea.cons.length > 0) || editingField === "cons") && (
+        {/* Cons — always rendered for editors; hidden for members when empty */}
+        {((idea.cons && idea.cons.length > 0) || editingField === "cons" || canEdit) && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>× CONS</p>
             {editingField === "cons" ? (
@@ -483,36 +491,20 @@ function IdeaCard({
                 />
                 {inlineEditControls}
               </div>
-            ) : (
+            ) : idea.cons && idea.cons.length > 0 ? (
               <ul
                 className="space-y-1"
-                onClick={canEdit ? () => startEdit("cons", (idea.cons ?? []).join("\n")) : undefined}
+                onClick={canEdit ? () => startEdit("cons", idea.cons!.join("\n")) : undefined}
                 style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {(idea.cons ?? []).map((c, i) => (
+                {idea.cons.map((c, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
                     <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
                     {c}
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
-        )}
-
-        {/* Per-field affordances for editors — each shown independently */}
-        {canEdit && editingField !== "pros" && editingField !== "cons" && (!(idea.pros?.length) || !(idea.cons?.length)) && (
-          <div className="flex gap-3">
-            {!(idea.pros?.length) && (
-              <button
-                onClick={() => startEdit("pros", "")}
-                className="text-xs transition-opacity hover:opacity-70"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                + Add pros
-              </button>
-            )}
-            {!(idea.cons?.length) && (
+            ) : (
               <button
                 onClick={() => startEdit("cons", "")}
                 className="text-xs transition-opacity hover:opacity-70"
