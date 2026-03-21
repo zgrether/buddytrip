@@ -208,7 +208,7 @@ function IdeaCard({
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
-  const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | null>(null);
+  const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | "golfCourses" | "activities" | "accommodation" | null>(null);
   const [editDraft, setEditDraft] = useState("");
 
   const updateIdea = trpc.ideas.update.useMutation({
@@ -236,6 +236,11 @@ function IdeaCard({
     if (editingField === "pros" || editingField === "cons") {
       const items = trimmed ? trimmed.split("\n").map((s) => s.trim()).filter(Boolean) : [];
       updateIdea.mutate({ tripId, ideaId: idea.id, [editingField]: items });
+    } else if (editingField === "golfCourses" || editingField === "activities") {
+      const items = trimmed ? trimmed.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+      updateIdea.mutate({ tripId, ideaId: idea.id, [editingField]: items });
+    } else if (editingField === "accommodation") {
+      updateIdea.mutate({ tripId, ideaId: idea.id, accommodation: trimmed || null });
     } else {
       updateIdea.mutate({ tripId, ideaId: idea.id, [editingField]: trimmed });
     }
@@ -425,8 +430,8 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Pros — only render when content exists */}
-        {idea.pros && idea.pros.length > 0 && (
+        {/* Pros — render when content exists OR actively editing */}
+        {((idea.pros && idea.pros.length > 0) || editingField === "pros") && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>+ PROS</p>
             {editingField === "pros" ? (
@@ -449,7 +454,7 @@ function IdeaCard({
                 onClick={canEdit ? () => startEdit("pros", (idea.pros ?? []).join("\n")) : undefined}
                 style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {idea.pros.map((p, i) => (
+                {(idea.pros ?? []).map((p, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
                     <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
                     {p}
@@ -460,8 +465,8 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Cons — only render when content exists */}
-        {idea.cons && idea.cons.length > 0 && (
+        {/* Cons — render when content exists OR actively editing */}
+        {((idea.cons && idea.cons.length > 0) || editingField === "cons") && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>× CONS</p>
             {editingField === "cons" ? (
@@ -484,7 +489,7 @@ function IdeaCard({
                 onClick={canEdit ? () => startEdit("cons", (idea.cons ?? []).join("\n")) : undefined}
                 style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {idea.cons.map((c, i) => (
+                {(idea.cons ?? []).map((c, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
                     <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
                     {c}
@@ -495,8 +500,8 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Single affordance for editors when both lists are empty */}
-        {canEdit && !(idea.pros && idea.pros.length > 0) && !(idea.cons && idea.cons.length > 0) && (
+        {/* Single affordance for editors when both lists are empty and neither is being edited */}
+        {canEdit && !(idea.pros?.length) && !(idea.cons?.length) && editingField !== "pros" && editingField !== "cons" && (
           <button
             onClick={() => startEdit("pros", "")}
             className="text-xs transition-opacity hover:opacity-70"
@@ -507,43 +512,133 @@ function IdeaCard({
         )}
 
         {/* Golf courses */}
-        {idea.golf_courses && idea.golf_courses.length > 0 && (
+        {((idea.golf_courses && idea.golf_courses.length > 0) || editingField === "golfCourses" || canEdit) && (
           <div>
             <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
               Courses
             </p>
-            <div className="space-y-0.5">
-              {idea.golf_courses.map((c, i) => (
-                <span key={i} className="flex items-center gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                  <Flag size={11} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
-                  {c}
-                </span>
-              ))}
-            </div>
+            {editingField === "golfCourses" ? (
+              <div>
+                <textarea
+                  autoFocus
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                  rows={3}
+                  placeholder="One course per line"
+                  className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                />
+                {inlineEditControls}
+              </div>
+            ) : idea.golf_courses && idea.golf_courses.length > 0 ? (
+              <div
+                className="space-y-0.5"
+                onClick={canEdit ? () => startEdit("golfCourses", (idea.golf_courses ?? []).join("\n")) : undefined}
+                style={{ cursor: canEdit ? "pointer" : "default" }}
+              >
+                {idea.golf_courses.map((c, i) => (
+                  <span key={i} className="flex items-center gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    <Flag size={11} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+                    {c}
+                  </span>
+                ))}
+              </div>
+            ) : canEdit ? (
+              <button
+                onClick={() => startEdit("golfCourses", "")}
+                className="text-sm transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                + Add courses
+              </button>
+            ) : null}
           </div>
         )}
 
         {/* Activities */}
-        {idea.activities && idea.activities.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {idea.activities.map((a, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-                style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+        {((idea.activities && idea.activities.length > 0) || editingField === "activities" || canEdit) && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Activities
+            </p>
+            {editingField === "activities" ? (
+              <div>
+                <textarea
+                  autoFocus
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                  rows={3}
+                  placeholder="One activity per line"
+                  className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                />
+                {inlineEditControls}
+              </div>
+            ) : idea.activities && idea.activities.length > 0 ? (
+              <div
+                className="flex flex-wrap gap-1.5"
+                onClick={canEdit ? () => startEdit("activities", (idea.activities ?? []).join("\n")) : undefined}
+                style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                <Zap size={9} />
-                {a}
-              </span>
-            ))}
+                {idea.activities.map((a, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                    style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                  >
+                    <Zap size={9} />
+                    {a}
+                  </span>
+                ))}
+              </div>
+            ) : canEdit ? (
+              <button
+                onClick={() => startEdit("activities", "")}
+                className="text-sm transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                + Add activities
+              </button>
+            ) : null}
           </div>
         )}
 
         {/* Accommodation */}
-        {idea.accommodation && (
-          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            🏨 {idea.accommodation}
-          </p>
+        {(idea.accommodation || editingField === "accommodation" || canEdit) && (
+          <div>
+            {editingField === "accommodation" ? (
+              <div>
+                <input
+                  autoFocus
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
+                  placeholder="e.g. The Lodge at Pebble Beach"
+                  className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                />
+                {inlineEditControls}
+              </div>
+            ) : idea.accommodation ? (
+              <p
+                className="text-sm"
+                onClick={canEdit ? () => startEdit("accommodation", idea.accommodation ?? "") : undefined}
+                style={{ color: "var(--color-bt-text-dim)", cursor: canEdit ? "pointer" : "default" }}
+              >
+                🏨 {idea.accommodation}
+              </p>
+            ) : canEdit ? (
+              <button
+                onClick={() => startEdit("accommodation", "")}
+                className="text-sm transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                + Add accommodation
+              </button>
+            ) : null}
+          </div>
         )}
 
         {/* Cost tier */}
