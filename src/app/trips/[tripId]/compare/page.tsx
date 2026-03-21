@@ -190,6 +190,7 @@ function IdeaCard({
   canEdit,
   isOwner,
   isLocked,
+  isLeading,
   index = 0,
   onLock,
   onDelete,
@@ -199,6 +200,7 @@ function IdeaCard({
   canEdit: boolean;
   isOwner: boolean;
   isLocked?: boolean;
+  isLeading?: boolean;
   index?: number;
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
@@ -265,7 +267,11 @@ function IdeaCard({
     <div
       data-testid={`idea-card-${idea.id}`}
       className="overflow-hidden rounded-2xl"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      style={{
+        background: "var(--color-bt-card)",
+        border: `1px solid ${isLeading ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+        boxShadow: isLeading ? "0 0 0 1px var(--color-bt-accent)" : undefined,
+      }}
     >
       {/* ── Hero ──────────────────────────────────────────────────────── */}
       <div
@@ -282,6 +288,16 @@ function IdeaCard({
             >
               <Check size={11} />
               Picked
+            </span>
+          </div>
+        )}
+        {isLeading && !isLocked && (
+          <div className="absolute left-3 top-3">
+            <span
+              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Leading
             </span>
           </div>
         )}
@@ -425,9 +441,9 @@ function IdeaCard({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
-                )}
+                ) : canEdit ? (
+                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>+ Add pros</p>
+                ) : null}
               </div>
             )}
           </div>
@@ -465,9 +481,9 @@ function IdeaCard({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>—</p>
-                )}
+                ) : canEdit ? (
+                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>+ Add cons</p>
+                ) : null}
               </div>
             )}
           </div>
@@ -760,10 +776,14 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
         Crew votes
       </p>
       <div className="space-y-2">
-        {ideas.map((idea) => {
+        {(() => {
+          const globalMax = Math.max(...ideas.map((i) => i.votes.length), 1);
+          return ideas.map((idea) => {
           const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
+          const barWidth = `${Math.round((idea.votes.length / globalMax) * 100)}%`;
           return (
-            <div key={idea.id} className="flex items-center gap-3">
+            <div key={idea.id}>
+              <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {idea.title}
@@ -786,9 +806,23 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
                 <ThumbsUp size={12} />
                 {isVoted ? "My pick" : "Pick"}
               </button>
+              </div>
+              <div
+                className="mt-1 h-1 overflow-hidden rounded-full"
+                style={{ background: "var(--color-bt-base)", width: "100%" }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: barWidth,
+                    background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                  }}
+                />
+              </div>
             </div>
           );
-        })}
+        });
+        })()}
       </div>
     </div>
   );
@@ -1189,9 +1223,13 @@ export default function IdeaComparisonPage() {
             const lockedIdea = lockedTitle
               ? ideasTyped.find((i) => i.title.toLowerCase() === lockedTitle)
               : undefined;
-            const otherIdeas = lockedIdea
+            const otherIdeas = (lockedIdea
               ? ideasTyped.filter((i) => i.id !== lockedIdea.id)
-              : ideasTyped;
+              : ideasTyped
+            ).sort((a, b) => b.votes.length - a.votes.length);
+            const maxVotes = Math.max(...otherIdeas.map((i) => i.votes.length), 0);
+            const isLeading = (idea: Idea) =>
+              !lockedIdea && maxVotes > 0 && idea.votes.length === maxVotes;
 
             return (
               <div className="flex flex-col gap-4">
@@ -1252,6 +1290,7 @@ export default function IdeaComparisonPage() {
                         tripId={tripId}
                         canEdit={canEdit}
                         isOwner={isOwner}
+                        isLeading={isLeading(idea)}
                         index={(lockedIdea ? 1 : 0) + i}
                         onLock={setLockIdea}
                         onDelete={setDeleteIdea}
