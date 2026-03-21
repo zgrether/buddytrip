@@ -275,11 +275,27 @@ function IdeaCard({
     >
       {/* ── Hero ──────────────────────────────────────────────────────── */}
       <div
-        className="relative min-h-[160px]"
+        className="relative min-h-[160px] overflow-hidden"
         style={{
-          background: ideaGradient(index, isDark),
+          background: idea.image_url ? undefined : ideaGradient(index, isDark),
         }}
       >
+        {idea.image_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={idea.image_url}
+            alt={idea.title}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+        {idea.image_url && (
+          <div
+            className="absolute inset-0"
+            style={{
+              background: "linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.15) 55%, transparent 100%)",
+            }}
+          />
+        )}
         {isLocked && (
           <div className="absolute right-3 top-3">
             <span
@@ -409,8 +425,8 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Pros */}
-        {((idea.pros && idea.pros.length > 0) || canEdit) && (
+        {/* Pros — only render when content exists */}
+        {idea.pros && idea.pros.length > 0 && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>+ PROS</p>
             {editingField === "pros" ? (
@@ -428,29 +444,24 @@ function IdeaCard({
                 {inlineEditControls}
               </div>
             ) : (
-              <div
+              <ul
+                className="space-y-1"
                 onClick={canEdit ? () => startEdit("pros", (idea.pros ?? []).join("\n")) : undefined}
-                className={canEdit ? "cursor-pointer" : ""}
+                style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {idea.pros && idea.pros.length > 0 ? (
-                  <ul className="space-y-1">
-                    {idea.pros.map((p, i) => (
-                      <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                        <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-                        {p}
-                      </li>
-                    ))}
-                  </ul>
-                ) : canEdit ? (
-                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>+ Add pros</p>
-                ) : null}
-              </div>
+                {idea.pros.map((p, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+                    {p}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}
 
-        {/* Cons */}
-        {((idea.cons && idea.cons.length > 0) || canEdit) && (
+        {/* Cons — only render when content exists */}
+        {idea.cons && idea.cons.length > 0 && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>× CONS</p>
             {editingField === "cons" ? (
@@ -468,25 +479,31 @@ function IdeaCard({
                 {inlineEditControls}
               </div>
             ) : (
-              <div
+              <ul
+                className="space-y-1"
                 onClick={canEdit ? () => startEdit("cons", (idea.cons ?? []).join("\n")) : undefined}
-                className={canEdit ? "cursor-pointer" : ""}
+                style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {idea.cons && idea.cons.length > 0 ? (
-                  <ul className="space-y-1">
-                    {idea.cons.map((c, i) => (
-                      <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                        <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
-                        {c}
-                      </li>
-                    ))}
-                  </ul>
-                ) : canEdit ? (
-                  <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>+ Add cons</p>
-                ) : null}
-              </div>
+                {idea.cons.map((c, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
+                    {c}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
+        )}
+
+        {/* Single affordance for editors when both lists are empty */}
+        {canEdit && !(idea.pros && idea.pros.length > 0) && !(idea.cons && idea.cons.length > 0) && (
+          <button
+            onClick={() => startEdit("pros", "")}
+            className="text-xs transition-opacity hover:opacity-70"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            + Add pros &amp; cons
+          </button>
         )}
 
         {/* Golf courses */}
@@ -550,7 +567,7 @@ function IdeaCard({
       {/* ── Footer actions ────────────────────────────────────────────── */}
       {(isOwner || canEdit) && (
         <div
-          className="flex items-center gap-2 px-4 py-3"
+          className="flex items-center justify-between px-4 py-3"
           style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
           {isOwner && (
@@ -558,31 +575,33 @@ function IdeaCard({
               <button
                 onClick={() => unlockDest.mutate({ tripId })}
                 disabled={unlockDest.isPending}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)] disabled:opacity-50"
-                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70 disabled:opacity-40"
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
+                <Lock size={11} />
                 Return to discussion
               </button>
             ) : (
               <button
                 data-testid={`lock-idea-${idea.id}`}
                 onClick={() => onLock(idea)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all hover:bg-[var(--color-bt-hover)]"
-                style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)" }}
+                className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
-                <Lock size={13} />
+                <Lock size={11} />
                 Set as destination
               </button>
             )
           )}
+          {!isOwner && <span />}
           {canEdit && (
             <button
               data-testid={`remove-idea-${idea.id}`}
               onClick={() => onDelete(idea)}
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors hover:bg-[var(--color-bt-hover)]"
+              className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
-              <Trash2 size={15} />
+              <Trash2 size={14} />
             </button>
           )}
         </div>
