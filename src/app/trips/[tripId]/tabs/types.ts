@@ -28,3 +28,21 @@ export interface TabProps {
   canEdit: boolean;
   isOwner?: boolean;
 }
+
+export interface CatalogIdea {
+  id: string;
+  title: string;
+  location: string;
+  description: string;
+  image_url?: string | null;
+  cost_tier?: string | null;
+  categories: string[];
+  group_types: string[];
+  trip_length?: string | null;
+  region?: string | null;
+  golf_courses: string[];
+  activities: string[];
+  accommodation?: string | null;
+  tips?: string | null;
+  sort_order: number;
+}
