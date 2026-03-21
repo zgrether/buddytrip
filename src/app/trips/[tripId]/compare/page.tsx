@@ -25,6 +25,8 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ideaGradient } from "@/lib/ideaGradient";
+import { CatalogBrowser } from "./CatalogBrowser";
+import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -800,7 +802,7 @@ interface LocalIdea {
   location: string;
   description?: string;
   costTier?: string;
-  source: "manual" | "ai";
+  source: "manual" | "ai" | "catalog";
 }
 
 // ── EmptyStateOnboarding ─────────────────────────────────────────────────
@@ -815,6 +817,8 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   const [isFetchingAi, setIsFetchingAi] = useState(false);
   const [aiError, setAiError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(true);
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
 
   const createIdea = trpc.ideas.create.useMutation();
 
@@ -826,6 +830,32 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
       { id: crypto.randomUUID(), title: t, location: t, source: "manual" },
     ]);
     setDestInput("");
+  };
+
+  const handleCatalogSelect = (catalogIdea: CatalogIdea) => {
+    const stagedId = `cat-${catalogIdea.id}`;
+    const alreadyStaged = localIdeas.some((i) => i.id === stagedId);
+    if (alreadyStaged) {
+      setLocalIdeas((prev) => prev.filter((i) => i.id !== stagedId));
+      setSelectedCatalogIds((prev) => {
+        const s = new Set(prev);
+        s.delete(catalogIdea.id);
+        return s;
+      });
+    } else {
+      setLocalIdeas((prev) => [
+        ...prev,
+        {
+          id: stagedId,
+          title: catalogIdea.title,
+          location: catalogIdea.location,
+          description: catalogIdea.description,
+          costTier: catalogIdea.cost_tier ?? undefined,
+          source: "catalog" as const,
+        },
+      ]);
+      setSelectedCatalogIds((prev) => new Set([...prev, catalogIdea.id]));
+    }
   };
 
   const handleFetchAi = async () => {
@@ -875,6 +905,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             location: idea.location,
             description: idea.description,
             costTier: idea.costTier,
+            source: idea.source,
           })
         )
       );
@@ -901,7 +932,102 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </>
       )}
 
-      {/* ── AI suggestions — primary, open by default ── */}
+      {/* ── 1. Catalog browser — hero, shown by default ── */}
+      {showCatalog ? (
+        <div className="mb-4">
+          <CatalogBrowser
+            onSelect={handleCatalogSelect}
+            selectedIds={selectedCatalogIds}
+          />
+          <button
+            onClick={() => setShowCatalog(false)}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Hide catalog
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowCatalog(true)}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors"
+          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+        >
+          Browse destination ideas
+        </button>
+      )}
+
+      {/* ── 2. Staged ideas list ── */}
+      {localIdeas.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {localIdeas.map((idea) => (
+            <div
+              key={idea.id}
+              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
+              style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+            >
+              {idea.source === "ai" ? (
+                <Sparkles size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+              ) : (
+                <MapPin size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  {idea.title}
+                </p>
+                {idea.description && (
+                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {idea.description}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  // Also remove from selectedCatalogIds if it was a catalog idea
+                  if (idea.source === "catalog") {
+                    const catId = idea.id.replace("cat-", "");
+                    setSelectedCatalogIds((prev) => {
+                      const s = new Set(prev);
+                      s.delete(catId);
+                      return s;
+                    });
+                  }
+                  setLocalIdeas((prev) => prev.filter((i) => i.id !== idea.id));
+                }}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+                aria-label={`Remove ${idea.title}`}
+              >
+                <X size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── 3. Compare CTA ── */}
+      {localIdeas.length > 0 && (
+        <button
+          onClick={handleCompare}
+          disabled={isSubmitting}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {isSubmitting ? (
+            <><Loader2 size={16} className="animate-spin" /> Saving…</>
+          ) : (
+            <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
+          )}
+        </button>
+      )}
+
+      {/* ── 4. Divider ── */}
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+        <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>or</span>
+        <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+      </div>
+
+      {/* ── 5. Ask Buddy panel ── */}
       {showAiPrompt ? (
         <div
           className="rounded-xl border p-4"
@@ -917,7 +1043,6 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             Tell us about your crew and we&apos;ll suggest some ideas to kick things off.
           </p>
           <textarea
-            autoFocus
             value={crewDescription}
             onChange={(e) => setCrewDescription(e.target.value)}
             placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year…"
@@ -957,7 +1082,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </button>
       )}
 
-      {/* ── Manual add — secondary ── */}
+      {/* ── 6. Manual add ── */}
       <div className="mt-5">
         <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
           or add your own idea
@@ -988,58 +1113,6 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           </button>
         </div>
       </div>
-
-      {/* ── Staged ideas list ── */}
-      {localIdeas.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {localIdeas.map((idea) => (
-            <div
-              key={idea.id}
-              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
-              style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-            >
-              {idea.source === "ai" ? (
-                <Sparkles size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-              ) : (
-                <MapPin size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  {idea.title}
-                </p>
-                {idea.description && (
-                  <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {idea.description}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={() => setLocalIdeas((prev) => prev.filter((i) => i.id !== idea.id))}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
-                aria-label={`Remove ${idea.title}`}
-              >
-                <X size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Compare CTA ── */}
-      {localIdeas.length > 0 && (
-        <button
-          onClick={handleCompare}
-          disabled={isSubmitting}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {isSubmitting ? (
-            <><Loader2 size={16} className="animate-spin" /> Saving…</>
-          ) : (
-            <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
-          )}
-        </button>
-      )}
     </div>
   );
 }
