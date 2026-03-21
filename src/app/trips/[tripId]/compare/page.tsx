@@ -500,15 +500,28 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Single affordance for editors when both lists are empty and neither is being edited */}
-        {canEdit && !(idea.pros?.length) && !(idea.cons?.length) && editingField !== "pros" && editingField !== "cons" && (
-          <button
-            onClick={() => startEdit("pros", "")}
-            className="text-xs transition-opacity hover:opacity-70"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            + Add pros &amp; cons
-          </button>
+        {/* Per-field affordances for editors — each shown independently */}
+        {canEdit && editingField !== "pros" && editingField !== "cons" && (!(idea.pros?.length) || !(idea.cons?.length)) && (
+          <div className="flex gap-3">
+            {!(idea.pros?.length) && (
+              <button
+                onClick={() => startEdit("pros", "")}
+                className="text-xs transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                + Add pros
+              </button>
+            )}
+            {!(idea.cons?.length) && (
+              <button
+                onClick={() => startEdit("cons", "")}
+                className="text-xs transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                + Add cons
+              </button>
+            )}
+          </div>
         )}
 
         {/* Golf courses */}
