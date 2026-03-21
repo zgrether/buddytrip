@@ -860,9 +860,11 @@ function LockConfirmModal({
 
 function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: Idea[]; currentUserId: string | undefined }) {
   const utils = trpc.useUtils();
+  const [pendingIdeaId, setPendingIdeaId] = useState<string | null>(null);
 
   const vote = trpc.ideas.vote.useMutation({
     async onMutate({ ideaId }) {
+      setPendingIdeaId(ideaId);
       await utils.ideas.list.cancel({ tripId });
       const prev = utils.ideas.list.getData({ tripId });
       utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
@@ -882,6 +884,7 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
       if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
     },
     onSettled() {
+      setPendingIdeaId(null);
       utils.ideas.list.invalidate({ tripId });
     },
   });
@@ -913,7 +916,7 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
               </div>
               <button
                 data-testid={`vote-idea-${idea.id}`}
-                disabled={vote.isPending}
+                disabled={pendingIdeaId === idea.id}
                 onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
                 className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-40"
                 style={{
