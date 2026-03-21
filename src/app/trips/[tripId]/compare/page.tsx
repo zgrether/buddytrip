@@ -38,6 +38,7 @@ interface IdeaVote {
 interface Idea {
   id: string;
   trip_id: string;
+  created_at: string;
   title: string;
   location: string;
   description?: string | null;
@@ -899,8 +900,9 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
       </p>
       <div className="space-y-2">
         {(() => {
-          const globalMax = Math.max(...ideas.map((i) => i.votes.length), 1);
-          return ideas.map((idea) => {
+          const ordered = [...ideas].sort((a, b) => a.created_at.localeCompare(b.created_at));
+          const globalMax = Math.max(...ordered.map((i) => i.votes.length), 1);
+          return ordered.map((idea) => {
           const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
           const barWidth = `${Math.round((idea.votes.length / globalMax) * 100)}%`;
           return (
