@@ -6,7 +6,6 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { TopNav } from "@/components/TopNav";
-import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
   ThumbsUp,
   Lock,
@@ -25,6 +24,7 @@ import {
   Plus,
   Link,
   UserPlus,
+  ChevronLeft,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -1801,21 +1801,26 @@ export default function IdeaComparisonPage() {
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       <TopNav />
-      <TripBreadcrumb
-        tripId={tripId}
-        tripTitle={trip?.title ?? "Trip"}
-        pageName="Idea Zone"
-      />
 
-      {/* Mobile-only back link — breadcrumb is sufficient on desktop */}
-      <div className="lg:hidden px-4 pt-3 pb-0">
-        <button
-          onClick={() => router.back()}
-          className="text-sm transition-opacity hover:opacity-70"
-          style={{ color: "var(--color-bt-accent)" }}
+      {/* Back button row */}
+      <div
+        className="sticky top-0 z-30 flex items-center gap-3 border-b px-4 py-3"
+        style={{
+          background: "var(--color-bt-base)",
+          borderColor: "var(--color-bt-border)",
+        }}
+      >
+        <a
+          href={`/trips/${tripId}`}
+          className="-ml-1 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text)" }}
         >
-          ← Back to trip planning
-        </button>
+          <ChevronLeft size={18} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+          <span className="max-w-[160px] truncate">{trip?.title ?? "Trip"}</span>
+        </a>
+        <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
+          · Idea Zone
+        </span>
       </div>
 
       {trip?.locked_destination_title && (
