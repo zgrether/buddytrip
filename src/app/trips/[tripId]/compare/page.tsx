@@ -1443,208 +1443,163 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
 
 // ── InviteInput ───────────────────────────────────────────────────────────
 
-function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => void }) {
-  const [query, setQuery] = useState("");
-  const [showResults, setShowResults] = useState(false);
+function InviteInput({
+  tripId,
+  onInvited,
+  frequentTripmates = [],
+}: {
+  tripId: string;
+  onInvited: () => void;
+  frequentTripmates?: Array<{ id: string; name: string | null; nickname: string | null; email: string }>;
+}) {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "found" | "not-found">("idle");
+  const [foundUser, setFoundUser] = useState<{ id: string; name: string | null; nickname: string | null; email: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteCopied, setInviteCopied] = useState(false);
   const utils = trpc.useUtils();
-
-  const { data: results = [], isFetching } = trpc.users.search.useQuery(
-    { query },
-    { enabled: query.length >= 2 }
-  );
 
   const addMember = trpc.tripMembers.add.useMutation({
     onSuccess() {
-      setQuery("");
-      setShowResults(false);
+      setEmail("");
+      setStatus("idle");
+      setFoundUser(null);
       utils.tripMembers.list.invalidate({ tripId });
       onInvited();
     },
   });
 
+  const handleLookup = async () => {
+    if (!email.includes("@")) return;
+    const results = await utils.users.search.fetch({ query: email.toLowerCase() });
+    if (results && results.length > 0) {
+      setFoundUser(results[0] as { id: string; name: string | null; nickname: string | null; email: string });
+      setStatus("found");
+    } else {
+      setFoundUser(null);
+      setStatus("not-found");
+    }
+  };
+
   const handleCopyInvite = () => {
     const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
     navigator.clipboard.writeText(inviteUrl).then(() => {
-      setInviteCopied(true);
-      setTimeout(() => {
-        setInviteCopied(false);
-        setShowInviteForm(false);
-        setInviteEmail("");
-        setQuery("");
-        setShowResults(false);
-      }, 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     });
   };
 
   return (
-    <div>
-      {/* Search input + floating results dropdown */}
-      <div className="relative">
-        <div
-          className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
-          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)" }}
-        >
-          <Search size={12} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setShowResults(true); setShowInviteForm(false); setInviteEmail(""); }}
-            onFocus={() => setShowResults(true)}
-            onBlur={() => setTimeout(() => setShowResults(false), 150)}
-            placeholder="Add a co-planner..."
-            className="flex-1 bg-transparent text-xs outline-none"
-            style={{ color: "var(--color-bt-text)" }}
-          />
+    <div className="space-y-2">
+      {/* Frequent tripmates chips */}
+      {frequentTripmates.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {frequentTripmates.map((user) => (
+            <button
+              key={user.id}
+              onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Planner" })}
+              disabled={addMember.isPending}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
+              style={{
+                background: "var(--color-bt-tag-bg)",
+                color: "var(--color-bt-accent)",
+                border: "1px solid color-mix(in srgb, var(--color-bt-accent) 30%, transparent)",
+              }}
+            >
+              <span
+                className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {(user.nickname ?? user.name ?? user.email).charAt(0).toUpperCase()}
+              </span>
+              {user.nickname ?? user.name?.split(" ")[0]}
+              <Plus size={10} />
+            </button>
+          ))}
         </div>
+      )}
 
-        {/* Floating dropdown — results only */}
-        {showResults && results.length > 0 && (
-          <div
-            className="absolute bottom-full left-0 right-0 z-20 mb-1 overflow-hidden rounded-lg shadow-xl"
-            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-          >
-            {isFetching ? (
-              <div className="px-3 py-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                Searching...
-              </div>
-            ) : (
-              results.map((user) => (
-                <button
-                  key={user.id}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Planner" })}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
-                >
-                  <div
-                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                    style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                  >
-                    {(user.nickname ?? user.name ?? user.email ?? "?").charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
-                      {user.name ?? user.nickname ?? user.email}
-                      {user.nickname && user.name && (
-                        <span className="ml-1" style={{ color: "var(--color-bt-text-dim)" }}>
-                          ({user.nickname})
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {((user as unknown as { sharedTripTitles?: string[] }).sharedTripTitles?.length ?? 0) > 0
-                        ? `From: ${(user as unknown as { sharedTripTitles: string[] }).sharedTripTitles.slice(0, 2).join(", ")}`
-                        : "BuddyTrip member"}
-                    </p>
-                  </div>
-                  <Plus size={12} className="ml-auto flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-                </button>
-              ))
-            )}
-          </div>
-        )}
+      {/* Email input + Find button */}
+      <div className="flex gap-1.5">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setStatus("idle"); setFoundUser(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
+          placeholder="email@example.com"
+          className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+          style={{
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        />
+        <button
+          onClick={handleLookup}
+          disabled={!email.includes("@")}
+          className="rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          Find
+        </button>
       </div>
 
-      {/* Inline no-results states — rendered in panel body, not floating */}
-      {!isFetching && showResults && query.length >= 2 && results.length === 0 && (
-        <>
-          {!showInviteForm && !query.includes("@") && (
-            <div
-              className="mt-2 rounded-lg px-3 py-2.5"
-              style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                No one named &ldquo;{query}&rdquo; in your trip history.
-              </p>
-              <button
-                onClick={() => setShowInviteForm(true)}
-                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium"
-                style={{
-                  background: "var(--color-bt-tag-bg)",
-                  color: "var(--color-bt-accent)",
-                  border: "1px solid color-mix(in srgb, var(--color-bt-accent) 30%, transparent)",
-                }}
-              >
-                <Plus size={11} />
-                Invite {query} by email
-              </button>
-            </div>
-          )}
+      {/* Found state */}
+      {status === "found" && foundUser && (
+        <div
+          className="flex items-center gap-2 rounded-lg px-3 py-2"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <div
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+          >
+            {(foundUser.nickname ?? foundUser.name ?? foundUser.email).charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {foundUser.name ?? foundUser.email}
+              {foundUser.nickname && (
+                <span className="ml-1" style={{ color: "var(--color-bt-text-dim)" }}>
+                  ({foundUser.nickname})
+                </span>
+              )}
+            </p>
+            <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              BuddyTrip member
+            </p>
+          </div>
+          <button
+            onClick={() => addMember.mutate({ tripId, userId: foundUser.id, role: "Planner" })}
+            disabled={addMember.isPending}
+            className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {addMember.isPending ? "Adding…" : "+ Add"}
+          </button>
+        </div>
+      )}
 
-          {showInviteForm && !query.includes("@") && (
-            <div
-              className="mt-2 rounded-lg px-3 py-3"
-              style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <p className="mb-2 text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
-                What&apos;s {query}&apos;s email?
-              </p>
-              <input
-                autoFocus
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") { setShowInviteForm(false); setInviteEmail(""); }
-                }}
-                placeholder="email@example.com"
-                className="mb-2 w-full rounded-lg border px-3 py-2 text-xs outline-none"
-                style={{
-                  background: "var(--color-bt-card)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-              <button
-                disabled={!inviteEmail.includes("@")}
-                onClick={handleCopyInvite}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {inviteCopied ? (
-                  <><Check size={11} /> Copied!</>
-                ) : (
-                  <><Link size={11} /> Copy invite link for {query}</>
-                )}
-              </button>
-              <button
-                onClick={() => { setShowInviteForm(false); setInviteEmail(""); }}
-                className="mt-1.5 w-full py-1 text-[10px]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-
-          {query.includes("@") && (
-            <div
-              className="mt-2 rounded-lg px-3 py-3"
-              style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <p className="mb-2 text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
-                &ldquo;{query}&rdquo; isn&apos;t on BuddyTrip yet
-              </p>
-              <button
-                onClick={handleCopyInvite}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {inviteCopied ? (
-                  <><Check size={11} /> Invite link copied!</>
-                ) : (
-                  <><Link size={11} /> Copy invite link</>
-                )}
-              </button>
-              <p className="mt-1.5 text-center text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                They&apos;ll be added as a co-planner when they sign up
-              </p>
-            </div>
-          )}
-        </>
+      {/* Not found state */}
+      {status === "not-found" && (
+        <div
+          className="rounded-lg px-3 py-2.5"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <p className="mb-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            No BuddyTrip account found for that email.
+          </p>
+          <button
+            onClick={handleCopyInvite}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {copied ? (
+              <><Check size={11} /> Invite link copied!</>
+            ) : (
+              <><Link size={11} /> Invite to BuddyTrip</>
+            )}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -1743,6 +1698,11 @@ export default function IdeaComparisonPage() {
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
   const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery(
+    { tripId },
+    { enabled: isOwner }
+  );
+
+  const { data: frequentTripmates = [] } = trpc.users.frequentTripmates.useQuery(
     { tripId },
     { enabled: isOwner }
   );
@@ -1941,9 +1901,8 @@ export default function IdeaComparisonPage() {
 
                       <InviteInput
                         tripId={tripId}
-                        onInvited={() => {
-                          // members query auto-invalidates via InviteInput's onSuccess
-                        }}
+                        onInvited={() => {}}
+                        frequentTripmates={frequentTripmates}
                       />
                     </div>
                   )}

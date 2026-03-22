@@ -63,9 +63,7 @@ export const usersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // search — privacy-aware user search
-  //   @ in query → exact email match, any user on platform
-  //   name query  → trip history only, never strangers
+  // search — email-exact lookup only (used by invite flow)
   // -----------------------------------------------------------------------
   search: authedProcedure
     .input(
@@ -74,46 +72,61 @@ export const usersRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const query = input.query.trim();
+      const query = input.query.trim().toLowerCase();
+      if (!query.includes("@")) return [];
+
+      const { data, error } = await ctx.supabase
+        .from("users")
+        .select("id, name, nickname, email, is_guest")
+        .eq("email", query)
+        .neq("id", ctx.user.id)
+        .eq("is_guest", false)
+        .limit(1);
+
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      return data ?? [];
+    }),
+
+  // -----------------------------------------------------------------------
+  // frequentTripmates — top 3 real users who share past trips with current user,
+  //                     excluding anyone already on the given trip
+  // -----------------------------------------------------------------------
+  frequentTripmates: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .query(async ({ ctx, input }) => {
       const userId = ctx.user.id;
-      const isEmailSearch = query.includes("@");
 
-      if (isEmailSearch) {
-        const { data, error } = await ctx.supabase
-          .from("users")
-          .select("id, name, nickname, email, is_guest")
-          .eq("email", query.toLowerCase())
-          .neq("id", userId)
-          .limit(1);
-        if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-        return data ?? [];
-      }
-
-      if (query.length < 2) return [];
-
-      // Get trips the current user is on
+      // Get all trips current user has been on (excluding current trip)
       const { data: myTrips } = await ctx.supabase
         .from("trip_members")
         .select("trip_id")
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .neq("trip_id", input.tripId);
 
       const tripIds = (myTrips ?? []).map((t) => t.trip_id);
       if (tripIds.length === 0) return [];
 
-      // Find members of those trips matching the name query
-      const { data: members } = await ctx.supabase
+      // Get members of those trips, excluding current user
+      const { data: tripmates } = await ctx.supabase
         .from("trip_members")
         .select("user_id, users!inner(id, name, nickname, email, is_guest)")
         .in("trip_id", tripIds)
         .neq("user_id", userId);
 
-      if (!members) return [];
+      if (!tripmates) return [];
 
-      // Deduplicate and filter by name/nickname (real accounts only)
-      const seen = new Set<string>();
-      const results = [];
-      for (const m of members) {
-        const raw = m.users as unknown;
+      // Get current trip members to exclude
+      const { data: currentMembers } = await ctx.supabase
+        .from("trip_members")
+        .select("user_id")
+        .eq("trip_id", input.tripId);
+
+      const alreadyOn = new Set((currentMembers ?? []).map((m) => m.user_id));
+
+      // Count frequency, skip guests and already-on-trip members
+      const counts: Record<string, { user: { id: string; name: string | null; nickname: string | null; email: string; is_guest: boolean }; count: number }> = {};
+      for (const tm of tripmates) {
+        const raw = tm.users as unknown;
         const u = (Array.isArray(raw) ? raw[0] : raw) as {
           id: string;
           name: string | null;
@@ -121,33 +134,14 @@ export const usersRouter = router({
           email: string;
           is_guest: boolean;
         };
-        if (seen.has(u.id)) continue;
-        seen.add(u.id);
-        if (u.is_guest) continue; // skip placeholder/ghost accounts
-        const nameMatch = u.name?.toLowerCase().includes(query.toLowerCase());
-        const nickMatch = u.nickname?.toLowerCase().includes(query.toLowerCase());
-        if (nameMatch || nickMatch) results.push(u);
+        if (!u || alreadyOn.has(u.id) || u.is_guest) continue;
+        if (!counts[u.id]) counts[u.id] = { user: u, count: 0 };
+        counts[u.id].count++;
       }
 
-      // Enrich with shared trip titles for display
-      const enriched = await Promise.all(
-        results.map(async (u) => {
-          const { data: shared } = await ctx.supabase
-            .from("trip_members")
-            .select("trips!inner(title)")
-            .eq("user_id", u.id)
-            .in("trip_id", tripIds)
-            .limit(2);
-          return {
-            ...u,
-            sharedTripTitles: (shared ?? []).map((s) => {
-              const t = s.trips as unknown as { title: string } | { title: string }[];
-              return Array.isArray(t) ? t[0]?.title ?? "" : t.title;
-            }),
-          };
-        })
-      );
-
-      return enriched.slice(0, 8);
+      return Object.values(counts)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+        .map((c) => c.user);
     }),
 });
