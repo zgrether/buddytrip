@@ -1,10 +1,11 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { TopNav } from "@/components/TopNav";
-import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
   ThumbsUp,
   Lock,
@@ -21,6 +22,9 @@ import {
   CheckCircle2,
   Search,
   Plus,
+  Link,
+  UserPlus,
+  ChevronLeft,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -940,7 +944,7 @@ function LockConfirmModal({
         </p>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           This will set{" "}
-          <strong style={{ color: "var(--color-bt-text)" }}>{idea.title}</strong> as the
+          <strong style={{ color: "var(--color-bt-text)" }}>{idea.location}</strong> as the
           final destination. This can be changed later from the More tab.
         </p>
         <div className="flex gap-2">
@@ -957,7 +961,7 @@ function LockConfirmModal({
             onClick={() =>
               lockDest.mutate({
                 tripId,
-                title: idea.title,
+                title: idea.location,
                 location: idea.location,
               })
             }
@@ -1442,83 +1446,222 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
 
 // ── InviteInput ───────────────────────────────────────────────────────────
 
-function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => void }) {
-  const [query, setQuery] = useState("");
-  const [showResults, setShowResults] = useState(false);
+function InviteInput({
+  tripId,
+  onInvited,
+  frequentTripmates = [],
+}: {
+  tripId: string;
+  onInvited: () => void;
+  frequentTripmates?: Array<{ id: string; name: string | null; nickname: string | null; email: string }>;
+}) {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "found" | "not-found">("idle");
+  const [foundUser, setFoundUser] = useState<{ id: string; name: string | null; nickname: string | null; email: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [alreadyMemberName, setAlreadyMemberName] = useState<string | null>(null);
   const utils = trpc.useUtils();
-
-  const { data: results = [], isFetching } = trpc.users.search.useQuery(
-    { query },
-    { enabled: query.length >= 2 }
-  );
 
   const addMember = trpc.tripMembers.add.useMutation({
     onSuccess() {
-      setQuery("");
-      setShowResults(false);
+      setEmail("");
+      setStatus("idle");
+      setFoundUser(null);
       utils.tripMembers.list.invalidate({ tripId });
       onInvited();
     },
   });
 
+  const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
+
+  const handleLookup = async () => {
+    if (!email.includes("@")) return;
+    const results = await utils.users.search.fetch({ query: email.toLowerCase() });
+    if (results && results.length > 0) {
+      setFoundUser(results[0] as { id: string; name: string | null; nickname: string | null; email: string });
+      setStatus("found");
+    } else {
+      setFoundUser(null);
+      setStatus("not-found");
+    }
+  };
+
+  const handleCopyInvite = async () => {
+    const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+    } catch {
+      // Fallback for restricted contexts (iframes, http, etc.)
+      const textarea = document.createElement("textarea");
+      textarea.value = inviteUrl;
+      textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try { document.execCommand("copy"); } catch { /* best effort */ }
+      document.body.removeChild(textarea);
+    }
+
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div className="relative">
-      <div
-        className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
-        style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)" }}
-      >
-        <Search size={12} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+    <div className="space-y-2">
+      {/* Frequent tripmates chips */}
+      {frequentTripmates.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {frequentTripmates.map((user) => (
+            <button
+              key={user.id}
+              onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Planner" })}
+              disabled={addMember.isPending}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
+              style={{
+                background: "var(--color-bt-tag-bg)",
+                color: "var(--color-bt-accent)",
+                border: "1px solid color-mix(in srgb, var(--color-bt-accent) 30%, transparent)",
+              }}
+            >
+              <span
+                className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {(user.nickname ?? user.name ?? user.email).charAt(0).toUpperCase()}
+              </span>
+              {user.nickname ?? user.name?.split(" ")[0]}
+              <Plus size={10} />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Email input + Find button */}
+      <div className="flex gap-1.5">
         <input
-          type="text"
-          value={query}
-          onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
-          onFocus={() => setShowResults(true)}
-          placeholder="Add a co-planner..."
-          className="flex-1 bg-transparent text-xs outline-none"
-          style={{ color: "var(--color-bt-text)" }}
+          type="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setStatus("idle"); setFoundUser(null); setInviteError(null); setAlreadyMemberName(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
+          placeholder="email@example.com"
+          className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+          style={{
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
         />
+        <button
+          onClick={handleLookup}
+          disabled={!email.includes("@")}
+          className="rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          Find
+        </button>
       </div>
 
-      {showResults && query.length >= 2 && (
+      {/* Found state */}
+      {status === "found" && foundUser && (
         <div
-          className="absolute bottom-full left-0 right-0 z-20 mb-1 overflow-hidden rounded-lg shadow-xl"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+          className="flex items-center gap-2 rounded-lg px-3 py-2"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
         >
-          {isFetching ? (
-            <div className="px-3 py-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Searching...
-            </div>
-          ) : results.length === 0 ? (
-            <div className="px-3 py-2 text-xs" style={{ color: "var(--color-bt-danger)" }}>
-              No account found
-            </div>
-          ) : (
-            results.map((user) => (
-              <button
-                key={user.id}
-                onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Member" })}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--color-bt-hover)]"
-              >
-                <div
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                >
-                  {(user.nickname ?? user.name ?? user.email ?? "?").charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate font-medium" style={{ color: "var(--color-bt-text)" }}>
-                    {user.name}
-                    {user.nickname && (
-                      <span className="ml-1" style={{ color: "var(--color-bt-text-dim)" }}>
-                        ({user.nickname})
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <Plus size={12} className="ml-auto flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-              </button>
-            ))
+          <div
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+          >
+            {(foundUser.nickname ?? foundUser.name ?? foundUser.email).charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {foundUser.name ?? foundUser.email}
+              {foundUser.nickname && (
+                <span className="ml-1" style={{ color: "var(--color-bt-text-dim)" }}>
+                  ({foundUser.nickname})
+                </span>
+              )}
+            </p>
+            <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              BuddyTrip member
+            </p>
+          </div>
+          <button
+            onClick={() => addMember.mutate({ tripId, userId: foundUser.id, role: "Planner" })}
+            disabled={addMember.isPending}
+            className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {addMember.isPending ? "Adding…" : "+ Add"}
+          </button>
+        </div>
+      )}
+
+      {/* Not found state */}
+      {status === "not-found" && (
+        <div
+          className="rounded-lg px-3 py-2.5 space-y-2"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            No BuddyTrip account found for that email.
+          </p>
+          {alreadyMemberName && (
+            <p className="text-xs font-medium" style={{ color: "var(--color-bt-warning)" }}>
+              Already on this trip as &ldquo;{alreadyMemberName}&rdquo;
+            </p>
           )}
+          {inviteError && (
+            <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
+              {inviteError}
+            </p>
+          )}
+          <button
+            onClick={async () => {
+              setInviteError(null);
+              setAlreadyMemberName(null);
+              try {
+                const result = await inviteByEmail.mutateAsync({ tripId, email });
+                if (result.status === "already_member") {
+                  setAlreadyMemberName(result.displayName);
+                  return;
+                }
+                if (result.status === "real_account_exists") {
+                  setInviteError("A BuddyTrip account exists for that email — try searching for it.");
+                  return;
+                }
+                setEmail("");
+                setStatus("idle");
+                setAlreadyMemberName(null);
+                utils.tripMembers.list.invalidate({ tripId });
+                onInvited();
+              } catch {
+                setInviteError("Failed to create invite. Please try again.");
+              }
+            }}
+            disabled={inviteByEmail.isPending}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {inviteByEmail.isPending ? (
+              <><Loader2 size={11} className="animate-spin" /> Sending invite…</>
+            ) : (
+              <><UserPlus size={11} /> Invite to BuddyTrip</>
+            )}
+          </button>
+          <button
+            onClick={handleCopyInvite}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {copied ? (
+              <><Check size={11} /> Link copied!</>
+            ) : (
+              <><Link size={11} /> Copy invite link instead</>
+            )}
+          </button>
         </div>
       )}
     </div>
@@ -1540,9 +1683,28 @@ function ReopenConfirmModal({
   const utils = trpc.useUtils();
 
   const unlockDest = trpc.trips.unlockDestination.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      if (prev) {
+        utils.trips.getById.setData({ tripId }, {
+          ...prev,
+          locked_destination_title: null,
+          locked_destination_location: null,
+          locked_destination_at: null,
+          comparison_mode: true,
+        });
+      }
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.trips.getById.setData({ tripId }, context.prev);
+    },
     onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
       onClose();
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
     },
   });
 
@@ -1617,10 +1779,24 @@ export default function IdeaComparisonPage() {
 
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
   const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
-  const { data: members = [] } = trpc.tripMembers.list.useQuery(
+  const { data: members = [], refetch: refetchMembers } = trpc.tripMembers.list.useQuery(
     { tripId },
     { enabled: isOwner }
   );
+
+  const { data: frequentTripmates = [], refetch: refetchTripmates } = trpc.users.frequentTripmates.useQuery(
+    { tripId },
+    { enabled: isOwner }
+  );
+
+  const utils = trpc.useUtils();
+  const removeMember = trpc.tripMembers.remove.useMutation({
+    onSuccess() {
+      refetchMembers();
+      refetchTripmates();
+      utils.tripMembers.list.invalidate({ tripId });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -1644,21 +1820,26 @@ export default function IdeaComparisonPage() {
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       <TopNav />
-      <TripBreadcrumb
-        tripId={tripId}
-        tripTitle={trip?.title ?? "Trip"}
-        pageName="Idea Zone"
-      />
 
-      {/* Mobile-only back link — breadcrumb is sufficient on desktop */}
-      <div className="lg:hidden px-4 pt-3 pb-0">
-        <button
-          onClick={() => router.back()}
-          className="text-sm transition-opacity hover:opacity-70"
-          style={{ color: "var(--color-bt-accent)" }}
+      {/* Back button row */}
+      <div
+        className="sticky top-0 z-30 flex items-center gap-3 border-b px-4 py-3"
+        style={{
+          background: "var(--color-bt-base)",
+          borderColor: "var(--color-bt-border)",
+        }}
+      >
+        <a
+          href={`/trips/${tripId}`}
+          className="-ml-1 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text)" }}
         >
-          ← Back to trip planning
-        </button>
+          <ChevronLeft size={18} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+          <span className="max-w-[160px] truncate">{trip?.title ?? "Trip"}</span>
+        </a>
+        <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
+          · Idea Zone
+        </span>
       </div>
 
       {trip?.locked_destination_title && (
@@ -1727,7 +1908,11 @@ export default function IdeaComparisonPage() {
           (() => {
             const lockedTitle = (trip?.locked_destination_title ?? "").toLowerCase();
             const lockedIdea = lockedTitle
-              ? ideasTyped.find((i) => i.title.toLowerCase() === lockedTitle)
+              ? ideasTyped.find(
+                  (i) =>
+                    i.location.toLowerCase() === lockedTitle ||
+                    i.title.toLowerCase() === lockedTitle
+                )
               : undefined;
             const lockedAt = trip?.locked_destination_at
               ? new Date(trip.locked_destination_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -1773,47 +1958,90 @@ export default function IdeaComparisonPage() {
                       className="mt-3 rounded-2xl border p-4"
                       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
                     >
-                      <p
-                        className="mb-3 text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        Crew ({members.length})
-                      </p>
+                      <div className="mb-3">
+                        <p
+                          className="text-xs font-semibold uppercase tracking-wider"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          Co-planners ({members.filter((m) => m.role === "Owner" || m.role === "Planner").length})
+                        </p>
+                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          Helping decide where you&apos;re headed
+                        </p>
+                      </div>
 
                       <div className="mb-3 space-y-2">
-                        {members.map((m) => {
-                          const display = m.displayName;
-                          const initial = display.charAt(0).toUpperCase();
-                          const roleColor =
-                            m.role === "Owner"
-                              ? "var(--color-bt-owner)"
-                              : m.role === "Planner"
-                              ? "var(--color-bt-planning)"
-                              : "var(--color-bt-text-dim)";
-                          return (
-                            <div key={m.user_id} className="flex items-center gap-2">
-                              <div
-                                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                                style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                              >
-                                {initial}
+                        {members
+                          .filter((m) => m.role === "Owner" || m.role === "Planner")
+                          .sort((a, b) => {
+                            const order = (m: typeof a) =>
+                              m.role === "Owner" ? 0 : m.status === "invited" ? 2 : 1;
+                            return order(a) - order(b);
+                          })
+                          .map((m) => {
+                            const isPending = m.status === "invited";
+                            const isMe = m.user_id === currentUser?.id;
+                            const display = isPending
+                              ? (m.user?.email ?? m.displayName)
+                              : m.displayName;
+                            const initial = display.charAt(0).toUpperCase();
+                            const roleColor =
+                              m.role === "Owner"
+                                ? "var(--color-bt-owner)"
+                                : "var(--color-bt-planning)";
+                            return (
+                              <div key={m.user_id} className="flex items-center gap-2">
+                                <div
+                                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                                  style={{
+                                    background: isPending ? "var(--color-bt-past-bg)" : "var(--color-bt-tag-bg)",
+                                    color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
+                                  }}
+                                >
+                                  {initial}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p
+                                    className="truncate text-xs"
+                                    style={{ color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
+                                  >
+                                    {display}
+                                  </p>
+                                  {(isPending || m.user?.is_guest) && m.user?.email && (
+                                    <p className="truncate text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                                      {m.user.email}
+                                    </p>
+                                  )}
+                                </div>
+                                {isPending ? (
+                                  <span className="text-[10px] font-semibold" style={{ color: "var(--color-bt-warning)" }}>
+                                    Invited
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-semibold" style={{ color: roleColor }}>
+                                    {m.role}
+                                  </span>
+                                )}
+                                {isOwner && !isMe && (
+                                  <button
+                                    onClick={() => removeMember.mutate({ tripId, userId: m.user_id })}
+                                    disabled={removeMember.isPending}
+                                    className="ml-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
+                                    style={{ color: "var(--color-bt-text-dim)" }}
+                                    title="Remove"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
                               </div>
-                              <span className="flex-1 truncate text-xs" style={{ color: "var(--color-bt-text)" }}>
-                                {display}
-                              </span>
-                              <span className="text-[10px] font-semibold" style={{ color: roleColor }}>
-                                {m.role}
-                              </span>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
 
                       <InviteInput
                         tripId={tripId}
-                        onInvited={() => {
-                          // members query auto-invalidates via InviteInput's onSuccess
-                        }}
+                        onInvited={() => { refetchMembers(); refetchTripmates(); }}
+                        frequentTripmates={frequentTripmates}
                       />
                     </div>
                   )}

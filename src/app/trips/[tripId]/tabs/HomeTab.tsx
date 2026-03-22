@@ -936,12 +936,12 @@ function PlanningSection({
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   // ── Destination ──────────────────────────────────────────────────────
-  const destLocked = !!trip.locked_destination_title;
-  const destVoting = !!trip.comparison_mode && !trip.locked_destination_title;
-  const destState: ArcCardState = destLocked ? "done" : destVoting ? "inProgress" : "none";
-  const destNote = destLocked
+  const isLocked = !!trip.locked_destination_title;
+  const isExploring = !!trip.comparison_mode && !isLocked;
+  const destState: ArcCardState = isLocked ? "done" : isExploring ? "inProgress" : "none";
+  const destNote = isLocked
     ? trip.locked_destination_title!
-    : destVoting
+    : isExploring
     ? `${ideas.length} idea${ideas.length !== 1 ? "s" : ""} · voting`
     : "Not set";
 
@@ -987,7 +987,7 @@ function PlanningSection({
         isOpen={openRow === "dest"}
         onToggle={() => toggle("dest")}
       >
-        {destLocked ? (
+        {isLocked ? (
           <div className="space-y-3">
             <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               {trip.locked_destination_title}
@@ -1257,6 +1257,8 @@ function AboutCard({ trip, onEdit }: { trip: TripData; onEdit?: () => void }) {
 function IdeaZonePreview({ tripId }: { tripId: string }) {
   const currentUser = useCurrentUser();
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const crewSize = Math.max(members.length, 1);
 
   if (ideas.length === 0) {
     return (
@@ -1271,60 +1273,104 @@ function IdeaZonePreview({ tripId }: { tripId: string }) {
     );
   }
 
-  const totalVotes = ideas.reduce((sum, i) => sum + i.votes.length, 0);
-  const maxVotes = Math.max(...ideas.map((i) => i.votes.length), 1);
-  const topIdeas = ideas
-    .slice()
-    .sort((a, b) => b.votes.length - a.votes.length)
-    .slice(0, 3);
+  const sorted = ideas.slice().sort((a, b) => b.votes.length - a.votes.length);
+  const topIdeas = sorted.slice(0, 3);
+  const remainingCount = Math.max(0, ideas.length - 3);
+  const totalVoters = new Set(ideas.flatMap((i) => i.votes.map((v: { user_id: string }) => v.user_id))).size;
 
   return (
-    <div className="px-4 py-3 space-y-2">
-      {topIdeas.map((idea) => (
-        <div key={idea.id} className="flex items-center gap-3">
-          {idea.image_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={idea.image_url}
-              alt={idea.title}
-              className="h-8 w-8 flex-shrink-0 rounded-lg object-cover"
-            />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {idea.title}
-            </p>
-            <div
-              className="mt-0.5 h-1 w-full overflow-hidden rounded-full"
-              style={{ background: "var(--color-bt-base)" }}
-            >
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.round((idea.votes.length / maxVotes) * 100)}%`,
-                  background: idea.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id)
-                    ? "var(--color-bt-accent)"
-                    : "var(--color-bt-border)",
-                  minWidth: idea.votes.length > 0 ? "4px" : "0px",
-                }}
-              />
+    <div>
+      {topIdeas.map((idea, i) => {
+        const isVotedByMe = idea.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
+        const barWidth = `${Math.round((idea.votes.length / crewSize) * 100)}%`;
+        const commentCount = idea.commentCount ?? 0;
+
+        return (
+          <div
+            key={idea.id}
+            style={{ borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
+          >
+            <div className="flex items-center gap-3 px-4 py-3">
+              {/* Thumbnail */}
+              {idea.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={idea.image_url}
+                  alt={idea.title}
+                  className="h-12 w-12 flex-shrink-0 rounded-xl object-cover"
+                />
+              ) : (
+                <div
+                  className="h-12 w-12 flex-shrink-0 rounded-xl"
+                  style={{ background: `hsl(${(idea.title.length * 37) % 360}, 40%, 25%)` }}
+                />
+              )}
+
+              {/* Content */}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                  {idea.title}
+                </p>
+
+                <p className="mt-0.5 truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {idea.location}
+                  {idea.cost_tier && (
+                    <span className="ml-1.5 font-medium" style={{ color: "var(--color-bt-accent)" }}>
+                      · {idea.cost_tier}
+                    </span>
+                  )}
+                  {idea.golf_courses && idea.golf_courses.length > 0 && (
+                    <span> · {idea.golf_courses.length} course{idea.golf_courses.length !== 1 ? "s" : ""}</span>
+                  )}
+                </p>
+
+                {/* Vote bar + counts */}
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div
+                    className="h-1 flex-1 overflow-hidden rounded-full"
+                    style={{ background: "var(--color-bt-base)" }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: barWidth,
+                        background: isVotedByMe ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                        minWidth: idea.votes.length > 0 ? "4px" : "0",
+                      }}
+                    />
+                  </div>
+                  <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
+                  </span>
+                  {commentCount > 0 && (
+                    <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                      · {commentCount} comment{commentCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {idea.votes.length}
+        );
+      })}
+
+      {/* Footer */}
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ borderTop: "1px solid var(--color-bt-border)" }}
+      >
+        {remainingCount > 0 ? (
+          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            +{remainingCount} more idea{remainingCount !== 1 ? "s" : ""}
           </span>
-        </div>
-      ))}
-      {ideas.length > 3 && (
-        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          +{ideas.length - 3} more ideas
-        </p>
-      )}
-      {totalVotes === 0 && (
-        <p className="pt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          No votes yet — be the first to pick
-        </p>
-      )}
+        ) : (
+          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {totalVoters === 0
+              ? "No votes yet — be the first"
+              : `${totalVoters} of ${crewSize} voted`}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -1346,9 +1392,10 @@ export function HomeTab({
 
   const status = getTripStatus(trip);
   const isCompleted = status === "past";
-  const isPreDestination = !!trip.comparison_mode && !trip.locked_destination_title;
+  const isLocked = !!trip.locked_destination_title;
+  const isExploring = !!trip.comparison_mode && !isLocked;
 
-  if (isPreDestination) {
+  if (isExploring) {
     return (
       <div className="flex flex-col gap-4 px-4">
         {/* Idea Zone summary panel */}

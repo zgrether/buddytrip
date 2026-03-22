@@ -180,11 +180,10 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
   const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
 
-  const displayLocation = lockedTitle
-    ? location && location !== lockedTitle
-      ? `${lockedTitle}, ${location}`
-      : lockedTitle
-    : location ?? "";
+  // Prefer location (locked_destination_location from parent) over lockedTitle
+  // (locked_destination_title). Both now hold the same value after the
+  // LockConfirmModal fix, but location is semantically the geographic string.
+  const displayLocation = location || lockedTitle || "";
 
   return (
     <LocationHero location={displayLocation || tripName} tripName={tripName}>

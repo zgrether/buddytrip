@@ -24,11 +24,17 @@ export const ideasRouter = router({
         });
       }
 
-      // Fetch votes for all ideas in this trip
-      const { data: votes } = await ctx.supabase
-        .from("idea_votes")
-        .select("idea_id, user_id, created_at")
-        .eq("trip_id", ctx.tripId);
+      // Fetch votes and comment counts for all ideas in this trip in parallel
+      const [{ data: votes }, { data: comments }] = await Promise.all([
+        ctx.supabase
+          .from("idea_votes")
+          .select("idea_id, user_id, created_at")
+          .eq("trip_id", ctx.tripId),
+        ctx.supabase
+          .from("idea_comments")
+          .select("idea_id")
+          .eq("trip_id", ctx.tripId),
+      ]);
 
       const votesByIdea = new Map<string, typeof votes>();
       for (const v of votes ?? []) {
@@ -37,9 +43,15 @@ export const ideasRouter = router({
         votesByIdea.set(v.idea_id, arr);
       }
 
+      const commentCountByIdea = new Map<string, number>();
+      for (const c of comments ?? []) {
+        commentCountByIdea.set(c.idea_id, (commentCountByIdea.get(c.idea_id) ?? 0) + 1);
+      }
+
       return (ideas ?? []).map((idea) => ({
         ...idea,
         votes: votesByIdea.get(idea.id) ?? [],
+        commentCount: commentCountByIdea.get(idea.id) ?? 0,
       }));
     }),
 

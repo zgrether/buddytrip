@@ -98,10 +98,11 @@ describe("trips router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("unlockDestination — owner can unlock", async () => {
+  it("unlockDestination — owner can unlock and restores comparison_mode", async () => {
     const caller = ctx.caller();
     const trip = await caller.trips.unlockDestination({ tripId });
     expect(trip.locked_destination_title).toBeNull();
+    expect(trip.comparison_mode).toBe(true);
   });
 
   // create with comparisonMode + lockedDestination
