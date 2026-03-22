@@ -109,7 +109,7 @@ export const usersRouter = router({
 
       if (!members) return [];
 
-      // Deduplicate and filter by name/nickname
+      // Deduplicate and filter by name/nickname (real accounts only)
       const seen = new Set<string>();
       const results = [];
       for (const m of members) {
@@ -123,11 +123,31 @@ export const usersRouter = router({
         };
         if (seen.has(u.id)) continue;
         seen.add(u.id);
+        if (u.is_guest) continue; // skip placeholder/ghost accounts
         const nameMatch = u.name?.toLowerCase().includes(query.toLowerCase());
         const nickMatch = u.nickname?.toLowerCase().includes(query.toLowerCase());
         if (nameMatch || nickMatch) results.push(u);
       }
 
-      return results.slice(0, 8);
+      // Enrich with shared trip titles for display
+      const enriched = await Promise.all(
+        results.map(async (u) => {
+          const { data: shared } = await ctx.supabase
+            .from("trip_members")
+            .select("trips!inner(title)")
+            .eq("user_id", u.id)
+            .in("trip_id", tripIds)
+            .limit(2);
+          return {
+            ...u,
+            sharedTripTitles: (shared ?? []).map((s) => {
+              const t = s.trips as unknown as { title: string } | { title: string }[];
+              return Array.isArray(t) ? t[0]?.title ?? "" : t.title;
+            }),
+          };
+        })
+      );
+
+      return enriched.slice(0, 8);
     }),
 });

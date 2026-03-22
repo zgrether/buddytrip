@@ -1447,6 +1447,9 @@ function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => v
   const [query, setQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteCopied, setInviteCopied] = useState(false);
   const utils = trpc.useUtils();
 
   const { data: results = [], isFetching } = trpc.users.search.useQuery(
@@ -1473,7 +1476,7 @@ function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => v
         <input
           type="text"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
+          onChange={(e) => { setQuery(e.target.value); setShowResults(true); setShowInviteForm(false); setInviteEmail(""); }}
           onFocus={() => setShowResults(true)}
           onBlur={() => setTimeout(() => setShowResults(false), 150)}
           placeholder="Add a co-planner..."
@@ -1501,14 +1504,7 @@ function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => v
               >
                 <div
                   className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                  style={{
-                    background: (user as { is_guest?: boolean }).is_guest
-                      ? "var(--color-bt-past-bg)"
-                      : "var(--color-bt-tag-bg)",
-                    color: (user as { is_guest?: boolean }).is_guest
-                      ? "var(--color-bt-text-dim)"
-                      : "var(--color-bt-accent)",
-                  }}
+                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
                 >
                   {(user.nickname ?? user.name ?? user.email ?? "?").charAt(0).toUpperCase()}
                 </div>
@@ -1522,20 +1518,91 @@ function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => v
                     )}
                   </p>
                   <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {(user as { is_guest?: boolean }).is_guest ? "Guest — no account yet" : "BuddyTrip member"}
+                    {((user as unknown as { sharedTripTitles?: string[] }).sharedTripTitles?.length ?? 0) > 0
+                      ? `From: ${(user as unknown as { sharedTripTitles: string[] }).sharedTripTitles.slice(0, 2).join(", ")}`
+                      : "BuddyTrip member"}
                   </p>
                 </div>
                 <Plus size={12} className="ml-auto flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
               </button>
             ))
-          ) : !query.includes("@") ? (
+          ) : !query.includes("@") && !showInviteForm ? (
             <div className="px-3 py-2.5">
               <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                No matches in your trip history.
+                No one named &ldquo;{query}&rdquo; in your trip history.
               </p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                Try their email address instead.
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setShowInviteForm(true)}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-opacity hover:opacity-80"
+                style={{
+                  background: "var(--color-bt-base)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-accent)",
+                }}
+              >
+                <Plus size={11} />
+                Invite {query} by email
+              </button>
+            </div>
+          ) : !query.includes("@") && showInviteForm ? (
+            <div className="px-3 py-3">
+              <p className="mb-2 text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
+                What&apos;s {query}&apos;s email?
               </p>
+              <input
+                autoFocus
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setShowInviteForm(false);
+                    setInviteEmail("");
+                  }
+                }}
+                placeholder="email@example.com"
+                className="mb-2 w-full rounded-lg border px-3 py-2 text-xs outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+                onMouseDown={(e) => e.preventDefault()}
+              />
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                disabled={!inviteEmail.includes("@")}
+                onClick={() => {
+                  const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
+                  navigator.clipboard.writeText(inviteUrl).then(() => {
+                    setInviteCopied(true);
+                    setTimeout(() => {
+                      setInviteCopied(false);
+                      setShowInviteForm(false);
+                      setInviteEmail("");
+                      setQuery("");
+                      setShowResults(false);
+                    }, 2000);
+                  });
+                }}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {inviteCopied ? (
+                  <><Check size={11} /> Invite link copied!</>
+                ) : (
+                  <><Link size={11} /> Copy invite link for {query}</>
+                )}
+              </button>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { setShowInviteForm(false); setInviteEmail(""); }}
+                className="mt-1.5 w-full py-1 text-[10px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Cancel
+              </button>
             </div>
           ) : (
             <div className="px-3 py-3">
