@@ -518,83 +518,43 @@ function IdeaCard({
             </div>
           )}
 
-          {/* Pros — only when content exists or actively editing */}
-          {((idea.pros && idea.pros.length > 0) || editingField === "pros") && (
+          {/* Pros / Cons — two columns on desktop, stacked on mobile */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Pros — left column */}
             <div>
-              <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>+ PROS</p>
-              {editingField === "pros" ? (
+              {((idea.pros && idea.pros.length > 0) || editingField === "pros") ? (
                 <div>
-                  <textarea
-                    autoFocus
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
-                    rows={3}
-                    placeholder="One pro per line"
-                    className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
-                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-accent)", color: "var(--color-bt-text)" }}
-                  />
-                  {inlineEditControls}
+                  <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>+ PROS</p>
+                  {editingField === "pros" ? (
+                    <div>
+                      <textarea
+                        autoFocus
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                        rows={3}
+                        placeholder="One pro per line"
+                        className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                        style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-accent)", color: "var(--color-bt-text)" }}
+                      />
+                      {inlineEditControls}
+                    </div>
+                  ) : (
+                    <ul
+                      className="space-y-1"
+                      onClick={canEdit ? () => startEdit("pros", idea.pros!.join("\n")) : undefined}
+                      style={{ cursor: canEdit ? "pointer" : "default" }}
+                    >
+                      {(idea.pros ?? []).map((p, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                          <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+                          {p}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-              ) : (
-                <ul
-                  className="space-y-1"
-                  onClick={canEdit ? () => startEdit("pros", idea.pros!.join("\n")) : undefined}
-                  style={{ cursor: canEdit ? "pointer" : "default" }}
-                >
-                  {(idea.pros ?? []).map((p, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                      <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-                      {p}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {/* Cons — only when content exists or actively editing */}
-          {((idea.cons && idea.cons.length > 0) || editingField === "cons") && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>× CONS</p>
-              {editingField === "cons" ? (
-                <div>
-                  <textarea
-                    autoFocus
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
-                    rows={3}
-                    placeholder="One con per line"
-                    className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
-                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-danger)", color: "var(--color-bt-text)" }}
-                  />
-                  {inlineEditControls}
-                </div>
-              ) : (
-                <ul
-                  className="space-y-1"
-                  onClick={canEdit ? () => startEdit("cons", idea.cons!.join("\n")) : undefined}
-                  style={{ cursor: canEdit ? "pointer" : "default" }}
-                >
-                  {(idea.cons ?? []).map((c, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                      <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
-                      {c}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {/* Per-field affordances — show when that field is empty */}
-          {canEdit &&
-            (!(idea.pros && idea.pros.length > 0) || !(idea.cons && idea.cons.length > 0)) &&
-            editingField !== "pros" &&
-            editingField !== "cons" && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
-              {!(idea.pros && idea.pros.length > 0) && (
+              ) : canEdit && editingField !== "cons" ? (
                 <button
                   onClick={() => startEdit("pros", "")}
                   className="text-xs transition-opacity hover:opacity-70"
@@ -602,8 +562,44 @@ function IdeaCard({
                 >
                   + Add pros
                 </button>
-              )}
-              {!(idea.cons && idea.cons.length > 0) && (
+              ) : null}
+            </div>
+
+            {/* Cons — right column */}
+            <div>
+              {((idea.cons && idea.cons.length > 0) || editingField === "cons") ? (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>× CONS</p>
+                  {editingField === "cons" ? (
+                    <div>
+                      <textarea
+                        autoFocus
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                        rows={3}
+                        placeholder="One con per line"
+                        className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                        style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-danger)", color: "var(--color-bt-text)" }}
+                      />
+                      {inlineEditControls}
+                    </div>
+                  ) : (
+                    <ul
+                      className="space-y-1"
+                      onClick={canEdit ? () => startEdit("cons", idea.cons!.join("\n")) : undefined}
+                      style={{ cursor: canEdit ? "pointer" : "default" }}
+                    >
+                      {(idea.cons ?? []).map((c, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                          <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
+                          {c}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : canEdit && editingField !== "pros" ? (
                 <button
                   onClick={() => startEdit("cons", "")}
                   className="text-xs transition-opacity hover:opacity-70"
@@ -611,103 +607,110 @@ function IdeaCard({
                 >
                   + Add cons
                 </button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Courses / Activities — two columns on desktop, stacked on mobile */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Courses — left column */}
+            <div>
+              {((idea.golf_courses && idea.golf_courses.length > 0) || editingField === "golfCourses" || canEdit) && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Courses
+                  </p>
+                  {editingField === "golfCourses" ? (
+                    <div>
+                      <textarea
+                        autoFocus
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                        rows={3}
+                        placeholder="One course per line"
+                        className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                        style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                      />
+                      {inlineEditControls}
+                    </div>
+                  ) : idea.golf_courses && idea.golf_courses.length > 0 ? (
+                    <div
+                      className="space-y-0.5"
+                      onClick={canEdit ? () => startEdit("golfCourses", (idea.golf_courses ?? []).join("\n")) : undefined}
+                      style={{ cursor: canEdit ? "pointer" : "default" }}
+                    >
+                      {idea.golf_courses.map((c, i) => (
+                        <span key={i} className="flex items-center gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                          <Flag size={11} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  ) : canEdit ? (
+                    <button
+                      onClick={() => startEdit("golfCourses", "")}
+                      className="text-sm transition-opacity hover:opacity-70"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      + Add courses
+                    </button>
+                  ) : null}
+                </div>
               )}
             </div>
-          )}
 
-          {/* Golf courses */}
-          {((idea.golf_courses && idea.golf_courses.length > 0) || editingField === "golfCourses" || canEdit) && (
+            {/* Activities — right column */}
             <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Courses
-              </p>
-              {editingField === "golfCourses" ? (
+              {((idea.activities && idea.activities.length > 0) || editingField === "activities" || canEdit) && (
                 <div>
-                  <textarea
-                    autoFocus
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
-                    rows={3}
-                    placeholder="One course per line"
-                    className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
-                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                  />
-                  {inlineEditControls}
-                </div>
-              ) : idea.golf_courses && idea.golf_courses.length > 0 ? (
-                <div
-                  className="space-y-0.5"
-                  onClick={canEdit ? () => startEdit("golfCourses", (idea.golf_courses ?? []).join("\n")) : undefined}
-                  style={{ cursor: canEdit ? "pointer" : "default" }}
-                >
-                  {idea.golf_courses.map((c, i) => (
-                    <span key={i} className="flex items-center gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                      <Flag size={11} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              ) : canEdit ? (
-                <button
-                  onClick={() => startEdit("golfCourses", "")}
-                  className="text-sm transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  + Add courses
-                </button>
-              ) : null}
-            </div>
-          )}
-
-          {/* Activities */}
-          {((idea.activities && idea.activities.length > 0) || editingField === "activities" || canEdit) && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Activities
-              </p>
-              {editingField === "activities" ? (
-                <div>
-                  <textarea
-                    autoFocus
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
-                    rows={3}
-                    placeholder="One activity per line"
-                    className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
-                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                  />
-                  {inlineEditControls}
-                </div>
-              ) : idea.activities && idea.activities.length > 0 ? (
-                <div
-                  className="flex flex-wrap gap-1.5"
-                  onClick={canEdit ? () => startEdit("activities", (idea.activities ?? []).join("\n")) : undefined}
-                  style={{ cursor: canEdit ? "pointer" : "default" }}
-                >
-                  {idea.activities.map((a, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
-                      style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Activities
+                  </p>
+                  {editingField === "activities" ? (
+                    <div>
+                      <textarea
+                        autoFocus
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") cancelEdit(); }}
+                        rows={3}
+                        placeholder="One activity per line"
+                        className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+                        style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                      />
+                      {inlineEditControls}
+                    </div>
+                  ) : idea.activities && idea.activities.length > 0 ? (
+                    <div
+                      className="flex flex-wrap gap-1.5"
+                      onClick={canEdit ? () => startEdit("activities", (idea.activities ?? []).join("\n")) : undefined}
+                      style={{ cursor: canEdit ? "pointer" : "default" }}
                     >
-                      <Zap size={9} />
-                      {a}
-                    </span>
-                  ))}
+                      {idea.activities.map((a, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+                          style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                        >
+                          <Zap size={9} />
+                          {a}
+                        </span>
+                      ))}
+                    </div>
+                  ) : canEdit ? (
+                    <button
+                      onClick={() => startEdit("activities", "")}
+                      className="text-sm transition-opacity hover:opacity-70"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      + Add activities
+                    </button>
+                  ) : null}
                 </div>
-              ) : canEdit ? (
-                <button
-                  onClick={() => startEdit("activities", "")}
-                  className="text-sm transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  + Add activities
-                </button>
-              ) : null}
+              )}
             </div>
-          )}
+          </div>
 
           {/* Accommodation */}
           {(idea.accommodation || editingField === "accommodation" || canEdit) && (
