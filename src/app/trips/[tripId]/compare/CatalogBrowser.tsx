@@ -34,44 +34,35 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
 
   const [activityFilter, setActivityFilter] = useState<string | null>(null);
   const [budgetFilter, setBudgetFilter] = useState<string | null>(null);
-  const [offset, setOffset] = useState(0);
-  const LIMIT = 20;
+  const [expanded, setExpanded] = useState(false);
+  const LIMIT = 100;
+  const INITIAL_COUNT = 6;
 
   const { data: catalogIdeas = [], isLoading } =
     trpc.ideas.catalogList.useQuery({
       categories: activityFilter ? [activityFilter] : undefined,
       costTier: budgetFilter ?? undefined,
       limit: LIMIT,
-      offset,
+      offset: 0,
     });
 
-  // Accumulate for "load more"
-  const [accumulated, setAccumulated] = useState<CatalogIdea[]>([]);
-  const allIdeas =
-    offset === 0 ? catalogIdeas : [...accumulated, ...catalogIdeas];
-
-  const handleLoadMore = () => {
-    setAccumulated(allIdeas);
-    setOffset((prev) => prev + LIMIT);
-  };
+  const visibleIdeas = expanded ? catalogIdeas : catalogIdeas.slice(0, INITIAL_COUNT);
+  const hasMore = catalogIdeas.length > INITIAL_COUNT;
 
   const resetFilters = () => {
     setActivityFilter(null);
     setBudgetFilter(null);
-    setOffset(0);
-    setAccumulated([]);
+    setExpanded(false);
   };
 
   const handleFilterActivity = (value: string | null) => {
     setActivityFilter(value);
-    setOffset(0);
-    setAccumulated([]);
+    setExpanded(false);
   };
 
   const handleFilterBudget = (value: string | null) => {
     setBudgetFilter((prev) => (prev === value ? null : value));
-    setOffset(0);
-    setAccumulated([]);
+    setExpanded(false);
   };
 
   return (
@@ -93,12 +84,12 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
       </div>
 
       {/* Filter chips */}
-      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 no-scrollbar">
+      <div className="flex flex-wrap gap-1.5 pb-2 mb-3">
         {ACTIVITY_FILTERS.map((f) => (
           <button
             key={f.label}
             onClick={() => handleFilterActivity(f.value)}
-            className="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+            className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
             style={{
               background:
                 activityFilter === f.value
@@ -126,7 +117,7 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
           <button
             key={f.label}
             onClick={() => handleFilterBudget(f.value)}
-            className="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+            className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
             style={{
               background:
                 budgetFilter === f.value
@@ -155,7 +146,7 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
       )}
 
       {/* Empty state */}
-      {!isLoading && allIdeas.length === 0 && (
+      {!isLoading && catalogIdeas.length === 0 && (
         <div className="py-8 text-center">
           <p
             className="text-sm mb-2"
@@ -174,9 +165,9 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
       )}
 
       {/* 2-column grid */}
-      {!isLoading && allIdeas.length > 0 && (
+      {!isLoading && catalogIdeas.length > 0 && (
         <div className="grid grid-cols-2 gap-2.5">
-          {allIdeas.map((idea, index) => {
+          {visibleIdeas.map((idea, index) => {
             const isSelected = selectedIds.has(idea.id);
             return (
               <button
@@ -282,19 +273,32 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
         </div>
       )}
 
-      {/* Load more */}
-      {!isLoading && catalogIdeas.length === LIMIT && (
+      {/* Expand / collapse */}
+      {!isLoading && hasMore && (
         <div className="mt-3 flex justify-center">
-          <button
-            onClick={handleLoadMore}
-            className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-            style={{
-              background: "var(--color-bt-dim-faint)",
-              color: "var(--color-bt-text)",
-            }}
-          >
-            Load more
-          </button>
+          {!expanded ? (
+            <button
+              onClick={() => setExpanded(true)}
+              className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+              style={{
+                background: "var(--color-bt-dim-faint)",
+                color: "var(--color-bt-text)",
+              }}
+            >
+              Show all {catalogIdeas.length} destinations ↓
+            </button>
+          ) : (
+            <button
+              onClick={() => setExpanded(false)}
+              className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+              style={{
+                background: "var(--color-bt-dim-faint)",
+                color: "var(--color-bt-text)",
+              }}
+            >
+              Show less ↑
+            </button>
+          )}
         </div>
       )}
     </div>

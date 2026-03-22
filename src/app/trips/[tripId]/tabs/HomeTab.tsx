@@ -20,6 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
@@ -1251,6 +1252,83 @@ function AboutCard({ trip, onEdit }: { trip: TripData; onEdit?: () => void }) {
   );
 }
 
+// ── IdeaZonePreview ──────────────────────────────────────────────────────
+
+function IdeaZonePreview({ tripId }: { tripId: string }) {
+  const currentUser = useCurrentUser();
+  const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId });
+
+  if (ideas.length === 0) {
+    return (
+      <div className="px-4 py-6 text-center">
+        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+          No ideas yet
+        </p>
+        <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          Head to the Idea Zone to browse destinations and get the crew voting
+        </p>
+      </div>
+    );
+  }
+
+  const totalVotes = ideas.reduce((sum, i) => sum + i.votes.length, 0);
+  const maxVotes = Math.max(...ideas.map((i) => i.votes.length), 1);
+  const topIdeas = ideas
+    .slice()
+    .sort((a, b) => b.votes.length - a.votes.length)
+    .slice(0, 3);
+
+  return (
+    <div className="px-4 py-3 space-y-2">
+      {topIdeas.map((idea) => (
+        <div key={idea.id} className="flex items-center gap-3">
+          {idea.image_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={idea.image_url}
+              alt={idea.title}
+              className="h-8 w-8 flex-shrink-0 rounded-lg object-cover"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {idea.title}
+            </p>
+            <div
+              className="mt-0.5 h-1 w-full overflow-hidden rounded-full"
+              style={{ background: "var(--color-bt-base)" }}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.round((idea.votes.length / maxVotes) * 100)}%`,
+                  background: idea.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id)
+                    ? "var(--color-bt-accent)"
+                    : "var(--color-bt-border)",
+                  minWidth: idea.votes.length > 0 ? "4px" : "0px",
+                }}
+              />
+            </div>
+          </div>
+          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {idea.votes.length}
+          </span>
+        </div>
+      ))}
+      {ideas.length > 3 && (
+        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          +{ideas.length - 3} more ideas
+        </p>
+      )}
+      {totalVotes === 0 && (
+        <p className="pt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          No votes yet — be the first to pick
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── HomeTab ──────────────────────────────────────────────────────────────
 
 export function HomeTab({
@@ -1268,6 +1346,44 @@ export function HomeTab({
 
   const status = getTripStatus(trip);
   const isCompleted = status === "past";
+  const isPreDestination = !!trip.comparison_mode && !trip.locked_destination_title;
+
+  if (isPreDestination) {
+    return (
+      <div className="flex flex-col gap-4 px-4">
+        {/* Idea Zone summary panel */}
+        <Link
+          href={`/trips/${trip.id}/compare`}
+          className="block rounded-2xl border overflow-hidden transition-all hover:border-[var(--color-bt-accent)]"
+          style={{
+            background: "var(--color-bt-card)",
+            borderColor: "var(--color-bt-border)",
+          }}
+        >
+          {/* Header row */}
+          <div
+            className="flex items-center justify-between px-4 py-3 border-b"
+            style={{ borderColor: "var(--color-bt-border)" }}
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className="h-2 w-2 rounded-full animate-pulse"
+                style={{ background: "var(--color-bt-accent)" }}
+              />
+              <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Where are you headed?
+              </span>
+            </div>
+            <span className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
+              Go to Idea Zone →
+            </span>
+          </div>
+
+          <IdeaZonePreview tripId={trip.id} />
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 px-4">
