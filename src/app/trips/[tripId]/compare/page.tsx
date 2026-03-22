@@ -1315,7 +1315,7 @@ export default function IdeaComparisonPage() {
       />
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-[896px] p-4">
+      <main className="mx-auto max-w-[1400px] p-4">
         {ideasTyped.length === 0 ? (
           canEdit ? (
             <EmptyStateOnboarding tripId={tripId} />
@@ -1346,72 +1346,81 @@ export default function IdeaComparisonPage() {
               !lockedIdea && maxVotes > 0 && idea.votes.length === maxVotes;
 
             return (
-              <div className="flex flex-col gap-4">
-                <VotingPanel tripId={tripId} ideas={ideasTyped} currentUserId={currentUser?.id} />
-                {canEdit && (
-                  <div className="flex justify-end">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+
+                {/* Right column — first in DOM for mobile (shows on top), pushed right on desktop */}
+                <div className="lg:order-last lg:w-72 lg:flex-shrink-0 lg:sticky lg:top-4 lg:self-start">
+                  <VotingPanel tripId={tripId} ideas={ideasTyped} currentUserId={currentUser?.id} />
+                  {canEdit && (
                     <button
                       data-testid="add-idea-btn"
                       onClick={() => setShowAddModal(true)}
-                      className="text-sm font-medium transition-opacity hover:opacity-70"
-                      style={{ color: "var(--color-bt-accent)" }}
+                      className="mt-2 w-full rounded-xl border py-2.5 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                      style={{
+                        borderColor: "var(--color-bt-border)",
+                        color: "var(--color-bt-accent)",
+                      }}
                     >
                       + Add idea
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* Current destination pinned at top */}
-                {lockedIdea && (
-                  <div>
-                    <div className="mb-2 flex items-center gap-1.5">
-                      <Lock size={13} style={{ color: "var(--color-bt-accent)" }} />
-                      <span
-                        className="text-[10px] font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--color-bt-accent)" }}
-                      >
-                        Current Destination
-                      </span>
-                    </div>
-                    <IdeaCard
-                      idea={lockedIdea}
-                      tripId={tripId}
-                      canEdit={canEdit}
-                      isOwner={isOwner}
-                      isLocked={true}
-                      index={0}
-                      onLock={setLockIdea}
-                      onDelete={setDeleteIdea}
-                    />
-                  </div>
-                )}
-
-                {/* Other ideas */}
-                {otherIdeas.length > 0 && (
-                  <div className="flex flex-col gap-4">
-                    {lockedIdea && (
-                      <p
-                        className="text-[10px] font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        Other Ideas
-                      </p>
-                    )}
-                    {otherIdeas.map((idea, i) => (
+                {/* Left column — idea cards */}
+                <div className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+                  {/* Current destination pinned at top */}
+                  {lockedIdea && (
+                    <div>
+                      <div className="mb-2 flex items-center gap-1.5">
+                        <Lock size={13} style={{ color: "var(--color-bt-accent)" }} />
+                        <span
+                          className="text-[10px] font-semibold uppercase tracking-wider"
+                          style={{ color: "var(--color-bt-accent)" }}
+                        >
+                          Current Destination
+                        </span>
+                      </div>
                       <IdeaCard
-                        key={idea.id}
-                        idea={idea}
+                        idea={lockedIdea}
                         tripId={tripId}
                         canEdit={canEdit}
                         isOwner={isOwner}
-                        isLeading={isLeading(idea)}
-                        index={(lockedIdea ? 1 : 0) + i}
+                        isLocked={true}
+                        index={0}
                         onLock={setLockIdea}
                         onDelete={setDeleteIdea}
                       />
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  )}
+
+                  {/* Other ideas */}
+                  {otherIdeas.length > 0 && (
+                    <div className="flex flex-col gap-4">
+                      {lockedIdea && (
+                        <p
+                          className="text-[10px] font-semibold uppercase tracking-wider"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          Other Ideas
+                        </p>
+                      )}
+                      {otherIdeas.map((idea, i) => (
+                        <IdeaCard
+                          key={idea.id}
+                          idea={idea}
+                          tripId={tripId}
+                          canEdit={canEdit}
+                          isOwner={isOwner}
+                          isLeading={isLeading(idea)}
+                          index={(lockedIdea ? 1 : 0) + i}
+                          onLock={setLockIdea}
+                          onDelete={setDeleteIdea}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
             );
           })()
