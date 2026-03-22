@@ -1569,7 +1569,7 @@ export default function IdeaComparisonPage() {
           onClick={() => setShowAddModal(false)}
         >
           <div
-            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl"
+            className="w-full max-w-lg lg:max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
             style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
             onClick={(e) => e.stopPropagation()}
           >
