@@ -245,16 +245,13 @@ export const tripMembersRouter = router({
 
       const { error } = await ctx.supabase
         .from("trip_members")
-        .upsert(
-          {
-            id: crypto.randomUUID(),
-            trip_id: ctx.tripId,
-            user_id: guestUserId,
-            role: "Planner",
-            status: "invited",
-          },
-          { onConflict: "trip_id,user_id", ignoreDuplicates: false }
-        );
+        .insert({
+          id: crypto.randomUUID(),
+          trip_id: ctx.tripId,
+          user_id: guestUserId,
+          role: "Planner",
+          status: "invited",
+        });
 
       if (error) {
         throw new TRPCError({
