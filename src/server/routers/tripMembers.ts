@@ -198,7 +198,7 @@ export const tripMembersRouter = router({
       // Check if a real (non-guest) account already exists for this email
       const { data: existing } = await ctx.supabase
         .from("users")
-        .select("id, is_guest")
+        .select("id, name, nickname, is_guest")
         .eq("email", email)
         .maybeSingle();
 
@@ -239,7 +239,8 @@ export const tripMembersRouter = router({
         .maybeSingle();
 
       if (alreadyMember) {
-        return { status: "already_member" as const };
+        const displayName = existing?.nickname ?? existing?.name ?? email;
+        return { status: "already_member" as const, displayName };
       }
 
       const { error } = await ctx.supabase

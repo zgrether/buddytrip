@@ -1458,6 +1458,7 @@ function InviteInput({
   const [foundUser, setFoundUser] = useState<{ id: string; name: string | null; nickname: string | null; email: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [alreadyMemberName, setAlreadyMemberName] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
   const addMember = trpc.tripMembers.add.useMutation({
@@ -1540,7 +1541,7 @@ function InviteInput({
         <input
           type="email"
           value={email}
-          onChange={(e) => { setEmail(e.target.value); setStatus("idle"); setFoundUser(null); setInviteError(null); }}
+          onChange={(e) => { setEmail(e.target.value); setStatus("idle"); setFoundUser(null); setInviteError(null); setAlreadyMemberName(null); }}
           onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
           placeholder="email@example.com"
           className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
@@ -1605,6 +1606,11 @@ function InviteInput({
           <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             No BuddyTrip account found for that email.
           </p>
+          {alreadyMemberName && (
+            <p className="text-xs font-medium" style={{ color: "var(--color-bt-warning)" }}>
+              Already on this trip as &ldquo;{alreadyMemberName}&rdquo;
+            </p>
+          )}
           {inviteError && (
             <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
               {inviteError}
@@ -1613,10 +1619,11 @@ function InviteInput({
           <button
             onClick={async () => {
               setInviteError(null);
+              setAlreadyMemberName(null);
               try {
                 const result = await inviteByEmail.mutateAsync({ tripId, email });
                 if (result.status === "already_member") {
-                  setInviteError("This person is already on the trip.");
+                  setAlreadyMemberName(result.displayName);
                   return;
                 }
                 if (result.status === "real_account_exists") {
@@ -1625,7 +1632,7 @@ function InviteInput({
                 }
                 setEmail("");
                 setStatus("idle");
-                setInviteError(null);
+                setAlreadyMemberName(null);
                 utils.tripMembers.list.invalidate({ tripId });
                 onInvited();
               } catch {
@@ -1958,12 +1965,19 @@ export default function IdeaComparisonPage() {
                                 >
                                   {initial}
                                 </div>
-                                <span
-                                  className="flex-1 truncate text-xs"
-                                  style={{ color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
-                                >
-                                  {display}
-                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p
+                                    className="truncate text-xs"
+                                    style={{ color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
+                                  >
+                                    {display}
+                                  </p>
+                                  {(isPending || m.user?.is_guest) && m.user?.email && (
+                                    <p className="truncate text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                                      {m.user.email}
+                                    </p>
+                                  )}
+                                </div>
                                 {isPending ? (
                                   <span className="text-[10px] font-semibold" style={{ color: "var(--color-bt-warning)" }}>
                                     Invited
