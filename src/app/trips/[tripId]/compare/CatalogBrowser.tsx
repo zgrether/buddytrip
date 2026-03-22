@@ -84,12 +84,12 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
       </div>
 
       {/* Filter chips */}
-      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 no-scrollbar">
+      <div className="flex flex-wrap gap-1.5 pb-2 mb-3">
         {ACTIVITY_FILTERS.map((f) => (
           <button
             key={f.label}
             onClick={() => handleFilterActivity(f.value)}
-            className="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+            className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
             style={{
               background:
                 activityFilter === f.value
@@ -117,7 +117,7 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
           <button
             key={f.label}
             onClick={() => handleFilterBudget(f.value)}
-            className="shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+            className="rounded-full px-3 py-1 text-xs font-medium transition-colors"
             style={{
               background:
                 budgetFilter === f.value
