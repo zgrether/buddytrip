@@ -373,7 +373,13 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       await utils.trips.getById.cancel({ tripId: trip.id });
       const prev = utils.trips.getById.getData({ tripId: trip.id });
       if (prev) {
-        utils.trips.getById.setData({ tripId: trip.id }, { ...prev, locked_destination_title: null, locked_destination_location: null });
+        utils.trips.getById.setData({ tripId: trip.id }, {
+          ...prev,
+          locked_destination_title: null,
+          locked_destination_location: null,
+          locked_destination_at: null,
+          comparison_mode: true,
+        });
       }
       return { prev };
     },
