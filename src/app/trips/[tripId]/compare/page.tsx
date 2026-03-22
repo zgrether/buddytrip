@@ -1615,14 +1615,7 @@ export default function IdeaComparisonPage() {
     }
   }, [showAddModal]);
 
-  // Reset expanded row when destination is unlocked
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
-  useEffect(() => {
-    if (!trip?.locked_destination_title) {
-      setExpandedIdeaId(null);
-    }
-  }, [trip?.locked_destination_title]);
-
   const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
@@ -1884,7 +1877,7 @@ export default function IdeaComparisonPage() {
                           style={{ border: "1px solid var(--color-bt-border)" }}
                         >
                           {otherIdeas.map((idea, i) => {
-                            const isExpanded = expandedIdeaId === idea.id;
+                            const isExpanded = !!lockedIdea && expandedIdeaId === idea.id;
                             return (
                               <div key={idea.id}>
                                 {i > 0 && (
