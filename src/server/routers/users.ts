@@ -63,7 +63,9 @@ export const usersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // search — search users by email (for invite flow)
+  // search — privacy-aware user search
+  //   @ in query → exact email match, any user on platform
+  //   name query  → trip history only, never strangers
   // -----------------------------------------------------------------------
   search: authedProcedure
     .input(
@@ -72,23 +74,60 @@ export const usersRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const q = input.query.trim();
-      const pattern = `%${q}%`;
+      const query = input.query.trim();
+      const userId = ctx.user.id;
+      const isEmailSearch = query.includes("@");
 
-      // Search across name, nickname, and email
-      const { data, error } = await ctx.supabase
-        .from("users")
-        .select("id, name, nickname, email")
-        .or(`name.ilike.${pattern},nickname.ilike.${pattern},email.ilike.${pattern}`)
-        .limit(10);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Search failed",
-        });
+      if (isEmailSearch) {
+        const { data, error } = await ctx.supabase
+          .from("users")
+          .select("id, name, nickname, email, is_guest")
+          .eq("email", query.toLowerCase())
+          .neq("id", userId)
+          .limit(1);
+        if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        return data ?? [];
       }
 
-      return data ?? [];
+      if (query.length < 2) return [];
+
+      // Get trips the current user is on
+      const { data: myTrips } = await ctx.supabase
+        .from("trip_members")
+        .select("trip_id")
+        .eq("user_id", userId);
+
+      const tripIds = (myTrips ?? []).map((t) => t.trip_id);
+      if (tripIds.length === 0) return [];
+
+      // Find members of those trips matching the name query
+      const { data: members } = await ctx.supabase
+        .from("trip_members")
+        .select("user_id, users!inner(id, name, nickname, email, is_guest)")
+        .in("trip_id", tripIds)
+        .neq("user_id", userId);
+
+      if (!members) return [];
+
+      // Deduplicate and filter by name/nickname
+      const seen = new Set<string>();
+      const results = [];
+      for (const m of members) {
+        const raw = m.users as unknown;
+        const u = (Array.isArray(raw) ? raw[0] : raw) as {
+          id: string;
+          name: string | null;
+          nickname: string | null;
+          email: string;
+          is_guest: boolean;
+        };
+        if (seen.has(u.id)) continue;
+        seen.add(u.id);
+        const nameMatch = u.name?.toLowerCase().includes(query.toLowerCase());
+        const nickMatch = u.nickname?.toLowerCase().includes(query.toLowerCase());
+        if (nameMatch || nickMatch) results.push(u);
+      }
+
+      return results.slice(0, 8);
     }),
 });

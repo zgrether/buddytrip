@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Search,
   Plus,
+  Link,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -1445,6 +1446,7 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
 function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => void }) {
   const [query, setQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
+  const [copied, setCopied] = useState(false);
   const utils = trpc.useUtils();
 
   const { data: results = [], isFetching } = trpc.users.search.useQuery(
@@ -1473,6 +1475,7 @@ function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => v
           value={query}
           onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
           onFocus={() => setShowResults(true)}
+          onBlur={() => setTimeout(() => setShowResults(false), 150)}
           placeholder="Add a co-planner..."
           className="flex-1 bg-transparent text-xs outline-none"
           style={{ color: "var(--color-bt-text)" }}
@@ -1488,36 +1491,79 @@ function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => v
             <div className="px-3 py-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Searching...
             </div>
-          ) : results.length === 0 ? (
-            <div className="px-3 py-2 text-xs" style={{ color: "var(--color-bt-danger)" }}>
-              No account found
-            </div>
-          ) : (
+          ) : results.length > 0 ? (
             results.map((user) => (
               <button
                 key={user.id}
-                onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Member" })}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--color-bt-hover)]"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Planner" })}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
               >
                 <div
                   className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                  style={{
+                    background: (user as { is_guest?: boolean }).is_guest
+                      ? "var(--color-bt-past-bg)"
+                      : "var(--color-bt-tag-bg)",
+                    color: (user as { is_guest?: boolean }).is_guest
+                      ? "var(--color-bt-text-dim)"
+                      : "var(--color-bt-accent)",
+                  }}
                 >
                   {(user.nickname ?? user.name ?? user.email ?? "?").charAt(0).toUpperCase()}
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate font-medium" style={{ color: "var(--color-bt-text)" }}>
-                    {user.name}
-                    {user.nickname && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
+                    {user.name ?? user.nickname ?? user.email}
+                    {user.nickname && user.name && (
                       <span className="ml-1" style={{ color: "var(--color-bt-text-dim)" }}>
                         ({user.nickname})
                       </span>
                     )}
                   </p>
+                  <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {(user as { is_guest?: boolean }).is_guest ? "Guest — no account yet" : "BuddyTrip member"}
+                  </p>
                 </div>
                 <Plus size={12} className="ml-auto flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
               </button>
             ))
+          ) : !query.includes("@") ? (
+            <div className="px-3 py-2.5">
+              <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                No matches in your trip history.
+              </p>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                Try their email address instead.
+              </p>
+            </div>
+          ) : (
+            <div className="px-3 py-3">
+              <p className="mb-2 text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
+                &ldquo;{query}&rdquo; isn&apos;t on BuddyTrip yet
+              </p>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
+                  navigator.clipboard.writeText(inviteUrl).then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  });
+                }}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {copied ? (
+                  <><Check size={11} /> Invite link copied!</>
+                ) : (
+                  <><Link size={11} /> Copy invite link</>
+                )}
+              </button>
+              <p className="mt-1.5 text-center text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                They&apos;ll be added as a co-planner when they sign up
+              </p>
+            </div>
           )}
         </div>
       )}
@@ -1773,12 +1819,17 @@ export default function IdeaComparisonPage() {
                       className="mt-3 rounded-2xl border p-4"
                       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
                     >
-                      <p
-                        className="mb-3 text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        Crew ({members.length})
-                      </p>
+                      <div className="mb-3">
+                        <p
+                          className="text-xs font-semibold uppercase tracking-wider"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          Co-planners ({members.filter((m) => m.role === "Owner" || m.role === "Planner").length})
+                        </p>
+                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          Helping decide where you&apos;re headed
+                        </p>
+                      </div>
 
                       <div className="mb-3 space-y-2">
                         {members.map((m) => {
