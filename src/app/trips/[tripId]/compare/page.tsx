@@ -1367,6 +1367,19 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           >
             {isSubmitting ? (
               <><Loader2 size={16} className="animate-spin" /> Saving…</>
+            ) : onClose ? (
+              <>
+                Add {localIdeas[0]?.title}
+                {localIdeas.length > 1 && (
+                  <span
+                    className="ml-1 rounded-full px-2 py-0.5 text-xs font-bold"
+                    style={{ background: "rgba(0,0,0,0.2)" }}
+                  >
+                    +{localIdeas.length - 1} more
+                  </span>
+                )}
+                {" "}to the list →
+              </>
             ) : (
               <>
                 Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →
