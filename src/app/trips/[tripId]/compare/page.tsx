@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { TopNav } from "@/components/TopNav";
@@ -82,9 +82,16 @@ function CommentsSection({ tripId, ideaId, variant = "thread" }: { tripId: strin
 
   const visibleComments = showAll ? comments : comments.slice(0, 3);
 
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (variant === "chat" && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [comments.length, variant]);
+
   if (variant === "chat") {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         <p
           className="mb-2 flex-shrink-0 text-[10px] font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
@@ -93,7 +100,7 @@ function CommentsSection({ tripId, ideaId, variant = "thread" }: { tripId: strin
         </p>
 
         {/* Scrollable message area */}
-        <div className="min-h-[120px] flex-1 space-y-3 overflow-y-auto">
+        <div className="flex-1 space-y-3 overflow-y-auto min-h-0">
           {comments.length === 0 && (
             <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
               No messages yet — be the first
@@ -127,6 +134,7 @@ function CommentsSection({ tripId, ideaId, variant = "thread" }: { tripId: strin
               </div>
             );
           })}
+          <div ref={chatEndRef} />
         </div>
 
         {/* Input — pinned to bottom */}
@@ -813,12 +821,14 @@ function IdeaCard({
           )}
         </div>
 
-        {/* Right column — crew chat, desktop only */}
+        {/* Right column — crew chat, desktop only. Height set by left column via grid row. */}
         <div
-          className="hidden lg:flex lg:flex-col p-4"
+          className="relative hidden lg:block"
           style={{ borderLeft: "1px solid var(--color-bt-border)" }}
         >
-          <CommentsSection tripId={tripId} ideaId={idea.id} variant="chat" />
+          <div className="absolute inset-0 flex flex-col p-4">
+            <CommentsSection tripId={tripId} ideaId={idea.id} variant="chat" />
+          </div>
         </div>
       </div>
 
