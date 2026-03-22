@@ -8,6 +8,8 @@ import {
   Search,
   Plus,
   Loader2,
+  MapPin,
+  Sparkles,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { UserMenu } from "@/components/UserMenu";
@@ -37,6 +39,9 @@ export default function TripNewPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [destinationMode, setDestinationMode] = useState<null | "known" | "exploring">(null);
+  const [destinationText, setDestinationText] = useState("");
+
   const { data: searchResults = [], isFetching } = trpc.users.search.useQuery(
     { query },
     { enabled: query.length >= 2 }
@@ -62,13 +67,29 @@ export default function TripNewPage() {
     setError("");
     setIsSubmitting(true);
     const tripId = crypto.randomUUID();
+
+    const isKnown = destinationMode === "known" && destinationText.trim();
+    const isExploring = destinationMode === "exploring";
+
     try {
       await createTrip.mutateAsync({
         id: tripId,
         title: tripName.trim(),
         coplanners: invites.map((i) => ({ userId: i.userId, role: i.role })),
+        ...(isKnown && {
+          lockedDestination: {
+            title: destinationText.trim(),
+            location: destinationText.trim(),
+          },
+        }),
+        comparisonMode: isExploring,
       });
-      router.replace(`/trips/${tripId}`);
+
+      if (isExploring) {
+        router.replace(`/trips/${tripId}/compare`);
+      } else {
+        router.replace(`/trips/${tripId}`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
       setIsSubmitting(false);
@@ -169,7 +190,7 @@ export default function TripNewPage() {
             className="mb-1.5 block text-sm font-medium"
             style={{ color: "var(--color-bt-text)" }}
           >
-            Invite Co-conspirators{" "}
+            Invite Co-planners{" "}
             <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
           </label>
 
@@ -333,6 +354,77 @@ export default function TripNewPage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Optional destination decision */}
+        <div>
+          <label
+            className="mb-1.5 block text-sm font-medium"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            Where are you headed?{" "}
+            <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
+          </label>
+
+          <div className="flex flex-col gap-2">
+            {/* Known destination */}
+            <button
+              type="button"
+              onClick={() => setDestinationMode((m) => m === "known" ? null : "known")}
+              className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all"
+              style={{
+                background: destinationMode === "known" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+                borderColor: destinationMode === "known" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+              }}
+            >
+              <MapPin size={18} style={{ color: destinationMode === "known" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", flexShrink: 0 }} />
+              <div>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  I know where we&apos;re going
+                </p>
+                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Lock in a destination now
+                </p>
+              </div>
+            </button>
+
+            {destinationMode === "known" && (
+              <input
+                autoFocus
+                type="text"
+                value={destinationText}
+                onChange={(e) => setDestinationText(e.target.value)}
+                placeholder="Bandon Dunes, OR"
+                className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
+                style={{
+                  background: "var(--color-bt-card)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+            )}
+
+            {/* Exploring */}
+            <button
+              type="button"
+              onClick={() => setDestinationMode((m) => m === "exploring" ? null : "exploring")}
+              className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all"
+              style={{
+                background: destinationMode === "exploring" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+                borderColor: destinationMode === "exploring" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+              }}
+            >
+              <Sparkles size={18} style={{ color: destinationMode === "exploring" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", flexShrink: 0 }} />
+              <div>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  Not sure yet — let&apos;s figure it out
+                </p>
+                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Browse ideas and vote with the crew
+                </p>
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* Create */}

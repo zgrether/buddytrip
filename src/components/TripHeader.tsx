@@ -134,23 +134,29 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       </div>
     </div>
 
-    {/* Destination: TBD */}
-    <div
-      className="mt-2 flex items-center gap-1 text-sm"
-      style={{ color: "var(--color-bt-text-dim)" }}
-    >
-      <MapPin size={13} />
-      <span>{location || "Destination: TBD"}</span>
-    </div>
+    {location ? (
+      <div
+        className="mt-2 flex items-center gap-1 text-sm"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <MapPin size={13} />
+        <span>{location}</span>
+      </div>
+    ) : (
+      <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+        Destination TBD
+      </p>
+    )}
 
-    {/* Dates: TBD */}
-    <div
-      className="mt-1 flex items-center gap-1 text-xs"
-      style={{ color: "var(--color-bt-text-dim)" }}
-    >
-      <Calendar size={11} />
-      <span>{dateRange && dateRange !== "Dates TBD" ? dateRange : "Dates: TBD"}</span>
-    </div>
+    {dateRange && dateRange !== "Dates TBD" && (
+      <div
+        className="mt-1 flex items-center gap-1 text-xs"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <Calendar size={11} />
+        <span>{dateRange}</span>
+      </div>
+    )}
   </div>
 );
 

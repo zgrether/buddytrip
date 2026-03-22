@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MoreHorizontal, Save, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -189,6 +189,19 @@ export default function TripDetailPage() {
       utils.trips.list.invalidate();
     },
   });
+
+  // Redirect non-owners to Idea Zone when trip is in exploration mode (comparison_mode: true, no destination set)
+  useEffect(() => {
+    if (
+      trip &&
+      !trip.locked_destination_title &&
+      trip.comparison_mode &&
+      role &&
+      role !== "Owner"
+    ) {
+      router.replace(`/trips/${tripId}/compare`);
+    }
+  }, [trip, role, tripId, router]);
 
   // ── Loading ───────────────────────────────────────────────────────────────
   // Wait for ALL queries (trip + home-tab data) before rendering so every

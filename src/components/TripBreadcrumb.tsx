@@ -33,10 +33,10 @@ export function TripBreadcrumb({
         <button
           onClick={() => router.push(backHref)}
           className="flex flex-shrink-0 items-center gap-0.5 transition-opacity hover:opacity-70"
-          style={{ color: "var(--color-bt-text-dim)" }}
+          style={{ color: pageName ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
         >
           <ChevronLeft size={16} className="-ml-1" />
-          <span className="max-w-[160px] truncate">{backLabel}</span>
+          <span className={`max-w-[160px] truncate${pageName ? " font-semibold" : ""}`}>{backLabel}</span>
         </button>
 
         {pageName && (

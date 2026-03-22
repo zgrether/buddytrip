@@ -18,6 +18,9 @@ import {
   Loader2,
   Trash2,
   Check,
+  CheckCircle2,
+  Search,
+  Plus,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -308,12 +311,6 @@ function IdeaCard({
     },
   });
 
-  const unlockDest = trpc.trips.unlockDestination.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-    },
-  });
-
   const startEdit = (field: typeof editingField, value: string) => {
     setEditingField(field);
     setEditDraft(value);
@@ -370,7 +367,7 @@ function IdeaCard({
     >
       {/* ── Hero ──────────────────────────────────────────────────────── */}
       <div
-        className="relative min-h-[160px] overflow-hidden"
+        className={`relative overflow-hidden ${isLocked ? "min-h-[220px]" : "min-h-[160px]"}`}
         style={{
           background: idea.image_url ? undefined : ideaGradient(index, isDark),
         }}
@@ -778,33 +775,21 @@ function IdeaCard({
 
 
           {/* Footer actions — inside left column */}
-          {(isOwner || canEdit) && (
+          {(isOwner || canEdit) && !isLocked && (
             <div
               className="flex items-center justify-between pt-3"
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
             >
               {isOwner && (
-                isLocked ? (
-                  <button
-                    onClick={() => unlockDest.mutate({ tripId })}
-                    disabled={unlockDest.isPending}
-                    className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70 disabled:opacity-40"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    <Lock size={11} />
-                    Return to discussion
-                  </button>
-                ) : (
-                  <button
-                    data-testid={`lock-idea-${idea.id}`}
-                    onClick={() => onLock(idea)}
-                    className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    <Lock size={11} />
-                    Set as destination
-                  </button>
-                )
+                <button
+                  data-testid={`lock-idea-${idea.id}`}
+                  onClick={() => onLock(idea)}
+                  className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  <Lock size={11} />
+                  Set as destination
+                </button>
               )}
               {!isOwner && <span />}
               {canEdit && (
@@ -914,7 +899,6 @@ function LockConfirmModal({
   onClose: () => void;
 }) {
   useModalBackButton(onClose);
-  const router = useRouter();
   const utils = trpc.useUtils();
 
   const lockDest = trpc.trips.lockDestination.useMutation({
@@ -930,7 +914,7 @@ function LockConfirmModal({
       if (context?.prev !== undefined) utils.trips.getById.setData({ tripId }, context.prev);
     },
     onSuccess() {
-      router.push(`/trips/${tripId}`);
+      onClose();
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
@@ -990,9 +974,11 @@ function LockConfirmModal({
 
 // ── VotingPanel ───────────────────────────────────────────────────────────
 
-function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: Idea[]; currentUserId: string | undefined }) {
+function VotingPanel({ tripId, ideas, currentUserId, lockedIdeaId }: { tripId: string; ideas: Idea[]; currentUserId: string | undefined; lockedIdeaId?: string }) {
   const utils = trpc.useUtils();
   const [pendingIdeaId, setPendingIdeaId] = useState<string | null>(null);
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const crewSize = Math.max(members.length, 1);
 
   const vote = trpc.ideas.vote.useMutation({
     async onMutate({ ideaId }) {
@@ -1026,58 +1012,67 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
       className="mb-6 rounded-2xl border p-4"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
         Crew votes
       </p>
+      <p className="mb-3 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+        {new Set(ideas.flatMap((i) => i.votes.map((v) => v.user_id))).size} of {crewSize} voted
+      </p>
       <div className="space-y-2">
-        {(() => {
-          const ordered = [...ideas].sort((a, b) => a.created_at.localeCompare(b.created_at));
-          const globalMax = Math.max(...ordered.map((i) => i.votes.length), 1);
-          return ordered.map((idea) => {
-          const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
-          const barWidth = `${Math.round((idea.votes.length / globalMax) * 100)}%`;
-          return (
-            <div key={idea.id}>
-              <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                  {idea.title}
-                </p>
-                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <button
-                data-testid={`vote-idea-${idea.id}`}
-                disabled={pendingIdeaId === idea.id}
-                onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
-                className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-40"
-                style={{
-                  background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-base)",
-                  border: `1px solid ${isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-                  color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                }}
-              >
-                <ThumbsUp size={12} />
-                {isVoted ? "My pick" : "Pick"}
-              </button>
-              </div>
-              <div
-                className="mt-1 h-1 overflow-hidden rounded-full"
-                style={{ background: "var(--color-bt-base)", width: "100%" }}
-              >
+        {ideas.map((idea) => {
+            const isLockedRow = idea.id === lockedIdeaId;
+            const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
+            const barWidth = `${Math.round((idea.votes.length / crewSize) * 100)}%`;
+            return (
+              <div key={idea.id}>
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="line-clamp-2 text-sm font-medium leading-tight"
+                      style={{ color: isLockedRow ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
+                    >
+                      {idea.title}
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  {!lockedIdeaId && (
+                    <button
+                      data-testid={`vote-idea-${idea.id}`}
+                      disabled={pendingIdeaId === idea.id}
+                      onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
+                      className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-40"
+                      style={{
+                        background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-base)",
+                        border: `1px solid ${isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                        color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                      }}
+                    >
+                      <ThumbsUp size={12} />
+                      {isVoted ? "My vote" : "Vote"}
+                    </button>
+                  )}
+                </div>
                 <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: barWidth,
-                    background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                  }}
-                />
+                  className="mt-1 h-1 overflow-hidden rounded-full"
+                  style={{ background: "var(--color-bt-base)", width: "100%" }}
+                >
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: barWidth,
+                      background: isLockedRow
+                        ? "var(--color-bt-accent)"
+                        : isVoted
+                        ? "var(--color-bt-border)"
+                        : "var(--color-bt-border)",
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          );
-        });
-        })()}
+            );
+          })}
       </div>
     </div>
   );
@@ -1200,7 +1195,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         localIdeas.map((idea) =>
           createIdea.mutateAsync({
             tripId,
-            id: idea.id,
+            id: crypto.randomUUID(), // always fresh — avoids PK conflicts on retry or duplicate catalog picks
             title: idea.title,
             location: idea.location,
             description: idea.description,
@@ -1217,8 +1212,8 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
       utils.ideas.list.invalidate({ tripId });
       setLocalIdeas([]);
       onClose?.();
-    } catch {
-      // keep local ideas so user can retry
+    } catch (err) {
+      console.error("Failed to save ideas:", err);
     } finally {
       setIsSubmitting(false);
     }
@@ -1356,10 +1351,13 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </div>
       </div>
 
-      {/* ── 5. Sticky compare bar ── */}
+      {/* ── 5. Sticky compare bar ──
+           In modal context (onClose set): sticky so it stays in the modal's
+           scroll container above the z-50 overlay.
+           In page context (no modal): fixed to the viewport at z-40. */}
       {localIdeas.length > 0 && (
         <div
-          className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-6 pt-3"
+          className={`fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3 ${onClose ? "z-[60]" : "z-40"}`}
           style={{
             background: "linear-gradient(to top, var(--color-bt-base) 70%, transparent)",
           }}
@@ -1371,8 +1369,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             style={{
               background: "var(--color-bt-accent)",
               color: "var(--color-bt-base)",
-              maxWidth: 896,
-              margin: "0 auto",
+              ...(onClose ? {} : { maxWidth: 896, margin: "0 auto" }),
             }}
           >
             {isSubmitting ? (
@@ -1443,16 +1440,173 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
   );
 }
 
+// ── InviteInput ───────────────────────────────────────────────────────────
+
+function InviteInput({ tripId, onInvited }: { tripId: string; onInvited: () => void }) {
+  const [query, setQuery] = useState("");
+  const [showResults, setShowResults] = useState(false);
+  const utils = trpc.useUtils();
+
+  const { data: results = [], isFetching } = trpc.users.search.useQuery(
+    { query },
+    { enabled: query.length >= 2 }
+  );
+
+  const addMember = trpc.tripMembers.add.useMutation({
+    onSuccess() {
+      setQuery("");
+      setShowResults(false);
+      utils.tripMembers.list.invalidate({ tripId });
+      onInvited();
+    },
+  });
+
+  return (
+    <div className="relative">
+      <div
+        className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
+        style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)" }}
+      >
+        <Search size={12} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
+          onFocus={() => setShowResults(true)}
+          placeholder="Add a co-planner..."
+          className="flex-1 bg-transparent text-xs outline-none"
+          style={{ color: "var(--color-bt-text)" }}
+        />
+      </div>
+
+      {showResults && query.length >= 2 && (
+        <div
+          className="absolute bottom-full left-0 right-0 z-20 mb-1 overflow-hidden rounded-lg shadow-xl"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        >
+          {isFetching ? (
+            <div className="px-3 py-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Searching...
+            </div>
+          ) : results.length === 0 ? (
+            <div className="px-3 py-2 text-xs" style={{ color: "var(--color-bt-danger)" }}>
+              No account found
+            </div>
+          ) : (
+            results.map((user) => (
+              <button
+                key={user.id}
+                onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Member" })}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--color-bt-hover)]"
+              >
+                <div
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                >
+                  {(user.nickname ?? user.name ?? user.email ?? "?").charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium" style={{ color: "var(--color-bt-text)" }}>
+                    {user.name}
+                    {user.nickname && (
+                      <span className="ml-1" style={{ color: "var(--color-bt-text-dim)" }}>
+                        ({user.nickname})
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <Plus size={12} className="ml-auto flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ReopenConfirmModal ────────────────────────────────────────────────────
+
+function ReopenConfirmModal({
+  tripId,
+  destinationTitle,
+  onClose,
+}: {
+  tripId: string;
+  destinationTitle: string;
+  onClose: () => void;
+}) {
+  useModalBackButton(onClose);
+  const utils = trpc.useUtils();
+
+  const unlockDest = trpc.trips.unlockDestination.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      onClose();
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-2xl p-5"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="mb-2 text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Reopen destination discussion?
+        </p>
+        <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          This removes{" "}
+          <strong style={{ color: "var(--color-bt-text)" }}>{destinationTitle}</strong>{" "}
+          as the locked destination and reopens voting for the whole crew. Any trip planning tied to
+          this destination should be reviewed.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border py-2.5 text-sm"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Keep it locked
+          </button>
+          <button
+            disabled={unlockDest.isPending}
+            onClick={() => unlockDest.mutate({ tripId })}
+            className="flex-1 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
+            style={{ background: "var(--color-bt-warning)", color: "#fff" }}
+          >
+            {unlockDest.isPending ? "Reopening…" : "Yes, reopen discussion"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── IdeaComparisonPage ────────────────────────────────────────────────────
 
 export default function IdeaComparisonPage() {
   const { tripId } = useParams<{ tripId: string }>();
+  const router = useRouter();
   const currentUser = useCurrentUser();
   const { isOwner, canEdit } = useTripRole(tripId);
+
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [lockIdea, setLockIdea] = useState<Idea | null>(null);
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
+  const [showReopenConfirm, setShowReopenConfirm] = useState(false);
+  const [expandedIdeaId, setExpandedIdeaId] = useState<string | null>(null);
 
   useEffect(() => {
     if (showAddModal) {
@@ -1461,8 +1615,19 @@ export default function IdeaComparisonPage() {
     }
   }, [showAddModal]);
 
-  const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
+  // Reset expanded row when destination is unlocked
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
+  useEffect(() => {
+    if (!trip?.locked_destination_title) {
+      setExpandedIdeaId(null);
+    }
+  }, [trip?.locked_destination_title]);
+
+  const { data: ideas = [], isLoading } = trpc.ideas.list.useQuery({ tripId });
+  const { data: members = [] } = trpc.tripMembers.list.useQuery(
+    { tripId },
+    { enabled: isOwner }
+  );
 
   if (isLoading) {
     return (
@@ -1492,6 +1657,62 @@ export default function IdeaComparisonPage() {
         pageName="Idea Zone"
       />
 
+      {/* Mobile-only back link — breadcrumb is sufficient on desktop */}
+      <div className="lg:hidden px-4 pt-3 pb-0">
+        <button
+          onClick={() => router.back()}
+          className="text-sm transition-opacity hover:opacity-70"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          ← Back to trip planning
+        </button>
+      </div>
+
+      {trip?.locked_destination_title && (
+        <div
+          className="border-b px-4 py-3"
+          style={{
+            background: "var(--color-bt-tag-bg)",
+            borderColor: "rgba(var(--color-bt-accent-rgb, 0,0,0), 0.3)",
+          }}
+        >
+          <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div
+                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ background: "var(--color-bt-accent)" }}
+              >
+                <Check size={11} color="white" />
+              </div>
+              <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                <span style={{ color: "var(--color-bt-accent)", fontWeight: 700 }}>
+                  {trip.locked_destination_title}
+                </span>
+                {" "}is set as your destination
+              </span>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {isOwner && (
+                <button
+                  onClick={() => setShowReopenConfirm(true)}
+                  className="text-xs transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Reopen discussion
+                </button>
+              )}
+              <a
+                href={`/trips/${tripId}`}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-80"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                Go to trip planning →
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Main ────────────────────────────────────────────────────────── */}
       <main className="mx-auto max-w-[1400px] p-4">
         {ideasTyped.length === 0 ? (
@@ -1515,6 +1736,9 @@ export default function IdeaComparisonPage() {
             const lockedIdea = lockedTitle
               ? ideasTyped.find((i) => i.title.toLowerCase() === lockedTitle)
               : undefined;
+            const lockedAt = trip?.locked_destination_at
+              ? new Date(trip.locked_destination_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : null;
             const otherIdeas = (lockedIdea
               ? ideasTyped.filter((i) => i.id !== lockedIdea.id)
               : ideasTyped
@@ -1522,13 +1746,21 @@ export default function IdeaComparisonPage() {
             const maxVotes = Math.max(...otherIdeas.map((i) => i.votes.length), 0);
             const isLeading = (idea: Idea) =>
               !lockedIdea && maxVotes > 0 && idea.votes.length === maxVotes;
+            const votingPanelIdeas = lockedIdea
+              ? [lockedIdea, ...otherIdeas]
+              : ideasTyped.slice().sort((a, b) => b.votes.length - a.votes.length);
 
             return (
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
 
                 {/* Right column — first in DOM for mobile (shows on top), pushed right on desktop */}
                 <div className="lg:order-last lg:w-72 lg:flex-shrink-0 lg:sticky lg:top-4 lg:self-start">
-                  <VotingPanel tripId={tripId} ideas={ideasTyped} currentUserId={currentUser?.id} />
+                  <VotingPanel
+                    tripId={tripId}
+                    ideas={votingPanelIdeas}
+                    currentUserId={currentUser?.id}
+                    lockedIdeaId={lockedIdea?.id}
+                  />
                   {canEdit && (
                     <button
                       data-testid="add-idea-btn"
@@ -1542,6 +1774,56 @@ export default function IdeaComparisonPage() {
                       + Add idea
                     </button>
                   )}
+
+                  {isOwner && members.length > 0 && (
+                    <div
+                      className="mt-3 rounded-2xl border p-4"
+                      style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+                    >
+                      <p
+                        className="mb-3 text-xs font-semibold uppercase tracking-wider"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        Crew ({members.length})
+                      </p>
+
+                      <div className="mb-3 space-y-2">
+                        {members.map((m) => {
+                          const display = m.displayName;
+                          const initial = display.charAt(0).toUpperCase();
+                          const roleColor =
+                            m.role === "Owner"
+                              ? "var(--color-bt-owner)"
+                              : m.role === "Planner"
+                              ? "var(--color-bt-planning)"
+                              : "var(--color-bt-text-dim)";
+                          return (
+                            <div key={m.user_id} className="flex items-center gap-2">
+                              <div
+                                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                                style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                              >
+                                {initial}
+                              </div>
+                              <span className="flex-1 truncate text-xs" style={{ color: "var(--color-bt-text)" }}>
+                                {display}
+                              </span>
+                              <span className="text-[10px] font-semibold" style={{ color: roleColor }}>
+                                {m.role}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <InviteInput
+                        tripId={tripId}
+                        onInvited={() => {
+                          // members query auto-invalidates via InviteInput's onSuccess
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Left column — idea cards */}
@@ -1549,14 +1831,21 @@ export default function IdeaComparisonPage() {
                   {/* Current destination pinned at top */}
                   {lockedIdea && (
                     <div>
-                      <div className="mb-2 flex items-center gap-1.5">
-                        <Lock size={13} style={{ color: "var(--color-bt-accent)" }} />
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-wider"
-                          style={{ color: "var(--color-bt-accent)" }}
-                        >
-                          Current Destination
-                        </span>
+                      <div className="mb-3">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <CheckCircle2 size={15} style={{ color: "var(--color-bt-accent)" }} fill="currentColor" />
+                          <span
+                            className="text-sm font-bold"
+                            style={{ color: "var(--color-bt-text)" }}
+                          >
+                            Where We&apos;re Going
+                          </span>
+                        </div>
+                        {lockedAt && (
+                          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            Set {lockedAt}
+                          </p>
+                        )}
                       </div>
                       <IdeaCard
                         idea={lockedIdea}
@@ -1574,27 +1863,118 @@ export default function IdeaComparisonPage() {
                   {/* Other ideas */}
                   {otherIdeas.length > 0 && (
                     <div className="flex flex-col gap-4">
+                      {/* Section label — only when a destination is locked */}
                       {lockedIdea && (
-                        <p
-                          className="text-[10px] font-semibold uppercase tracking-wider"
-                          style={{ color: "var(--color-bt-text-dim)" }}
-                        >
-                          Other Ideas
-                        </p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+                          <span
+                            className="text-[11px] font-semibold uppercase tracking-wider flex-shrink-0"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          >
+                            Other destinations we considered
+                          </span>
+                          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+                        </div>
                       )}
-                      {otherIdeas.map((idea, i) => (
-                        <IdeaCard
-                          key={idea.id}
-                          idea={idea}
-                          tripId={tripId}
-                          canEdit={canEdit}
-                          isOwner={isOwner}
-                          isLeading={isLeading(idea)}
-                          index={(lockedIdea ? 1 : 0) + i}
-                          onLock={setLockIdea}
-                          onDelete={setDeleteIdea}
-                        />
-                      ))}
+
+                      {/* Compact list when locked, full cards when not */}
+                      {lockedIdea ? (
+                        <div
+                          className="overflow-hidden rounded-2xl"
+                          style={{ border: "1px solid var(--color-bt-border)" }}
+                        >
+                          {otherIdeas.map((idea, i) => {
+                            const isExpanded = expandedIdeaId === idea.id;
+                            return (
+                              <div key={idea.id}>
+                                {i > 0 && (
+                                  <div style={{ borderTop: "1px solid var(--color-bt-border)" }} />
+                                )}
+                                {/* Compact row */}
+                                <button
+                                  onClick={() => setExpandedIdeaId(isExpanded ? null : idea.id)}
+                                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                                >
+                                  {idea.image_url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={idea.image_url}
+                                      alt={idea.title}
+                                      className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
+                                    />
+                                  ) : (
+                                    <div
+                                      className="h-10 w-10 flex-shrink-0 rounded-lg"
+                                      style={{ background: ideaGradient(i, isDark) }}
+                                    />
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                                      {idea.title}
+                                    </p>
+                                    <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                                      {idea.location}
+                                      {idea.votes.length > 0 && (
+                                        <span className="ml-2">
+                                          · {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
+                                        </span>
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-shrink-0 items-center gap-2">
+                                    {idea.cost_tier && (
+                                      <span className="text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                                        {idea.cost_tier}
+                                      </span>
+                                    )}
+                                    <span
+                                      className="text-sm transition-transform duration-200"
+                                      style={{
+                                        color: "var(--color-bt-text-dim)",
+                                        display: "inline-block",
+                                        transform: isExpanded ? "rotate(90deg)" : "none",
+                                      }}
+                                    >
+                                      ›
+                                    </span>
+                                  </div>
+                                </button>
+
+                                {/* Expanded full card */}
+                                {isExpanded && (
+                                  <div style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+                                    <IdeaCard
+                                      idea={idea}
+                                      tripId={tripId}
+                                      canEdit={canEdit}
+                                      isOwner={isOwner}
+                                      isLocked={false}
+                                      index={i + 1}
+                                      onLock={setLockIdea}
+                                      onDelete={setDeleteIdea}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* No destination locked — full cards as before */
+                        otherIdeas.map((idea, i) => (
+                          <IdeaCard
+                            key={idea.id}
+                            idea={idea}
+                            tripId={tripId}
+                            canEdit={canEdit}
+                            isOwner={isOwner}
+                            isLeading={isLeading(idea)}
+                            index={(lockedIdea ? 1 : 0) + i}
+                            onLock={setLockIdea}
+                            onDelete={setDeleteIdea}
+                          />
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
@@ -1621,6 +2001,13 @@ export default function IdeaComparisonPage() {
           tripId={tripId}
           idea={deleteIdea}
           onClose={() => setDeleteIdea(null)}
+        />
+      )}
+      {showReopenConfirm && trip?.locked_destination_title && (
+        <ReopenConfirmModal
+          tripId={tripId}
+          destinationTitle={trip.locked_destination_title}
+          onClose={() => setShowReopenConfirm(false)}
         />
       )}
     </div>
