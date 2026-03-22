@@ -1399,6 +1399,40 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   );
 }
 
+// ── AddIdeasModal ─────────────────────────────────────────────────────────
+
+function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => void }) {
+  useModalBackButton(onClose);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pt-16"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg lg:max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
+        style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-4 pb-0">
+          <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Add ideas
+          </p>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
+      </div>
+    </div>
+  );
+}
+
 // ── IdeaComparisonPage ────────────────────────────────────────────────────
 
 export default function IdeaComparisonPage() {
@@ -1563,31 +1597,7 @@ export default function IdeaComparisonPage() {
 
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {showAddModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pt-16"
-          style={{ background: "var(--color-bt-overlay)" }}
-          onClick={() => setShowAddModal(false)}
-        >
-          <div
-            className="w-full max-w-lg lg:max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
-            style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 pt-4 pb-0">
-              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                Add ideas
-              </p>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <EmptyStateOnboarding tripId={tripId} onClose={() => setShowAddModal(false)} />
-          </div>
-        </div>
+        <AddIdeasModal tripId={tripId} onClose={() => setShowAddModal(false)} />
       )}
       {lockIdea && (
         <LockConfirmModal
