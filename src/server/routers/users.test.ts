@@ -43,38 +43,41 @@ describe("users router", () => {
     await expect(caller.users.updateMe({})).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  // search
-  it("search finds users by email", async () => {
+  // search — email-exact only (name/nickname search was removed in favour of
+  // frequentTripmates chips; non-email queries always return [])
+  it("search — exact email match returns that user", async () => {
+    const caller = ctx.caller(); // owner
+    const planner = ctx.getUser("planner");
+    const results = await caller.users.search({ query: planner.email });
+    expect(results.length).toBe(1);
+    expect(results[0].id).toBe(planner.id);
+  });
+
+  it("search — non-email query (no @) returns empty", async () => {
+    const caller = ctx.caller();
+    const results = await caller.users.search({ query: "SearchTestUser" });
+    expect(results).toEqual([]);
+  });
+
+  it("search — partial email prefix (no @) returns empty", async () => {
     const caller = ctx.caller();
     const results = await caller.users.search({
       query: ctx.user.email.split("@")[0],
     });
-    expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(results[0].id).toBe(ctx.user.id);
+    expect(results).toEqual([]);
   });
 
-  it("search finds users by name", async () => {
-    // First set a known name, then search by it
-    const caller = ctx.caller();
-    await caller.users.updateMe({ name: "SearchTestUser" });
-    const results = await caller.users.search({ query: "SearchTestUser" });
-    expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(results.some((r) => r.id === ctx.user.id)).toBe(true);
-  });
-
-  it("search finds users by nickname", async () => {
-    const caller = ctx.caller();
-    await caller.users.updateMe({ nickname: "SearchNick" });
-    const results = await caller.users.search({ query: "SearchNick" });
-    expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(results.some((r) => r.id === ctx.user.id)).toBe(true);
-  });
-
-  it("search returns empty for no matches", async () => {
+  it("search — unknown email returns empty", async () => {
     const caller = ctx.caller();
     const results = await caller.users.search({
       query: "nonexistent-xyz-999@example.com",
     });
+    expect(results).toEqual([]);
+  });
+
+  it("search — own email returns empty (self excluded)", async () => {
+    const caller = ctx.caller();
+    const results = await caller.users.search({ query: ctx.user.email });
     expect(results).toEqual([]);
   });
 });
