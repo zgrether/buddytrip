@@ -1495,12 +1495,25 @@ function InviteInput({
     }
   };
 
-  const handleCopyInvite = () => {
+  const handleCopyInvite = async () => {
     const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
-    navigator.clipboard.writeText(inviteUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+    } catch {
+      // Fallback for restricted contexts (iframes, http, etc.)
+      const textarea = document.createElement("textarea");
+      textarea.value = inviteUrl;
+      textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try { document.execCommand("copy"); } catch { /* best effort */ }
+      document.body.removeChild(textarea);
+    }
+
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
