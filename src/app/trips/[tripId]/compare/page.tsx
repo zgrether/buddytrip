@@ -431,8 +431,8 @@ function IdeaCard({
           </div>
         )}
 
-        {/* Pros — always rendered for editors; hidden for members when empty */}
-        {((idea.pros && idea.pros.length > 0) || editingField === "pros" || canEdit) && (
+        {/* Pros — only when content exists or actively editing */}
+        {((idea.pros && idea.pros.length > 0) || editingField === "pros") && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-accent)" }}>+ PROS</p>
             {editingField === "pros" ? (
@@ -449,33 +449,25 @@ function IdeaCard({
                 />
                 {inlineEditControls}
               </div>
-            ) : idea.pros && idea.pros.length > 0 ? (
+            ) : (
               <ul
                 className="space-y-1"
                 onClick={canEdit ? () => startEdit("pros", idea.pros!.join("\n")) : undefined}
                 style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {idea.pros.map((p, i) => (
+                {(idea.pros ?? []).map((p, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
                     <Star size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
                     {p}
                   </li>
                 ))}
               </ul>
-            ) : (
-              <button
-                onClick={() => startEdit("pros", "")}
-                className="text-xs transition-opacity hover:opacity-70"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                + Add pros
-              </button>
             )}
           </div>
         )}
 
-        {/* Cons — always rendered for editors; hidden for members when empty */}
-        {((idea.cons && idea.cons.length > 0) || editingField === "cons" || canEdit) && (
+        {/* Cons — only when content exists or actively editing */}
+        {((idea.cons && idea.cons.length > 0) || editingField === "cons") && (
           <div>
             <p className="mb-1.5 text-xs font-semibold" style={{ color: "var(--color-bt-danger)" }}>× CONS</p>
             {editingField === "cons" ? (
@@ -492,29 +484,36 @@ function IdeaCard({
                 />
                 {inlineEditControls}
               </div>
-            ) : idea.cons && idea.cons.length > 0 ? (
+            ) : (
               <ul
                 className="space-y-1"
                 onClick={canEdit ? () => startEdit("cons", idea.cons!.join("\n")) : undefined}
                 style={{ cursor: canEdit ? "pointer" : "default" }}
               >
-                {idea.cons.map((c, i) => (
+                {(idea.cons ?? []).map((c, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm" style={{ color: "var(--color-bt-text)" }}>
                     <X size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-danger)" }} />
                     {c}
                   </li>
                 ))}
               </ul>
-            ) : (
-              <button
-                onClick={() => startEdit("cons", "")}
-                className="text-xs transition-opacity hover:opacity-70"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                + Add cons
-              </button>
             )}
           </div>
+        )}
+
+        {/* Single affordance — only when BOTH are empty and not editing either */}
+        {canEdit &&
+          !(idea.pros && idea.pros.length > 0) &&
+          !(idea.cons && idea.cons.length > 0) &&
+          editingField !== "pros" &&
+          editingField !== "cons" && (
+          <button
+            onClick={() => startEdit("pros", "")}
+            className="text-xs transition-opacity hover:opacity-70"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            + Add pros &amp; cons
+          </button>
         )}
 
         {/* Golf courses */}
@@ -909,7 +908,7 @@ function VotingPanel({ tripId, ideas, currentUserId }: { tripId: string; ideas: 
             <div key={idea.id}>
               <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                <p className="line-clamp-2 text-sm font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
                   {idea.title}
                 </p>
                 <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
