@@ -1478,8 +1478,8 @@ function InviteInput({
       utils.tripMembers.list.invalidate({ tripId });
       onInvited();
     },
-    onError(err) {
-      setInviteError(err.message);
+    onError() {
+      setInviteError("Failed to create invite. Please try again.");
     },
   });
 

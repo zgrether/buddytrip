@@ -219,14 +219,14 @@ export const tripMembersRouter = router({
         const newId = crypto.randomUUID();
         const { error: userError } = await ctx.supabase.from("users").insert({
           id: newId,
-          name: email,
+          name: email.split("@")[0],
           email,
           is_guest: true,
         });
         if (userError) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to create guest record: ${userError.message}`,
+            message: "Failed to create invite. Please try again.",
           });
         }
         guestUserId = newId;
@@ -262,7 +262,7 @@ export const tripMembersRouter = router({
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to create invite: ${error.message}`,
+          message: "Failed to create invite. Please try again.",
         });
       }
 
