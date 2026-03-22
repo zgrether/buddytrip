@@ -89,6 +89,31 @@ describe("tripMembers router", () => {
     expect(updated.status).toBe("in");
   });
 
+  // inviteByEmail
+  it("inviteByEmail — planner can invite a new email", async () => {
+    const caller = ctx.callerAs("planner");
+    const result = await caller.tripMembers.inviteByEmail({
+      tripId,
+      email: "newperson@example.com",
+    });
+    expect(result.status).toBe("invited");
+    expect(result.role).toBe("Member");
+  });
+
+  it("inviteByEmail — duplicate invite throws CONFLICT", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.inviteByEmail({ tripId, email: "newperson@example.com" })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("inviteByEmail — member cannot invite", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   // remove
   it("remove — owner cannot remove self", async () => {
     const caller = ctx.caller();

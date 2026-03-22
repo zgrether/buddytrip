@@ -180,6 +180,96 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // inviteByEmail — Planner/Owner can invite someone by email who has no
+  //                 BuddyTrip account yet. Creates a guest user row + a
+  //                 trip_members row with status 'invited'.
+  // -----------------------------------------------------------------------
+  inviteByEmail: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        email: z.string().email(),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const email = input.email.trim().toLowerCase();
+
+      // Check if a real account already exists for this email
+      const { data: existing } = await ctx.supabase
+        .from("users")
+        .select("id, is_guest")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (existing && !existing.is_guest) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A BuddyTrip account exists for that email — use the Find flow instead.",
+        });
+      }
+
+      let guestUserId: string;
+
+      if (existing?.is_guest) {
+        // Reuse the existing guest row
+        guestUserId = existing.id;
+      } else {
+        // Create a new guest user row
+        const newId = crypto.randomUUID();
+        const { error: userError } = await ctx.supabase.from("users").insert({
+          id: newId,
+          name: email,
+          email,
+          is_guest: true,
+        });
+        if (userError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create guest record: ${userError.message}`,
+          });
+        }
+        guestUserId = newId;
+      }
+
+      // Check if already a member of this trip
+      const { data: alreadyMember } = await ctx.supabase
+        .from("trip_members")
+        .select("id")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", guestUserId)
+        .maybeSingle();
+
+      if (alreadyMember) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "That email has already been invited to this trip.",
+        });
+      }
+
+      const { data, error } = await ctx.supabase
+        .from("trip_members")
+        .insert({
+          id: crypto.randomUUID(),
+          trip_id: ctx.tripId,
+          user_id: guestUserId,
+          role: "Member",
+          status: "invited",
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to create invite: ${error.message}`,
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
   // updateRsvp — any real member can update their own RSVP status
   // Ghost crew always stay "in" — no RSVP for ghosts.
   // -----------------------------------------------------------------------
