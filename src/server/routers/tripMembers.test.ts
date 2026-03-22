@@ -97,14 +97,16 @@ describe("tripMembers router", () => {
       email: "newperson@example.com",
     });
     expect(result.status).toBe("invited");
-    expect(result.role).toBe("Member");
+    expect(result.userId).toBeTruthy();
   });
 
-  it("inviteByEmail — duplicate invite throws CONFLICT", async () => {
+  it("inviteByEmail — duplicate invite returns already_member", async () => {
     const caller = ctx.callerAs("planner");
-    await expect(
-      caller.tripMembers.inviteByEmail({ tripId, email: "newperson@example.com" })
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const result = await caller.tripMembers.inviteByEmail({
+      tripId,
+      email: "newperson@example.com",
+    });
+    expect(result.status).toBe("already_member");
   });
 
   it("inviteByEmail — member cannot invite", async () => {

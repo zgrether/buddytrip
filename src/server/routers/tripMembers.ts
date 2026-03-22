@@ -194,21 +194,17 @@ export const tripMembersRouter = router({
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
       const email = input.email.trim().toLowerCase();
-      console.log("[inviteByEmail] caller:", ctx.user!.id, "trip:", ctx.tripId, "email:", email);
 
-      // Check if a real account already exists for this email
-      const { data: existing, error: existingError } = await ctx.supabase
+      // Check if a real (non-guest) account already exists for this email
+      const { data: existing } = await ctx.supabase
         .from("users")
         .select("id, is_guest")
         .eq("email", email)
         .maybeSingle();
-      console.log("[inviteByEmail] existing user lookup:", { existing, existingError });
 
       if (existing && !existing.is_guest) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "A BuddyTrip account exists for that email — use the Find flow instead.",
-        });
+        // Real account exists — caller should use the Find flow instead
+        return { status: "real_account_exists" as const };
       }
 
       let guestUserId: string;
@@ -216,7 +212,6 @@ export const tripMembersRouter = router({
       if (existing?.is_guest) {
         // Reuse the existing guest row
         guestUserId = existing.id;
-        console.log("[inviteByEmail] reusing existing guest:", guestUserId);
       } else {
         // Create a new guest user row
         const newId = crypto.randomUUID();
@@ -226,7 +221,6 @@ export const tripMembersRouter = router({
           email,
           is_guest: true,
         });
-        console.log("[inviteByEmail] guest user insert:", { newId, userError });
         if (userError) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
@@ -243,16 +237,12 @@ export const tripMembersRouter = router({
         .eq("trip_id", ctx.tripId)
         .eq("user_id", guestUserId)
         .maybeSingle();
-      console.log("[inviteByEmail] alreadyMember check:", alreadyMember);
 
       if (alreadyMember) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "That email has already been invited to this trip.",
-        });
+        return { status: "already_member" as const };
       }
 
-      const { data, error } = await ctx.supabase
+      const { error } = await ctx.supabase
         .from("trip_members")
         .insert({
           id: crypto.randomUUID(),
@@ -260,10 +250,7 @@ export const tripMembersRouter = router({
           user_id: guestUserId,
           role: "Member",
           status: "invited",
-        })
-        .select()
-        .single();
-      console.log("[inviteByEmail] trip_members insert:", { data, error });
+        });
 
       if (error) {
         throw new TRPCError({
@@ -272,7 +259,7 @@ export const tripMembersRouter = router({
         });
       }
 
-      return data;
+      return { status: "invited" as const, userId: guestUserId };
     }),
 
   // -----------------------------------------------------------------------

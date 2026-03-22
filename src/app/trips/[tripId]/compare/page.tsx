@@ -1470,18 +1470,7 @@ function InviteInput({
     },
   });
 
-  const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation({
-    onSuccess() {
-      setEmail("");
-      setStatus("idle");
-      setInviteError(null);
-      utils.tripMembers.list.invalidate({ tripId });
-      onInvited();
-    },
-    onError() {
-      setInviteError("Failed to create invite. Please try again.");
-    },
-  });
+  const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
 
   const handleLookup = async () => {
     if (!email.includes("@")) return;
@@ -1622,7 +1611,27 @@ function InviteInput({
             </p>
           )}
           <button
-            onClick={() => { setInviteError(null); inviteByEmail.mutate({ tripId, email }); }}
+            onClick={async () => {
+              setInviteError(null);
+              try {
+                const result = await inviteByEmail.mutateAsync({ tripId, email });
+                if (result.status === "already_member") {
+                  setInviteError("This person is already on the trip.");
+                  return;
+                }
+                if (result.status === "real_account_exists") {
+                  setInviteError("A BuddyTrip account exists for that email — try searching for it.");
+                  return;
+                }
+                setEmail("");
+                setStatus("idle");
+                setInviteError(null);
+                utils.tripMembers.list.invalidate({ tripId });
+                onInvited();
+              } catch {
+                setInviteError("Failed to create invite. Please try again.");
+              }
+            }}
             disabled={inviteByEmail.isPending}
             className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
