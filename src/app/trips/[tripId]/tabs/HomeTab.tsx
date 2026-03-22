@@ -936,12 +936,12 @@ function PlanningSection({
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   // ── Destination ──────────────────────────────────────────────────────
-  const destLocked = !!trip.locked_destination_title;
-  const destVoting = !!trip.comparison_mode && !trip.locked_destination_title;
-  const destState: ArcCardState = destLocked ? "done" : destVoting ? "inProgress" : "none";
-  const destNote = destLocked
+  const isLocked = !!trip.locked_destination_title;
+  const isExploring = !!trip.comparison_mode && !isLocked;
+  const destState: ArcCardState = isLocked ? "done" : isExploring ? "inProgress" : "none";
+  const destNote = isLocked
     ? trip.locked_destination_title!
-    : destVoting
+    : isExploring
     ? `${ideas.length} idea${ideas.length !== 1 ? "s" : ""} · voting`
     : "Not set";
 
@@ -987,7 +987,7 @@ function PlanningSection({
         isOpen={openRow === "dest"}
         onToggle={() => toggle("dest")}
       >
-        {destLocked ? (
+        {isLocked ? (
           <div className="space-y-3">
             <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               {trip.locked_destination_title}
@@ -1346,9 +1346,10 @@ export function HomeTab({
 
   const status = getTripStatus(trip);
   const isCompleted = status === "past";
-  const isPreDestination = !!trip.comparison_mode && !trip.locked_destination_title;
+  const isLocked = !!trip.locked_destination_title;
+  const isExploring = !!trip.comparison_mode && !isLocked;
 
-  if (isPreDestination) {
+  if (isExploring) {
     return (
       <div className="flex flex-col gap-4 px-4">
         {/* Idea Zone summary panel */}

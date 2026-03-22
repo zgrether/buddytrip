@@ -309,6 +309,7 @@ export const tripsRouter = router({
           locked_destination_title: null,
           locked_destination_location: null,
           locked_destination_at: null,
+          comparison_mode: true,
         })
         .eq("id", ctx.tripId)
         .select()

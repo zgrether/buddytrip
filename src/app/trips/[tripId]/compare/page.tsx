@@ -1683,9 +1683,28 @@ function ReopenConfirmModal({
   const utils = trpc.useUtils();
 
   const unlockDest = trpc.trips.unlockDestination.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      if (prev) {
+        utils.trips.getById.setData({ tripId }, {
+          ...prev,
+          locked_destination_title: null,
+          locked_destination_location: null,
+          locked_destination_at: null,
+          comparison_mode: true,
+        });
+      }
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.trips.getById.setData({ tripId }, context.prev);
+    },
     onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
       onClose();
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
     },
   });
 
