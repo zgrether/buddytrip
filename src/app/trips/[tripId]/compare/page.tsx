@@ -1564,7 +1564,7 @@ export default function IdeaComparisonPage() {
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {showAddModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pt-16"
           style={{ background: "var(--color-bt-overlay)" }}
           onClick={() => setShowAddModal(false)}
         >
