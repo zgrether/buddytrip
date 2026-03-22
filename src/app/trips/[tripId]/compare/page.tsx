@@ -1945,6 +1945,11 @@ export default function IdeaComparisonPage() {
                       <div className="mb-3 space-y-2">
                         {members
                           .filter((m) => m.role === "Owner" || m.role === "Planner")
+                          .sort((a, b) => {
+                            const order = (m: typeof a) =>
+                              m.role === "Owner" ? 0 : m.status === "invited" ? 2 : 1;
+                            return order(a) - order(b);
+                          })
                           .map((m) => {
                             const isPending = m.status === "invited";
                             const isMe = m.user_id === currentUser?.id;
