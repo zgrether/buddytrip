@@ -237,7 +237,11 @@ export default function TripDetailPage() {
   }
 
   const status = getTripStatus(trip);
-  const destLocation = trip.locked_destination_location ?? trip.location;
+  // When exploring (comparison_mode=true, no lock), don't fall back to
+  // trip.location — lockDestination writes to that column and unlockDestination
+  // doesn't clear it, so the old destination would bleed through to the header.
+  const destLocation = trip.locked_destination_location
+    ?? (trip.comparison_mode ? null : trip.location);
   const showComp = !!trip.event_id || compUnlocked;
   const isLocked = !!trip.locked_destination_title;
 
@@ -272,7 +276,7 @@ export default function TripDetailPage() {
         <TripHeader
           tripName={trip.title}
           status={status}
-          location={destLocation || trip.location}
+          location={destLocation}
           lockedTitle={trip.locked_destination_title}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
           isLocked={isLocked}
