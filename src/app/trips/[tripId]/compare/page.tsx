@@ -944,7 +944,7 @@ function LockConfirmModal({
         </p>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           This will set{" "}
-          <strong style={{ color: "var(--color-bt-text)" }}>{idea.title}</strong> as the
+          <strong style={{ color: "var(--color-bt-text)" }}>{idea.location}</strong> as the
           final destination. This can be changed later from the More tab.
         </p>
         <div className="flex gap-2">
@@ -961,7 +961,7 @@ function LockConfirmModal({
             onClick={() =>
               lockDest.mutate({
                 tripId,
-                title: idea.title,
+                title: idea.location,
                 location: idea.location,
               })
             }
@@ -1889,7 +1889,11 @@ export default function IdeaComparisonPage() {
           (() => {
             const lockedTitle = (trip?.locked_destination_title ?? "").toLowerCase();
             const lockedIdea = lockedTitle
-              ? ideasTyped.find((i) => i.title.toLowerCase() === lockedTitle)
+              ? ideasTyped.find(
+                  (i) =>
+                    i.location.toLowerCase() === lockedTitle ||
+                    i.title.toLowerCase() === lockedTitle
+                )
               : undefined;
             const lockedAt = trip?.locked_destination_at
               ? new Date(trip.locked_destination_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
