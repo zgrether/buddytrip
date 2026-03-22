@@ -13,7 +13,6 @@ import {
   Flag,
   Zap,
   X,
-  DollarSign,
   MessageSquare,
   Sparkles,
   Loader2,
@@ -385,13 +384,31 @@ function IdeaCard({
           />
         )}
         {isLocked && (
-          <div className="absolute right-3 top-3">
+          <div className="absolute right-3 top-3 flex items-center gap-2">
+            {idea.cost_tier && (
+              <span
+                className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                style={{ background: "rgba(0,0,0,0.5)", color: "#fff" }}
+              >
+                {idea.cost_tier}
+              </span>
+            )}
             <span
               className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               <Check size={11} />
               Picked
+            </span>
+          </div>
+        )}
+        {idea.cost_tier && !isLocked && (
+          <div className="absolute right-3 top-3">
+            <span
+              className="rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ background: "rgba(0,0,0,0.5)", color: "#fff" }}
+            >
+              {idea.cost_tier}
             </span>
           </div>
         )}
@@ -712,9 +729,12 @@ function IdeaCard({
             </div>
           </div>
 
-          {/* Accommodation */}
+          {/* Lodging */}
           {(idea.accommodation || editingField === "accommodation" || canEdit) && (
             <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                Lodging
+              </p>
               {editingField === "accommodation" ? (
                 <div>
                   <input
@@ -732,9 +752,9 @@ function IdeaCard({
                 <p
                   className="text-sm"
                   onClick={canEdit ? () => startEdit("accommodation", idea.accommodation ?? "") : undefined}
-                  style={{ color: "var(--color-bt-text-dim)", cursor: canEdit ? "pointer" : "default" }}
+                  style={{ color: "var(--color-bt-text)", cursor: canEdit ? "pointer" : "default" }}
                 >
-                  🏨 {idea.accommodation}
+                  {idea.accommodation}
                 </p>
               ) : canEdit ? (
                 <button
@@ -742,22 +762,12 @@ function IdeaCard({
                   className="text-sm transition-opacity hover:opacity-70"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  + Add accommodation
+                  + Add lodging
                 </button>
               ) : null}
             </div>
           )}
 
-          {/* Cost tier */}
-          {idea.cost_tier && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
-              style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-            >
-              <DollarSign size={10} />
-              {idea.cost_tier}
-            </span>
-          )}
 
           {/* Footer actions — inside left column */}
           {(isOwner || canEdit) && (
