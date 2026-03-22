@@ -1739,6 +1739,15 @@ export default function IdeaComparisonPage() {
     { enabled: isOwner }
   );
 
+  const utils = trpc.useUtils();
+  const removeMember = trpc.tripMembers.remove.useMutation({
+    onSuccess() {
+      refetchMembers();
+      refetchTripmates();
+      utils.tripMembers.list.invalidate({ tripId });
+    },
+  });
+
   if (isLoading) {
     return (
       <div
@@ -1907,6 +1916,7 @@ export default function IdeaComparisonPage() {
                           .filter((m) => m.role === "Owner" || m.role === "Planner")
                           .map((m) => {
                             const isPending = m.status === "invited";
+                            const isMe = m.user_id === currentUser?.id;
                             const display = isPending
                               ? (m.user?.email ?? m.displayName)
                               : m.displayName;
@@ -1940,6 +1950,17 @@ export default function IdeaComparisonPage() {
                                   <span className="text-[10px] font-semibold" style={{ color: roleColor }}>
                                     {m.role}
                                   </span>
+                                )}
+                                {isOwner && !isMe && (
+                                  <button
+                                    onClick={() => removeMember.mutate({ tripId, userId: m.user_id })}
+                                    disabled={removeMember.isPending}
+                                    className="ml-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
+                                    style={{ color: "var(--color-bt-text-dim)" }}
+                                    title="Remove"
+                                  >
+                                    <X size={12} />
+                                  </button>
                                 )}
                               </div>
                             );
