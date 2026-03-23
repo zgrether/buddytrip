@@ -4,8 +4,8 @@
 
 /* ── Light mode (default) ─────────────────────────────────────────────── */
 :root {
-    --color-bt-base: #ffffff;
-  --color-bt-card: #f8fafc;          /* slightly blue-tinted, lifts better */
+    --color-bt-base: #f1f5f9;          /* slate-100 — cards float off this */
+  --color-bt-card: #ffffff;           /* pure white — visible elevation */
   --color-bt-border: #e2e8f0;        /* softer than current #d0d7de */
   --color-bt-text: #0f172a;          /* near-black with a hint of navy */
   --color-bt-text-dim: #64748b;      /* slate-500 — warmer than current */
@@ -31,6 +31,13 @@
   --color-bt-danger: #dc2626;        /* red-600 */
   --color-bt-danger-bg: #fef2f2;
   --color-bt-danger-border: rgba(220, 38, 38, 0.20);
+
+  /* elevation shadows */
+  --shadow-card: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-raised: 0 4px 12px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
+  --shadow-floating: 0 8px 24px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.06);
+  --color-bt-card-raised: #f1f5f9;
+  --color-bt-card-float: #e8edf5;
 
   /* unchanged structural tokens */
   --color-bt-base-alt: #0f172a;
@@ -76,6 +83,13 @@
   --color-bt-danger: #f87171;        /* red-400 */
   --color-bt-danger-bg: #450a0a;
   --color-bt-danger-border: rgba(248, 113, 113, 0.20);
+
+  /* elevation shadows */
+  --shadow-card: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
+  --shadow-raised: 0 4px 12px rgba(0,0,0,.4), 0 2px 4px rgba(0,0,0,.25);
+  --shadow-floating: 0 8px 24px rgba(0,0,0,.5), 0 4px 8px rgba(0,0,0,.3);
+  --color-bt-card-raised: #243044;
+  --color-bt-card-float: #2a3652;
 
   --color-bt-hover: rgba(255, 255, 255, 0.06);
   --color-bt-overlay: rgba(0, 0, 0, 0.7);
