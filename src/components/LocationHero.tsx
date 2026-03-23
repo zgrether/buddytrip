@@ -68,13 +68,13 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
       {/* State outline watermark */}
       {outline ? (
         <div
-          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[55%] items-center justify-end overflow-hidden"
+          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[55%] items-center overflow-hidden pr-3"
           aria-hidden="true"
         >
           <svg
             viewBox={outline.viewBox}
-            className="mr-3 h-[85%] w-auto max-w-full"
-            preserveAspectRatio="xMidYMid meet"
+            className="h-[85%] w-full"
+            preserveAspectRatio="xMaxYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
             <path
