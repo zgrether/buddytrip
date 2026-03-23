@@ -943,7 +943,7 @@ function PlanningSection({
     ? trip.locked_destination_title!
     : isExploring
     ? `${ideas.length} idea${ideas.length !== 1 ? "s" : ""} · voting`
-    : "Not set";
+    : "Not set yet";
 
   // ── Dates ─────────────────────────────────────────────────────────────
   const datesLocked = !!(trip.start_date && trip.end_date);
@@ -953,7 +953,7 @@ function PlanningSection({
     ? formatDateRange(trip.start_date, trip.end_date)
     : pollOpen
     ? `Poll active · ${poll!.windows.length} option${poll!.windows.length !== 1 ? "s" : ""}`
-    : "Not set";
+    : "Not set yet";
 
   // ── Crew ──────────────────────────────────────────────────────────────
   const confirmed = tripMembers.filter((m) => m.status === "in").length;
@@ -1394,6 +1394,7 @@ export function HomeTab({
   const isCompleted = status === "past";
   const isLocked = !!trip.locked_destination_title;
   const isExploring = !!trip.comparison_mode && !isLocked;
+  const isBlank = !trip.comparison_mode && !isLocked;
 
   if (isExploring) {
     return (
@@ -1435,7 +1436,7 @@ export function HomeTab({
   return (
     <div className="space-y-4 px-4">
       {/* 1. Planning rows — primary focus, visible first */}
-      {!isCompleted && (
+      {!isCompleted && (isBlank || isLocked) && (
         <PlanningSection
           trip={trip}
           ideas={ideas as IdeaWithVotes[]}
