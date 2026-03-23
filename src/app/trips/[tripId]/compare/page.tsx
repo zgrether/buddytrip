@@ -1108,11 +1108,11 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
 
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
   const [destInput, setDestInput] = useState("");
-  const [showAiPrompt, setShowAiPrompt] = useState(true);
-  const [crewDescription, setCrewDescription] = useState("");
-  const [isFetchingAi, setIsFetchingAi] = useState(false);
-  const [aiError, setAiError] = useState("");
-  const [aiSuggestions, setAiSuggestions] = useState<LocalIdea[]>([]);
+  const [buddyExpanded, setBuddyExpanded] = useState(false);
+  const [buddyPrompt, setBuddyPrompt] = useState("");
+  const [buddyLoading, setBuddyLoading] = useState(false);
+  const [buddyError, setBuddyError] = useState("");
+  const [buddySuggestions, setBuddySuggestions] = useState<LocalIdea[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCatalog, setShowCatalog] = useState(true);
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
@@ -1160,14 +1160,14 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
     }
   };
 
-  const handleFetchAi = async () => {
-    setAiError("");
-    setIsFetchingAi(true);
+  const handleAskBuddy = async () => {
+    setBuddyError("");
+    setBuddyLoading(true);
     try {
       const res = await fetch("/api/ai/suggest-destinations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ crewDescription: crewDescription.trim() }),
+        body: JSON.stringify({ crewDescription: buddyPrompt.trim() }),
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -1181,13 +1181,22 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           source: "ai" as const,
         })
       );
-      // Show suggestions for review instead of auto-adding to the staging list
-      setAiSuggestions(incoming);
-      setCrewDescription("");
+      // Replace any previous suggestions — user can toggle these cards to select/deselect
+      setBuddySuggestions(incoming);
+      setBuddyPrompt("");
     } catch {
-      setAiError("Failed to get suggestions. Please try again.");
+      setBuddyError("Failed to get suggestions. Please try again.");
     } finally {
-      setIsFetchingAi(false);
+      setBuddyLoading(false);
+    }
+  };
+
+  const toggleBuddySuggestion = (suggestion: LocalIdea) => {
+    const alreadyStaged = localIdeas.some((i) => i.id === suggestion.id);
+    if (alreadyStaged) {
+      setLocalIdeas((prev) => prev.filter((i) => i.id !== suggestion.id));
+    } else {
+      setLocalIdeas((prev) => [...prev, suggestion]);
     }
   };
 
@@ -1268,135 +1277,134 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
       </div>
 
-      {/* ── 3. Ask Buddy panel ── */}
-      {aiSuggestions.length > 0 ? (
-        /* ── Suggestions review — user must explicitly add to list ── */
+      {/* ── 3. Ask Buddy panel — collapsed by default ── */}
+      {!buddyExpanded ? (
+        /* ── Collapsed trigger ── */
+        <button
+          onClick={() => setBuddyExpanded(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{
+            borderColor: "var(--color-bt-border)",
+            borderStyle: "dashed",
+            color: "var(--color-bt-accent)",
+          }}
+        >
+          <Sparkles size={15} />
+          Ask Buddy for suggestions
+        </button>
+      ) : (
+        /* ── Expanded panel ── */
         <div
           className="rounded-xl border p-4"
           style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
         >
-          <div className="mb-1 flex items-center gap-1.5">
-            <Sparkles size={14} style={{ color: "var(--color-bt-accent)" }} />
-            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Buddy&apos;s suggestions
-            </p>
-          </div>
-          <p className="mb-3 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Remove any you don&apos;t want, then add the rest to your list.
-          </p>
-
-          <div className="mb-4 space-y-2">
-            {aiSuggestions.map((s) => (
-              <div
-                key={s.id}
-                className="flex items-start gap-3 rounded-lg px-3 py-2.5"
-                style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                    {s.title}
-                  </p>
-                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {s.location}
-                    {s.costTier && (
-                      <span className="ml-1.5 font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-                        {s.costTier}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setAiSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
-                  className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                  title="Remove suggestion"
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            ))}
+          {/* Header row */}
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles size={14} style={{ color: "var(--color-bt-accent)" }} />
+              <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Ask Buddy
+              </span>
+            </div>
+            <button
+              onClick={() => setBuddyExpanded(false)}
+              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={14} />
+            </button>
           </div>
 
-          <button
-            onClick={() => {
-              setLocalIdeas((prev) => {
-                const existingTitles = new Set(prev.map((x) => x.title.toLowerCase()));
-                return [...prev, ...aiSuggestions.filter((x) => !existingTitles.has(x.title.toLowerCase()))];
-              });
-              setAiSuggestions([]);
-              setShowAiPrompt(false);
-            }}
-            className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            <Plus size={15} />
-            Add {aiSuggestions.length} idea{aiSuggestions.length !== 1 ? "s" : ""} to list
-          </button>
-          <button
-            onClick={() => {
-              setAiSuggestions([]);
-              setShowAiPrompt(true);
-            }}
-            className="mt-2 w-full text-center text-xs"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Try again with a different description
-          </button>
-        </div>
-      ) : showAiPrompt ? (
-        /* ── Prompt form ── */
-        <div
-          className="rounded-xl border p-4"
-          style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-        >
-          <div className="mb-1 flex items-center gap-1.5">
-            <Sparkles size={14} style={{ color: "var(--color-bt-accent)" }} />
-            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Ask Buddy
-            </p>
-          </div>
-          <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          {/* Prompt + fetch */}
+          <p className="mb-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             Tell us about your crew and we&apos;ll suggest some ideas to kick things off.
           </p>
           <textarea
-            value={crewDescription}
-            onChange={(e) => setCrewDescription(e.target.value)}
+            value={buddyPrompt}
+            onChange={(e) => setBuddyPrompt(e.target.value)}
             placeholder="e.g. 6 guys, links lovers, mid-range budget, did Bandon last year…"
             rows={3}
             maxLength={2000}
-            className="w-full resize-none rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+            className="mb-2 w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
             style={{
               background: "var(--color-bt-base)",
               borderColor: "var(--color-bt-border)",
               color: "var(--color-bt-text)",
             }}
           />
-          {aiError && (
-            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>{aiError}</p>
+          {buddyError && (
+            <p className="mb-2 text-xs" style={{ color: "var(--color-bt-danger)" }}>{buddyError}</p>
           )}
           <button
-            onClick={handleFetchAi}
-            disabled={!crewDescription.trim() || isFetchingAi}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+            onClick={handleAskBuddy}
+            disabled={!buddyPrompt.trim() || buddyLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            {isFetchingAi ? (
-              <><Loader2 size={15} className="animate-spin" /> Thinking…</>
+            {buddyLoading ? (
+              <><Loader2 size={14} className="animate-spin" /> Thinking…</>
             ) : (
-              <><Sparkles size={15} /> Ask Buddy</>
+              <><Sparkles size={14} /> Ask Buddy</>
             )}
           </button>
+
+          {/* Suggestion cards — same tap-to-select as catalog ── */}
+          {buddySuggestions.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                Tap to add to your list:
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {buddySuggestions.map((s) => {
+                  const isSelected = localIdeas.some((i) => i.id === s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => toggleBuddySuggestion(s)}
+                      className="relative overflow-hidden rounded-xl border text-left transition-all"
+                      style={{
+                        borderColor: isSelected ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                        background: isSelected ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+                      }}
+                    >
+                      {isSelected && (
+                        <div
+                          className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full"
+                          style={{ background: "var(--color-bt-accent)" }}
+                        >
+                          <Check size={11} color="var(--color-bt-base)" />
+                        </div>
+                      )}
+                      <div className="p-3">
+                        <p
+                          className="pr-6 text-xs font-semibold leading-tight"
+                          style={{ color: "var(--color-bt-text)" }}
+                        >
+                          {s.title}
+                        </p>
+                        <p className="mt-1 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {s.location}
+                          {s.costTier && (
+                            <span className="ml-1.5 font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                              {s.costTier}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => { setBuddySuggestions([]); setBuddyPrompt(""); }}
+                className="mt-2 w-full text-center text-xs"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Try again with a different description
+              </button>
+            </div>
+          )}
         </div>
-      ) : (
-        /* ── Collapsed button ── */
-        <button
-          onClick={() => setShowAiPrompt(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors"
-          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-        >
-          <Sparkles size={15} />
-          Ask Buddy for more
-        </button>
       )}
 
       {/* ── 4. Manual add ── */}
@@ -1454,30 +1462,8 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           >
             {isSubmitting ? (
               <><Loader2 size={16} className="animate-spin" /> Saving…</>
-            ) : onClose ? (
-              <>
-                Add {localIdeas[0]?.title}
-                {localIdeas.length > 1 && (
-                  <span
-                    className="ml-1 rounded-full px-2 py-0.5 text-xs font-bold"
-                    style={{ background: "rgba(0,0,0,0.2)" }}
-                  >
-                    +{localIdeas.length - 1} more
-                  </span>
-                )}
-                {" "}to the list →
-              </>
             ) : (
-              <>
-                Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →
-                <span
-                  className="ml-1 rounded-full px-2 py-0.5 text-xs font-bold"
-                  style={{ background: "rgba(0,0,0,0.2)" }}
-                >
-                  {localIdeas[0]?.title.split(" ").slice(0, 2).join(" ")}
-                  {localIdeas.length > 1 ? ` +${localIdeas.length - 1}` : ""}
-                </span>
-              </>
+              <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} →</>
             )}
           </button>
         </div>
