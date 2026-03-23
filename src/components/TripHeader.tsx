@@ -134,7 +134,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       </div>
     </div>
 
-    {location ? (
+    {location && (
       <div
         className="mt-2 flex items-center gap-1 text-sm"
         style={{ color: "var(--color-bt-text-dim)" }}
@@ -142,10 +142,6 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         <MapPin size={13} />
         <span>{location}</span>
       </div>
-    ) : (
-      <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        Destination TBD
-      </p>
     )}
 
     {dateRange && dateRange !== "Dates TBD" && (
@@ -207,36 +203,40 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       </div>
 
       {/* Destination */}
-      <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
-        <MapPin size={13} className="shrink-0" />
-        {canEdit && onDestinationChange && displayLocation ? (
-          <InlineEdit
-            value={displayLocation}
-            onSave={onDestinationChange}
-            className="text-sm"
-            style={{ color: subColor }}
-          />
-        ) : (
-          <span>{displayLocation || "Destination: TBD"}</span>
-        )}
-      </div>
+      {displayLocation && (
+        <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
+          <MapPin size={13} className="shrink-0" />
+          {canEdit && onDestinationChange ? (
+            <InlineEdit
+              value={displayLocation}
+              onSave={onDestinationChange}
+              className="text-sm"
+              style={{ color: subColor }}
+            />
+          ) : (
+            <span>{displayLocation}</span>
+          )}
+        </div>
+      )}
 
-      {/* Dates */}
-      <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
-        <Calendar size={11} className="shrink-0" />
-        {canEdit && onDatesTap && dateRange && dateRange !== "Dates TBD" ? (
-          <button
-            onClick={onDatesTap}
-            className="cursor-pointer text-left underline decoration-dotted underline-offset-2 text-xs"
-            style={{ color: metaColor }}
-            data-testid="dates-tap"
-          >
-            {dateRange}
-          </button>
-        ) : (
-          <span>{dateRange && dateRange !== "Dates TBD" ? dateRange : "Dates: TBD"}</span>
-        )}
-      </div>
+      {/* Dates — only show when set */}
+      {dateRange && dateRange !== "Dates TBD" && (
+        <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
+          <Calendar size={11} className="shrink-0" />
+          {canEdit && onDatesTap ? (
+            <button
+              onClick={onDatesTap}
+              className="cursor-pointer text-left underline decoration-dotted underline-offset-2 text-xs"
+              style={{ color: metaColor }}
+              data-testid="dates-tap"
+            >
+              {dateRange}
+            </button>
+          ) : (
+            <span>{dateRange}</span>
+          )}
+        </div>
+      )}
     </LocationHero>
   );
 };
