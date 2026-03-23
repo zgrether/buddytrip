@@ -78,13 +78,13 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       {/* State outline watermark */}
       {outline && (
         <div
-          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[45%] items-center overflow-hidden pr-2"
+          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[45%] items-center justify-center overflow-hidden"
           aria-hidden="true"
         >
           <svg
             viewBox={outline.viewBox}
-            className="h-[80%] w-full"
-            preserveAspectRatio="xMaxYMid meet"
+            className="h-full w-full"
+            preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
             <path
