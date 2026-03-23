@@ -62,7 +62,7 @@ export const TopNav: FC<TopNavProps> = ({
   return (
     <header
       className="sticky top-0 z-40 flex h-14 items-center justify-between px-4"
-      style={{ background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-border)" }}
+      style={{ background: "var(--color-bt-base)", boxShadow: "var(--shadow-card)" }}
     >
       <button
         onClick={() => router.push("/dashboard")}

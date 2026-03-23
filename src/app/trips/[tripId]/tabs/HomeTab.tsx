@@ -870,6 +870,7 @@ function PlanningRow({
           ? "var(--color-bt-warning-faint)"
           : "var(--color-bt-card)",
         border: `1px solid ${borderColor}`,
+        boxShadow: isOpen ? "var(--shadow-raised)" : "var(--shadow-card)",
       }}
     >
       {/* Header row — always visible, tappable to expand */}

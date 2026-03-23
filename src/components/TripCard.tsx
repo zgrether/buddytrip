@@ -66,11 +66,14 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
     <button
       data-testid={`trip-card-${trip.id}`}
       onClick={handleClick}
-      className="relative w-full overflow-hidden rounded-xl p-4 text-left shadow-sm transition-all hover:shadow-md"
+      className="relative w-full overflow-hidden rounded-xl p-4 text-left transition-all"
       style={{
-        background: "var(--color-bt-tile-bg)",
+        background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
+        boxShadow: "var(--shadow-card)",
       }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-raised)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-card)"; }}
     >
       {/* State outline watermark */}
       {outline && (

@@ -366,11 +366,11 @@ function IdeaCard({
   return (
     <div
       data-testid={`idea-card-${idea.id}`}
-      className="overflow-hidden rounded-2xl"
+      className="overflow-hidden rounded-2xl transition-shadow"
       style={{
         background: "var(--color-bt-card)",
         border: `1px solid ${isLeading ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-        boxShadow: isLeading ? "0 0 0 1px var(--color-bt-accent)" : undefined,
+        boxShadow: isLeading ? "0 0 0 1px var(--color-bt-accent)" : "var(--shadow-card)",
       }}
     >
       {/* ── Hero ──────────────────────────────────────────────────────── */}
@@ -863,7 +863,7 @@ function DeleteConfirmModal({
     >
       <div
         className="w-full max-w-sm rounded-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)", boxShadow: "var(--shadow-floating)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <p className="mb-2 text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
@@ -937,7 +937,7 @@ function LockConfirmModal({
     >
       <div
         className="w-full max-w-lg rounded-t-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)", boxShadow: "var(--shadow-floating)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <p
@@ -1018,7 +1018,7 @@ function VotingPanel({ tripId, ideas, currentUserId, lockedIdeaId }: { tripId: s
   return (
     <div
       className="mb-6 rounded-2xl border p-4"
-      style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
+      style={{ background: "var(--color-bt-card-float)", borderColor: "var(--color-bt-border)", boxShadow: "var(--shadow-floating)" }}
     >
       <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
         Crew votes
@@ -1449,7 +1449,9 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         <div
           className={`fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3 ${onClose ? "z-[60]" : "z-40"}`}
           style={{
-            background: "linear-gradient(to top, var(--color-bt-base) 70%, transparent)",
+            background: "var(--color-bt-card)",
+            borderTop: "1px solid var(--color-bt-accent-border)",
+            boxShadow: "0 -4px 12px rgba(0,0,0,.08)",
           }}
         >
           <button
