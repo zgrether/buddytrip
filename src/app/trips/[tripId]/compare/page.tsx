@@ -1705,6 +1705,7 @@ function ReopenConfirmModal({
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
     },
   });
 
