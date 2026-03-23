@@ -83,7 +83,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         >
           <svg
             viewBox={outline.viewBox}
-            className="mr-2 h-[80%] w-auto"
+            className="mr-2 h-[80%] w-auto max-w-full"
             preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >

@@ -73,7 +73,7 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
         >
           <svg
             viewBox={outline.viewBox}
-            className="mr-3 h-[85%] w-auto"
+            className="mr-3 h-[85%] w-auto max-w-full"
             preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
