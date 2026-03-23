@@ -92,9 +92,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
               d={outline.path}
               style={{
                 fill: "var(--color-bt-state-fill)",
-                stroke: "var(--color-bt-state-stroke)",
               }}
-              strokeWidth="2"
+              stroke="none"
             />
             {showPin && cityPin && (
               <>

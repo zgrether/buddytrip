@@ -68,7 +68,7 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
       {/* State outline watermark — fixed size, clips overflow */}
       {outline ? (
         <div
-          className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 overflow-hidden"
+          className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 overflow-hidden"
           style={{ width: '120px', height: '96px' }}
           aria-hidden="true"
         >
