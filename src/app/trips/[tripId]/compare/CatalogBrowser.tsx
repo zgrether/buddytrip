@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Flag, Check, Plus, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { ideaGradient } from "@/lib/ideaGradient";
+import { ideaGradient } from "@/lib/temporalGradient";
 import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
 
 interface CatalogBrowserProps {

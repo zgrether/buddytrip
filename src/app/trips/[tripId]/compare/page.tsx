@@ -30,7 +30,7 @@ import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { ideaGradient } from "@/lib/ideaGradient";
+import { temporalGradient, ideaGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "./CatalogBrowser";
 import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
 
@@ -290,6 +290,7 @@ function IdeaCard({
   isLeading,
   index = 0,
   lockedIdeaId,
+  tripStartDate,
   onLock,
   onDelete,
 }: {
@@ -301,6 +302,7 @@ function IdeaCard({
   isLeading?: boolean;
   index?: number;
   lockedIdeaId?: string;
+  tripStartDate?: string | null;
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
@@ -375,7 +377,7 @@ function IdeaCard({
       <div
         className={`relative overflow-hidden ${isLocked ? "min-h-[220px]" : "min-h-[160px]"}`}
         style={{
-          background: idea.image_url ? undefined : ideaGradient(index, isDark),
+          background: idea.image_url ? undefined : temporalGradient(tripStartDate, isDark),
         }}
       >
         {idea.image_url && (
@@ -2140,6 +2142,7 @@ export default function IdeaComparisonPage() {
                         isOwner={isOwner}
                         isLocked={true}
                         index={0}
+                        tripStartDate={trip?.start_date}
                         onLock={setLockIdea}
                         onDelete={setDeleteIdea}
                       />
@@ -2237,6 +2240,7 @@ export default function IdeaComparisonPage() {
                                       isLocked={false}
                                       index={i + 1}
                                       lockedIdeaId={lockedIdea?.id}
+                                      tripStartDate={trip?.start_date}
                                       onLock={setLockIdea}
                                       onDelete={setDeleteIdea}
                                     />
@@ -2257,6 +2261,7 @@ export default function IdeaComparisonPage() {
                             isOwner={isOwner}
                             isLeading={isLeading(idea)}
                             index={(lockedIdea ? 1 : 0) + i}
+                            tripStartDate={trip?.start_date}
                             onLock={setLockIdea}
                             onDelete={setDeleteIdea}
                           />
