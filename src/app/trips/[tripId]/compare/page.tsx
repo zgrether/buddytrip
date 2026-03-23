@@ -25,6 +25,7 @@ import {
   Link,
   UserPlus,
   ChevronLeft,
+  Users,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -1820,6 +1821,135 @@ function ReopenConfirmModal({
   );
 }
 
+// ── CrewBottomSheet ───────────────────────────────────────────────────────
+
+function CrewBottomSheet({
+  tripId,
+  members,
+  frequentTripmates,
+  onRefresh,
+  onClose,
+}: {
+  tripId: string
+  members: Array<{ user_id: string; role: string; status: string; displayName: string; user: { email: string | null } | null }>
+  frequentTripmates: Array<{ id: string; name: string | null; nickname: string | null; email: string }>
+  onRefresh: () => void
+  onClose: () => void
+}) {
+  useModalBackButton(onClose)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:hidden"
+      style={{ background: 'var(--color-bt-overlay)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-2xl p-5 max-h-[80vh] overflow-y-auto"
+        style={{
+          background: 'var(--color-bt-card)',
+          border: '1px solid var(--color-bt-border)',
+          boxShadow: 'var(--shadow-floating)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Handle bar */}
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full"
+          style={{ background: 'var(--color-bt-border)' }} />
+
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--color-bt-text-dim)' }}>
+              Co-planners ({members.filter(m =>
+                m.role === 'Owner' || m.role === 'Planner'
+              ).length})
+            </p>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--color-bt-text-dim)' }}>
+              Helping decide where you&apos;re headed
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full"
+            style={{ background: 'var(--color-bt-hover)' }}
+          >
+            <X size={16} style={{ color: 'var(--color-bt-text-dim)' }} />
+          </button>
+        </div>
+
+        {/* Member list */}
+        <div className="mb-4 space-y-2">
+          {members
+            .filter(m => m.role === 'Owner' || m.role === 'Planner')
+            .map((m) => {
+              const display = m.displayName
+              const isPending = m.status === 'invited'
+              const roleColor = m.role === 'Owner'
+                ? 'var(--color-bt-owner)'
+                : 'var(--color-bt-planning)'
+
+              return (
+                <div key={m.user_id} className="flex items-center gap-2">
+                  <div
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                    style={{
+                      background: isPending
+                        ? 'var(--color-bt-past-bg)'
+                        : 'var(--color-bt-tag-bg)',
+                      color: isPending
+                        ? 'var(--color-bt-text-dim)'
+                        : 'var(--color-bt-accent)',
+                    }}
+                  >
+                    {display.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm"
+                      style={{ color: isPending
+                        ? 'var(--color-bt-text-dim)'
+                        : 'var(--color-bt-text)' }}>
+                      {display}
+                    </p>
+                    {isPending && m.user?.email && (
+                      <p className="truncate text-[10px]"
+                        style={{ color: 'var(--color-bt-text-dim)' }}>
+                        {m.user.email}
+                      </p>
+                    )}
+                  </div>
+                  {isPending ? (
+                    <span className="text-xs font-semibold flex-shrink-0"
+                      style={{ color: 'var(--color-bt-ready)' }}>
+                      Invited
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold flex-shrink-0"
+                      style={{ color: roleColor }}>
+                      {m.role}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+
+        {/* Divider */}
+        <div className="mb-4"
+          style={{ borderTop: '1px solid var(--color-bt-border)' }} />
+
+        {/* Invite input */}
+        <InviteInput
+          tripId={tripId}
+          onInvited={onRefresh}
+          frequentTripmates={frequentTripmates}
+        />
+      </div>
+    </div>
+  )
+}
+
 // ── IdeaComparisonPage ────────────────────────────────────────────────────
 
 export default function IdeaComparisonPage() {
@@ -1836,6 +1966,7 @@ export default function IdeaComparisonPage() {
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [showReopenConfirm, setShowReopenConfirm] = useState(false);
   const [expandedIdeaId, setExpandedIdeaId] = useState<string | null>(null);
+  const [showCrewSheet, setShowCrewSheet] = useState(false);
 
   useEffect(() => {
     if (showAddModal) {
@@ -2279,6 +2410,33 @@ export default function IdeaComparisonPage() {
         )}
       </main>
 
+      {/* ── Mobile Crew FAB ──────────────────────────────────────────────── */}
+      {isOwner && (
+        <button
+          onClick={() => setShowCrewSheet(true)}
+          className="fixed bottom-6 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95 lg:hidden"
+          style={{
+            background: 'var(--color-bt-accent)',
+            boxShadow: '0 4px 16px rgba(0,0,0,.25)',
+          }}
+          aria-label="Manage co-planners"
+        >
+          <Users size={22} color="var(--color-bt-base)" />
+          {members.filter(m => m.role === 'Owner' || m.role === 'Planner').length > 1 && (
+            <span
+              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold"
+              style={{
+                background: 'var(--color-bt-base)',
+                color: 'var(--color-bt-accent)',
+                border: '2px solid var(--color-bt-accent)',
+              }}
+            >
+              {members.filter(m => m.role === 'Owner' || m.role === 'Planner').length}
+            </span>
+          )}
+        </button>
+      )}
+
       {/* ── Modals ───────────────────────────────────────────────────────── */}
       {showAddModal && (
         <AddIdeasModal tripId={tripId} onClose={() => setShowAddModal(false)} />
@@ -2302,6 +2460,15 @@ export default function IdeaComparisonPage() {
           tripId={tripId}
           destinationTitle={trip.locked_destination_title}
           onClose={() => setShowReopenConfirm(false)}
+        />
+      )}
+      {isOwner && showCrewSheet && (
+        <CrewBottomSheet
+          tripId={tripId}
+          members={members}
+          frequentTripmates={frequentTripmates}
+          onRefresh={() => { refetchMembers(); refetchTripmates(); }}
+          onClose={() => setShowCrewSheet(false)}
         />
       )}
     </div>
