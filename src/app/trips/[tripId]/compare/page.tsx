@@ -1831,8 +1831,8 @@ function CrewBottomSheet({
   onClose,
 }: {
   tripId: string
-  members: any[]
-  frequentTripmates: any[]
+  members: Array<{ user_id: string; role: string; status: string; displayName: string; user: { email: string | null } | null }>
+  frequentTripmates: Array<{ id: string; name: string | null; nickname: string | null; email: string }>
   onRefresh: () => void
   onClose: () => void
 }) {
@@ -1884,8 +1884,7 @@ function CrewBottomSheet({
           {members
             .filter(m => m.role === 'Owner' || m.role === 'Planner')
             .map((m) => {
-              const user = m.users as any
-              const display = user?.nickname ?? user?.name ?? m.user_id
+              const display = m.displayName
               const isPending = m.status === 'invited'
               const roleColor = m.role === 'Owner'
                 ? 'var(--color-bt-owner)'
@@ -1913,10 +1912,10 @@ function CrewBottomSheet({
                         : 'var(--color-bt-text)' }}>
                       {display}
                     </p>
-                    {isPending && user?.email && (
+                    {isPending && m.user?.email && (
                       <p className="truncate text-[10px]"
                         style={{ color: 'var(--color-bt-text-dim)' }}>
-                        {user.email}
+                        {m.user.email}
                       </p>
                     )}
                   </div>
