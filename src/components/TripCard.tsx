@@ -75,15 +75,16 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-raised)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-card)"; }}
     >
-      {/* State outline watermark */}
+      {/* State outline watermark — fixed size, clips overflow */}
       {outline && (
         <div
-          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[45%] items-center justify-center overflow-hidden"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 overflow-hidden"
+          style={{ width: '80px', height: '64px' }}
           aria-hidden="true"
         >
           <svg
             viewBox={outline.viewBox}
-            className="h-full w-full"
+            className="absolute inset-0 h-full w-full"
             preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >

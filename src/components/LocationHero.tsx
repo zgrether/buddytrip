@@ -65,15 +65,16 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
       style={isDark ? darkStyle : lightStyle}
       data-testid="location-hero"
     >
-      {/* State outline watermark */}
+      {/* State outline watermark — fixed size, clips overflow */}
       {outline ? (
         <div
-          className="pointer-events-none absolute right-0 top-0 bottom-0 flex w-[55%] items-center justify-center overflow-hidden"
+          className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 overflow-hidden"
+          style={{ width: '120px', height: '96px' }}
           aria-hidden="true"
         >
           <svg
             viewBox={outline.viewBox}
-            className="h-full w-full"
+            className="absolute inset-0 h-full w-full"
             preserveAspectRatio="xMidYMid meet"
             style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
           >
