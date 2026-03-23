@@ -3,12 +3,15 @@
 import type { ReactNode } from "react";
 import { useTheme } from "next-themes";
 import { getLocationInfo } from "@/lib/locationUtils";
+import { temporalGradient } from "@/lib/temporalGradient";
 
 interface LocationHeroProps {
   /** Location string used to derive the gradient color and state watermark */
   location: string;
   /** Trip name, used as fallback for hue if location is empty */
   tripName: string;
+  /** Trip start date — drives the temporal gradient color temperature */
+  tripStartDate?: string | null;
   /** Content rendered inside the hero card */
   children: ReactNode;
 }
@@ -38,25 +41,28 @@ export function parseLocation(location: string): { city: string; region: string 
  * outline of the destination state and a pin on the city (US only).
  * Falls back to a subtle large pin icon for unrecognised/international locations.
  */
-export function LocationHero({ location, tripName, children }: LocationHeroProps) {
-  const hueSource = location || tripName;
-  const hue = hashToHue(hueSource.toLowerCase());
+export function LocationHero({ location, tripName, tripStartDate, children }: LocationHeroProps) {
   const { resolvedTheme } = useTheme();
   const { outline, cityPin, showPin, rotation } = getLocationInfo(location);
 
   const isDark = resolvedTheme === "dark";
-  const gradient = isDark
-    ? `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`
-    : undefined;
+
+  // Dark mode: temporal gradient background with state watermark
+  // Light mode: white card with accent left border — no washed-out gradient
+  const darkStyle = {
+    background: temporalGradient(tripStartDate ?? null, true),
+    boxShadow: "var(--shadow-raised)",
+  };
+  const lightStyle = {
+    background: "var(--color-bt-card)",
+    borderLeft: "4px solid var(--color-bt-accent)",
+    boxShadow: "var(--shadow-raised)",
+  };
 
   return (
     <div
       className="relative overflow-hidden rounded-2xl"
-      style={
-        gradient
-          ? { background: gradient }
-          : { border: "1px solid var(--color-bt-border)" }
-      }
+      style={isDark ? darkStyle : lightStyle}
       data-testid="location-hero"
     >
       {/* State outline watermark */}

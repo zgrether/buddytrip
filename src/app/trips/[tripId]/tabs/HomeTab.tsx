@@ -852,12 +852,12 @@ function PlanningRow({
   const labelColor = isDone
     ? "var(--color-bt-accent)"
     : isInProgress
-    ? "var(--color-bt-warning)"
+    ? "var(--color-bt-accent)"
     : "var(--color-bt-text-dim)";
   const borderColor = isDone
     ? "var(--color-bt-accent-border)"
     : isInProgress
-    ? "var(--color-bt-warning-border)"
+    ? "var(--color-bt-accent-border)"
     : "var(--color-bt-border)";
 
   return (
@@ -867,9 +867,10 @@ function PlanningRow({
         background: isDone
           ? "var(--color-bt-tag-bg)"
           : isInProgress
-          ? "var(--color-bt-warning-faint)"
+          ? "var(--color-bt-accent-faint)"
           : "var(--color-bt-card)",
         border: `1px solid ${borderColor}`,
+        boxShadow: isOpen ? "var(--shadow-raised)" : "var(--shadow-card)",
       }}
     >
       {/* Header row — always visible, tappable to expand */}

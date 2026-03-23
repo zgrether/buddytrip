@@ -21,6 +21,8 @@ interface TripHeaderProps {
   onDestinationChange?: (value: string) => void;
   /** Called when dates are tapped (navigate to date poll or open picker) */
   onDatesTap?: () => void;
+  /** Trip start date — drives temporal gradient color */
+  tripStartDate?: string | null;
 }
 
 // ── Inline editable text ─────────────────────────────────────────────────
@@ -168,6 +170,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   settingsSlot,
   onDestinationChange,
   onDatesTap,
+  tripStartDate,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -182,7 +185,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   const displayLocation = location || lockedTitle || "";
 
   return (
-    <LocationHero location={displayLocation || tripName} tripName={tripName}>
+    <LocationHero location={displayLocation || tripName} tripName={tripName} tripStartDate={tripStartDate}>
       {/* Row 1: trip name + settings + badge */}
       <div className="flex items-start justify-between">
         <h1
