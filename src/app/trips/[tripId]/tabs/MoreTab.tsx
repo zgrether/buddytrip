@@ -388,6 +388,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId: trip.id });
+      utils.trips.list.invalidate();
     },
   });
 

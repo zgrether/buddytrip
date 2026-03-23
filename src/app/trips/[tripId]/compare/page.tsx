@@ -289,6 +289,7 @@ function IdeaCard({
   isLocked,
   isLeading,
   index = 0,
+  lockedIdeaId,
   onLock,
   onDelete,
 }: {
@@ -299,6 +300,7 @@ function IdeaCard({
   isLocked?: boolean;
   isLeading?: boolean;
   index?: number;
+  lockedIdeaId?: string;
   onLock: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
@@ -792,7 +794,7 @@ function IdeaCard({
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <Lock size={11} />
-                  Set as destination
+                  {lockedIdeaId ? "Change destination to this" : "Set as destination"}
                 </button>
               )}
               {!isOwner && <span />}
@@ -1705,6 +1707,7 @@ function ReopenConfirmModal({
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
     },
   });
 
@@ -1954,6 +1957,7 @@ export default function IdeaComparisonPage() {
                   )}
 
                   {isOwner && members.length > 0 && (
+                    <div className="hidden lg:block">
                     <div
                       className="mt-3 rounded-2xl border p-4"
                       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
@@ -2043,6 +2047,7 @@ export default function IdeaComparisonPage() {
                         onInvited={() => { refetchMembers(); refetchTripmates(); }}
                         frequentTripmates={frequentTripmates}
                       />
+                    </div>
                     </div>
                   )}
                 </div>
@@ -2171,6 +2176,7 @@ export default function IdeaComparisonPage() {
                                       isOwner={isOwner}
                                       isLocked={false}
                                       index={i + 1}
+                                      lockedIdeaId={lockedIdea?.id}
                                       onLock={setLockIdea}
                                       onDelete={setDeleteIdea}
                                     />
