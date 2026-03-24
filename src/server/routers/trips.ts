@@ -159,7 +159,7 @@ export const tripsRouter = router({
             trip_id: input.id,
             user_id: cp.userId,
             role: cp.role,
-            status: "in",
+            status: "draft",
           });
         }
       }

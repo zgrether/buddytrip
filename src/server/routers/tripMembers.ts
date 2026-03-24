@@ -64,6 +64,7 @@ export const tripMembersRouter = router({
         tripId: z.string(),
         userId: z.string(),
         role: z.enum(["Planner", "Member"]).default("Member"),
+        status: z.enum(["draft", "in", "likely", "maybe", "out", "invited"]).default("maybe"),
       })
     )
     .use(requireTripRole("Planner"))
@@ -90,7 +91,7 @@ export const tripMembersRouter = router({
           trip_id: ctx.tripId,
           user_id: input.userId,
           role: input.role,
-          status: "maybe",
+          status: input.status,
         })
         .select()
         .single();
@@ -189,6 +190,7 @@ export const tripMembersRouter = router({
       z.object({
         tripId: z.string(),
         email: z.string().email(),
+        role: z.enum(["Planner", "Member"]).default("Planner"),
       })
     )
     .use(requireTripRole("Planner"))
@@ -249,7 +251,7 @@ export const tripMembersRouter = router({
           id: crypto.randomUUID(),
           trip_id: ctx.tripId,
           user_id: guestUserId,
-          role: "Planner",
+          role: input.role,
           status: "invited",
         });
 

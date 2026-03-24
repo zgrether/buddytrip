@@ -69,7 +69,7 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
       {outline ? (
         <div
           className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 overflow-hidden"
-          style={{ width: '120px', height: '96px' }}
+          style={{ width: '80px', height: '64px' }}
           aria-hidden="true"
         >
           <svg
