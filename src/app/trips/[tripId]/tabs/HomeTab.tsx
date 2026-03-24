@@ -925,7 +925,7 @@ function PlanningSection({
   trip: TripData;
   ideas: IdeaWithVotes[];
   poll: { windows: { id: string; start_date: string; end_date: string }[] } | undefined;
-  tripMembers: { status: string }[];
+  tripMembers: { user_id: string | null; status: string; displayName: string }[];
   reservations: unknown[];
   canEdit: boolean;
   isOwner: boolean;
@@ -957,8 +957,12 @@ function PlanningSection({
     : "Not set yet";
 
   // ── Crew ──────────────────────────────────────────────────────────────
-  const confirmed = tripMembers.filter((m) => m.status === "in").length;
-  const pending = tripMembers.filter((m) => m.status !== "in").length;
+  const confirmedMembers = tripMembers.filter((m) =>
+    m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
+  );
+  const confirmed = confirmedMembers.length;
+  const invitedCount = tripMembers.filter((m) => m.status === "invited").length;
+  const draftCount = tripMembers.filter((m) => m.status === "draft").length;
   const hasAnyone = tripMembers.length > 1;
   const crewState: ArcCardState = confirmed >= 4 ? "done" : hasAnyone && confirmed < 4 ? "inProgress" : "none";
   const crewNote = `${confirmed} confirmed`;
@@ -1147,28 +1151,43 @@ function PlanningSection({
         onToggle={() => toggle("crew")}
       >
         <div className="space-y-3">
-          <div className="flex gap-6">
-            <div>
-              <p className="text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-                {confirmed}
-              </p>
-              <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>confirmed</p>
+          {/* Avatar row */}
+          {confirmedMembers.length > 0 && (
+            <div className="flex -space-x-2">
+              {confirmedMembers.slice(0, 5).map((m) => (
+                <div
+                  key={m.user_id}
+                  className="flex h-8 w-8 items-center justify-center rounded-full ring-2 ring-[var(--color-bt-card)] text-xs font-semibold"
+                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                >
+                  {m.displayName.charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {confirmedMembers.length > 5 && (
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-full ring-2 ring-[var(--color-bt-card)] text-xs"
+                  style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                >
+                  +{confirmedMembers.length - 5}
+                </div>
+              )}
             </div>
-            {pending > 0 && (
-              <div>
-                <p className="text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-                  {pending}
-                </p>
-                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>pending</p>
-              </div>
-            )}
-          </div>
+          )}
+
+          {/* Status summary */}
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {confirmed} confirmed
+            {invitedCount > 0 && ` \u00b7 ${invitedCount} invited`}
+            {draftCount > 0 && ` \u00b7 ${draftCount} not yet invited`}
+          </p>
+
+          {/* CTA */}
           <button
             onClick={() => onTabChange?.("crew")}
-            className="text-xs font-medium"
+            className="text-sm font-medium"
             style={{ color: "var(--color-bt-accent)" }}
           >
-            {canEdit ? "Manage crew →" : "View crew →"}
+            {canEdit ? "Manage crew \u2192" : "View crew \u2192"}
           </button>
         </div>
       </PlanningRow>

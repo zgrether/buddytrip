@@ -33,6 +33,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { temporalGradient, ideaGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "./CatalogBrowser";
+import { CrewSearchInput } from "@/components/CrewSearchInput";
 import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1511,229 +1512,7 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
   );
 }
 
-// ── InviteInput ───────────────────────────────────────────────────────────
-
-function InviteInput({
-  tripId,
-  onInvited,
-  frequentTripmates = [],
-}: {
-  tripId: string;
-  onInvited: () => void;
-  frequentTripmates?: Array<{ id: string; name: string | null; nickname: string | null; email: string }>;
-}) {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "found" | "not-found">("idle");
-  const [foundUser, setFoundUser] = useState<{ id: string; name: string | null; nickname: string | null; email: string } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [alreadyMemberName, setAlreadyMemberName] = useState<string | null>(null);
-  const utils = trpc.useUtils();
-
-  const addMember = trpc.tripMembers.add.useMutation({
-    onSuccess() {
-      setEmail("");
-      setStatus("idle");
-      setFoundUser(null);
-      utils.tripMembers.list.invalidate({ tripId });
-      onInvited();
-    },
-  });
-
-  const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
-
-  const handleLookup = async () => {
-    if (!email.includes("@")) return;
-    const results = await utils.users.search.fetch({ query: email.toLowerCase() });
-    if (results && results.length > 0) {
-      setFoundUser(results[0] as { id: string; name: string | null; nickname: string | null; email: string });
-      setStatus("found");
-    } else {
-      setFoundUser(null);
-      setStatus("not-found");
-    }
-  };
-
-  const handleCopyInvite = async () => {
-    const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
-
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-    } catch {
-      // Fallback for restricted contexts (iframes, http, etc.)
-      const textarea = document.createElement("textarea");
-      textarea.value = inviteUrl;
-      textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      try { document.execCommand("copy"); } catch { /* best effort */ }
-      document.body.removeChild(textarea);
-    }
-
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="space-y-2">
-      {/* Frequent tripmates chips */}
-      {frequentTripmates.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {frequentTripmates.map((user) => (
-            <button
-              key={user.id}
-              onClick={() => addMember.mutate({ tripId, userId: user.id, role: "Planner" })}
-              disabled={addMember.isPending}
-              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
-              style={{
-                background: "var(--color-bt-tag-bg)",
-                color: "var(--color-bt-accent)",
-                border: "1px solid color-mix(in srgb, var(--color-bt-accent) 30%, transparent)",
-              }}
-            >
-              <span
-                className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {(user.nickname ?? user.name ?? user.email).charAt(0).toUpperCase()}
-              </span>
-              {user.nickname ?? user.name?.split(" ")[0]}
-              <Plus size={10} />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Email input + Find button */}
-      <div className="flex gap-1.5">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => { setEmail(e.target.value); setStatus("idle"); setFoundUser(null); setInviteError(null); setAlreadyMemberName(null); }}
-          onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
-          placeholder="email@example.com"
-          className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-          style={{
-            background: "var(--color-bt-base)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        <button
-          onClick={handleLookup}
-          disabled={!email.includes("@")}
-          className="rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          Find
-        </button>
-      </div>
-
-      {/* Found state */}
-      {status === "found" && foundUser && (
-        <div
-          className="flex items-center gap-2 rounded-lg px-3 py-2"
-          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <div
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-          >
-            {(foundUser.nickname ?? foundUser.name ?? foundUser.email).charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {foundUser.name ?? foundUser.email}
-              {foundUser.nickname && (
-                <span className="ml-1" style={{ color: "var(--color-bt-text-dim)" }}>
-                  ({foundUser.nickname})
-                </span>
-              )}
-            </p>
-            <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              BuddyTrip member
-            </p>
-          </div>
-          <button
-            onClick={() => addMember.mutate({ tripId, userId: foundUser.id, role: "Planner" })}
-            disabled={addMember.isPending}
-            className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {addMember.isPending ? "Adding…" : "+ Add"}
-          </button>
-        </div>
-      )}
-
-      {/* Not found state */}
-      {status === "not-found" && (
-        <div
-          className="rounded-lg px-3 py-2.5 space-y-2"
-          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            No BuddyTrip account found for that email.
-          </p>
-          {alreadyMemberName && (
-            <p className="text-xs font-medium" style={{ color: "var(--color-bt-warning)" }}>
-              Already on this trip as &ldquo;{alreadyMemberName}&rdquo;
-            </p>
-          )}
-          {inviteError && (
-            <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
-              {inviteError}
-            </p>
-          )}
-          <button
-            onClick={async () => {
-              setInviteError(null);
-              setAlreadyMemberName(null);
-              try {
-                const result = await inviteByEmail.mutateAsync({ tripId, email });
-                if (result.status === "already_member") {
-                  setAlreadyMemberName(result.displayName);
-                  return;
-                }
-                if (result.status === "real_account_exists") {
-                  setInviteError("A BuddyTrip account exists for that email — try searching for it.");
-                  return;
-                }
-                setEmail("");
-                setStatus("idle");
-                setAlreadyMemberName(null);
-                utils.tripMembers.list.invalidate({ tripId });
-                onInvited();
-              } catch {
-                setInviteError("Failed to create invite. Please try again.");
-              }
-            }}
-            disabled={inviteByEmail.isPending}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {inviteByEmail.isPending ? (
-              <><Loader2 size={11} className="animate-spin" /> Sending invite…</>
-            ) : (
-              <><UserPlus size={11} /> Invite to BuddyTrip</>
-            )}
-          </button>
-          <button
-            onClick={handleCopyInvite}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs transition-opacity hover:opacity-80"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {copied ? (
-              <><Check size={11} /> Link copied!</>
-            ) : (
-              <><Link size={11} /> Copy invite link instead</>
-            )}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
+// ── InviteInput removed — replaced by CrewSearchInput ────────────────────
 
 // ── ReopenConfirmModal ────────────────────────────────────────────────────
 
@@ -1958,10 +1737,15 @@ function CrewBottomSheet({
         <div className="mb-4"
           style={{ borderTop: '1px solid var(--color-bt-border)' }} />
 
-        {/* Invite input */}
-        <InviteInput
+        {/* Crew search */}
+        <CrewSearchInput
           tripId={tripId}
-          onInvited={onRefresh}
+          defaultRole="Planner"
+          defaultStatus="draft"
+          allowGhost={false}
+          allowInvite={true}
+          placeholder="Add a co-planner..."
+          onAdded={onRefresh}
           frequentTripmates={frequentTripmates}
         />
       </div>
@@ -2254,9 +2038,14 @@ export default function IdeaComparisonPage() {
                           })}
                       </div>
 
-                      <InviteInput
+                      <CrewSearchInput
                         tripId={tripId}
-                        onInvited={() => { refetchMembers(); refetchTripmates(); }}
+                        defaultRole="Planner"
+                        defaultStatus="draft"
+                        allowGhost={false}
+                        allowInvite={true}
+                        placeholder="Add a co-planner..."
+                        onAdded={() => { refetchMembers(); refetchTripmates(); }}
                         frequentTripmates={frequentTripmates}
                       />
                     </div>
