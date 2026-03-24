@@ -393,7 +393,7 @@ function IdeaCard({
           <div
             className="absolute inset-0"
             style={{
-              background: "linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.15) 55%, transparent 100%)",
+              background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)",
             }}
           />
         )}
@@ -439,10 +439,10 @@ function IdeaCard({
 
         <div className="absolute bottom-0 left-0 right-0 p-4">
           {(() => {
-            // Theme-aware text colors for gradient hero
-            const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
-            const subColor = isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.55)";
-            const dimColor = isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)";
+            // Text colors: white over photo scrim, theme tokens over gradient fallback
+            const titleColor = idea.image_url ? "#ffffff" : "var(--color-bt-text)";
+            const subColor = idea.image_url ? "rgba(255,255,255,0.85)" : "var(--color-bt-text-dim)";
+            const dimColor = idea.image_url ? "rgba(255,255,255,0.5)" : "var(--color-bt-text-dim)";
             const inputBg = isDark ? "bg-black/30" : "bg-white/50";
             const inputText = isDark ? "text-white placeholder:text-white/40" : "text-black placeholder:text-black/40";
             const cancelColor = isDark ? "text-white/70" : "text-black/50";
