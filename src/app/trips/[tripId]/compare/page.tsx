@@ -1827,16 +1827,24 @@ function CrewBottomSheet({
   tripId,
   members,
   frequentTripmates,
+  currentUserId,
   onRefresh,
   onClose,
 }: {
   tripId: string
   members: Array<{ user_id: string; role: string; status: string; displayName: string; user: { email: string | null } | null }>
   frequentTripmates: Array<{ id: string; name: string | null; nickname: string | null; email: string }>
+  currentUserId: string | undefined
   onRefresh: () => void
   onClose: () => void
 }) {
   useModalBackButton(onClose)
+
+  const removeMember = trpc.tripMembers.remove.useMutation({
+    onSuccess() {
+      onRefresh()
+    },
+  })
 
   return (
     <div
@@ -1889,6 +1897,7 @@ function CrewBottomSheet({
               const roleColor = m.role === 'Owner'
                 ? 'var(--color-bt-owner)'
                 : 'var(--color-bt-planning)'
+              const isMe = m.user_id === currentUserId
 
               return (
                 <div key={m.user_id} className="flex items-center gap-2">
@@ -1929,6 +1938,16 @@ function CrewBottomSheet({
                       style={{ color: roleColor }}>
                       {m.role}
                     </span>
+                  )}
+                  {!isMe && (
+                    <button
+                      onClick={() => removeMember.mutate({ tripId, userId: m.user_id })}
+                      disabled={removeMember.isPending}
+                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
+                      style={{ color: 'var(--color-bt-text-dim)' }}
+                    >
+                      <X size={14} />
+                    </button>
                   )}
                 </div>
               )
@@ -2180,9 +2199,7 @@ export default function IdeaComparisonPage() {
                           .map((m) => {
                             const isPending = m.status === "invited";
                             const isMe = m.user_id === currentUser?.id;
-                            const display = isPending
-                              ? (m.user?.email ?? m.displayName)
-                              : m.displayName;
+                            const display = m.displayName;
                             const initial = display.charAt(0).toUpperCase();
                             const roleColor =
                               m.role === "Owner"
@@ -2213,7 +2230,7 @@ export default function IdeaComparisonPage() {
                                   )}
                                 </div>
                                 {isPending ? (
-                                  <span className="text-[10px] font-semibold" style={{ color: "var(--color-bt-warning)" }}>
+                                  <span className="text-[10px] font-semibold" style={{ color: "var(--color-bt-ready)" }}>
                                     Invited
                                   </span>
                                 ) : (
@@ -2467,6 +2484,7 @@ export default function IdeaComparisonPage() {
           tripId={tripId}
           members={members}
           frequentTripmates={frequentTripmates}
+          currentUserId={currentUser?.id}
           onRefresh={() => { refetchMembers(); refetchTripmates(); }}
           onClose={() => setShowCrewSheet(false)}
         />
