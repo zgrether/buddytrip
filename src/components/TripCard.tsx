@@ -105,12 +105,10 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         </div>
       )}
 
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge status={status} />
-          {trip.myRole && <RoleBadge role={trip.myRole} />}
-        </div>
+      {/* Badges — absolute top right, above silhouette */}
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+        <StatusBadge status={status} />
+        {trip.myRole && <RoleBadge role={trip.myRole} />}
         {unreadCount > 0 && (
           <span
             className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
@@ -121,9 +119,9 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         )}
       </div>
 
-      {/* Title */}
+      {/* Title — right padding keeps text clear of badge cluster */}
       <h3
-        className="mt-2 text-base font-semibold leading-tight"
+        className="pr-24 text-base font-semibold leading-tight"
         style={{ color: "var(--color-bt-text)" }}
       >
         {trip.title}
