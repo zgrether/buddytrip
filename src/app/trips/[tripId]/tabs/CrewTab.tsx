@@ -68,6 +68,9 @@ function CrewMemberRow({
   const removeMember = trpc.tripMembers.remove.useMutation({
     onSuccess() { utils.tripMembers.list.invalidate({ tripId }); onUpdated(); },
   });
+  const removeGuest = trpc.ghostCrew.remove.useMutation({
+    onSuccess() { utils.tripMembers.list.invalidate({ tripId }); onUpdated(); },
+  });
   const updateGuest = trpc.ghostCrew.update.useMutation({
     onSuccess() { utils.tripMembers.list.invalidate({ tripId }); },
   });
@@ -100,7 +103,11 @@ function CrewMemberRow({
 
   const handleRemove = () => {
     if (!m.user_id) return;
-    removeMember.mutate({ tripId, userId: m.user_id });
+    if (m.isGuest) {
+      removeGuest.mutate({ tripId, guestUserId: m.user_id });
+    } else {
+      removeMember.mutate({ tripId, userId: m.user_id });
+    }
   };
 
   return (
@@ -196,7 +203,7 @@ function CrewMemberRow({
           </p>
           <button
             onClick={handleRemove}
-            disabled={removeMember.isPending}
+            disabled={removeMember.isPending || removeGuest.isPending}
             className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
             style={{ background: "var(--color-bt-danger)", color: "white" }}
           >
