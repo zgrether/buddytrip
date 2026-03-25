@@ -15,8 +15,6 @@ const RSVP_LABEL: Record<string, { label: string; color: string }> = {
   out:     { label: "Can't go", color: "var(--color-bt-danger)" },
 };
 
-type RsvpStatus = "in" | "likely" | "maybe" | "out";
-
 const ROLE_COLOR: Record<string, string> = {
   Owner:   "var(--color-bt-accent)",
   Planner: "var(--color-bt-ready)",
@@ -24,52 +22,6 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
-
-// ── My RSVP buttons ───────────────────────────────────────────────────────
-
-function MyRsvpButtons({ tripId, currentStatus }: { tripId: string; currentStatus?: string }) {
-  const utils = trpc.useUtils();
-  const currentUser = useCurrentUser();
-  const updateRsvp = trpc.tripMembers.updateRsvp.useMutation({
-    async onMutate({ status }) {
-      await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
-      utils.tripMembers.list.setData(
-        { tripId },
-        (prev ?? []).map((m) => (m.user_id === currentUser?.id ? { ...m, status } : m))
-      );
-      return { prev };
-    },
-    onError(_err, _vars, ctx) {
-      if (ctx?.prev !== undefined) utils.tripMembers.list.setData({ tripId }, ctx.prev);
-    },
-    onSettled() { utils.tripMembers.list.invalidate({ tripId }); },
-  });
-
-  return (
-    <div className="mt-2 flex gap-1.5">
-      {(["in", "likely", "maybe", "out"] as RsvpStatus[]).map((s) => {
-        const cfg = RSVP_LABEL[s];
-        const active = currentStatus === s;
-        return (
-          <button
-            key={s}
-            data-testid={`rsvp-${s}`}
-            onClick={() => updateRsvp.mutate({ tripId, status: s })}
-            className="flex-1 rounded-lg py-1 text-[10px] font-medium transition-all"
-            style={{
-              background: active ? `${cfg.color}22` : "var(--color-bt-base)",
-              border: `1px solid ${active ? cfg.color : "var(--color-bt-border)"}`,
-              color: cfg.color,
-            }}
-          >
-            {cfg.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 // ── Member type ───────────────────────────────────────────────────────────
 
@@ -94,7 +46,6 @@ function CrewMemberRow({
   onEdit,
   onCancelEdit,
   onUpdated,
-  currentStatus,
 }: {
   member: Member;
   tripId: string;
@@ -104,7 +55,6 @@ function CrewMemberRow({
   onEdit: () => void;
   onCancelEdit: () => void;
   onUpdated: () => void;
-  currentStatus?: string;
 }) {
   const utils = trpc.useUtils();
   const [editName, setEditName] = useState(m.displayName);
@@ -160,16 +110,6 @@ function CrewMemberRow({
         className="space-y-2 border-b px-1 py-2"
         style={{ borderColor: "var(--color-bt-border)", background: "color-mix(in srgb, var(--color-bt-accent) 8%, var(--color-bt-base))" }}
       >
-        {/* RSVP — only for self */}
-        {isMe && !m.isGuest && (
-          <div>
-            <p className="mb-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Your RSVP
-            </p>
-            <MyRsvpButtons tripId={tripId} currentStatus={currentStatus} />
-          </div>
-        )}
-
         {/* Name + email on one line — not shown for self */}
         {!isMe && (
           <div className="flex gap-2">
@@ -248,8 +188,11 @@ function CrewMemberRow({
   return (
     <div>
       <div
-        className="flex items-center gap-3 border-b py-2.5"
-        style={{ borderColor: "var(--color-bt-border)" }}
+        className="flex items-center gap-3 border-b py-2.5 px-1 -mx-1 rounded"
+        style={{
+          borderColor: "var(--color-bt-border)",
+          background: rsvpCfg ? `${rsvpCfg.color}0a` : undefined,
+        }}
       >
         {/* Avatar */}
         {m.isGuest ? (
@@ -305,8 +248,8 @@ function CrewMemberRow({
           </span>
         ) : null}
 
-        {/* Edit button — canEdit for others, always for self (to access RSVP) */}
-        {((canEdit && !isMe && m.role !== "Owner") || isMe) && (
+        {/* Edit button — canEdit for others (not self, not Owner) */}
+        {canEdit && !isMe && m.role !== "Owner" && (
           <button
             onClick={onEdit}
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
@@ -440,7 +383,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               onEdit={() => setEditingId(m.user_id)}
               onCancelEdit={() => setEditingId(null)}
               onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-              currentStatus={isMe ? me?.status ?? undefined : undefined}
             />
           );
         })}
