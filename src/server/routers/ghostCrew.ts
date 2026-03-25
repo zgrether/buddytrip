@@ -115,6 +115,26 @@ export const ghostCrewRouter = router({
               message: "A crew member with this email already exists.",
             });
           }
+
+          // Reuse the existing ghost user — just add them to this trip
+          const { error: memberError } = await ctx.supabase
+            .from("trip_members")
+            .insert({
+              id: crypto.randomUUID(),
+              trip_id: ctx.tripId,
+              user_id: existingUser.id,
+              role: input.role,
+              status: "in",
+            });
+
+          if (memberError) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to add guest to trip: ${memberError.message}`,
+            });
+          }
+
+          return { id: existingUser.id, name: input.name, nickname: input.nickname ?? null, email: input.email ?? null, is_guest: true, created_by: null, created_at: null, role: input.role };
         }
       }
 
