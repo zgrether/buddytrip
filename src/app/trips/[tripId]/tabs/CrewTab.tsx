@@ -15,8 +15,6 @@ const RSVP_LABEL: Record<string, { label: string; color: string }> = {
   out:     { label: "Can't go", color: "var(--color-bt-danger)" },
 };
 
-type RsvpStatus = "in" | "likely" | "maybe" | "out";
-
 const ROLE_COLOR: Record<string, string> = {
   Owner:   "var(--color-bt-accent)",
   Planner: "var(--color-bt-ready)",
@@ -24,52 +22,6 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
-
-// ── My RSVP buttons ───────────────────────────────────────────────────────
-
-function MyRsvpButtons({ tripId, currentStatus }: { tripId: string; currentStatus?: string }) {
-  const utils = trpc.useUtils();
-  const currentUser = useCurrentUser();
-  const updateRsvp = trpc.tripMembers.updateRsvp.useMutation({
-    async onMutate({ status }) {
-      await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
-      utils.tripMembers.list.setData(
-        { tripId },
-        (prev ?? []).map((m) => (m.user_id === currentUser?.id ? { ...m, status } : m))
-      );
-      return { prev };
-    },
-    onError(_err, _vars, ctx) {
-      if (ctx?.prev !== undefined) utils.tripMembers.list.setData({ tripId }, ctx.prev);
-    },
-    onSettled() { utils.tripMembers.list.invalidate({ tripId }); },
-  });
-
-  return (
-    <div className="mt-2 flex gap-1.5">
-      {(["in", "likely", "maybe", "out"] as RsvpStatus[]).map((s) => {
-        const cfg = RSVP_LABEL[s];
-        const active = currentStatus === s;
-        return (
-          <button
-            key={s}
-            data-testid={`rsvp-${s}`}
-            onClick={() => updateRsvp.mutate({ tripId, status: s })}
-            className="flex-1 rounded-lg py-1 text-[10px] font-medium transition-all"
-            style={{
-              background: active ? `${cfg.color}22` : "var(--color-bt-base)",
-              border: `1px solid ${active ? cfg.color : "var(--color-bt-border)"}`,
-              color: cfg.color,
-            }}
-          >
-            {cfg.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 // ── Member type ───────────────────────────────────────────────────────────
 
@@ -94,7 +46,6 @@ function CrewMemberRow({
   onEdit,
   onCancelEdit,
   onUpdated,
-  currentStatus,
 }: {
   member: Member;
   tripId: string;
@@ -104,7 +55,6 @@ function CrewMemberRow({
   onEdit: () => void;
   onCancelEdit: () => void;
   onUpdated: () => void;
-  currentStatus?: string;
 }) {
   const utils = trpc.useUtils();
   const [editName, setEditName] = useState(m.displayName);
@@ -157,100 +107,78 @@ function CrewMemberRow({
   if (isEditing) {
     return (
       <div
-        className="space-y-2 border-b px-1 py-3"
+        className="space-y-2 border-b px-1 py-2"
         style={{ borderColor: "var(--color-bt-border)", background: "color-mix(in srgb, var(--color-bt-accent) 8%, var(--color-bt-base))" }}
       >
-        {/* Identity anchor */}
-        <div className="mb-3 flex items-center gap-2">
-          <div
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-          >
-            {initial}
-          </div>
-          <span className="text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-            Editing {display}
-          </span>
-        </div>
-
-        {/* RSVP — only for self */}
-        {isMe && !m.isGuest && (
-          <div className="mb-3">
-            <p className="mb-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Your RSVP
-            </p>
-            <MyRsvpButtons tripId={tripId} currentStatus={currentStatus} />
-          </div>
-        )}
-
-        {/* Name / email / planner — not shown for self */}
+        {/* Name + email on one line — not shown for self */}
         {!isMe && (
-          <>
+          <div className="flex gap-2">
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               placeholder="Name"
-              className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+              className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
               style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
             <input
               value={editEmail}
               onChange={(e) => setEditEmail(e.target.value)}
-              placeholder="Email (optional)"
+              placeholder="Email"
               type="email"
-              className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+              className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
               style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
-            {/* Planner toggle — hidden for ghost members (can't be planners until they join BT) */}
-            {m.role !== "Owner" && !m.isGuest && (
-              <div className="flex items-center gap-3">
-                <label className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Trip planner
-                </label>
-                <button
-                  onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
-                  className="relative h-6 w-10 rounded-full transition-colors"
-                  style={{
-                    background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                  }}
-                >
-                  <span
-                    className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
-                    style={{ transform: editRole === "Planner" ? "translateX(16px)" : "translateX(0)" }}
-                  />
-                </button>
-              </div>
-            )}
-          </>
+          </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={updateGuest.isPending || updateRole.isPending}
-            className="flex-1 rounded-lg py-1.5 text-xs font-semibold disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            Save
-          </button>
-          <button
-            onClick={onCancelEdit}
-            className="flex-1 rounded-lg border py-1.5 text-xs"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-          >
-            Cancel
-          </button>
-          {!isMe && (
+        {/* Actions row — planner toggle + buttons */}
+        <div className="flex items-center gap-2">
+          {/* Planner toggle — only for real (non-ghost, non-Owner) members */}
+          {!isMe && m.role !== "Owner" && !m.isGuest && (
             <button
-              onClick={handleRemove}
-              disabled={removeMember.isPending}
-              className="rounded-lg px-3 py-1.5 text-xs disabled:opacity-40"
-              style={{ color: "var(--color-bt-danger)" }}
+              onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
+              className="mr-auto flex items-center gap-1.5"
             >
-              Remove
+              <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Planner</span>
+              <span
+                className="relative inline-block h-5 w-8 rounded-full transition-colors"
+                style={{ background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)" }}
+              >
+                <span
+                  className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                  style={{ transform: editRole === "Planner" ? "translateX(12px)" : "translateX(0)" }}
+                />
+              </span>
             </button>
           )}
+
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={updateGuest.isPending || updateRole.isPending}
+              className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Save
+            </button>
+            <button
+              onClick={onCancelEdit}
+              className="rounded-lg border px-3 py-1 text-xs"
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+            >
+              Cancel
+            </button>
+            {!isMe && (
+              <button
+                onClick={handleRemove}
+                disabled={removeMember.isPending}
+                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+                style={{ color: "var(--color-bt-danger)" }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -260,8 +188,11 @@ function CrewMemberRow({
   return (
     <div>
       <div
-        className="flex items-center gap-3 border-b py-2.5"
-        style={{ borderColor: "var(--color-bt-border)" }}
+        className="flex items-center gap-3 border-b py-2.5 px-1 -mx-1 rounded"
+        style={{
+          borderColor: "var(--color-bt-border)",
+          background: rsvpCfg ? `${rsvpCfg.color}0a` : undefined,
+        }}
       >
         {/* Avatar */}
         {m.isGuest ? (
@@ -317,8 +248,8 @@ function CrewMemberRow({
           </span>
         ) : null}
 
-        {/* Edit button — canEdit for others, always for self (to access RSVP) */}
-        {((canEdit && !isMe && m.role !== "Owner") || isMe) && (
+        {/* Edit button — canEdit for others (not self, not Owner) */}
+        {canEdit && !isMe && m.role !== "Owner" && (
           <button
             onClick={onEdit}
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
@@ -452,7 +383,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               onEdit={() => setEditingId(m.user_id)}
               onCancelEdit={() => setEditingId(null)}
               onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-              currentStatus={isMe ? me?.status ?? undefined : undefined}
             />
           );
         })}
