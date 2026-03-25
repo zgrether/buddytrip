@@ -83,10 +83,10 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       style={{
         background: isDark ? temporalGradient(trip.start_date, true) : "var(--color-bt-card)",
         border: isDark ? "none" : "1px solid var(--color-bt-border)",
-        boxShadow: "var(--shadow-card)",
+        boxShadow: isDark ? "var(--shadow-card)" : "-4px 0 0 var(--color-bt-accent), var(--shadow-card)",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-raised)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-card)"; }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = isDark ? "var(--shadow-raised)" : "-4px 0 0 var(--color-bt-accent), var(--shadow-raised)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = isDark ? "var(--shadow-card)" : "-4px 0 0 var(--color-bt-accent), var(--shadow-card)"; }}
     >
       {/* State outline watermark — fixed size, clips overflow */}
       {outline && (

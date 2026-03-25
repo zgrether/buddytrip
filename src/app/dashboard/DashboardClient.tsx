@@ -218,7 +218,7 @@ export default function DashboardClient() {
                   className="flex w-full items-center justify-between py-2"
                 >
                   <span
-                    className="text-sm font-semibold uppercase tracking-wider"
+                    className="text-sm font-semibold uppercase tracking-widest"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     Past ({sections.past.length})
@@ -266,7 +266,7 @@ function TripSection({
     <section>
       <h2
         data-testid={`section-${label.toLowerCase()}`}
-        className="mb-3 text-sm font-semibold uppercase tracking-wider"
+        className="mb-3 text-sm font-semibold uppercase tracking-widest"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         {label}

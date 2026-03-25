@@ -32,7 +32,7 @@ export function ThemeToggle() {
     <button
       data-testid="theme-toggle"
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="flex h-8 w-8 items-center justify-center rounded-full transition-colors"
+      className="flex h-8 w-8 items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-0"
       style={{ color: "var(--color-bt-text-dim)" }}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
     >
