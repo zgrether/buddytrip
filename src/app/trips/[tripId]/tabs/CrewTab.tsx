@@ -157,25 +157,12 @@ function CrewMemberRow({
   if (isEditing) {
     return (
       <div
-        className="space-y-2 border-b px-1 py-3"
+        className="space-y-2 border-b px-1 py-2"
         style={{ borderColor: "var(--color-bt-border)", background: "color-mix(in srgb, var(--color-bt-accent) 8%, var(--color-bt-base))" }}
       >
-        {/* Identity anchor */}
-        <div className="mb-3 flex items-center gap-2">
-          <div
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-          >
-            {initial}
-          </div>
-          <span className="text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-            Editing {display}
-          </span>
-        </div>
-
         {/* RSVP — only for self */}
         {isMe && !m.isGuest && (
-          <div className="mb-3">
+          <div>
             <p className="mb-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Your RSVP
             </p>
@@ -183,74 +170,75 @@ function CrewMemberRow({
           </div>
         )}
 
-        {/* Name / email / planner — not shown for self */}
+        {/* Name + email on one line — not shown for self */}
         {!isMe && (
-          <>
+          <div className="flex gap-2">
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               placeholder="Name"
-              className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+              className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
               style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
             <input
               value={editEmail}
               onChange={(e) => setEditEmail(e.target.value)}
-              placeholder="Email (optional)"
+              placeholder="Email"
               type="email"
-              className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+              className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
               style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
-            {/* Planner toggle — hidden for ghost members (can't be planners until they join BT) */}
-            {m.role !== "Owner" && !m.isGuest && (
-              <div className="flex items-center gap-3">
-                <label className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Trip planner
-                </label>
-                <button
-                  onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
-                  className="relative h-6 w-10 rounded-full transition-colors"
-                  style={{
-                    background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                  }}
-                >
-                  <span
-                    className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
-                    style={{ transform: editRole === "Planner" ? "translateX(16px)" : "translateX(0)" }}
-                  />
-                </button>
-              </div>
-            )}
-          </>
+          </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={updateGuest.isPending || updateRole.isPending}
-            className="flex-1 rounded-lg py-1.5 text-xs font-semibold disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            Save
-          </button>
-          <button
-            onClick={onCancelEdit}
-            className="flex-1 rounded-lg border py-1.5 text-xs"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-          >
-            Cancel
-          </button>
-          {!isMe && (
+        {/* Actions row — planner toggle + buttons */}
+        <div className="flex items-center gap-2">
+          {/* Planner toggle — only for real (non-ghost, non-Owner) members */}
+          {!isMe && m.role !== "Owner" && !m.isGuest && (
             <button
-              onClick={handleRemove}
-              disabled={removeMember.isPending}
-              className="rounded-lg px-3 py-1.5 text-xs disabled:opacity-40"
-              style={{ color: "var(--color-bt-danger)" }}
+              onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
+              className="mr-auto flex items-center gap-1.5"
             >
-              Remove
+              <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Planner</span>
+              <span
+                className="relative inline-block h-5 w-8 rounded-full transition-colors"
+                style={{ background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)" }}
+              >
+                <span
+                  className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                  style={{ transform: editRole === "Planner" ? "translateX(12px)" : "translateX(0)" }}
+                />
+              </span>
             </button>
           )}
+
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={updateGuest.isPending || updateRole.isPending}
+              className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Save
+            </button>
+            <button
+              onClick={onCancelEdit}
+              className="rounded-lg border px-3 py-1 text-xs"
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+            >
+              Cancel
+            </button>
+            {!isMe && (
+              <button
+                onClick={handleRemove}
+                disabled={removeMember.isPending}
+                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+                style={{ color: "var(--color-bt-danger)" }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
