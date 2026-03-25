@@ -125,7 +125,8 @@ function CrewMemberRow({
 
   const display = m.displayName;
   const initial = display.charAt(0).toUpperCase();
-  const roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
+  const roleLabel = m.isGuest ? "Ghost" : m.role;
+  const roleColor = m.isGuest ? "var(--color-bt-text-dim)" : (ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)");
   const rsvpCfg = m.status ? RSVP_LABEL[m.status] : null;
 
   const handleSave = async () => {
@@ -289,7 +290,7 @@ function CrewMemberRow({
 
         {/* Role */}
         <span className="flex-shrink-0 text-xs font-semibold" style={{ color: roleColor }}>
-          {m.role}
+          {roleLabel}
         </span>
 
         {/* Status */}
