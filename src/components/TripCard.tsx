@@ -81,7 +81,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       onClick={handleClick}
       className="relative w-full overflow-hidden rounded-xl p-4 text-left transition-all"
       style={{
-        background: temporalGradient(trip.start_date, isDark),
+        background: isDark ? temporalGradient(trip.start_date, true) : "var(--color-bt-card)",
         border: isDark ? "none" : "1px solid var(--color-bt-border)",
         boxShadow: "var(--shadow-card)",
       }}
