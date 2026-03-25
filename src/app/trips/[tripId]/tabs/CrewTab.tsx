@@ -188,7 +188,7 @@ function CrewMemberRow({
       {/* ── Remove confirmation ──────────────────────────────────────────── */}
       {confirmRemove && (
         <div
-          className="flex items-center gap-2 px-1 pb-2"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-danger) 6%, var(--color-bt-base))" }}
         >
           <p className="flex-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>
@@ -215,7 +215,7 @@ function CrewMemberRow({
       {/* ── Expanded edit panel ──────────────────────────────────────────── */}
       {isExpanded && editable && (
         <div
-          className="space-y-2 px-1 pb-2"
+          className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
         >
           {/* Name + email */}
