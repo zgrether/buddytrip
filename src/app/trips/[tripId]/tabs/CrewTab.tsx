@@ -112,7 +112,7 @@ function CrewMemberRow({
       <div
         className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
         style={{
-          background: rsvpCfg && m.role !== "Owner" ? `${rsvpCfg.color}0a` : undefined,
+          background: rsvpCfg && m.role !== "Owner" && !m.isGuest ? `${rsvpCfg.color}0a` : undefined,
           cursor: editable ? "pointer" : undefined,
         }}
         onClick={editable ? onToggle : undefined}
@@ -156,8 +156,8 @@ function CrewMemberRow({
           </span>
         )}
 
-        {/* Status — not shown for Owner (always in) */}
-        {m.role !== "Owner" && (
+        {/* Status — not shown for Owner (always in) or ghost members (no RSVP) */}
+        {m.role !== "Owner" && !m.isGuest && (
           m.status === "draft" ? (
             <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
               Not invited
