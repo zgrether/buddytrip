@@ -112,7 +112,7 @@ function CrewMemberRow({
       <div
         className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
         style={{
-          background: rsvpCfg && m.role !== "Owner" ? `${rsvpCfg.color}0a` : undefined,
+          background: rsvpCfg && m.role !== "Owner" && !m.isGuest ? `${rsvpCfg.color}0a` : undefined,
           cursor: editable ? "pointer" : undefined,
         }}
         onClick={editable ? onToggle : undefined}
@@ -156,8 +156,8 @@ function CrewMemberRow({
           </span>
         )}
 
-        {/* Status — not shown for Owner (always in) */}
-        {m.role !== "Owner" && (
+        {/* Status — not shown for Owner (always in) or ghost members (no RSVP) */}
+        {m.role !== "Owner" && !m.isGuest && (
           m.status === "draft" ? (
             <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
               Not invited
@@ -188,7 +188,7 @@ function CrewMemberRow({
       {/* ── Remove confirmation ──────────────────────────────────────────── */}
       {confirmRemove && (
         <div
-          className="flex items-center gap-2 px-1 pb-2"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-danger) 6%, var(--color-bt-base))" }}
         >
           <p className="flex-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>
@@ -215,7 +215,7 @@ function CrewMemberRow({
       {/* ── Expanded edit panel ──────────────────────────────────────────── */}
       {isExpanded && editable && (
         <div
-          className="space-y-2 px-1 pb-2"
+          className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
         >
           {/* Name + email */}
