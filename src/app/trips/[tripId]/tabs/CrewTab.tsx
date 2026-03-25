@@ -1,47 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, Mail, UserPlus } from "lucide-react";
+import { Ghost, Mail, Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useFrequentTripmates } from "@/hooks/useFrequentTripmates";
-import { RoleBadge } from "@/components/RoleBadge";
-import { CrewSearchInput } from "@/components/CrewSearchInput";
 import type { TabProps } from "./types";
-import type { TripRole } from "@/server/middleware";
 
-// ── RSVP status config ────────────────────────────────────────────────────
+// ── RSVP helpers ──────────────────────────────────────────────────────────
 
 const RSVP_LABEL: Record<string, { label: string; color: string }> = {
-  in:     { label: "In",       color: "var(--color-bt-accent)" },
-  likely: { label: "Likely",   color: "var(--color-bt-ready)" },
-  maybe:  { label: "Maybe",    color: "var(--color-bt-planning)" },
-  out:    { label: "Can't go", color: "var(--color-bt-danger)" },
+  in:      { label: "In",       color: "var(--color-bt-accent)" },
+  likely:  { label: "Likely",   color: "var(--color-bt-ready)" },
+  maybe:   { label: "Maybe",    color: "var(--color-bt-planning)" },
+  out:     { label: "Can't go", color: "var(--color-bt-danger)" },
 };
 
 type RsvpStatus = "in" | "likely" | "maybe" | "out";
 
-function RsvpBadge({ status }: { status: string }) {
-  const cfg = RSVP_LABEL[status] ?? { label: status, color: "var(--color-bt-text-dim)" };
-  return (
-    <span
-      className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-      style={{ background: `${cfg.color}22`, color: cfg.color }}
-    >
-      {cfg.label}
-    </span>
-  );
-}
+const ROLE_COLOR: Record<string, string> = {
+  Owner:   "var(--color-bt-accent)",
+  Planner: "var(--color-bt-ready)",
+  Member:  "var(--color-bt-text-dim)",
+};
 
-// ── My RSVP selector ──────────────────────────────────────────────────────
+const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
 
-function MyRsvpButtons({
-  tripId,
-  currentStatus,
-}: {
-  tripId: string;
-  currentStatus?: string;
-}) {
+// ── My RSVP buttons ───────────────────────────────────────────────────────
+
+function MyRsvpButtons({ tripId, currentStatus }: { tripId: string; currentStatus?: string }) {
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
   const updateRsvp = trpc.tripMembers.updateRsvp.useMutation({
@@ -50,19 +36,14 @@ function MyRsvpButtons({
       const prev = utils.tripMembers.list.getData({ tripId });
       utils.tripMembers.list.setData(
         { tripId },
-        (prev ?? []).map((m) =>
-          m.user_id === currentUser?.id ? { ...m, status } : m
-        )
+        (prev ?? []).map((m) => (m.user_id === currentUser?.id ? { ...m, status } : m))
       );
       return { prev };
     },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined)
-        utils.tripMembers.list.setData({ tripId }, context.prev);
+    onError(_err, _vars, ctx) {
+      if (ctx?.prev !== undefined) utils.tripMembers.list.setData({ tripId }, ctx.prev);
     },
-    onSettled() {
-      utils.tripMembers.list.invalidate({ tripId });
-    },
+    onSettled() { utils.tripMembers.list.invalidate({ tripId }); },
   });
 
   return (
@@ -90,9 +71,9 @@ function MyRsvpButtons({
   );
 }
 
-// ── Member row ────────────────────────────────────────────────────────────
+// ── Member type ───────────────────────────────────────────────────────────
 
-type MemberType = {
+type Member = {
   memberId: string;
   user_id: string | null;
   role: string;
@@ -102,338 +83,384 @@ type MemberType = {
   user: { email: string | null; is_guest?: boolean } | null;
 };
 
-function MemberRow({
-  member,
-  isMe,
-  isOwner,
+// ── CrewMemberRow ─────────────────────────────────────────────────────────
+
+function CrewMemberRow({
+  member: m,
   tripId,
-  isExpanded,
-  onToggleExpand,
-  me,
+  canEdit,
+  isMe,
+  isEditing,
+  onEdit,
+  onCancelEdit,
+  onUpdated,
+  currentStatus,
 }: {
-  member: MemberType;
-  isMe: boolean;
-  isOwner: boolean;
+  member: Member;
   tripId: string;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  me: MemberType | undefined;
+  canEdit: boolean;
+  isMe: boolean;
+  isEditing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onUpdated: () => void;
+  currentStatus?: string;
 }) {
   const utils = trpc.useUtils();
+  const [editName, setEditName] = useState(m.displayName);
+  const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
+  const [editRole, setEditRole] = useState<"Planner" | "Member">(
+    m.role === "Planner" ? "Planner" : "Member"
+  );
 
   const updateRole = trpc.tripMembers.updateRole.useMutation({
     onSuccess() { utils.tripMembers.list.invalidate({ tripId }); },
   });
-
   const removeMember = trpc.tripMembers.remove.useMutation({
+    onSuccess() { utils.tripMembers.list.invalidate({ tripId }); onCancelEdit(); onUpdated(); },
+  });
+  const updateGuest = trpc.ghostCrew.update.useMutation({
     onSuccess() { utils.tripMembers.list.invalidate({ tripId }); },
   });
 
+  const display = m.displayName;
+  const initial = display.charAt(0).toUpperCase();
+  const roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
+  const rsvpCfg = m.status ? RSVP_LABEL[m.status] : null;
+
+  const handleSave = async () => {
+    if (m.isGuest && m.user_id) {
+      await updateGuest.mutateAsync({
+        tripId,
+        guestUserId: m.user_id,
+        name: editName.trim() || undefined,
+        email: editEmail.trim() || undefined,
+      });
+    }
+    if (editRole !== m.role && m.user_id) {
+      await updateRole.mutateAsync({ tripId, userId: m.user_id, role: editRole });
+    }
+    onCancelEdit();
+    onUpdated();
+  };
+
+  const handleRemove = () => {
+    if (!m.user_id) return;
+    removeMember.mutate({ tripId, userId: m.user_id });
+  };
+
+  // ── Edit state ──────────────────────────────────────────────────────────
+  if (isEditing) {
+    return (
+      <div
+        className="space-y-2 border-b px-1 py-3"
+        style={{ borderColor: "var(--color-bt-border)", background: "var(--color-bt-tag-bg)" }}
+      >
+        <input
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          placeholder="Name"
+          className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+        />
+        <input
+          value={editEmail}
+          onChange={(e) => setEditEmail(e.target.value)}
+          placeholder="Email (optional)"
+          type="email"
+          className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+        />
+        {/* Planner toggle */}
+        {m.role !== "Owner" && (
+          <div className="flex items-center justify-between">
+            <label className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Trip planner
+            </label>
+            <button
+              onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
+              className="relative h-5 w-9 rounded-full transition-colors"
+              style={{
+                background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+              }}
+            >
+              <span
+                className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+                style={{ transform: editRole === "Planner" ? "translateX(18px)" : "translateX(2px)" }}
+              />
+            </button>
+          </div>
+        )}
+        {/* Actions */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={updateGuest.isPending || updateRole.isPending}
+            className="flex-1 rounded-lg py-1.5 text-xs font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            Save
+          </button>
+          <button
+            onClick={onCancelEdit}
+            className="flex-1 rounded-lg border py-1.5 text-xs"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleRemove}
+            disabled={removeMember.isPending}
+            className="rounded-lg px-3 py-1.5 text-xs disabled:opacity-40"
+            style={{ color: "var(--color-bt-danger)" }}
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Normal state ────────────────────────────────────────────────────────
   return (
-    <div
-      data-testid={`member-${member.memberId}`}
-      className="rounded-xl px-4 py-3"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div className="flex items-center gap-3">
+    <div>
+      <div
+        className="flex items-center gap-3 border-b py-2.5"
+        style={{ borderColor: "var(--color-bt-border)" }}
+      >
         {/* Avatar */}
         <div
-          className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-          style={{
-            background: isMe ? "var(--color-bt-tag-bg)" : "var(--color-bt-past-bg)",
-            color: isMe ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-          }}
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
         >
-          {member.displayName.charAt(0).toUpperCase()}
-          {member.isGuest && (
-            <span
-              className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
-              style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)" }}
-            >
-              <Ghost size={9} />
+          {initial}
+          {m.isGuest && (
+            <span className="absolute -bottom-0.5 -right-0.5">
+              <Ghost size={8} />
             </span>
           )}
         </div>
 
-        {/* Info */}
+        {/* Name + email */}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            {member.displayName}
+            {display}
             {isMe && (
-              <span className="ml-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                (you)
-              </span>
+              <span className="ml-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
             )}
           </p>
-          {member.isGuest ? (
-            <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-              {member.user?.email ?? "Guest \u00b7 no account"}
+          {m.user?.email && (
+            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {m.user.email}
             </p>
-          ) : (
-            member.user?.email && (
-              <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                {member.user.email}
-              </p>
-            )
           )}
         </div>
 
-        {/* Badges + expand */}
-        <div className="flex flex-shrink-0 flex-col items-end gap-1">
-          <RoleBadge role={member.role as TripRole} />
-          {!member.isGuest && member.status && member.status !== "draft" && member.status !== "invited" && (
-            <RsvpBadge status={member.status} />
-          )}
-          {member.status === "invited" && (
-            <span
-              className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              style={{ background: "var(--color-bt-ready)22", color: "var(--color-bt-ready)" }}
-            >
-              Invited
-            </span>
-          )}
-          {member.status === "draft" && (
-            <span
-              className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              style={{ background: "var(--color-bt-text-dim)22", color: "var(--color-bt-text-dim)" }}
-            >
-              Draft
-            </span>
-          )}
-          {isOwner && !isMe && (
-            <button
-              data-testid={`expand-member-${member.memberId}`}
-              onClick={onToggleExpand}
-              className="text-xs"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              {isExpanded ? "\u25b2" : "\u22ef"}
-            </button>
-          )}
-        </div>
+        {/* Role */}
+        <span className="flex-shrink-0 text-xs font-semibold" style={{ color: roleColor }}>
+          {m.role}
+        </span>
+
+        {/* Status */}
+        {m.status === "draft" ? (
+          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            Not invited
+          </span>
+        ) : m.status === "invited" ? (
+          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-ready)" }}>
+            Invited
+          </span>
+        ) : rsvpCfg ? (
+          <span className="flex-shrink-0 text-xs" style={{ color: rsvpCfg.color }}>
+            {rsvpCfg.label}
+          </span>
+        ) : null}
+
+        {/* Edit button */}
+        {canEdit && !isMe && m.role !== "Owner" && (
+          <button
+            onClick={onEdit}
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <Pencil size={13} />
+          </button>
+        )}
       </div>
 
       {/* RSVP buttons for current user */}
-      {isMe && !member.isGuest && member.status !== "draft" && member.status !== "invited" && (
-        <MyRsvpButtons tripId={tripId} currentStatus={me?.status ?? undefined} />
-      )}
-
-      {/* Owner controls */}
-      {isOwner && !isMe && isExpanded && (
-        <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
-          {!member.isGuest && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Role:</span>
-              {(["Member", "Planner"] as const).map((r) => (
-                <button
-                  key={r}
-                  data-testid={`set-role-${member.memberId}-${r.toLowerCase()}`}
-                  disabled={member.role === r || updateRole.isPending}
-                  onClick={() => updateRole.mutate({ tripId, userId: member.user_id as string, role: r })}
-                  className="rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-40"
-                  style={{
-                    background: member.role === r ? "var(--color-bt-accent-faint)" : "var(--color-bt-base)",
-                    border: `1px solid ${member.role === r ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-                    color: member.role === r ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                  }}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            data-testid={`remove-member-${member.memberId}`}
-            disabled={removeMember.isPending}
-            onClick={() => removeMember.mutate({ tripId, userId: member.user_id as string })}
-            className="w-full rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-danger-faint, #fee2e222)",
-              color: "var(--color-bt-danger)",
-              border: "1px solid var(--color-bt-danger-border, #fca5a5)",
-            }}
-          >
-            {removeMember.isPending ? "Removing\u2026" : "Remove from trip"}
-          </button>
-        </div>
+      {isMe && !m.isGuest && m.status !== "draft" && m.status !== "invited" && (
+        <MyRsvpButtons tripId={tripId} currentStatus={currentStatus} />
       )}
     </div>
   );
 }
 
-// ── Status section header ─────────────────────────────────────────────────
-
-function StatusGroupHeader({ label, count }: { label: string; count: number }) {
-  return (
-    <h3
-      className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider first:mt-0"
-      style={{ color: "var(--color-bt-text-dim)" }}
-    >
-      {label} ({count})
-    </h3>
-  );
-}
-
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
-export function CrewTab({ trip, canEdit, isOwner }: TabProps) {
+export function CrewTab({ trip, canEdit }: TabProps) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
-  const { data: frequentTripmates = [] } = useFrequentTripmates(trip.id, currentUser?.id ?? "");
-  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const tripId = trip.id;
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation({
-    onSuccess() { utils.tripMembers.list.invalidate({ tripId: trip.id }); },
-  });
+  const [addName, setAddName] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showEmailPanel, setShowEmailPanel] = useState(false);
+
+  const addMember = trpc.tripMembers.add.useMutation();
+  const createGhost = trpc.ghostCrew.create.useMutation();
 
   const me = members.find((m) => m.user_id === currentUser?.id);
-
-  // Group members by status
-  const confirmed = members.filter((m) =>
+  const confirmedCount = members.filter((m) =>
     m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
-  );
-  const invited = members.filter((m) => m.status === "invited");
-  const drafts = members.filter((m) => m.status === "draft");
-  const draftWithEmail = drafts.filter((m) => m.user?.email);
+  ).length;
 
-  // Summary
-  const summaryParts: string[] = [];
-  if (confirmed.length > 0) summaryParts.push(`${confirmed.length} confirmed`);
-  if (invited.length > 0) summaryParts.push(`${invited.length} invited`);
-  if (drafts.length > 0) summaryParts.push(`${drafts.length} not yet invited`);
+  const sorted = [...members].sort((a, b) => {
+    const aOrder = ROLE_ORDER[a.role] ?? 2;
+    const bOrder = ROLE_ORDER[b.role] ?? 2;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return a.displayName.localeCompare(b.displayName);
+  });
 
-  function handleSendInvite(member: MemberType) {
-    if (!member.user?.email) return;
-    inviteByEmail.mutate({ tripId: trip.id, email: member.user.email, role: member.role as "Planner" | "Member" });
-  }
+  const handleAdd = async () => {
+    const name = addName.trim();
+    const email = addEmail.trim().toLowerCase() || null;
+    if (!name) return;
 
-  function handleSendAllInvites() {
-    for (const m of draftWithEmail) {
-      if (m.user?.email) {
-        inviteByEmail.mutate({ tripId: trip.id, email: m.user.email, role: m.role as "Planner" | "Member" });
+    setIsAdding(true);
+    try {
+      if (email) {
+        const existing = await utils.users.search.fetch({ query: email });
+        const realUser = existing?.find((u) => !u.is_guest);
+        if (realUser) {
+          await addMember.mutateAsync({ tripId, userId: realUser.id, role: "Member", status: "draft" });
+        } else {
+          await createGhost.mutateAsync({ tripId, name, email, role: "Member" });
+        }
+      } else {
+        await createGhost.mutateAsync({ tripId, name, role: "Member" });
       }
+      setAddName("");
+      setAddEmail("");
+      utils.tripMembers.list.invalidate({ tripId });
+    } finally {
+      setIsAdding(false);
     }
-  }
-
-  function renderMember(member: MemberType) {
-    const isMe = member.user_id === currentUser?.id;
-    const isExpanded = expandedMemberId === member.memberId;
-    return (
-      <MemberRow
-        key={member.memberId}
-        member={member}
-        isMe={isMe}
-        isOwner={isOwner ?? false}
-        tripId={trip.id}
-        isExpanded={isExpanded}
-        onToggleExpand={() => setExpandedMemberId(isExpanded ? null : member.memberId)}
-        me={me as MemberType | undefined}
-      />
-    );
-  }
+  };
 
   return (
-    <div className="space-y-5 px-4">
+    <div className="space-y-4 px-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+          {members.length} people{confirmedCount > 0 ? ` \u00b7 ${confirmedCount} confirmed` : ""}
+        </p>
+        {canEdit && (
+          <button
+            onClick={() => setShowEmailPanel(true)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+            style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            <Mail size={13} />
+            Send email
+          </button>
+        )}
+      </div>
 
-      {/* Summary bar */}
-      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        {members.length} member{members.length !== 1 ? "s" : ""}
-        {summaryParts.length > 0 && ` \u00b7 ${summaryParts.join(" \u00b7 ")}`}
-      </p>
-
-      {/* Add member (canEdit only) */}
+      {/* Inline add row */}
       {canEdit && (
-        <section
-          className="rounded-xl p-4"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <p className="mb-3 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            Add Crew Member
-          </p>
-          <CrewSearchInput
-            tripId={trip.id}
-            defaultRole="Member"
-            defaultStatus="draft"
-            allowGhost={true}
-            allowInvite={true}
-            placeholder="Search by email..."
-            onAdded={() => utils.tripMembers.list.invalidate({ tripId: trip.id })}
-            frequentTripmates={frequentTripmates
-              .filter((t): t is typeof t & { email: string } =>
-                t.email != null && !members.some((m) => m.user_id === t.id)
-              )}
+        <div className="flex gap-2">
+          <input
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            placeholder="Name"
+            className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
           />
-        </section>
+          <input
+            value={addEmail}
+            onChange={(e) => setAddEmail(e.target.value)}
+            placeholder="Email (optional)"
+            type="email"
+            className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+          />
+          <button
+            onClick={handleAdd}
+            disabled={!addName.trim() || isAdding}
+            className="flex-shrink-0 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {isAdding ? "..." : "Add"}
+          </button>
+        </div>
       )}
 
-      {/* Confirmed members */}
-      {confirmed.length > 0 && (
-        <section>
-          <StatusGroupHeader label="Confirmed" count={confirmed.length} />
-          <div className="space-y-2">
-            {confirmed.map(renderMember)}
-          </div>
-        </section>
-      )}
-
-      {/* Invited members */}
-      {invited.length > 0 && (
-        <section>
-          <StatusGroupHeader label="Invited" count={invited.length} />
-          <div className="space-y-2">
-            {invited.map(renderMember)}
-          </div>
-        </section>
-      )}
-
-      {/* Draft members */}
-      {drafts.length > 0 && (
-        <section>
-          <StatusGroupHeader label="Draft" count={drafts.length} />
-          <div className="space-y-2">
-            {drafts.map((member) => (
-              <div key={member.memberId}>
-                {renderMember(member)}
-                {/* Inline send invite for drafts with email */}
-                {isOwner && member.user?.email && (
-                  <button
-                    onClick={() => handleSendInvite(member as MemberType)}
-                    disabled={inviteByEmail.isPending}
-                    className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
-                    style={{
-                      background: "var(--color-bt-accent-faint)",
-                      color: "var(--color-bt-accent)",
-                      border: "1px solid var(--color-bt-accent-border)",
-                    }}
-                  >
-                    <Mail size={11} />
-                    Send invite
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Bulk send all invites */}
-          {isOwner && draftWithEmail.length > 1 && (
-            <button
-              onClick={handleSendAllInvites}
-              disabled={inviteByEmail.isPending}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              <UserPlus size={12} />
-              {inviteByEmail.isPending ? "Sending\u2026" : `Send all invites (${draftWithEmail.length})`}
-            </button>
-          )}
-        </section>
-      )}
+      {/* Member list — flat, sorted by role then name */}
+      <div>
+        {sorted.map((m) => {
+          const isMe = m.user_id === currentUser?.id;
+          return (
+            <CrewMemberRow
+              key={m.memberId}
+              member={m}
+              tripId={tripId}
+              canEdit={canEdit}
+              isMe={isMe}
+              isEditing={editingId === m.user_id}
+              onEdit={() => setEditingId(m.user_id)}
+              onCancelEdit={() => setEditingId(null)}
+              onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+              currentStatus={isMe ? me?.status ?? undefined : undefined}
+            />
+          );
+        })}
+      </div>
 
       {members.length === 0 && (
         <p className="py-8 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No members yet. Add someone above to get started.
         </p>
+      )}
+
+      {/* Send email panel (stub) */}
+      {showEmailPanel && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ background: "rgba(0,0,0,0.4)" }}
+          onClick={() => setShowEmailPanel(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-t-2xl p-5"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-2 text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Send email to crew
+            </p>
+            <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Email sending will be available once the invite system is set up.
+              For now, copy the invite link to share manually.
+            </p>
+            <button
+              onClick={() => {
+                navigator.clipboard
+                  .writeText(`${window.location.origin}/invite?trip=${tripId}`)
+                  .catch(() => {});
+                setShowEmailPanel(false);
+              }}
+              className="w-full rounded-xl py-2.5 text-sm font-semibold"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Copy invite link
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
