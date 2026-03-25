@@ -154,43 +154,72 @@ function CrewMemberRow({
     return (
       <div
         className="space-y-2 border-b px-1 py-3"
-        style={{ borderColor: "var(--color-bt-border)", background: "var(--color-bt-tag-bg)" }}
+        style={{ borderColor: "var(--color-bt-border)", background: "color-mix(in srgb, var(--color-bt-accent) 8%, var(--color-bt-base))" }}
       >
-        <input
-          value={editName}
-          onChange={(e) => setEditName(e.target.value)}
-          placeholder="Name"
-          className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
-          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-        />
-        <input
-          value={editEmail}
-          onChange={(e) => setEditEmail(e.target.value)}
-          placeholder="Email (optional)"
-          type="email"
-          className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
-          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-        />
-        {/* Planner toggle */}
-        {m.role !== "Owner" && (
-          <div className="flex items-center justify-between">
-            <label className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Trip planner
-            </label>
-            <button
-              onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
-              className="relative h-5 w-9 rounded-full transition-colors"
-              style={{
-                background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-              }}
-            >
-              <span
-                className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-                style={{ transform: editRole === "Planner" ? "translateX(18px)" : "translateX(2px)" }}
-              />
-            </button>
+        {/* Identity anchor */}
+        <div className="mb-3 flex items-center gap-2">
+          <div
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+          >
+            {initial}
+          </div>
+          <span className="text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+            Editing {display}
+          </span>
+        </div>
+
+        {/* RSVP — only for self */}
+        {isMe && !m.isGuest && (
+          <div className="mb-3">
+            <p className="mb-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Your RSVP
+            </p>
+            <MyRsvpButtons tripId={tripId} currentStatus={currentStatus} />
           </div>
         )}
+
+        {/* Name / email / planner — not shown for self */}
+        {!isMe && (
+          <>
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Name"
+              className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            />
+            <input
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              placeholder="Email (optional)"
+              type="email"
+              className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            />
+            {/* Planner toggle */}
+            {m.role !== "Owner" && (
+              <div className="flex items-center gap-3">
+                <label className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Trip planner
+                </label>
+                <button
+                  onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
+                  className="relative h-5 w-9 rounded-full transition-colors"
+                  style={{
+                    background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                  }}
+                >
+                  <span
+                    className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+                    style={{ transform: editRole === "Planner" ? "translateX(18px)" : "translateX(2px)" }}
+                  />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
         {/* Actions */}
         <div className="flex gap-2">
           <button
@@ -208,14 +237,16 @@ function CrewMemberRow({
           >
             Cancel
           </button>
-          <button
-            onClick={handleRemove}
-            disabled={removeMember.isPending}
-            className="rounded-lg px-3 py-1.5 text-xs disabled:opacity-40"
-            style={{ color: "var(--color-bt-danger)" }}
-          >
-            Remove
-          </button>
+          {!isMe && (
+            <button
+              onClick={handleRemove}
+              disabled={removeMember.isPending}
+              className="rounded-lg px-3 py-1.5 text-xs disabled:opacity-40"
+              style={{ color: "var(--color-bt-danger)" }}
+            >
+              Remove
+            </button>
+          )}
         </div>
       </div>
     );
@@ -263,7 +294,7 @@ function CrewMemberRow({
 
         {/* Status */}
         {m.status === "draft" ? (
-          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
             Not invited
           </span>
         ) : m.status === "invited" ? (
@@ -276,8 +307,8 @@ function CrewMemberRow({
           </span>
         ) : null}
 
-        {/* Edit button */}
-        {canEdit && !isMe && m.role !== "Owner" && (
+        {/* Edit button — canEdit for others, always for self (to access RSVP) */}
+        {((canEdit && !isMe && m.role !== "Owner") || isMe) && (
           <button
             onClick={onEdit}
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
@@ -287,11 +318,6 @@ function CrewMemberRow({
           </button>
         )}
       </div>
-
-      {/* RSVP buttons for current user */}
-      {isMe && !m.isGuest && m.status !== "draft" && m.status !== "invited" && (
-        <MyRsvpButtons tripId={tripId} currentStatus={currentStatus} />
-      )}
     </div>
   );
 }
