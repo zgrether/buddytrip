@@ -3,12 +3,14 @@
 import type { FC } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, Calendar } from "lucide-react";
+import { useTheme } from "next-themes";
 import { StatusBadge, getTripStatus } from "./StatusBadge";
 import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
 import { trpc } from "@/lib/trpc-client";
 import type { TripRole } from "@/server/middleware";
 import { getLocationInfo } from "@/lib/locationUtils";
+import { temporalGradient } from "@/lib/temporalGradient";
 
 interface Trip {
   id: string;
@@ -17,6 +19,7 @@ interface Trip {
   start_date?: string | null;
   end_date?: string | null;
   locked_destination_title?: string | null;
+  comparison_mode?: boolean | null;
   myRole?: TripRole | null;
 }
 
@@ -45,11 +48,21 @@ function getDaysUntil(dateStr: string): number {
 export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const status = getTripStatus(trip);
-  // Use trip.location for geo-parsing (it's "City, State" format), not
-  // locked_destination_title which is the human-readable name and won't parse.
-  const locationStr = trip.location ?? "";
-  const { outline, cityPin, showPin, rotation } = getLocationInfo(locationStr);
+  const { outline, cityPin, showPin, rotation } = getLocationInfo(trip.location ?? "");
+
+  // Show locked destination when locked; suppress trip.location when in comparison mode
+  // (same logic as the trip detail page to avoid stale destination bleeding through
+  // after an owner reopens discussion — lockDestination writes to trip.location but
+  // unlockDestination doesn't clear it).
+  const displayDest = trip.locked_destination_title
+    ?? (trip.comparison_mode ? null : trip.location);
+
+  const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
+  const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.55)";
+  const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
 
   const handleClick = () => {
     // Seed the getById cache with data we already have so the detail page
@@ -68,8 +81,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       onClick={handleClick}
       className="relative w-full overflow-hidden rounded-xl p-4 text-left transition-all"
       style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
+        background: temporalGradient(trip.start_date, isDark),
+        border: isDark ? "none" : "1px solid var(--color-bt-border)",
         boxShadow: "var(--shadow-card)",
       }}
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "var(--shadow-raised)"; }}
@@ -91,7 +104,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
             <path
               d={outline.path}
               style={{
-                fill: "var(--color-bt-state-fill)",
+                fill: isDark ? "rgba(255,255,255,0.10)" : "var(--color-bt-state-fill)",
               }}
               stroke="none"
             />
@@ -122,23 +135,23 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       {/* Title — right padding keeps text clear of badge cluster */}
       <h3
         className="pr-24 text-base font-semibold leading-tight"
-        style={{ color: "var(--color-bt-text)" }}
+        style={{ color: titleColor }}
       >
         {trip.title}
       </h3>
 
-      {/* Meta row */}
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        {(trip.location || trip.locked_destination_title) && (
-          <span className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)" }}>
-            <MapPin size={12} />
-            {trip.locked_destination_title ?? trip.location}
-          </span>
-        )}
-        <span className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)" }}>
-          <Calendar size={12} />
-          {formatDateRange(trip.start_date, trip.end_date)}
-        </span>
+      {/* Destination — own row, only when present */}
+      {displayDest && (
+        <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
+          <MapPin size={12} className="shrink-0" />
+          <span className="truncate">{displayDest}</span>
+        </div>
+      )}
+
+      {/* Dates — own row */}
+      <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
+        <Calendar size={11} className="shrink-0" />
+        <span>{formatDateRange(trip.start_date, trip.end_date)}</span>
       </div>
 
       {/* Countdown strip for "ready" trips */}
@@ -153,7 +166,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         </div>
       )}
 
-      {/* Live indicator strip */}
+      {/* Live indicator */}
       {status === "live" && (
         <div className="mt-3 flex items-center gap-1.5">
           <span
