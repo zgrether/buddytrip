@@ -8,6 +8,9 @@
 -- Fix: if a ghost row exists with the same email, temporarily
 -- clear the ghost's email (to avoid UNIQUE conflict), insert the
 -- real user row, migrate all FK references, then delete the ghost.
+--
+-- Only references tables that exist in the current schema.
+-- Future tables with user FKs should be added here.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -37,21 +40,16 @@ BEGIN
       NEW.email
     );
 
-    -- 3. Migrate all FK references from ghost ID → new auth ID
+    -- 3. Migrate FK references from ghost ID → new auth ID
     UPDATE public.trip_members       SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
     UPDATE public.team_assignments   SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
     UPDATE public.players            SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
-    UPDATE public.scores             SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
-    UPDATE public.votes              SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
     UPDATE public.expense_splits     SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
     UPDATE public.expenses           SET paid_by_user_id = NEW.id::text WHERE paid_by_user_id = _ghost_id;
-    UPDATE public.activity_log       SET actor_id        = NEW.id::text WHERE actor_id        = _ghost_id;
-    UPDATE public.user_preferences   SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
-    UPDATE public.score_submissions  SET submitted_by    = NEW.id::text WHERE submitted_by    = _ghost_id;
+    UPDATE public.idea_votes         SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
     UPDATE public.scoreboard_shares  SET created_by      = NEW.id::text WHERE created_by      = _ghost_id;
     UPDATE public.series             SET owner_id        = NEW.id::text WHERE owner_id        = _ghost_id;
-    UPDATE public.competition_events SET closed_by       = NEW.id::text WHERE closed_by       = _ghost_id;
-    UPDATE public.idea_votes         SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    -- created_by on users itself (other ghosts created by this ghost)
     UPDATE public.users              SET created_by      = NEW.id::text WHERE created_by      = _ghost_id;
 
     -- 4. Delete the ghost row (nothing references it anymore)
