@@ -130,14 +130,18 @@ function CrewMemberRow({
 
   const handleSave = async () => {
     if (m.isGuest && m.user_id) {
-      await updateGuest.mutateAsync({
-        tripId,
-        guestUserId: m.user_id,
-        name: editName.trim() || undefined,
-        email: editEmail.trim() || undefined,
-      });
+      const nameChanged = editName.trim() !== m.displayName;
+      const emailChanged = editEmail.trim() !== (m.user?.email ?? "");
+      if (nameChanged || emailChanged) {
+        await updateGuest.mutateAsync({
+          tripId,
+          guestUserId: m.user_id,
+          ...(nameChanged && { name: editName.trim() }),
+          ...(emailChanged && { email: editEmail.trim() || null }),
+        });
+      }
     }
-    if (editRole !== m.role && m.user_id) {
+    if (!m.isGuest && editRole !== m.role && m.user_id) {
       await updateRole.mutateAsync({ tripId, userId: m.user_id, role: editRole });
     }
     onCancelEdit();
@@ -197,22 +201,22 @@ function CrewMemberRow({
               className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
               style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
-            {/* Planner toggle */}
-            {m.role !== "Owner" && (
+            {/* Planner toggle — hidden for ghost members (can't be planners until they join BT) */}
+            {m.role !== "Owner" && !m.isGuest && (
               <div className="flex items-center gap-3">
                 <label className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   Trip planner
                 </label>
                 <button
                   onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
-                  className="relative h-5 w-9 rounded-full transition-colors"
+                  className="relative h-6 w-10 rounded-full transition-colors"
                   style={{
                     background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
                   }}
                 >
                   <span
-                    className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-                    style={{ transform: editRole === "Planner" ? "translateX(18px)" : "translateX(2px)" }}
+                    className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
+                    style={{ transform: editRole === "Planner" ? "translateX(16px)" : "translateX(0)" }}
                   />
                 </button>
               </div>
