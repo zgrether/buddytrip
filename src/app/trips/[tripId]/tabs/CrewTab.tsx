@@ -112,7 +112,7 @@ function CrewMemberRow({
       <div
         className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
         style={{
-          background: rsvpCfg ? `${rsvpCfg.color}0a` : undefined,
+          background: rsvpCfg && m.role !== "Owner" ? `${rsvpCfg.color}0a` : undefined,
           cursor: editable ? "pointer" : undefined,
         }}
         onClick={editable ? onToggle : undefined}
@@ -156,20 +156,22 @@ function CrewMemberRow({
           </span>
         )}
 
-        {/* Status */}
-        {m.status === "draft" ? (
-          <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
-            Not invited
-          </span>
-        ) : m.status === "invited" ? (
-          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-ready)" }}>
-            Invited
-          </span>
-        ) : rsvpCfg ? (
-          <span className="flex-shrink-0 text-xs" style={{ color: rsvpCfg.color }}>
-            {rsvpCfg.label}
-          </span>
-        ) : null}
+        {/* Status — not shown for Owner (always in) */}
+        {m.role !== "Owner" && (
+          m.status === "draft" ? (
+            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
+              Not invited
+            </span>
+          ) : m.status === "invited" ? (
+            <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-ready)" }}>
+              Invited
+            </span>
+          ) : rsvpCfg ? (
+            <span className="flex-shrink-0 text-xs" style={{ color: rsvpCfg.color }}>
+              {rsvpCfg.label}
+            </span>
+          ) : null
+        )}
 
         {/* Delete (X) button */}
         {editable && (
