@@ -154,8 +154,20 @@ function CrewMemberRow({
     return (
       <div
         className="space-y-2 border-b px-1 py-3"
-        style={{ borderColor: "var(--color-bt-border)", background: "var(--color-bt-tag-bg)" }}
+        style={{ borderColor: "var(--color-bt-border)", background: "color-mix(in srgb, var(--color-bt-accent) 8%, var(--color-bt-base))" }}
       >
+        {/* Fix 3 — identity anchor */}
+        <div className="mb-3 flex items-center gap-2">
+          <div
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+          >
+            {initial}
+          </div>
+          <span className="text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+            Editing {display}
+          </span>
+        </div>
         <input
           value={editName}
           onChange={(e) => setEditName(e.target.value)}
@@ -173,8 +185,8 @@ function CrewMemberRow({
         />
         {/* Planner toggle */}
         {m.role !== "Owner" && (
-          <div className="flex items-center justify-between">
-            <label className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <div className="flex items-center gap-3">
+            <label className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Trip planner
             </label>
             <button
@@ -263,7 +275,7 @@ function CrewMemberRow({
 
         {/* Status */}
         {m.status === "draft" ? (
-          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
             Not invited
           </span>
         ) : m.status === "invited" ? (
