@@ -27,6 +27,7 @@ import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
+import { DatePollSection } from "./DatePollSection";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -1101,43 +1102,24 @@ function PlanningSection({
         onToggle={() => toggle("dates")}
       >
         {datesLocked ? (
-          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            {formatDateRange(trip.start_date, trip.end_date)}
-          </p>
-        ) : pollOpen ? (
           <div className="space-y-2">
-            <p className="text-xs font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
-              Options being voted on:
+            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {formatDateRange(trip.start_date, trip.end_date)}
             </p>
-            {poll!.windows.map((w) => (
-              <div
-                key={w.id}
-                className="rounded-lg px-3 py-2 text-xs"
-                style={{
-                  background: "var(--color-bt-base)",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
+            {canEdit && (
+              <button
+                onClick={() => onTabChange?.("schedule")}
+                className="text-xs"
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
-                {formatDateRange(w.start_date, w.end_date)}
-              </div>
-            ))}
-            <button
-              onClick={() => onTabChange?.("schedule")}
-              className="pt-1 text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              View poll →
-            </button>
+                Change dates
+              </button>
+            )}
           </div>
         ) : (
-          <button
-            onClick={() => onTabChange?.("schedule")}
-            className="text-sm font-medium"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            {canEdit ? "Set dates →" : "View schedule →"}
-          </button>
+          <div className="space-y-3">
+            <DatePollSection tripId={trip.id} canEdit={canEdit} />
+          </div>
         )}
       </PlanningRow>
 

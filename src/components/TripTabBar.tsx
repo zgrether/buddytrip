@@ -5,8 +5,8 @@ import type { TabId } from "./BottomNav";
 
 const ALL_TABS: { id: TabId; label: string }[] = [
   { id: "home", label: "Home" },
-  { id: "schedule", label: "Schedule" },
   { id: "crew", label: "Crew" },
+  { id: "schedule", label: "Schedule" },
   { id: "comp", label: "Competition" },
 ];
 
