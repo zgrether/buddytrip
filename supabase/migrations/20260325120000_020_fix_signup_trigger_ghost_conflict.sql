@@ -5,9 +5,9 @@
 -- ghost member, the UNIQUE constraint on users.email causes the
 -- trigger INSERT to fail ("database error saving new user").
 --
--- Fix: if a ghost row exists with the same email, convert it
--- into a real user (update id, name, nickname, is_guest) instead
--- of inserting a new row.
+-- Fix: if a ghost row exists with the same email, temporarily
+-- clear the ghost's email (to avoid UNIQUE conflict), insert the
+-- real user row, migrate all FK references, then delete the ghost.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -25,25 +25,37 @@ BEGIN
     AND is_guest = true;
 
   IF _ghost_id IS NOT NULL THEN
-    -- Convert the ghost into a real user: update the row to use
-    -- the new auth ID so all existing trip_members / scores / etc.
-    -- remain linked via the users FK.
-    UPDATE public.users
-    SET
-      id       = NEW.id::text,
-      name     = COALESCE(NEW.raw_user_meta_data ->> 'name', name),
-      nickname = COALESCE(NULLIF(NEW.raw_user_meta_data ->> 'nickname', ''), nickname),
-      is_guest = false
-    WHERE id = _ghost_id;
+    -- 1. Clear the ghost's email so the UNIQUE constraint won't block the insert
+    UPDATE public.users SET email = NULL WHERE id = _ghost_id;
 
-    -- Update all foreign keys that reference the old ghost ID
-    UPDATE public.trip_members
-    SET user_id = NEW.id::text
-    WHERE user_id = _ghost_id;
+    -- 2. Insert the real user row
+    INSERT INTO public.users (id, name, nickname, email)
+    VALUES (
+      NEW.id::text,
+      COALESCE(NEW.raw_user_meta_data ->> 'name', ''),
+      COALESCE(NULLIF(NEW.raw_user_meta_data ->> 'nickname', ''), ''),
+      NEW.email
+    );
 
-    UPDATE public.team_assignments
-    SET user_id = NEW.id::text
-    WHERE user_id = _ghost_id;
+    -- 3. Migrate all FK references from ghost ID → new auth ID
+    UPDATE public.trip_members       SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.team_assignments   SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.players            SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.scores             SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.votes              SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.expense_splits     SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.expenses           SET paid_by_user_id = NEW.id::text WHERE paid_by_user_id = _ghost_id;
+    UPDATE public.activity_log       SET actor_id        = NEW.id::text WHERE actor_id        = _ghost_id;
+    UPDATE public.user_preferences   SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.score_submissions  SET submitted_by    = NEW.id::text WHERE submitted_by    = _ghost_id;
+    UPDATE public.scoreboard_shares  SET created_by      = NEW.id::text WHERE created_by      = _ghost_id;
+    UPDATE public.series             SET owner_id        = NEW.id::text WHERE owner_id        = _ghost_id;
+    UPDATE public.competition_events SET closed_by       = NEW.id::text WHERE closed_by       = _ghost_id;
+    UPDATE public.idea_votes         SET user_id         = NEW.id::text WHERE user_id         = _ghost_id;
+    UPDATE public.users              SET created_by      = NEW.id::text WHERE created_by      = _ghost_id;
+
+    -- 4. Delete the ghost row (nothing references it anymore)
+    DELETE FROM public.users WHERE id = _ghost_id;
   ELSE
     INSERT INTO public.users (id, name, nickname, email)
     VALUES (
