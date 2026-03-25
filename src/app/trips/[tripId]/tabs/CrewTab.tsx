@@ -125,8 +125,7 @@ function CrewMemberRow({
 
   const display = m.displayName;
   const initial = display.charAt(0).toUpperCase();
-  const roleLabel = m.isGuest ? "Ghost" : m.role;
-  const roleColor = m.isGuest ? "var(--color-bt-text-dim)" : (ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)");
+  const roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
   const rsvpCfg = m.status ? RSVP_LABEL[m.status] : null;
 
   const handleSave = async () => {
@@ -261,17 +260,21 @@ function CrewMemberRow({
         style={{ borderColor: "var(--color-bt-border)" }}
       >
         {/* Avatar */}
-        <div
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-        >
-          {initial}
-          {m.isGuest && (
-            <span className="absolute -bottom-0.5 -right-0.5">
-              <Ghost size={8} />
-            </span>
-          )}
-        </div>
+        {m.isGuest ? (
+          <div
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+            style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)", opacity: 0.6 }}
+          >
+            <Ghost size={14} />
+          </div>
+        ) : (
+          <div
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+          >
+            {initial}
+          </div>
+        )}
 
         {/* Name + email */}
         <div className="min-w-0 flex-1">
@@ -288,10 +291,12 @@ function CrewMemberRow({
           )}
         </div>
 
-        {/* Role */}
-        <span className="flex-shrink-0 text-xs font-semibold" style={{ color: roleColor }}>
-          {roleLabel}
-        </span>
+        {/* Role — hidden for ghost members */}
+        {!m.isGuest && (
+          <span className="flex-shrink-0 text-xs font-semibold" style={{ color: roleColor }}>
+            {m.role}
+          </span>
+        )}
 
         {/* Status */}
         {m.status === "draft" ? (
