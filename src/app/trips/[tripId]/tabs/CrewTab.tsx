@@ -141,7 +141,7 @@ function CrewMemberRow({
         });
       }
     }
-    if (editRole !== m.role && m.user_id) {
+    if (!m.isGuest && editRole !== m.role && m.user_id) {
       await updateRole.mutateAsync({ tripId, userId: m.user_id, role: editRole });
     }
     onCancelEdit();
@@ -201,8 +201,8 @@ function CrewMemberRow({
               className="w-full rounded-lg border px-3 py-1.5 text-sm outline-none"
               style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
-            {/* Planner toggle */}
-            {m.role !== "Owner" && (
+            {/* Planner toggle — hidden for ghost members (can't be planners until they join BT) */}
+            {m.role !== "Owner" && !m.isGuest && (
               <div className="flex items-center gap-3">
                 <label className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                   Trip planner
