@@ -59,9 +59,6 @@ function CrewMemberRow({
   const utils = trpc.useUtils();
   const [editName, setEditName] = useState(m.displayName);
   const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
-  const [editRole, setEditRole] = useState<"Planner" | "Member">(
-    m.role === "Planner" ? "Planner" : "Member"
-  );
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const updateRole = trpc.tripMembers.updateRole.useMutation({
@@ -96,11 +93,14 @@ function CrewMemberRow({
         });
       }
     }
-    if (isOwner && !m.isGuest && editRole !== m.role && m.user_id) {
-      await updateRole.mutateAsync({ tripId, userId: m.user_id, role: editRole });
-    }
     onToggle();
     onUpdated();
+  };
+
+  const handleTogglePlanner = () => {
+    if (!m.user_id) return;
+    const newRole = m.role === "Planner" ? "Member" : "Planner";
+    updateRole.mutate({ tripId, userId: m.user_id, role: newRole });
   };
 
   const handleRemove = () => {
@@ -251,17 +251,18 @@ function CrewMemberRow({
             {/* Planner toggle — Owner only, real members only */}
             {isOwner && m.role !== "Owner" && !m.isGuest && (
               <button
-                onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
-                className="mr-auto flex items-center gap-1.5"
+                onClick={handleTogglePlanner}
+                disabled={updateRole.isPending}
+                className="mr-auto flex items-center gap-1.5 disabled:opacity-40"
               >
                 <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Planner</span>
                 <span
                   className="relative inline-block h-5 w-8 rounded-full transition-colors"
-                  style={{ background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)" }}
+                  style={{ background: m.role === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)" }}
                 >
                   <span
                     className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
-                    style={{ transform: editRole === "Planner" ? "translateX(12px)" : "translateX(0)" }}
+                    style={{ transform: m.role === "Planner" ? "translateX(12px)" : "translateX(0)" }}
                   />
                 </span>
               </button>
@@ -270,7 +271,7 @@ function CrewMemberRow({
             <div className="ml-auto flex gap-2">
               <button
                 onClick={handleSave}
-                disabled={updateGuest.isPending || updateRole.isPending}
+                disabled={updateGuest.isPending}
                 className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
                 style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
