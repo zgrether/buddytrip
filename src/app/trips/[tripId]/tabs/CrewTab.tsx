@@ -165,9 +165,13 @@ function CrewMemberRow({
           </span>
         )}
 
-        {/* Status — not shown for Owner (always in) or ghost members (no RSVP) */}
-        {m.role !== "Owner" && !m.isGuest && (
-          m.status === "draft" ? (
+        {/* Status — not shown for Owner (always in) */}
+        {m.role !== "Owner" && (
+          m.isGuest ? (
+            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.5 }}>
+              Unknown
+            </span>
+          ) : m.status === "draft" ? (
             <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
               Not invited yet
             </span>

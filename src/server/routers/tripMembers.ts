@@ -126,9 +126,23 @@ export const tripMembersRouter = router({
         });
       }
 
+      // When promoting to Planner, also mark as invited if still in draft
+      const update: Record<string, string> = { role: input.role };
+      if (input.role === "Planner") {
+        const { data: current } = await ctx.supabase
+          .from("trip_members")
+          .select("status")
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", input.userId)
+          .single();
+        if (current?.status === "draft") {
+          update.status = "invited";
+        }
+      }
+
       const { data, error } = await ctx.supabase
         .from("trip_members")
-        .update({ role: input.role })
+        .update(update)
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.userId)
         .select()
