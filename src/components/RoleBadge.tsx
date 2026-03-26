@@ -13,6 +13,7 @@ const CONFIG: Record<TripRole, { label: string; color: string }> = {
 };
 
 export const RoleBadge: FC<RoleBadgeProps> = ({ role, className }) => {
+  if (role === "Member") return null;
   const { label, color } = CONFIG[role];
   return (
     <span
