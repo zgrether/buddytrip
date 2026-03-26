@@ -317,10 +317,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
-  const confirmedCount = members.filter((m) =>
-    m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
-  ).length;
-
   const sorted = [...members].sort((a, b) => {
     const aOrder = ROLE_ORDER[a.role] ?? 2;
     const bOrder = ROLE_ORDER[b.role] ?? 2;
@@ -359,10 +355,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   return (
     <div className="space-y-4 px-4">
       {/* Header row */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-          {members.length} people{confirmedCount > 0 ? ` \u00b7 ${confirmedCount} confirmed` : ""}
-        </p>
+      <div className="flex items-center justify-end">
         {canEdit && (
           <button
             onClick={() => setShowEmailPanel(true)}
