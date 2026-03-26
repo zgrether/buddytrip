@@ -169,7 +169,7 @@ function CrewMemberRow({
         {m.role !== "Owner" && !m.isGuest && (
           m.status === "draft" ? (
             <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
-              Not invited
+              Not invited yet
             </span>
           ) : m.status === "invited" ? (
             <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-ready)" }}>
