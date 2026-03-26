@@ -41,6 +41,7 @@ function CrewMemberRow({
   member: m,
   tripId,
   canEdit,
+  isOwner,
   isMe,
   isExpanded,
   onToggle,
@@ -49,6 +50,7 @@ function CrewMemberRow({
   member: Member;
   tripId: string;
   canEdit: boolean;
+  isOwner: boolean;
   isMe: boolean;
   isExpanded: boolean;
   onToggle: () => void;
@@ -57,9 +59,6 @@ function CrewMemberRow({
   const utils = trpc.useUtils();
   const [editName, setEditName] = useState(m.displayName);
   const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
-  const [editRole, setEditRole] = useState<"Planner" | "Member">(
-    m.role === "Planner" ? "Planner" : "Member"
-  );
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const updateRole = trpc.tripMembers.updateRole.useMutation({
@@ -94,11 +93,14 @@ function CrewMemberRow({
         });
       }
     }
-    if (!m.isGuest && editRole !== m.role && m.user_id) {
-      await updateRole.mutateAsync({ tripId, userId: m.user_id, role: editRole });
-    }
     onToggle();
     onUpdated();
+  };
+
+  const handleTogglePlanner = () => {
+    if (!m.user_id) return;
+    const newRole = m.role === "Planner" ? "Member" : "Planner";
+    updateRole.mutate({ tripId, userId: m.user_id, role: newRole });
   };
 
   const handleRemove = () => {
@@ -246,20 +248,21 @@ function CrewMemberRow({
 
           {/* Actions row — planner toggle + save/cancel */}
           <div className="flex items-center gap-2">
-            {/* Planner toggle — only for real (non-ghost, non-Owner) members */}
-            {m.role !== "Owner" && !m.isGuest && (
+            {/* Planner toggle — Owner only, real members only */}
+            {isOwner && m.role !== "Owner" && !m.isGuest && (
               <button
-                onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
-                className="mr-auto flex items-center gap-1.5"
+                onClick={handleTogglePlanner}
+                disabled={updateRole.isPending}
+                className="mr-auto flex items-center gap-1.5 disabled:opacity-40"
               >
                 <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Planner</span>
                 <span
                   className="relative inline-block h-5 w-8 rounded-full transition-colors"
-                  style={{ background: editRole === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)" }}
+                  style={{ background: m.role === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)" }}
                 >
                   <span
                     className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
-                    style={{ transform: editRole === "Planner" ? "translateX(12px)" : "translateX(0)" }}
+                    style={{ transform: m.role === "Planner" ? "translateX(12px)" : "translateX(0)" }}
                   />
                 </span>
               </button>
@@ -268,7 +271,7 @@ function CrewMemberRow({
             <div className="ml-auto flex gap-2">
               <button
                 onClick={handleSave}
-                disabled={updateGuest.isPending || updateRole.isPending}
+                disabled={updateGuest.isPending}
                 className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
                 style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
@@ -307,6 +310,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const createGhost = trpc.ghostCrew.create.useMutation();
 
   const me = members.find((m) => m.user_id === currentUser?.id);
+  const isOwner = me?.role === "Owner";
   const confirmedCount = members.filter((m) =>
     m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
   ).length;
@@ -315,6 +319,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
     const aOrder = ROLE_ORDER[a.role] ?? 2;
     const bOrder = ROLE_ORDER[b.role] ?? 2;
     if (aOrder !== bOrder) return aOrder - bOrder;
+    // Real members before ghosts within the same role
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
     return a.displayName.localeCompare(b.displayName);
   });
 
@@ -404,6 +410,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               member={m}
               tripId={tripId}
               canEdit={canEdit}
+              isOwner={isOwner}
               isMe={isMe}
               isExpanded={expandedId === m.user_id}
               onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
