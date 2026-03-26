@@ -27,7 +27,7 @@ import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
-import { DatePollSection } from "./DatePollSection";
+import { DatesSection } from "./DatesSection";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -835,6 +835,7 @@ function PlanningRow({
   icon,
   label,
   note,
+  noteWarn,
   state,
   isOpen,
   onToggle,
@@ -843,6 +844,7 @@ function PlanningRow({
   icon: React.ReactNode;
   label: string;
   note: string;
+  noteWarn?: boolean;
   state: ArcCardState;
   isOpen: boolean;
   onToggle: () => void;
@@ -879,14 +881,20 @@ function PlanningRow({
         className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
         onClick={onToggle}
       >
-        <span className="flex-shrink-0" style={{ color: labelColor }}>
+        <span className="flex-shrink-0" style={{ color: noteWarn ? "#f59e0b" : labelColor }}>
           {isDone ? <Check size={16} /> : icon}
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold leading-tight" style={{ color: labelColor }}>
             {label}
           </p>
-          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p
+            className="mt-0.5 text-xs"
+            style={{
+              color: noteWarn ? "#f59e0b" : "var(--color-bt-text-dim)",
+              fontWeight: noteWarn ? 500 : undefined,
+            }}
+          >
             {note}
           </p>
         </div>
@@ -925,8 +933,8 @@ function PlanningSection({
 }: {
   trip: TripData;
   ideas: IdeaWithVotes[];
-  poll: { windows: { id: string; start_date: string; end_date: string }[] } | undefined;
-  tripMembers: { user_id: string | null; status: string; displayName: string }[];
+  poll: { lockedWindowId: string | null; windows: { id: string; start_date: string; end_date: string; votes: { user_id: string; answer: string }[] }[] } | undefined;
+  tripMembers: { user_id: string | null; status: string; displayName: string; isGuest?: boolean; role?: string }[];
   reservations: unknown[];
   canEdit: boolean;
   isOwner: boolean;
@@ -947,17 +955,7 @@ function PlanningSection({
     ? `${ideas.length} idea${ideas.length !== 1 ? "s" : ""} · voting`
     : "Not set yet";
 
-  // ── Dates ─────────────────────────────────────────────────────────────
-  const datesLocked = !!(trip.start_date && trip.end_date);
-  const pollOpen = (poll?.windows.length ?? 0) > 0 && !datesLocked;
-  const datesState: ArcCardState = datesLocked ? "done" : pollOpen ? "inProgress" : "none";
-  const datesNote = datesLocked
-    ? formatDateRange(trip.start_date, trip.end_date)
-    : pollOpen
-    ? `Poll active · ${poll!.windows.length} option${poll!.windows.length !== 1 ? "s" : ""}`
-    : "Not set yet";
-
-  // ── Crew ──────────────────────────────────────────────────────────────
+  // ── Crew (computed first — Dates depends on crew count) ──────────────
   const confirmedMembers = tripMembers.filter((m) =>
     m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
   );
@@ -965,8 +963,22 @@ function PlanningSection({
   const invitedCount = tripMembers.filter((m) => m.status === "invited").length;
   const draftCount = tripMembers.filter((m) => m.status === "draft").length;
   const hasAnyone = tripMembers.length > 1;
+  const isLowCrew = confirmed < 4;
   const crewState: ArcCardState = confirmed >= 4 ? "done" : hasAnyone && confirmed < 4 ? "inProgress" : "none";
   const crewNote = `${confirmed} confirmed`;
+
+  // ── Dates ─────────────────────────────────────────────────────────────
+  const datesLocked = !!(trip.start_date && trip.end_date);
+  const pollOpen = (poll?.windows.length ?? 0) > 0 && !datesLocked;
+  const datesState: ArcCardState = datesLocked ? "done" : pollOpen ? "inProgress" : "none";
+  const datesNote = (() => {
+    if (datesLocked) return formatDateRange(trip.start_date, trip.end_date);
+    if (!pollOpen) return "Not set yet";
+    if (canEdit && isLowCrew) return "Add crew first";
+    const winCount = poll!.windows.length;
+    return `Poll active · ${winCount} option${winCount !== 1 ? "s" : ""}`;
+  })();
+  const datesWarn = canEdit && isLowCrew && !datesLocked;
 
   // ── Logistics ─────────────────────────────────────────────────────────
   const bookingCount = reservations.length;
@@ -1092,38 +1104,7 @@ function PlanningSection({
         )}
       </PlanningRow>
 
-      {/* ── Dates ── */}
-      <PlanningRow
-        icon={<Calendar size={16} />}
-        label="Dates"
-        note={datesNote}
-        state={datesState}
-        isOpen={openRow === "dates"}
-        onToggle={() => toggle("dates")}
-      >
-        {datesLocked ? (
-          <div className="space-y-2">
-            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {formatDateRange(trip.start_date, trip.end_date)}
-            </p>
-            {canEdit && (
-              <button
-                onClick={() => onTabChange?.("schedule")}
-                className="text-xs"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Change dates
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <DatePollSection tripId={trip.id} canEdit={canEdit} />
-          </div>
-        )}
-      </PlanningRow>
-
-      {/* ── Crew ── */}
+      {/* ── Crew (before Dates — crew size affects date poll) ── */}
       <PlanningRow
         icon={<Users size={16} />}
         label="Crew"
@@ -1172,6 +1153,42 @@ function PlanningSection({
             {canEdit ? "Manage crew \u2192" : "View crew \u2192"}
           </button>
         </div>
+      </PlanningRow>
+
+      {/* ── Dates ── */}
+      <PlanningRow
+        icon={<Calendar size={16} />}
+        label="Dates"
+        note={datesNote}
+        noteWarn={datesWarn}
+        state={datesState}
+        isOpen={openRow === "dates"}
+        onToggle={() => toggle("dates")}
+      >
+        {datesLocked ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {formatDateRange(trip.start_date, trip.end_date)}
+            </p>
+            {canEdit && (
+              <button
+                onClick={() => onTabChange?.("schedule")}
+                className="text-xs"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Change dates
+              </button>
+            )}
+          </div>
+        ) : (
+          <DatesSection
+            tripId={trip.id}
+            canEdit={canEdit}
+            isOwner={isOwner}
+            tripMembers={tripMembers}
+            onTabChange={onTabChange}
+          />
+        )}
       </PlanningRow>
 
       {/* ── Logistics ── */}
