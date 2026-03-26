@@ -4,7 +4,9 @@ import { useState, useRef, useEffect, type FC } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Calendar } from "lucide-react";
 import { StatusBadge, type TripStatus } from "@/components/StatusBadge";
+import { RoleBadge } from "@/components/RoleBadge";
 import { LocationHero } from "@/components/LocationHero";
+import type { TripRole } from "@/server/middleware";
 
 interface TripHeaderProps {
   tripName: string;
@@ -23,6 +25,8 @@ interface TripHeaderProps {
   onDatesTap?: () => void;
   /** Trip start date — drives temporal gradient color */
   tripStartDate?: string | null;
+  /** Current user's role in this trip */
+  myRole?: TripRole | null;
 }
 
 // ── Inline editable text ─────────────────────────────────────────────────
@@ -112,6 +116,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   location,
   dateRange,
   settingsSlot,
+  myRole,
 }) => (
   <div
     className="rounded-2xl border p-5"
@@ -132,6 +137,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       </h1>
       <div className="flex items-center gap-2">
         <StatusBadge status={status} />
+        {myRole && <RoleBadge role={myRole} />}
         {settingsSlot}
       </div>
     </div>
@@ -171,6 +177,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   onDestinationChange,
   onDatesTap,
   tripStartDate,
+  myRole,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -197,6 +204,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         </h1>
         <div className="flex items-center gap-2">
           <StatusBadge status={status} />
+          {myRole && <RoleBadge role={myRole} />}
           {settingsSlot && (
             <span style={{ color: subColor }}>
               {settingsSlot}
