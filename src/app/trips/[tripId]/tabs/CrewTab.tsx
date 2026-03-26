@@ -319,6 +319,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
     const aOrder = ROLE_ORDER[a.role] ?? 2;
     const bOrder = ROLE_ORDER[b.role] ?? 2;
     if (aOrder !== bOrder) return aOrder - bOrder;
+    // Real members before ghosts within the same role
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
     return a.displayName.localeCompare(b.displayName);
   });
 
