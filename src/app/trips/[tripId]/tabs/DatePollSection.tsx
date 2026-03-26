@@ -44,6 +44,7 @@ export function DatePollSection({
       await utils.datePoll.get.cancel({ tripId });
       const prev = utils.datePoll.get.getData({ tripId });
       utils.datePoll.get.setData({ tripId }, {
+        lockedWindowId: prev?.lockedWindowId ?? null,
         windows: [
           ...(prev?.windows ?? []),
           {
@@ -70,6 +71,7 @@ export function DatePollSection({
       await utils.datePoll.get.cancel({ tripId });
       const prev = utils.datePoll.get.getData({ tripId });
       utils.datePoll.get.setData({ tripId }, {
+        lockedWindowId: prev?.lockedWindowId ?? null,
         windows: (prev?.windows ?? []).map((w) => {
           if (w.id !== vars.windowId) return w;
           const existingVote = w.votes.find((v) => v.user_id === currentUser?.id);
