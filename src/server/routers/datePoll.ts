@@ -41,7 +41,15 @@ export const datePollRouter = router({
         votesByWindow.set(v.window_id, arr);
       }
 
+      // Fetch locked_window_id from date_polls
+      const { data: poll } = await ctx.supabase
+        .from("date_polls")
+        .select("locked_window_id")
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+
       return {
+        lockedWindowId: poll?.locked_window_id ?? null,
         windows: (windows ?? []).map((w) => ({
           ...w,
           votes: votesByWindow.get(w.id) ?? [],
@@ -85,18 +93,45 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // vote — any member can vote on a window
+  // vote — any member can vote on a window (toggle: same answer = delete)
   // -----------------------------------------------------------------------
   vote: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         windowId: z.string(),
-        answer: z.enum(["yes", "no"]),
+        answer: z.enum(["yes", "no", "maybe"]),
       })
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      // Check if user already has this exact vote (toggle-off)
+      const { data: existing } = await ctx.supabase
+        .from("date_poll_votes")
+        .select("answer")
+        .eq("window_id", input.windowId)
+        .eq("user_id", ctx.user!.id)
+        .maybeSingle();
+
+      if (existing?.answer === input.answer) {
+        // Toggle off — delete the vote
+        const { error } = await ctx.supabase
+          .from("date_poll_votes")
+          .delete()
+          .eq("window_id", input.windowId)
+          .eq("user_id", ctx.user!.id);
+
+        if (error) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to remove vote: ${error.message}`,
+          });
+        }
+
+        return { window_id: input.windowId, user_id: ctx.user!.id, answer: null, deleted: true };
+      }
+
+      // Upsert the vote
       const { data, error } = await ctx.supabase
         .from("date_poll_votes")
         .upsert(
@@ -121,7 +156,74 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // lockWindow — Owner or Planner (canEdit): lock the winning window
+  // voteOnBehalf — Owner or Planner can vote for a ghost member
+  // -----------------------------------------------------------------------
+  voteOnBehalf: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        userId: z.string(),
+        votes: z.array(
+          z.object({
+            windowId: z.string(),
+            answer: z.enum(["yes", "no", "maybe"]),
+          })
+        ),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      // Verify the target user is a ghost member of this trip
+      const { data: member } = await ctx.supabase
+        .from("trip_members")
+        .select("user_id")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+
+      if (!member) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User is not a member of this trip",
+        });
+      }
+
+      const { data: user } = await ctx.supabase
+        .from("users")
+        .select("is_guest")
+        .eq("id", input.userId)
+        .single();
+
+      if (!user?.is_guest) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Can only vote on behalf of ghost members",
+        });
+      }
+
+      // Upsert all votes for this ghost user
+      const rows = input.votes.map((v) => ({
+        window_id: v.windowId,
+        user_id: input.userId,
+        answer: v.answer,
+      }));
+
+      const { error } = await ctx.supabase
+        .from("date_poll_votes")
+        .upsert(rows, { onConflict: "window_id,user_id" });
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to vote on behalf: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // lockWindow — Owner or Planner: lock the winning window
   // -----------------------------------------------------------------------
   lockWindow: authedProcedure
     .input(
@@ -165,11 +267,30 @@ export const datePollRouter = router({
         });
       }
 
+      // Write locked_window_id to date_polls (upsert in case row doesn't exist)
+      const { error: pollErr } = await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          {
+            trip_id: ctx.tripId,
+            open: false,
+            locked_window_id: input.windowId,
+          },
+          { onConflict: "trip_id" }
+        );
+
+      if (pollErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update date poll lock state",
+        });
+      }
+
       return data;
     }),
 
   // -----------------------------------------------------------------------
-  // unlock — Owner or Planner (canEdit): clear locked dates
+  // unlock — Owner or Planner: clear locked dates
   // -----------------------------------------------------------------------
   unlock: authedProcedure
     .input(z.object({ tripId: z.string() }))
@@ -191,6 +312,12 @@ export const datePollRouter = router({
           message: "Failed to unlock dates",
         });
       }
+
+      // Clear locked_window_id
+      await ctx.supabase
+        .from("date_polls")
+        .update({ locked_window_id: null, open: true })
+        .eq("trip_id", ctx.tripId);
 
       return data;
     }),
