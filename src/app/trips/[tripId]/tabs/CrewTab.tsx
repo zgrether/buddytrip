@@ -79,6 +79,7 @@ function CrewMemberRow({
   const roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
   const rsvpCfg = m.status ? RSVP_LABEL[m.status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
+  const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
 
   const handleSave = async () => {
     if (m.isGuest && m.user_id) {
@@ -275,7 +276,7 @@ function CrewMemberRow({
             <div className="ml-auto flex gap-2">
               <button
                 onClick={handleSave}
-                disabled={updateGuest.isPending}
+                disabled={!hasTextChanges || updateGuest.isPending}
                 className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
                 style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
@@ -283,7 +284,8 @@ function CrewMemberRow({
               </button>
               <button
                 onClick={onToggle}
-                className="rounded-lg border px-3 py-1 text-xs"
+                disabled={!hasTextChanges}
+                className="rounded-lg border px-3 py-1 text-xs disabled:opacity-40"
                 style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
               >
                 Cancel
