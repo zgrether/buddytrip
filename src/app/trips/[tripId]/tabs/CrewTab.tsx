@@ -41,6 +41,7 @@ function CrewMemberRow({
   member: m,
   tripId,
   canEdit,
+  isOwner,
   isMe,
   isExpanded,
   onToggle,
@@ -49,6 +50,7 @@ function CrewMemberRow({
   member: Member;
   tripId: string;
   canEdit: boolean;
+  isOwner: boolean;
   isMe: boolean;
   isExpanded: boolean;
   onToggle: () => void;
@@ -94,7 +96,7 @@ function CrewMemberRow({
         });
       }
     }
-    if (!m.isGuest && editRole !== m.role && m.user_id) {
+    if (isOwner && !m.isGuest && editRole !== m.role && m.user_id) {
       await updateRole.mutateAsync({ tripId, userId: m.user_id, role: editRole });
     }
     onToggle();
@@ -246,8 +248,8 @@ function CrewMemberRow({
 
           {/* Actions row — planner toggle + save/cancel */}
           <div className="flex items-center gap-2">
-            {/* Planner toggle — only for real (non-ghost, non-Owner) members */}
-            {m.role !== "Owner" && !m.isGuest && (
+            {/* Planner toggle — Owner only, real members only */}
+            {isOwner && m.role !== "Owner" && !m.isGuest && (
               <button
                 onClick={() => setEditRole((r) => (r === "Planner" ? "Member" : "Planner"))}
                 className="mr-auto flex items-center gap-1.5"
@@ -307,6 +309,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const createGhost = trpc.ghostCrew.create.useMutation();
 
   const me = members.find((m) => m.user_id === currentUser?.id);
+  const isOwner = me?.role === "Owner";
   const confirmedCount = members.filter((m) =>
     m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
   ).length;
@@ -404,6 +407,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               member={m}
               tripId={tripId}
               canEdit={canEdit}
+              isOwner={isOwner}
               isMe={isMe}
               isExpanded={expandedId === m.user_id}
               onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
