@@ -127,7 +127,7 @@ export function DatesSection({
             }
             return {
               ...w,
-              votes: [...w.votes, { window_id: vars.windowId, user_id: currentUser?.id ?? "", answer: vars.answer }],
+              votes: [...w.votes, { window_id: vars.windowId, user_id: currentUser?.id ?? "", answer: vars.answer, created_at: new Date().toISOString() }],
             };
           }),
         };
