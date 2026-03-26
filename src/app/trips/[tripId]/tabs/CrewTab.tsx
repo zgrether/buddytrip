@@ -158,8 +158,8 @@ function CrewMemberRow({
           )}
         </div>
 
-        {/* Role — hidden for ghost members */}
-        {!m.isGuest && (
+        {/* Role badge — only for Owner and Planner */}
+        {!m.isGuest && m.role !== "Member" && (
           <span className="flex-shrink-0 text-xs font-semibold" style={{ color: roleColor }}>
             {m.role}
           </span>
