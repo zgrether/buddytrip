@@ -323,6 +323,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
     if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
     return a.displayName.localeCompare(b.displayName);
   });
+  // Debug: remove after verifying sort
+  console.log("crew sort:", sorted.map(m => ({ name: m.displayName, role: m.role, isGuest: m.isGuest })));
 
   const handleAdd = async () => {
     const name = addName.trim();
