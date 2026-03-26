@@ -18,6 +18,30 @@ ALTER TABLE date_poll_votes
 CREATE POLICY date_poll_votes_delete ON date_poll_votes FOR DELETE TO authenticated
   USING (user_id = auth.uid()::text);
 
+-- 3. Planner can INSERT votes on behalf of ghost members
+CREATE POLICY date_poll_votes_insert_ghost ON date_poll_votes FOR INSERT TO authenticated
+  WITH CHECK (
+    -- The target user is a ghost
+    EXISTS (SELECT 1 FROM users u WHERE u.id = user_id AND u.is_guest = true)
+    -- The caller is a planner/owner on the trip that owns this window
+    AND EXISTS (
+      SELECT 1 FROM date_windows dw
+      WHERE dw.id = window_id
+        AND has_trip_role(dw.trip_id, ARRAY['Owner', 'Planner'])
+    )
+  );
+
+-- 4. Planner can UPDATE votes on behalf of ghost members
+CREATE POLICY date_poll_votes_update_ghost ON date_poll_votes FOR UPDATE TO authenticated
+  USING (
+    EXISTS (SELECT 1 FROM users u WHERE u.id = user_id AND u.is_guest = true)
+    AND EXISTS (
+      SELECT 1 FROM date_windows dw
+      WHERE dw.id = window_id
+        AND has_trip_role(dw.trip_id, ARRAY['Owner', 'Planner'])
+    )
+  );
+
 -- 3. Update handle_new_user trigger to also migrate date_poll_votes
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
