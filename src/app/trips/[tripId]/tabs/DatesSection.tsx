@@ -585,7 +585,10 @@ function ResponseGrid({
       <table className="w-full text-center" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
         <thead>
           <tr>
-            <th className="sticky left-0 z-10 w-20" style={{ background: "var(--color-bt-card)" }} />
+            <th
+              className="sticky left-0 z-10 w-20"
+              style={{ background: "var(--color-bt-card)", borderRight: "1px solid var(--color-bt-border)" }}
+            />
             {members.map((m) => (
               <th key={m.user_id} className="px-1 pb-1">
                 <div
@@ -619,7 +622,7 @@ function ResponseGrid({
             <tr key={w.id}>
               <td
                 className="sticky left-0 z-10 w-20 py-1.5 pr-2 text-left"
-                style={{ background: "var(--color-bt-card)" }}
+                style={{ background: "var(--color-bt-card)", borderRight: "1px solid var(--color-bt-border)" }}
               >
                 <span className="block text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {fmtDateRange(w.start_date, w.end_date)}
@@ -633,6 +636,7 @@ function ResponseGrid({
                 const answer = v?.answer ?? null;
                 return (
                   <td key={m.user_id} className="px-1 py-1.5">
+                    {/* Ghost cells are tappable: onClick opens the GhostVoteSheet bottom sheet */}
                     <ResponseCell
                       answer={answer}
                       isGhost={!!m.isGuest}
@@ -650,8 +654,8 @@ function ResponseGrid({
           {/* Yes count summary row */}
           <tr>
             <td
-              className="sticky left-0 z-10 pt-1 text-left text-[11px] font-medium"
-              style={{ color: "var(--color-bt-text-dim)", background: "var(--color-bt-card)" }}
+              className="sticky left-0 z-10 pt-1 text-left text-[11px] font-bold uppercase tracking-widest"
+              style={{ color: "var(--color-bt-text-dim)", background: "var(--color-bt-card)", borderRight: "1px solid var(--color-bt-border)" }}
             >
               ✓ count
             </td>
