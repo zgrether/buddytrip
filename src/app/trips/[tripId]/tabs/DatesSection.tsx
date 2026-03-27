@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   Check,
-  X,
   Plus,
   AlertCircle,
   ChevronRight,
@@ -69,14 +68,12 @@ function getScore(w: DateWindow, members: TripMember[]) {
   return { yes, maybe, no, score: yes * 2 + maybe };
 }
 
-/** Returns the next vote answer in the cycle: null→yes→maybe→no→null.
- *  Cycling from "no" back to null is done by passing "no" again to the vote
- *  mutation, which the router treats as a toggle-off (same answer = delete). */
-function cycleAnswer(current: string | null): VoteAnswer {
+/** Four-step compact chip cycle: null → yes → maybe → no → null */
+function nextAnswerCompact(current: VoteAnswer | null): VoteAnswer | null {
   if (current === null) return "yes";
   if (current === "yes") return "maybe";
   if (current === "maybe") return "no";
-  return "no"; // "no" → call vote("no") again → server toggle-off
+  return null; // "no" → null (caller handles deselect)
 }
 
 function getBestWindowId(windows: DateWindow[], members: TripMember[]) {
@@ -112,6 +109,7 @@ export function DatesSection({
 
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
 
+  // ── vote (own-user) ───────────────────────────────────────────────────
   const vote = trpc.datePoll.vote.useMutation({
     async onMutate(vars) {
       await utils.datePoll.get.cancel({ tripId });
@@ -124,7 +122,6 @@ export function DatesSection({
             if (w.id !== vars.windowId) return w;
             const existing = w.votes.find((v) => v.user_id === currentUser?.id);
             if (existing?.answer === vars.answer) {
-              // Toggle off
               return { ...w, votes: w.votes.filter((v) => v.user_id !== currentUser?.id) };
             }
             if (existing) {
@@ -137,7 +134,15 @@ export function DatesSection({
             }
             return {
               ...w,
-              votes: [...w.votes, { window_id: vars.windowId, user_id: currentUser?.id ?? "", answer: vars.answer, created_at: new Date().toISOString() }],
+              votes: [
+                ...w.votes,
+                {
+                  window_id: vars.windowId,
+                  user_id: currentUser?.id ?? "",
+                  answer: vars.answer,
+                  created_at: new Date().toISOString(),
+                },
+              ],
             };
           }),
         };
@@ -152,6 +157,7 @@ export function DatesSection({
     },
   });
 
+  // ── addWindow ────────────────────────────────────────────────────────
   const addWindow = trpc.datePoll.addWindow.useMutation({
     async onMutate(vars) {
       await utils.datePoll.get.cancel({ tripId });
@@ -180,13 +186,57 @@ export function DatesSection({
     },
   });
 
+  // ── lockWindow ───────────────────────────────────────────────────────
   const lockWindow = trpc.datePoll.lockWindow.useMutation({
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
   });
 
+  // ── voteOnBehalf (ghost users) ────────────────────────────────────────
   const voteOnBehalf = trpc.datePoll.voteOnBehalf.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          windows: old.windows.map((w) => {
+            const incoming = vars.votes.find((v) => v.windowId === w.id);
+            if (incoming) {
+              const existing = w.votes.find((v) => v.user_id === vars.userId);
+              if (existing) {
+                return {
+                  ...w,
+                  votes: w.votes.map((v) =>
+                    v.user_id === vars.userId ? { ...v, answer: incoming.answer } : v
+                  ),
+                };
+              }
+              return {
+                ...w,
+                votes: [
+                  ...w.votes,
+                  {
+                    window_id: w.id,
+                    user_id: vars.userId,
+                    answer: incoming.answer,
+                    created_at: new Date().toISOString(),
+                  },
+                ],
+              };
+            }
+            // Window not in incoming votes → optimistically remove this user's vote
+            return { ...w, votes: w.votes.filter((v) => v.user_id !== vars.userId) };
+          }),
+        };
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId }, context.prev);
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -198,13 +248,39 @@ export function DatesSection({
   );
   const isLowCrew = confirmedMembers.length < 4;
 
+  // ── Unified grid vote dispatcher ──────────────────────────────────────
+  function handleGridVote(userId: string, windowId: string, answer: VoteAnswer | null) {
+    if (userId === currentUser?.id) {
+      // Own vote: null means deselect — re-send current answer so server toggles off.
+      const existingAnswer = windows
+        .find((w) => w.id === windowId)
+        ?.votes.find((v) => v.user_id === userId)?.answer as VoteAnswer | undefined;
+      if (answer === null) {
+        if (existingAnswer) vote.mutate({ tripId, windowId, answer: existingAnswer });
+        return;
+      }
+      vote.mutate({ tripId, windowId, answer });
+    } else {
+      // Ghost user: build full updated vote set and submit via voteOnBehalf.
+      const updatedVotes: { windowId: string; answer: VoteAnswer }[] = windows
+        .map((w) => {
+          const existingAnswer = w.votes.find((v) => v.user_id === userId)
+            ?.answer as VoteAnswer | undefined;
+          const next: VoteAnswer | null =
+            w.id === windowId ? answer : (existingAnswer ?? null);
+          return next !== null ? { windowId: w.id, answer: next } : null;
+        })
+        .filter((v): v is { windowId: string; answer: VoteAnswer } => v !== null);
+      voteOnBehalf.mutate({ tripId, userId, votes: updatedVotes });
+    }
+  }
+
   if (canEdit) {
     return (
       <OwnerView
         tripId={tripId}
         windows={windows}
         members={confirmedMembers}
-        allMembers={tripMembers}
         isLowCrew={isLowCrew}
         confirmedCount={confirmedMembers.length}
         currentUserId={currentUser?.id ?? ""}
@@ -215,12 +291,7 @@ export function DatesSection({
         onLock={(windowId) => {
           lockWindow.mutate({ tripId, windowId });
         }}
-        onVoteOnBehalf={(userId, votes) => {
-          voteOnBehalf.mutate({ tripId, userId, votes });
-        }}
-        onCycleVote={(windowId, currentAnswer) => {
-          vote.mutate({ tripId, windowId, answer: cycleAnswer(currentAnswer) });
-        }}
+        onGridVote={handleGridVote}
         bestWindowId={getBestWindowId(windows, confirmedMembers)}
       />
     );
@@ -349,6 +420,8 @@ function MemberView({
   );
 }
 
+// ── Vote Button (used in MemberView and GhostVoteSheet equivalent) ────────
+
 function VoteButton({
   label,
   type,
@@ -389,33 +462,28 @@ function OwnerView({
   tripId,
   windows,
   members,
-  allMembers,
   isLowCrew,
   confirmedCount,
   currentUserId,
   onTabChange,
   onAddWindow,
   onLock,
-  onVoteOnBehalf,
-  onCycleVote,
+  onGridVote,
   bestWindowId,
 }: {
   tripId: string;
   windows: DateWindow[];
   members: TripMember[];
-  allMembers: TripMember[];
   isLowCrew: boolean;
   confirmedCount: number;
   currentUserId: string;
   onTabChange?: (tab: string) => void;
   onAddWindow: (start: string, end: string) => void;
   onLock: (windowId: string) => void;
-  onVoteOnBehalf: (userId: string, votes: { windowId: string; answer: VoteAnswer }[]) => void;
-  onCycleVote: (windowId: string, currentAnswer: string | null) => void;
+  onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
   bestWindowId: string | null;
 }) {
   const [showAddSheet, setShowAddSheet] = useState(false);
-  const [ghostSheet, setGhostSheet] = useState<{ userId: string; name: string } | null>(null);
   const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string; isBest: boolean } | null>(null);
 
   return (
@@ -467,15 +535,11 @@ function OwnerView({
             windows={windows}
             members={members}
             currentUserId={currentUserId}
-            onGhostClick={(userId, name) => setGhostSheet({ userId, name })}
-            onCycleVote={onCycleVote}
+            onGridVote={onGridVote}
           />
 
           {/* Lock a Date section */}
-          <div
-            className="my-1"
-            style={{ borderTop: "1px solid var(--color-bt-border)" }}
-          />
+          <div className="my-1" style={{ borderTop: "1px solid var(--color-bt-border)" }} />
           <p
             className="text-[11px] font-bold uppercase tracking-widest"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -547,26 +611,6 @@ function OwnerView({
         />
       )}
 
-      {/* Ghost sheet */}
-      {ghostSheet && (
-        <GhostVoteSheet
-          name={ghostSheet.name}
-          windows={windows}
-          existingVotes={windows.map((w) => ({
-            windowId: w.id,
-            answer: (w.votes.find((v) => v.user_id === ghostSheet.userId)?.answer as VoteAnswer) ?? null,
-          }))}
-          onSave={(votes) => {
-            onVoteOnBehalf(
-              ghostSheet.userId,
-              votes.filter((v): v is { windowId: string; answer: VoteAnswer } => v.answer !== null)
-            );
-            setGhostSheet(null);
-          }}
-          onClose={() => setGhostSheet(null)}
-        />
-      )}
-
       {/* Lock confirm dialog */}
       {lockConfirm && (
         <LockConfirmDialog
@@ -583,111 +627,136 @@ function OwnerView({
   );
 }
 
-// ── Response Grid ────────────────────────────────────────────────────────
+// ── Response Grid (transposed: rows = members, cols = windows) ────────────
 
 function ResponseGrid({
   windows,
   members,
   currentUserId,
-  onGhostClick,
-  onCycleVote,
+  onGridVote,
 }: {
   windows: DateWindow[];
   members: TripMember[];
   currentUserId: string;
-  onGhostClick: (userId: string, name: string) => void;
-  onCycleVote: (windowId: string, currentAnswer: string | null) => void;
+  onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
 }) {
+  const useWideMode = windows.length <= 2;
+  const memberIds = new Set(members.map((m) => m.user_id));
+
   return (
     <div className="-mx-1 overflow-x-auto">
-      <table className="w-full text-center" style={{ borderCollapse: "separate", borderSpacing: 0 }}>
+      <table
+        className="w-full"
+        style={{ borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed" }}
+      >
+        <colgroup>
+          <col style={{ width: "140px" }} />
+          {windows.map((w) => (
+            <col key={w.id} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
+            {/* Corner cell */}
             <th
-              className="sticky left-0 z-10 w-20"
+              className="pb-2 text-left"
               style={{ borderRight: "1px solid var(--color-bt-border)" }}
             />
-            {members.map((m) => (
-              <th key={m.user_id} className="px-1 pb-1">
-                <div
-                  className="mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold"
-                  style={
-                    m.isGuest
-                      ? {
-                          background: "#e5e7eb",
-                          color: "#9ca3af",
-                          border: "1.5px dashed #d1d5db",
-                        }
-                      : {
-                          background: "#00d4aa",
-                          color: "white",
-                        }
-                  }
-                >
-                  {m.displayName.charAt(0).toUpperCase()}
-                </div>
-                {m.status === "invited" && (
-                  <div className="mt-0.5 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                    👻
-                  </div>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {windows.map((w) => (
-            <tr key={w.id}>
-              <td
-                className="sticky left-0 z-10 w-20 py-1.5 pr-2 text-left"
-                style={{ borderRight: "1px solid var(--color-bt-border)" }}
-              >
+            {/* Date column headers */}
+            {windows.map((w) => (
+              <th key={w.id} className="px-1 pb-2 text-center">
                 <span className="block text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {fmtDateRange(w.start_date, w.end_date)}
                 </span>
                 <span className="block text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
                   {nightCount(w.start_date, w.end_date)} nights
                 </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {/* One row per crew member */}
+          {members.map((m) => (
+            <tr key={m.user_id} style={{ opacity: m.isGuest ? 0.75 : 1 }}>
+              {/* Crew cell: avatar + first name */}
+              <td
+                className="py-1.5 pr-2"
+                style={{ borderRight: "1px solid var(--color-bt-border)" }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <div
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                    style={
+                      m.isGuest
+                        ? {
+                            background: "var(--color-bt-card-raised)",
+                            color: "var(--color-bt-text-dim)",
+                            border: "1.5px dashed var(--color-bt-border)",
+                          }
+                        : {
+                            background: "var(--color-bt-accent)",
+                            color: "white",
+                          }
+                    }
+                  >
+                    {m.displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <span
+                    className="truncate text-[13px] font-medium"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {m.displayName.split(" ")[0]}
+                  </span>
+                </div>
               </td>
-              {members.map((m) => {
+              {/* Vote cell per window */}
+              {windows.map((w) => {
                 const v = w.votes.find((v) => v.user_id === m.user_id);
-                const answer = v?.answer ?? null;
+                const answer = (v?.answer as VoteAnswer) ?? null;
+                const isInteractive = m.user_id === currentUserId || !!m.isGuest;
                 return (
-                  <td key={m.user_id} className="px-1 py-1.5">
-                    {/* Ghost cells open GhostVoteSheet; confirmed current-user cell cycles vote */}
-                    <ResponseCell
+                  <td key={w.id} className="px-1 py-1.5 text-center">
+                    <VoteCell
                       answer={answer}
-                      isGhost={!!m.isGuest}
-                      onClick={
-                        m.isGuest
-                          ? () => onGhostClick(m.user_id!, m.displayName)
-                          : m.user_id === currentUserId
-                          ? () => onCycleVote(w.id, answer)
-                          : undefined
-                      }
+                      isWide={useWideMode}
+                      interactive={isInteractive}
+                      onVote={(next) => onGridVote(m.user_id!, w.id, next)}
                     />
                   </td>
                 );
               })}
             </tr>
           ))}
-          {/* Yes count summary row */}
+          {/* ✓ count row — one per date column */}
           <tr>
             <td
-              className="sticky left-0 z-10 pt-1 text-left text-[11px] font-bold uppercase tracking-widest"
-              style={{ color: "var(--color-bt-text-dim)", borderRight: "1px solid var(--color-bt-border)" }}
+              className="py-1.5 pr-2 text-[11px] font-bold uppercase tracking-widest"
+              style={{
+                color: "var(--color-bt-text-dim)",
+                borderTop: "1px solid var(--color-bt-border)",
+                borderRight: "1px solid var(--color-bt-border)",
+              }}
             >
               ✓ count
             </td>
-            {members.map((m) => {
-              const yesCount = windows.filter((w) =>
-                w.votes.some((v) => v.user_id === m.user_id && v.answer === "yes")
+            {windows.map((w) => {
+              const yesCount = w.votes.filter(
+                (v) => v.answer === "yes" && memberIds.has(v.user_id)
               ).length;
               return (
-                <td key={m.user_id} className="px-1 pt-1">
+                <td
+                  key={w.id}
+                  className="px-1 py-1.5 text-center"
+                  style={{ borderTop: "1px solid var(--color-bt-border)" }}
+                >
                   <span
                     className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold"
-                    style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
+                    style={{
+                      background: "var(--color-bt-accent-faint)",
+                      color: "var(--color-bt-accent)",
+                      border: "1px solid var(--color-bt-accent-border)",
+                    }}
                   >
                     {yesCount}
                   </span>
@@ -701,27 +770,93 @@ function ResponseGrid({
   );
 }
 
-function ResponseCell({
+// ── Vote Cell ─────────────────────────────────────────────────────────────
+
+function VoteCell({
   answer,
-  isGhost,
-  onClick,
+  isWide,
+  interactive,
+  onVote,
 }: {
-  answer: string | null;
-  isGhost: boolean;
-  onClick?: () => void;
+  answer: VoteAnswer | null;
+  isWide: boolean;
+  interactive: boolean;
+  onVote: (next: VoteAnswer | null) => void;
+}) {
+  if (isWide) {
+    return <WideCellButtons answer={answer} interactive={interactive} onVote={onVote} />;
+  }
+  return <CompactChip answer={answer} interactive={interactive} onVote={onVote} />;
+}
+
+// ── Wide cell: 3 symbol buttons ───────────────────────────────────────────
+
+function WideCellButtons({
+  answer,
+  interactive,
+  onVote,
+}: {
+  answer: VoteAnswer | null;
+  interactive: boolean;
+  onVote: (next: VoteAnswer | null) => void;
+}) {
+  const chips: { type: VoteAnswer; sym: string; activeBg: string; activeColor: string }[] = [
+    { type: "yes",   sym: "✓", activeBg: "var(--color-bt-accent)",  activeColor: "white" },
+    { type: "maybe", sym: "~", activeBg: "var(--color-bt-warning)", activeColor: "var(--color-bt-base-alt)" },
+    { type: "no",    sym: "✗", activeBg: "var(--color-bt-danger)",  activeColor: "white" },
+  ];
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {chips.map(({ type, sym, activeBg, activeColor }) => {
+        const isActive = answer === type;
+        return (
+          <button
+            key={type}
+            disabled={!interactive}
+            onClick={() => onVote(isActive ? null : type)}
+            className="flex flex-1 items-center justify-center rounded transition-all"
+            style={{
+              height: "28px",
+              fontSize: "11px",
+              fontWeight: isActive ? 700 : 500,
+              background: isActive ? activeBg : "var(--color-bt-card-raised)",
+              color: isActive ? activeColor : "var(--color-bt-text-dim)",
+              border: isActive ? "none" : "0.5px solid var(--color-bt-border)",
+              cursor: interactive ? "pointer" : "default",
+            }}
+          >
+            {sym}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Compact cell: single cycling chip ─────────────────────────────────────
+
+function CompactChip({
+  answer,
+  interactive,
+  onVote,
+}: {
+  answer: VoteAnswer | null;
+  interactive: boolean;
+  onVote: (next: VoteAnswer | null) => void;
 }) {
   const styles: Record<string, { bg: string; color: string; border: string; sym: string }> = {
-    yes: { bg: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "var(--color-bt-accent-border)", sym: "✓" },
+    yes:   { bg: "var(--color-bt-accent-faint)",  color: "var(--color-bt-accent)",  border: "var(--color-bt-accent-border)",  sym: "✓" },
     maybe: { bg: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)", border: "var(--color-bt-warning-border)", sym: "~" },
-    no: { bg: "var(--color-bt-danger-faint)", color: "var(--color-bt-danger)", border: "var(--color-bt-danger-border)", sym: "✗" },
+    no:    { bg: "var(--color-bt-danger-faint)",  color: "var(--color-bt-danger)",  border: "var(--color-bt-danger-border)",  sym: "✗" },
   };
   const s = answer ? styles[answer] : null;
 
   return (
     <div
-      onClick={onClick}
+      onClick={interactive ? () => onVote(nextAnswerCompact(answer)) : undefined}
       className={`mx-auto flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-transform ${
-        onClick ? "cursor-pointer active:scale-90" : ""
+        interactive ? "cursor-pointer active:scale-90" : ""
       }`}
       style={
         s
@@ -809,73 +944,6 @@ function AddDateSheet({
           style={{ background: "#00d4aa", color: "white" }}
         >
           Add Option
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function GhostVoteSheet({
-  name,
-  windows,
-  existingVotes,
-  onSave,
-  onClose,
-}: {
-  name: string;
-  windows: DateWindow[];
-  existingVotes: { windowId: string; answer: VoteAnswer | null }[];
-  onSave: (votes: { windowId: string; answer: VoteAnswer | null }[]) => void;
-  onClose: () => void;
-}) {
-  const [pending, setPending] = useState(existingVotes);
-
-  const setAnswer = (windowId: string, answer: VoteAnswer) => {
-    setPending((prev) =>
-      prev.map((v) => (v.windowId === windowId ? { ...v, answer: v.answer === answer ? null : answer } : v))
-    );
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.4)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-lg rounded-t-2xl p-5"
-        style={{ background: "var(--color-bt-card)" }}
-      >
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: "#d1d5db" }} />
-        <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Set availability for {name}
-        </p>
-        <p className="mb-4 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          They haven&apos;t joined yet. Set their availability on their behalf.
-        </p>
-        <div className="space-y-3">
-          {windows.map((w, i) => {
-            const cur = pending[i]?.answer;
-            return (
-              <div key={w.id}>
-                <p className="mb-1.5 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  {fmtDateRange(w.start_date, w.end_date)}
-                </p>
-                <div className="flex gap-2">
-                  <VoteButton label="✓ Works" type="yes" active={cur === "yes"} onClick={() => setAnswer(w.id, "yes")} />
-                  <VoteButton label="~ Maybe" type="maybe" active={cur === "maybe"} onClick={() => setAnswer(w.id, "maybe")} />
-                  <VoteButton label="✗ Can't" type="no" active={cur === "no"} onClick={() => setAnswer(w.id, "no")} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => onSave(pending)}
-          className="mt-4 w-full rounded-xl py-2.5 text-sm font-semibold"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-card)" }}
-        >
-          Save
         </button>
       </div>
     </div>
