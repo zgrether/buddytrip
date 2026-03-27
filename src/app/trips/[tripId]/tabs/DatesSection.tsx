@@ -69,6 +69,16 @@ function getScore(w: DateWindow, members: TripMember[]) {
   return { yes, maybe, no, score: yes * 2 + maybe };
 }
 
+/** Returns the next vote answer in the cycle: null→yes→maybe→no→null.
+ *  Cycling from "no" back to null is done by passing "no" again to the vote
+ *  mutation, which the router treats as a toggle-off (same answer = delete). */
+function cycleAnswer(current: string | null): VoteAnswer {
+  if (current === null) return "yes";
+  if (current === "yes") return "maybe";
+  if (current === "maybe") return "no";
+  return "no"; // "no" → call vote("no") again → server toggle-off
+}
+
 function getBestWindowId(windows: DateWindow[], members: TripMember[]) {
   let bestId: string | null = null;
   let bestScore = -1;
@@ -197,6 +207,7 @@ export function DatesSection({
         allMembers={tripMembers}
         isLowCrew={isLowCrew}
         confirmedCount={confirmedMembers.length}
+        currentUserId={currentUser?.id ?? ""}
         onTabChange={onTabChange}
         onAddWindow={(start, end) => {
           addWindow.mutate({ tripId, id: crypto.randomUUID(), startDate: start, endDate: end });
@@ -206,6 +217,9 @@ export function DatesSection({
         }}
         onVoteOnBehalf={(userId, votes) => {
           voteOnBehalf.mutate({ tripId, userId, votes });
+        }}
+        onCycleVote={(windowId, currentAnswer) => {
+          vote.mutate({ tripId, windowId, answer: cycleAnswer(currentAnswer) });
         }}
         bestWindowId={getBestWindowId(windows, confirmedMembers)}
       />
@@ -385,10 +399,12 @@ function OwnerView({
   allMembers,
   isLowCrew,
   confirmedCount,
+  currentUserId,
   onTabChange,
   onAddWindow,
   onLock,
   onVoteOnBehalf,
+  onCycleVote,
   bestWindowId,
 }: {
   tripId: string;
@@ -397,10 +413,12 @@ function OwnerView({
   allMembers: TripMember[];
   isLowCrew: boolean;
   confirmedCount: number;
+  currentUserId: string;
   onTabChange?: (tab: string) => void;
   onAddWindow: (start: string, end: string) => void;
   onLock: (windowId: string) => void;
   onVoteOnBehalf: (userId: string, votes: { windowId: string; answer: VoteAnswer }[]) => void;
+  onCycleVote: (windowId: string, currentAnswer: string | null) => void;
   bestWindowId: string | null;
 }) {
   const [showAddSheet, setShowAddSheet] = useState(false);
@@ -455,7 +473,9 @@ function OwnerView({
           <ResponseGrid
             windows={windows}
             members={members}
+            currentUserId={currentUserId}
             onGhostClick={(userId, name) => setGhostSheet({ userId, name })}
+            onCycleVote={onCycleVote}
           />
 
           {/* Lock a Date section */}
@@ -575,11 +595,15 @@ function OwnerView({
 function ResponseGrid({
   windows,
   members,
+  currentUserId,
   onGhostClick,
+  onCycleVote,
 }: {
   windows: DateWindow[];
   members: TripMember[];
+  currentUserId: string;
   onGhostClick: (userId: string, name: string) => void;
+  onCycleVote: (windowId: string, currentAnswer: string | null) => void;
 }) {
   return (
     <div className="-mx-1 overflow-x-auto">
@@ -637,13 +661,15 @@ function ResponseGrid({
                 const answer = v?.answer ?? null;
                 return (
                   <td key={m.user_id} className="px-1 py-1.5">
-                    {/* Ghost cells are tappable: onClick opens the GhostVoteSheet bottom sheet */}
+                    {/* Ghost cells open GhostVoteSheet; confirmed current-user cell cycles vote */}
                     <ResponseCell
                       answer={answer}
                       isGhost={!!m.isGuest}
                       onClick={
                         m.isGuest
                           ? () => onGhostClick(m.user_id!, m.displayName)
+                          : m.user_id === currentUserId
+                          ? () => onCycleVote(w.id, answer)
                           : undefined
                       }
                     />
@@ -701,8 +727,8 @@ function ResponseCell({
   return (
     <div
       onClick={onClick}
-      className={`mx-auto flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold ${
-        isGhost && onClick ? "cursor-pointer" : ""
+      className={`mx-auto flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-transform ${
+        onClick ? "cursor-pointer active:scale-90" : ""
       }`}
       style={
         s
