@@ -266,19 +266,19 @@ function MemberView({
             const myVote = myVoteFor(w);
             const borderColor =
               myVote === "yes"
-                ? "#00d4aa"
+                ? "var(--color-bt-accent)"
                 : myVote === "no"
-                ? "#f87171"
+                ? "var(--color-bt-danger)"
                 : myVote === "maybe"
-                ? "#fbbf24"
+                ? "var(--color-bt-warning)"
                 : "var(--color-bt-border)";
             const bgColor =
               myVote === "yes"
-                ? "#e6faf6"
+                ? "var(--color-bt-accent-faint)"
                 : myVote === "no"
-                ? "#fef2f2"
+                ? "var(--color-bt-danger-faint)"
                 : myVote === "maybe"
-                ? "#fffbeb"
+                ? "var(--color-bt-warning-faint)"
                 : "var(--color-bt-card)";
 
             return (
@@ -328,10 +328,10 @@ function MemberView({
           {allAnswered && (
             <div
               className="flex items-center gap-2.5 rounded-xl px-4 py-3"
-              style={{ background: "#e6faf6", border: "1px solid #b3f0e6" }}
+              style={{ background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}
             >
-              <Check size={16} style={{ color: "#00d4aa", flexShrink: 0 }} />
-              <div className="text-sm" style={{ color: "#065f46" }}>
+              <Check size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+              <div className="text-sm" style={{ color: "var(--color-bt-text)" }}>
                 <strong>You&apos;re all set!</strong> {respondedCount} of {memberCount} crew have
                 responded so far.
               </div>
@@ -355,9 +355,9 @@ function VoteButton({
   onClick: () => void;
 }) {
   const colors = {
-    yes: { color: "#00d4aa", bg: "#e6faf6", border: "#00d4aa" },
-    maybe: { color: "#92400e", bg: "#fffbeb", border: "#fbbf24" },
-    no: { color: "#dc2626", bg: "#fef2f2", border: "#f87171" },
+    yes: { color: "var(--color-bt-accent)", border: "var(--color-bt-accent)" },
+    maybe: { color: "var(--color-bt-warning)", border: "var(--color-bt-warning)" },
+    no: { color: "var(--color-bt-danger)", border: "var(--color-bt-danger)" },
   };
   const c = colors[type];
 
@@ -366,8 +366,8 @@ function VoteButton({
       onClick={onClick}
       className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition-all"
       style={{
-        background: active ? c.bg : "var(--color-bt-base)",
-        border: `1.5px solid ${active ? c.border : "var(--color-bt-border)"}`,
+        background: "transparent",
+        border: active ? `2px solid ${c.border}` : `1px solid var(--color-bt-border)`,
         color: active ? c.color : "var(--color-bt-text-dim)",
       }}
     >
@@ -854,7 +854,7 @@ function GhostVoteSheet({
         <button
           onClick={() => onSave(pending)}
           className="mt-4 w-full rounded-xl py-2.5 text-sm font-semibold"
-          style={{ background: "#00d4aa", color: "white" }}
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-card)" }}
         >
           Save
         </button>
