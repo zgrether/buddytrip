@@ -360,22 +360,22 @@ function VoteButton({
   active: boolean;
   onClick: () => void;
 }) {
-  const colors = {
-    yes: { color: "var(--color-bt-accent)", border: "var(--color-bt-accent)" },
-    maybe: { color: "var(--color-bt-warning)", border: "var(--color-bt-warning)" },
-    no: { color: "var(--color-bt-danger)", border: "var(--color-bt-danger)" },
+  const activeStyles = {
+    yes:   { bg: "var(--color-bt-accent)",  color: "white" },
+    maybe: { bg: "var(--color-bt-warning)", color: "var(--color-bt-base-alt)" },
+    no:    { bg: "var(--color-bt-danger)",  color: "white" },
   };
-  const c = colors[type];
+  const a = activeStyles[type];
 
   return (
     <button
       onClick={onClick}
-      className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition-all"
+      className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs transition-all"
       style={{
-        background: "transparent",
-        border: active ? `2px solid ${c.border}` : `1px solid var(--color-bt-border)`,
-        color: active ? c.color : "var(--color-bt-text-dim)",
-        fontWeight: active ? 600 : undefined,
+        background: active ? a.bg : "var(--color-bt-card-raised)",
+        border: "none",
+        color: active ? a.color : "var(--color-bt-text-dim)",
+        fontWeight: active ? 700 : 500,
       }}
     >
       {label}
