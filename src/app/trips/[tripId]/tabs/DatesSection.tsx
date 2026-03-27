@@ -250,6 +250,8 @@ export function DatesSection({
     (m) => m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
   );
   const isLowCrew = confirmedMembers.length < 4;
+  // Show all members in the date poll grid (matching the crew tab), not just RSVP'd ones
+  const allMembers = tripMembers;
 
   // ── Unified grid vote dispatcher ──────────────────────────────────────
   function handleGridVote(userId: string, windowId: string, answer: VoteAnswer | null) {
@@ -283,7 +285,7 @@ export function DatesSection({
       <OwnerView
         tripId={tripId}
         windows={windows}
-        members={confirmedMembers}
+        members={allMembers}
         isLowCrew={isLowCrew}
         confirmedCount={confirmedMembers.length}
         currentUserId={currentUser?.id ?? ""}
