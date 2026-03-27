@@ -941,9 +941,17 @@ function PlanningSection({
   onTabChange?: (tab: string) => void;
 }) {
   const router = useRouter();
+  const utils = trpc.useUtils();
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [showSetDest, setShowSetDest] = useState(false);
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
+
+  const unlockDates = trpc.datePoll.unlock.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId: trip.id });
+      utils.datePoll.get.invalidate({ tripId: trip.id });
+    },
+  });
 
   // ── Destination ──────────────────────────────────────────────────────
   const isLocked = !!trip.locked_destination_title;
@@ -1172,11 +1180,12 @@ function PlanningSection({
             </p>
             {canEdit && (
               <button
-                onClick={() => onTabChange?.("schedule")}
+                onClick={() => unlockDates.mutate({ tripId: trip.id })}
+                disabled={unlockDates.isPending}
                 className="text-xs"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                Change dates
+                {unlockDates.isPending ? "Unlocking…" : "Change dates"}
               </button>
             )}
           </div>

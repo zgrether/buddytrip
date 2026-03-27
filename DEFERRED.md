@@ -35,6 +35,49 @@ an invite link doesn't exist yet.
 (trip_id, email, role, token, expires_at). On signup, check for pending
 invites matching the email, auto-add to trip_members, mark invite consumed.
 
+## Schema & Migration Audit
+ 
+**When:** Before first non-test user is onboarded — after core features are
+stable but before real data exists. Real data makes schema changes expensive.
+ 
+**Why this matters:**
+Active feature development accumulates drift between what the schema says
+and how the app actually works. The `date_polls` table is already a live
+example — it exists in the schema, `locked_window_id` was never written
+until the dates panel PR, and `open` is still unused. There are likely
+others.
+ 
+**What the audit looks at:**
+ 
+- **Orphaned tables** — tables that exist but are never queried by the app
+- **Orphaned columns** — columns that are never read or written
+- **Bypassed constraints** — check constraints or foreign keys the code
+  routes around rather than through
+- **Inconsistent nullability** — columns marked NOT NULL that the code
+  treats as nullable, or vice versa
+- **RLS policies** — compare every policy against PERMISSIONS.md; flag
+  anything that doesn't match the current role model
+- **Missing indexes** — columns used in WHERE/JOIN clauses with no index
+ 
+**How to run it (CC task):**
+ 
+```
+Audit the schema against the codebase and produce a report:
+1. Dump current schema (tables, columns, types, nullability, constraints, indexes)
+2. For each table, grep the codebase to confirm it is actively read and written
+3. For each column, same check
+4. List all RLS policies and compare against PERMISSIONS.md
+5. Flag anything orphaned, bypassed, or inconsistent
+Output a report only — no changes.
+```
+ 
+After reviewing the report, write a single forward migration that cleans
+up whatever is confirmed dead or wrong. Do NOT edit existing migration
+history — only add a new migration.
+ 
+**Note on migration history:** The project squashed to a single baseline
+migration in March 2026 (pre-Phase 3). New migrations since then are clean
+and timestamped. The squash is documented in the commit history.
 ---
 
 ## Admin & Platform Tools
