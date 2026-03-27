@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   Check,
+  Ghost,
   Plus,
   AlertCircle,
   ChevronRight,
@@ -38,6 +39,8 @@ interface TripMember {
   isGuest?: boolean;
   role?: string;
 }
+
+const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -641,6 +644,13 @@ function ResponseGrid({
   onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
 }) {
   const useWideMode = windows.length <= 2;
+  const sorted = [...members].sort((a, b) => {
+    const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
+    const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
+    return a.displayName.localeCompare(b.displayName);
+  });
   const memberIds = new Set(members.map((m) => m.user_id));
 
   return (
@@ -677,36 +687,34 @@ function ResponseGrid({
         </thead>
         <tbody>
           {/* One row per crew member */}
-          {members.map((m) => (
-            <tr key={m.user_id} style={{ opacity: m.isGuest ? 0.75 : 1 }}>
-              {/* Crew cell: avatar + first name */}
+          {sorted.map((m) => (
+            <tr key={m.user_id}>
+              {/* Crew cell: avatar + name */}
               <td
                 className="py-1.5 pr-2"
                 style={{ borderRight: "1px solid var(--color-bt-border)" }}
               >
                 <div className="flex items-center gap-1.5">
-                  <div
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                    style={
-                      m.isGuest
-                        ? {
-                            background: "var(--color-bt-card-raised)",
-                            color: "var(--color-bt-text-dim)",
-                            border: "1.5px dashed var(--color-bt-border)",
-                          }
-                        : {
-                            background: "var(--color-bt-accent)",
-                            color: "white",
-                          }
-                    }
-                  >
-                    {m.displayName.charAt(0).toUpperCase()}
-                  </div>
+                  {m.isGuest ? (
+                    <div
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)", opacity: 0.6 }}
+                    >
+                      <Ghost size={12} />
+                    </div>
+                  ) : (
+                    <div
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                      style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                    >
+                      {m.displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <span
                     className="truncate text-[13px] font-medium"
                     style={{ color: "var(--color-bt-text)" }}
                   >
-                    {m.displayName.split(" ")[0]}
+                    {m.displayName}
                   </span>
                 </div>
               </td>
