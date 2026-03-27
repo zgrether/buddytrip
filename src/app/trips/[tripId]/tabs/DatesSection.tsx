@@ -266,19 +266,19 @@ function MemberView({
             const myVote = myVoteFor(w);
             const borderColor =
               myVote === "yes"
-                ? "#00d4aa"
+                ? "var(--color-bt-accent)"
                 : myVote === "no"
-                ? "#f87171"
+                ? "var(--color-bt-danger)"
                 : myVote === "maybe"
-                ? "#fbbf24"
+                ? "var(--color-bt-warning)"
                 : "var(--color-bt-border)";
             const bgColor =
               myVote === "yes"
-                ? "#e6faf6"
+                ? "var(--color-bt-accent-faint)"
                 : myVote === "no"
-                ? "#fef2f2"
+                ? "var(--color-bt-danger-faint)"
                 : myVote === "maybe"
-                ? "#fffbeb"
+                ? "var(--color-bt-warning-faint)"
                 : "var(--color-bt-card)";
 
             return (
@@ -328,10 +328,10 @@ function MemberView({
           {allAnswered && (
             <div
               className="flex items-center gap-2.5 rounded-xl px-4 py-3"
-              style={{ background: "#e6faf6", border: "1px solid #b3f0e6" }}
+              style={{ background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}
             >
-              <Check size={16} style={{ color: "#00d4aa", flexShrink: 0 }} />
-              <div className="text-sm" style={{ color: "#065f46" }}>
+              <Check size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+              <div className="text-sm" style={{ color: "var(--color-bt-text)" }}>
                 <strong>You&apos;re all set!</strong> {respondedCount} of {memberCount} crew have
                 responded so far.
               </div>
@@ -355,9 +355,9 @@ function VoteButton({
   onClick: () => void;
 }) {
   const colors = {
-    yes: { color: "#00d4aa", bg: "#e6faf6", border: "#00d4aa" },
-    maybe: { color: "#92400e", bg: "#fffbeb", border: "#fbbf24" },
-    no: { color: "#dc2626", bg: "#fef2f2", border: "#f87171" },
+    yes: { color: "var(--color-bt-accent)", border: "var(--color-bt-accent)" },
+    maybe: { color: "var(--color-bt-warning)", border: "var(--color-bt-warning)" },
+    no: { color: "var(--color-bt-danger)", border: "var(--color-bt-danger)" },
   };
   const c = colors[type];
 
@@ -366,8 +366,8 @@ function VoteButton({
       onClick={onClick}
       className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition-all"
       style={{
-        background: active ? c.bg : "var(--color-bt-base)",
-        border: `1.5px solid ${active ? c.border : "var(--color-bt-border)"}`,
+        background: "var(--color-bt-state-fill)",
+        border: active ? `2px solid ${c.border}` : `1px solid var(--color-bt-border)`,
         color: active ? c.color : "var(--color-bt-text-dim)",
       }}
     >
@@ -479,37 +479,38 @@ function OwnerView({
                 key={w.id}
                 className="flex items-center justify-between rounded-xl px-3 py-2.5"
                 style={{
-                  background: isBest ? "#e6faf6" : "var(--color-bt-card)",
-                  border: `1.5px solid ${isBest ? "#b3f0e6" : "var(--color-bt-border)"}`,
+                  background: isBest ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+                  border: `1.5px solid ${isBest ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+                  ...(isBest && { borderLeft: "4px solid var(--color-bt-accent)" }),
                 }}
               >
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium" style={{ color: isBest ? "#065f46" : "var(--color-bt-text)" }}>
+                    <span className="text-sm font-medium" style={{ color: isBest ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
                       {label}
                     </span>
                     {isBest && (
                       <span
                         className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                        style={{ background: "#b3f0e6", color: "#00a888" }}
+                        style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
                       >
-                        <Star size={10} fill="#00a888" />
+                        <Star size={10} />
                         Best
                       </span>
                     )}
                   </div>
                   <div className="mt-0.5 flex gap-2 text-[11px]">
-                    <span style={{ color: "#00a888" }}>✓ {yes}</span>
-                    <span style={{ color: "#92400e" }}>~ {maybe}</span>
-                    <span style={{ color: "#dc2626" }}>✗ {no}</span>
+                    <span style={{ color: "var(--color-bt-accent)" }}>✓ {yes}</span>
+                    <span style={{ color: "var(--color-bt-warning)" }}>~ {maybe}</span>
+                    <span style={{ color: "var(--color-bt-danger)" }}>✗ {no}</span>
                   </div>
                 </div>
                 <button
                   onClick={() => setLockConfirm({ windowId: w.id, label, isBest })}
                   className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
                   style={{
-                    background: isBest ? "#00d4aa" : "transparent",
-                    color: isBest ? "white" : "var(--color-bt-text-dim)",
+                    background: isBest ? "var(--color-bt-accent)" : "transparent",
+                    color: isBest ? "var(--color-bt-card)" : "var(--color-bt-text-dim)",
                     border: isBest ? "none" : "1px solid var(--color-bt-border)",
                   }}
                 >
@@ -587,7 +588,7 @@ function ResponseGrid({
           <tr>
             <th
               className="sticky left-0 z-10 w-20"
-              style={{ background: "var(--color-bt-card)", borderRight: "1px solid var(--color-bt-border)" }}
+              style={{ borderRight: "1px solid var(--color-bt-border)" }}
             />
             {members.map((m) => (
               <th key={m.user_id} className="px-1 pb-1">
@@ -622,7 +623,7 @@ function ResponseGrid({
             <tr key={w.id}>
               <td
                 className="sticky left-0 z-10 w-20 py-1.5 pr-2 text-left"
-                style={{ background: "var(--color-bt-card)", borderRight: "1px solid var(--color-bt-border)" }}
+                style={{ borderRight: "1px solid var(--color-bt-border)" }}
               >
                 <span className="block text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {fmtDateRange(w.start_date, w.end_date)}
@@ -655,7 +656,7 @@ function ResponseGrid({
           <tr>
             <td
               className="sticky left-0 z-10 pt-1 text-left text-[11px] font-bold uppercase tracking-widest"
-              style={{ color: "var(--color-bt-text-dim)", background: "var(--color-bt-card)", borderRight: "1px solid var(--color-bt-border)" }}
+              style={{ color: "var(--color-bt-text-dim)", borderRight: "1px solid var(--color-bt-border)" }}
             >
               ✓ count
             </td>
@@ -667,7 +668,7 @@ function ResponseGrid({
                 <td key={m.user_id} className="px-1 pt-1">
                   <span
                     className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold"
-                    style={{ background: "#e6faf6", color: "#00a888" }}
+                    style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
                   >
                     {yesCount}
                   </span>
@@ -691,9 +692,9 @@ function ResponseCell({
   onClick?: () => void;
 }) {
   const styles: Record<string, { bg: string; color: string; border: string; sym: string }> = {
-    yes: { bg: "#e6faf6", color: "#00a888", border: "#b3f0e6", sym: "✓" },
-    maybe: { bg: "#fffbeb", color: "#92400e", border: "#fde68a", sym: "~" },
-    no: { bg: "#fef2f2", color: "#dc2626", border: "#fecaca", sym: "✗" },
+    yes: { bg: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "var(--color-bt-accent-border)", sym: "✓" },
+    maybe: { bg: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)", border: "var(--color-bt-warning-border)", sym: "~" },
+    no: { bg: "var(--color-bt-danger-faint)", color: "var(--color-bt-danger)", border: "var(--color-bt-danger-border)", sym: "✗" },
   };
   const s = answer ? styles[answer] : null;
 
@@ -707,9 +708,9 @@ function ResponseCell({
         s
           ? { background: s.bg, color: s.color, border: `1px solid ${s.border}` }
           : {
-              background: "#f9fafb",
-              color: "#d1d5db",
-              border: "1.5px dashed #e5e7eb",
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "1px dashed var(--color-bt-border)",
             }
       }
     >
@@ -853,7 +854,7 @@ function GhostVoteSheet({
         <button
           onClick={() => onSave(pending)}
           className="mt-4 w-full rounded-xl py-2.5 text-sm font-semibold"
-          style={{ background: "#00d4aa", color: "white" }}
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-card)" }}
         >
           Save
         </button>

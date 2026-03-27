@@ -30,6 +30,7 @@
 
   --color-bt-danger: #dc2626;        /* red-600 */
   --color-bt-danger-bg: #fef2f2;
+  --color-bt-danger-faint: rgba(220, 38, 38, 0.08);
   --color-bt-danger-border: rgba(220, 38, 38, 0.20);
 
   /* elevation shadows */
@@ -82,6 +83,7 @@
 
   --color-bt-danger: #f87171;        /* red-400 */
   --color-bt-danger-bg: #450a0a;
+  --color-bt-danger-faint: rgba(248, 113, 113, 0.12);
   --color-bt-danger-border: rgba(248, 113, 113, 0.20);
 
   /* elevation shadows */
