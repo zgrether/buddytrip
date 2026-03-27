@@ -286,22 +286,14 @@ function MemberView({
                 : myVote === "maybe"
                 ? "var(--color-bt-warning)"
                 : "var(--color-bt-border)";
-            const bgColor =
-              myVote === "yes"
-                ? "var(--color-bt-accent-faint)"
-                : myVote === "no"
-                ? "var(--color-bt-danger-faint)"
-                : myVote === "maybe"
-                ? "var(--color-bt-warning-faint)"
-                : "var(--color-bt-card)";
 
             return (
               <div
                 key={w.id}
                 className="rounded-xl p-4 transition-colors"
                 style={{
-                  background: bgColor,
-                  border: `1.5px solid ${borderColor}`,
+                  background: "var(--color-bt-card)",
+                  border: `${myVote ? "2px" : "1px"} solid ${borderColor}`,
                 }}
               >
                 <div className="mb-3 flex items-center justify-between">
@@ -380,9 +372,10 @@ function VoteButton({
       onClick={onClick}
       className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition-all"
       style={{
-        background: "var(--color-bt-state-fill)",
+        background: "transparent",
         border: active ? `2px solid ${c.border}` : `1px solid var(--color-bt-border)`,
         color: active ? c.color : "var(--color-bt-text-dim)",
+        fontWeight: active ? 600 : undefined,
       }}
     >
       {label}
