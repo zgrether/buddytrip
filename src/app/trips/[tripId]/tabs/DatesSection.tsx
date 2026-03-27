@@ -485,7 +485,7 @@ function OwnerView({
               >
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                    <span className="text-sm font-medium" style={{ color: isBest ? "#065f46" : "var(--color-bt-text)" }}>
                       {label}
                     </span>
                     {isBest && (
@@ -605,7 +605,7 @@ function ResponseGrid({
                 >
                   {m.displayName.charAt(0).toUpperCase()}
                 </div>
-                {m.isGuest && (
+                {m.status === "invited" && (
                   <div className="mt-0.5 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
                     👻
                   </div>
@@ -618,7 +618,7 @@ function ResponseGrid({
           {windows.map((w) => (
             <tr key={w.id}>
               <td
-                className="sticky left-0 z-10 py-1.5 pr-2 text-left"
+                className="sticky left-0 z-10 w-20 py-1.5 pr-2 text-left"
                 style={{ background: "var(--color-bt-card)" }}
               >
                 <span className="block text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
