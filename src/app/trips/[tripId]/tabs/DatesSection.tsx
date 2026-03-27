@@ -366,7 +366,7 @@ function VoteButton({
       onClick={onClick}
       className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition-all"
       style={{
-        background: "transparent",
+        background: "var(--color-bt-state-fill)",
         border: active ? `2px solid ${c.border}` : `1px solid var(--color-bt-border)`,
         color: active ? c.color : "var(--color-bt-text-dim)",
       }}
