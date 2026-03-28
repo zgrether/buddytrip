@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Ghost, Mail, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { RoleBadge } from "@/components/RoleBadge";
 import type { TabProps } from "./types";
 
 // ── RSVP helpers ──────────────────────────────────────────────────────────
@@ -160,10 +161,8 @@ function CrewMemberRow({
         </div>
 
         {/* Role badge — only for Owner and Planner */}
-        {!m.isGuest && m.role !== "Member" && (
-          <span className="flex-shrink-0 text-xs font-semibold" style={{ color: roleColor }}>
-            {m.role}
-          </span>
+        {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
+          <RoleBadge role={m.role} />
         )}
 
         {/* Status — not shown for Owner (always in) */}
