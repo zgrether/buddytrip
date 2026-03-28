@@ -4,7 +4,7 @@
 
 /* ── Light mode (default) ─────────────────────────────────────────────── */
 :root {
-    --color-bt-base: #e8edf2;          /* clearly grey — white cards pop from this */
+    --color-bt-base: #d8e0e8;          /* noticeably grey on any display — white cards pop */
   --color-bt-card: #ffffff;           /* pure white — visible elevation */
   --color-bt-border: #c8d0da;        /* visible on white without straining */
   --color-bt-text: #0f172a;          /* near-black with a hint of navy */
