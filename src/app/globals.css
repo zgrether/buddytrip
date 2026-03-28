@@ -4,9 +4,9 @@
 
 /* ── Light mode (default) ─────────────────────────────────────────────── */
 :root {
-    --color-bt-base: #f1f5f9;          /* slate-100 — cards float off this */
+    --color-bt-base: #d8e0e8;          /* noticeably grey on any display — white cards pop */
   --color-bt-card: #ffffff;           /* pure white — visible elevation */
-  --color-bt-border: #e2e8f0;        /* softer than current #d0d7de */
+  --color-bt-border: #c8d0da;        /* visible on white without straining */
   --color-bt-text: #0f172a;          /* near-black with a hint of navy */
   --color-bt-text-dim: #64748b;      /* slate-500 — warmer than current */
 
@@ -37,7 +37,7 @@
   --shadow-card: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
   --shadow-raised: 0 4px 12px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
   --shadow-floating: 0 8px 24px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.06);
-  --color-bt-card-raised: #edf2f7;      /* between base #f1f5f9 and card #ffffff */
+  --color-bt-card-raised: #f4f7fa;      /* elevated elements inside panels */
   --color-bt-card-float: #e8edf5;
 
   /* unchanged structural tokens */
