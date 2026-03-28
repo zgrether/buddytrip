@@ -48,6 +48,9 @@
 - Auth guards use the `useTripRole(tripId)` hook
 - Error handling: tRPC procedures throw `TRPCError` with appropriate codes
 - No hardcoded user IDs, roles, or trip IDs in application code
+- Before making any styling change, read `STYLE_GUIDE.md`
+- Never use hardcoded hex color values — use tokens from the `--color-bt-*` system
+- Never set background colors outside the surface hierarchy defined in `STYLE_GUIDE.md` Section 1
 
 ## What "Done" Means for Any Task
 
