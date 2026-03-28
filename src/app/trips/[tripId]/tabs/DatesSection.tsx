@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Check,
   Ghost,
@@ -8,9 +8,9 @@ import {
   AlertCircle,
   ChevronRight,
   Lock,
-  Star,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { RoleBadge } from "@/components/RoleBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { parseLocalDate } from "@/lib/dates";
 
@@ -193,6 +193,7 @@ export function DatesSection({
   const lockWindow = trpc.datePoll.lockWindow.useMutation({
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
+      utils.trips.getById.invalidate({ tripId });
     },
   });
 
@@ -297,7 +298,6 @@ export function DatesSection({
           lockWindow.mutate({ tripId, windowId });
         }}
         onGridVote={handleGridVote}
-        bestWindowId={getBestWindowId(windows, confirmedMembers)}
       />
     );
   }
@@ -474,7 +474,6 @@ function OwnerView({
   onAddWindow,
   onLock,
   onGridVote,
-  bestWindowId,
 }: {
   tripId: string;
   windows: DateWindow[];
@@ -486,10 +485,9 @@ function OwnerView({
   onAddWindow: (start: string, end: string) => void;
   onLock: (windowId: string) => void;
   onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
-  bestWindowId: string | null;
 }) {
   const [showAddSheet, setShowAddSheet] = useState(false);
-  const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string; isBest: boolean } | null>(null);
+  const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string } | null>(null);
 
   return (
     <div className="space-y-3">
@@ -541,67 +539,15 @@ function OwnerView({
             members={members}
             currentUserId={currentUserId}
             onGridVote={onGridVote}
+            onLockClick={(windowId) => {
+              const w = windows.find((w) => w.id === windowId);
+              if (!w) return;
+              setLockConfirm({
+                windowId,
+                label: fmtDateRange(w.start_date, w.end_date),
+              });
+            }}
           />
-
-          {/* Lock a Date section */}
-          <div className="my-1" style={{ borderTop: "1px solid var(--color-bt-border)" }} />
-          <p
-            className="text-[11px] font-bold uppercase tracking-widest"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Lock a Date
-          </p>
-          {windows.map((w) => {
-            const { yes, maybe, no } = getScore(w, members);
-            const isBest = w.id === bestWindowId;
-            const label = fmtDateRange(w.start_date, w.end_date);
-
-            return (
-              <div
-                key={w.id}
-                className="flex items-center justify-between rounded-xl px-3 py-2.5"
-                style={{
-                  background: isBest ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-                  border: `1.5px solid ${isBest ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-                  ...(isBest && { borderLeft: "4px solid var(--color-bt-accent)" }),
-                }}
-              >
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium" style={{ color: isBest ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
-                      {label}
-                    </span>
-                    {isBest && (
-                      <span
-                        className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                        style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)" }}
-                      >
-                        <Star size={10} />
-                        Best
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-0.5 flex gap-2 text-[11px]">
-                    <span style={{ color: "var(--color-bt-accent)" }}>✓ {yes}</span>
-                    <span style={{ color: "var(--color-bt-warning)" }}>~ {maybe}</span>
-                    <span style={{ color: "var(--color-bt-danger)" }}>✗ {no}</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setLockConfirm({ windowId: w.id, label, isBest })}
-                  className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={{
-                    background: isBest ? "var(--color-bt-accent)" : "transparent",
-                    color: isBest ? "var(--color-bt-card)" : "var(--color-bt-text-dim)",
-                    border: isBest ? "none" : "1px solid var(--color-bt-border)",
-                  }}
-                >
-                  <Lock size={13} />
-                  Lock
-                </button>
-              </div>
-            );
-          })}
         </>
       )}
 
@@ -620,7 +566,6 @@ function OwnerView({
       {lockConfirm && (
         <LockConfirmDialog
           label={lockConfirm.label}
-          isBest={lockConfirm.isBest}
           onConfirm={() => {
             onLock(lockConfirm.windowId);
             setLockConfirm(null);
@@ -639,13 +584,34 @@ function ResponseGrid({
   members,
   currentUserId,
   onGridVote,
+  onLockClick,
 }: {
   windows: DateWindow[];
   members: TripMember[];
   currentUserId: string;
   onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
+  onLockClick: (windowId: string) => void;
 }) {
-  const useWideMode = windows.length <= 2;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(entry.contentRect.width);
+    });
+    observer.observe(el);
+    setContainerWidth(el.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, []);
+
+  const CREW_COLUMN_WIDTH = 140;
+  const MIN_BUTTON_COLUMN_WIDTH = 180; // px per date column needed for 3-button wide mode
+  const availableWidth = containerWidth - CREW_COLUMN_WIDTH;
+  const columnWidth = windows.length > 0 ? availableWidth / windows.length : 0;
+  const useWideMode = columnWidth >= MIN_BUTTON_COLUMN_WIDTH;
+
   const sorted = [...members].sort((a, b) => {
     const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
     const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
@@ -656,7 +622,7 @@ function ResponseGrid({
   const memberIds = new Set(members.map((m) => m.user_id));
 
   return (
-    <div className="-mx-1 overflow-x-auto">
+    <div ref={containerRef} className="-mx-1 overflow-x-auto">
       <table
         className="w-full"
         style={{ borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed" }}
@@ -689,8 +655,8 @@ function ResponseGrid({
         </thead>
         <tbody>
           {/* One row per crew member */}
-          {sorted.map((m) => (
-            <tr key={m.user_id}>
+          {sorted.map((m, i) => (
+            <tr key={m.user_id} style={i % 2 === 1 ? { background: "var(--color-bt-card-raised)" } : undefined}>
               {/* Crew cell: avatar + name */}
               <td
                 className="py-1.5 pr-2"
@@ -713,11 +679,14 @@ function ResponseGrid({
                     </div>
                   )}
                   <span
-                    className="truncate text-[13px] font-medium"
+                    className="min-w-0 flex-1 truncate text-[13px] font-medium"
                     style={{ color: "var(--color-bt-text)" }}
                   >
                     {m.displayName}
                   </span>
+                  {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
+                    <RoleBadge role={m.role as "Owner" | "Planner"} />
+                  )}
                 </div>
               </td>
               {/* Vote cell per window */}
@@ -738,7 +707,7 @@ function ResponseGrid({
               })}
             </tr>
           ))}
-          {/* ✓ count row — one per date column */}
+          {/* Yes count row */}
           <tr>
             <td
               className="py-1.5 pr-2 text-[11px] font-bold uppercase tracking-widest"
@@ -748,7 +717,7 @@ function ResponseGrid({
                 borderRight: "1px solid var(--color-bt-border)",
               }}
             >
-              ✓ count
+              Yes count
             </td>
             {windows.map((w) => {
               const yesCount = w.votes.filter(
@@ -761,18 +730,47 @@ function ResponseGrid({
                   style={{ borderTop: "1px solid var(--color-bt-border)" }}
                 >
                   <span
-                    className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold"
-                    style={{
-                      background: "var(--color-bt-accent-faint)",
-                      color: "var(--color-bt-accent)",
-                      border: "1px solid var(--color-bt-accent-border)",
-                    }}
+                    className="text-[11px] font-semibold"
+                    style={{ color: yesCount > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                   >
-                    {yesCount}
+                    {yesCount} yes
                   </span>
                 </td>
               );
             })}
+          </tr>
+          {/* Lock row */}
+          <tr>
+            <td
+              className="py-1.5 pr-2 text-[11px] font-bold uppercase tracking-widest"
+              style={{
+                color: "var(--color-bt-text-dim)",
+                borderTop: "1px solid var(--color-bt-border)",
+                borderRight: "1px solid var(--color-bt-border)",
+              }}
+            >
+              Lock
+            </td>
+            {windows.map((w) => (
+              <td
+                key={w.id}
+                className="px-1 py-1.5"
+                style={{ borderTop: "1px solid var(--color-bt-border)" }}
+              >
+                <button
+                  onClick={() => onLockClick(w.id)}
+                  className="flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-colors"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text-dim)",
+                    border: "0.5px solid var(--color-bt-border)",
+                  }}
+                >
+                  <Lock size={11} />
+                  Lock
+                </button>
+              </td>
+            ))}
           </tr>
         </tbody>
       </table>
@@ -817,7 +815,7 @@ function WideCellButtons({
   ];
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-1">
       {chips.map(({ type, sym, activeBg, activeColor }) => {
         const isActive = answer === type;
         return (
@@ -825,7 +823,7 @@ function WideCellButtons({
             key={type}
             disabled={!interactive}
             onClick={() => onVote(isActive ? null : type)}
-            className="flex flex-1 items-center justify-center rounded transition-all"
+            className="flex flex-1 items-center justify-center rounded px-2 transition-all"
             style={{
               height: "28px",
               fontSize: "11px",
@@ -962,12 +960,10 @@ function AddDateSheet({
 
 function LockConfirmDialog({
   label,
-  isBest,
   onConfirm,
   onCancel,
 }: {
   label: string;
-  isBest: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -985,9 +981,7 @@ function LockConfirmDialog({
           Lock in {label}?
         </p>
         <p className="mb-5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          {isBest
-            ? "This is the top-voted option. The crew will be notified."
-            : "This isn't the top-voted option, but it's your call. The crew will be notified."}
+          The crew will be notified.
         </p>
         <div className="flex gap-2">
           <button

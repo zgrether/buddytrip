@@ -870,8 +870,6 @@ function PlanningRow({
       style={{
         background: isDone
           ? "var(--color-bt-tag-bg)"
-          : isInProgress
-          ? "var(--color-bt-accent-faint)"
           : "var(--color-bt-card)",
         border: `1px solid ${borderColor}`,
         boxShadow: isOpen ? "var(--shadow-raised)" : "var(--shadow-card)",
