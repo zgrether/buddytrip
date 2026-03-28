@@ -122,7 +122,12 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
     className="rounded-2xl border p-5"
     style={{
       background: "var(--color-bt-card)",
-      borderColor: "var(--color-bt-border)",
+      borderColor: (status === "live" || status === "ready")
+        ? "var(--color-bt-accent-border)"
+        : "var(--color-bt-border)",
+      boxShadow: (status === "live" || status === "ready")
+        ? "var(--shadow-raised)"
+        : "var(--shadow-card)",
     }}
     data-testid="trip-header-plain"
   >

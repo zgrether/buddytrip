@@ -13,7 +13,7 @@ const CONFIG: Record<
   { label: string; bg: string; text: string }
 > = {
   live: { label: "LIVE", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
-  ready: { label: "READY", bg: "var(--color-bt-ready-bg)", text: "var(--color-bt-ready)" },
+  ready: { label: "READY", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
   upcoming: { label: "UPCOMING", bg: "var(--color-bt-blue-bg)", text: "var(--color-bt-planning)" },
   past: { label: "PAST", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
 };
