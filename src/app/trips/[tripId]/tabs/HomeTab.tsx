@@ -1200,16 +1200,6 @@ function PlanningSection({
         state={datesState}
         isOpen={openRow === "dates"}
         onToggle={() => toggle("dates")}
-        headerAction={datesLocked && canEdit ? (
-          <button
-            onClick={() => unlockDates.mutate({ tripId: trip.id })}
-            disabled={unlockDates.isPending}
-            className="text-xs font-medium transition-opacity hover:opacity-70 disabled:opacity-40"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            {unlockDates.isPending ? "Unlocking…" : "Unlock →"}
-          </button>
-        ) : undefined}
       >
         {datesLocked ? (
           <div className="space-y-2">
