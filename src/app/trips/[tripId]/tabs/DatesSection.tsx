@@ -495,18 +495,18 @@ function OwnerView({
       {isLowCrew && (
         <div
           className="flex items-start gap-2.5 rounded-xl p-3"
-          style={{ background: "#fffbeb", border: "1.5px solid #fde68a" }}
+          style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)" }}
         >
-          <AlertCircle size={18} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 1 }} />
+          <AlertCircle size={18} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
           <div className="flex-1">
-            <p className="text-[13px] leading-snug" style={{ color: "#78350f" }}>
+            <p className="text-[13px] leading-snug" style={{ color: "var(--color-bt-text)" }}>
               Only <strong>{confirmedCount} crew added.</strong> Add at least{" "}
               {4 - confirmedCount} more before polling so everyone&apos;s voice counts.
             </p>
             <button
               onClick={() => onTabChange?.("crew")}
               className="mt-1.5 flex items-center gap-0.5 text-xs font-semibold"
-              style={{ color: "#f59e0b" }}
+              style={{ color: "var(--color-bt-warning)" }}
             >
               Go to Crew tab
               <ChevronRight size={13} />
@@ -519,7 +519,7 @@ function OwnerView({
       <button
         onClick={() => setShowAddSheet(true)}
         className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed py-2.5 text-sm font-medium transition-colors"
-        style={{ borderColor: "#00d4aa", color: "#00d4aa", background: "transparent" }}
+        style={{ borderColor: "var(--color-bt-accent)", color: "var(--color-bt-accent)", background: "transparent" }}
       >
         <Plus size={16} />
         Add date option
@@ -763,7 +763,7 @@ function ResponseGrid({
                   style={{
                     background: "var(--color-bt-card-raised)",
                     color: "var(--color-bt-text-dim)",
-                    border: "0.5px solid var(--color-bt-border)",
+                    border: "1px solid var(--color-bt-border)",
                   }}
                 >
                   <Lock size={11} />
@@ -830,7 +830,7 @@ function WideCellButtons({
               fontWeight: isActive ? 700 : 500,
               background: isActive ? activeBg : "var(--color-bt-card-raised)",
               color: isActive ? activeColor : "var(--color-bt-text-dim)",
-              border: isActive ? "none" : "0.5px solid var(--color-bt-border)",
+              border: isActive ? "none" : "1px solid var(--color-bt-border)",
               cursor: interactive ? "pointer" : "default",
             }}
           >
@@ -872,7 +872,7 @@ function CompactChip({
           : {
               background: "transparent",
               color: "var(--color-bt-text-dim)",
-              border: "1px dashed var(--color-bt-border)",
+              border: "1px dashed var(--color-bt-state-stroke)",
             }
       }
     >
@@ -896,14 +896,14 @@ function AddDateSheet({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: "rgba(0,0,0,0.4)" }}
+      style={{ background: "var(--color-bt-overlay)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
         className="w-full max-w-lg rounded-t-2xl p-5"
         style={{ background: "var(--color-bt-card)" }}
       >
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: "#d1d5db" }} />
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: "var(--color-bt-border)" }} />
         <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
           Add Date Option
         </p>
@@ -949,7 +949,7 @@ function AddDateSheet({
           disabled={!start || !end}
           onClick={() => onSave(start, end)}
           className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-          style={{ background: "#00d4aa", color: "white" }}
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
           Add Option
         </button>
@@ -970,7 +970,7 @@ function LockConfirmDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-6"
-      style={{ background: "rgba(0,0,0,0.4)" }}
+      style={{ background: "var(--color-bt-overlay)" }}
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
       <div
@@ -994,7 +994,7 @@ function LockConfirmDialog({
           <button
             onClick={onConfirm}
             className="flex-1 rounded-xl py-2 text-sm font-semibold"
-            style={{ background: "#00d4aa", color: "white" }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             Lock It In
           </button>

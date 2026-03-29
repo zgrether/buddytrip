@@ -872,7 +872,7 @@ function PlanningRow({
           ? "var(--color-bt-tag-bg)"
           : "var(--color-bt-card)",
         border: `1px solid ${borderColor}`,
-        boxShadow: isOpen ? "var(--shadow-raised)" : "var(--shadow-card)",
+        boxShadow: "var(--shadow-raised)",
       }}
     >
       {/* Header row — always visible, tappable to expand */}
@@ -880,7 +880,7 @@ function PlanningRow({
         className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
         onClick={onToggle}
       >
-        <span className="flex-shrink-0" style={{ color: noteWarn ? "#f59e0b" : labelColor }}>
+        <span className="flex-shrink-0" style={{ color: noteWarn ? "var(--color-bt-warning)" : labelColor }}>
           {isDone ? <Check size={16} /> : icon}
         </span>
         <div className="min-w-0 flex-1">
@@ -890,7 +890,7 @@ function PlanningRow({
           <p
             className="mt-0.5 text-xs"
             style={{
-              color: noteWarn ? "#f59e0b" : "var(--color-bt-text-dim)",
+              color: noteWarn ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
               fontWeight: noteWarn ? 500 : undefined,
             }}
           >
