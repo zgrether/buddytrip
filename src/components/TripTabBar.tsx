@@ -30,18 +30,15 @@ export const TripTabBar: FC<TripTabBarProps> = ({ activeTab, onTabChange, showCo
             key={id}
             data-testid={`tab-${id}`}
             onClick={() => onTabChange(id)}
-            className="relative flex-1 py-2.5 text-xs font-medium transition-colors"
+            className="flex-1 py-2.5 text-xs font-medium transition-colors"
             style={{
               color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              borderBottom: active
+                ? "2px solid var(--color-bt-accent)"
+                : "2px solid transparent",
             }}
           >
             {label}
-            {active && (
-              <span
-                className="absolute bottom-0 left-1/4 right-1/4 h-0.5 rounded-full"
-                style={{ background: "var(--color-bt-accent)" }}
-              />
-            )}
           </button>
         );
       })}

@@ -22,7 +22,7 @@ these tokens.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-base` | `--color-bt-base` |
-| Value | `#f1f5f9` (slate-100) | `#0f172a` (slate-900) |
+| Value | `#d8e0e8` (cool grey — noticeably grey on any display) | `#0f172a` (slate-900) |
 
 **Use:** outermost page/layout background. Applied to `body`.
 **Examples:** trip page, dashboard, login page.
@@ -44,7 +44,7 @@ TripCard, AddDateSheet, LockConfirmDialog, TripSettingsModal.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card-raised` | `--color-bt-card-raised` |
-| Value | `#edf2f7` | `#243044` |
+| Value | `#f4f7fa` | `#243044` |
 
 **Use:** elements sitting ON a card/panel — inactive buttons, zebra
 table rows, input backgrounds, inactive compact chips.
@@ -60,6 +60,21 @@ in the dates response grid, inactive filter chips.
 
 **Use:** deeply nested elevated elements, tooltips, popovers.
 **Examples:** reserved for future nesting needs.
+
+### Surface border
+
+| | Light | Dark |
+|-------|-------|------|
+| Token | `--color-bt-border` | `--color-bt-border` |
+| Value | `#c8d0da` | `#334155` (slate-700) |
+
+**Use:** panel outlines, dividers, card edges. Every bordered surface component
+uses this token for its `border-color`.
+
+> **Note:** `--color-bt-subtle-border` (`#e2e8f0` light / `#1e293b` dark) is a
+> separate token that intentionally diverges from `--color-bt-border`. It is used
+> as a **background fill** in scoring-format components (zebra stripes, inactive
+> chips), not as a CSS border. Do not replace it with `--color-bt-border`.
 
 ---
 
@@ -382,6 +397,14 @@ incrementally in follow-up PRs.
 
 - [ ] `src/components/TripCard.tsx:63` — isDark branch
 - [ ] `src/components/TripHeader.tsx:185` — isDark branch
+
+### `--color-bt-subtle-border` diverges from `--color-bt-border` (intentional — no migration needed)
+
+After the light-mode contrast pass (`fix/light-mode-contrast`), `--color-bt-border`
+moved from `#e2e8f0` to `#c8d0da`. `--color-bt-subtle-border` remains `#e2e8f0`
+because it is used as a **background fill** (zebra rows, inactive chip backgrounds)
+in scoring components — not as a CSS border. The two tokens now serve different
+purposes and should not be unified.
 
 ### Team/competition colors (intentional — no migration needed)
 
