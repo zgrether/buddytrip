@@ -131,10 +131,32 @@ describe("datePoll router", () => {
     const caller = ctx.caller();
     const trip = await caller.datePoll.unlock({ tripId });
     expect(trip.start_date).toBeNull();
+    expect(trip.end_date).toBeNull();
 
     // Verify locked_window_id is cleared
     const poll = await caller.datePoll.get({ tripId });
     expect(poll.lockedWindowId).toBeNull();
+  });
+
+  it("unlock — date windows and votes are preserved after unlock", async () => {
+    // Lock then unlock again
+    const caller = ctx.caller();
+    await caller.datePoll.lockWindow({ tripId, windowId });
+    await caller.datePoll.unlock({ tripId });
+
+    const poll = await caller.datePoll.get({ tripId });
+    // Both windows still exist
+    expect(poll.windows.length).toBe(2);
+    // Votes on window1 are still there (member voted "no" earlier in the suite)
+    const win1 = poll.windows.find((w) => w.id === windowId);
+    expect(win1?.votes.length).toBeGreaterThan(0);
+  });
+
+  it("unlock — member cannot unlock", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.datePoll.unlock({ tripId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("voteOnBehalf — planner can vote for ghost member", async () => {

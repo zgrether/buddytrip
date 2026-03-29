@@ -840,6 +840,7 @@ function PlanningRow({
   state,
   isOpen,
   onToggle,
+  headerAction,
   children,
 }: {
   icon: React.ReactNode;
@@ -849,6 +850,8 @@ function PlanningRow({
   state: ArcCardState;
   isOpen: boolean;
   onToggle: () => void;
+  /** Optional element rendered right-aligned in the header, before the chevron */
+  headerAction?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const isDone = state === "done";
@@ -876,9 +879,12 @@ function PlanningRow({
       }}
     >
       {/* Header row — always visible, tappable to expand */}
-      <button
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left"
         onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(); }}
       >
         <span className="flex-shrink-0" style={{ color: noteWarn ? "#f59e0b" : labelColor }}>
           {isDone ? <Check size={16} /> : icon}
@@ -897,6 +903,11 @@ function PlanningRow({
             {note}
           </p>
         </div>
+        {headerAction && (
+          <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+            {headerAction}
+          </div>
+        )}
         <ChevronDown
           size={15}
           className="flex-shrink-0 transition-transform duration-200"
@@ -905,7 +916,7 @@ function PlanningRow({
             transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
           }}
         />
-      </button>
+      </div>
 
       {/* Expanded body */}
       {isOpen && children && (
@@ -946,7 +957,25 @@ function PlanningSection({
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   const unlockDates = trpc.datePoll.unlock.useMutation({
-    onSuccess() {
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId: trip.id });
+      await utils.datePoll.get.cancel({ tripId: trip.id });
+      const prevTrip = utils.trips.getById.getData({ tripId: trip.id });
+      const prevPoll = utils.datePoll.get.getData({ tripId: trip.id });
+      if (prevTrip) {
+        utils.trips.getById.setData({ tripId: trip.id }, { ...prevTrip, start_date: null, end_date: null });
+      }
+      utils.datePoll.get.setData({ tripId: trip.id }, (old) => {
+        if (!old) return old;
+        return { ...old, lockedWindowId: null };
+      });
+      return { prevTrip, prevPoll };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prevTrip !== undefined) utils.trips.getById.setData({ tripId: trip.id }, context.prevTrip);
+      if (context?.prevPoll !== undefined) utils.datePoll.get.setData({ tripId: trip.id }, context.prevPoll);
+    },
+    onSettled() {
       utils.trips.getById.invalidate({ tripId: trip.id });
       utils.datePoll.get.invalidate({ tripId: trip.id });
     },
@@ -1171,6 +1200,16 @@ function PlanningSection({
         state={datesState}
         isOpen={openRow === "dates"}
         onToggle={() => toggle("dates")}
+        headerAction={datesLocked && canEdit ? (
+          <button
+            onClick={() => unlockDates.mutate({ tripId: trip.id })}
+            disabled={unlockDates.isPending}
+            className="text-xs font-medium transition-opacity hover:opacity-70 disabled:opacity-40"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            {unlockDates.isPending ? "Unlocking…" : "Unlock →"}
+          </button>
+        ) : undefined}
       >
         {datesLocked ? (
           <div className="space-y-2">
