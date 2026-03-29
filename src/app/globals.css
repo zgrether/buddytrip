@@ -50,6 +50,7 @@
   --color-bt-state-stroke: rgba(0, 0, 0, 0.15);
   --color-bt-tile-bg: transparent;
   --color-bt-past-bg: #f8fafc;
+  --color-bt-surface-invitation: rgba(255, 255, 255, 0.6);
 
   color-scheme: light;
 }
@@ -101,6 +102,7 @@
   --color-bt-state-stroke: rgba(255, 255, 255, 0.20);
   --color-bt-tile-bg: transparent;
   --color-bt-past-bg: #1e293b;
+  --color-bt-surface-invitation: rgba(255, 255, 255, 0.03);
   color-scheme: dark;
 }
 

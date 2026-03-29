@@ -604,7 +604,7 @@ function CompetitionPanel({
           data-testid="home-setup-competition-btn"
           onClick={() => setShowPreview(true)}
           className="w-full rounded-xl p-4 text-center"
-          style={{ border: "2px dashed var(--color-bt-border)", background: "transparent" }}
+          style={{ border: "1.5px dashed var(--color-bt-border)", background: "var(--color-bt-surface-invitation)" }}
         >
           <Trophy size={20} className="mx-auto mb-2" style={{ color: "var(--color-bt-text-dim)" }} />
           <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
@@ -668,7 +668,7 @@ function QuickInfoSection({
           data-testid="quick-info-empty-btn"
           onClick={() => setShowAddTile(true)}
           className="w-full rounded-xl p-4"
-          style={{ border: "2px dashed var(--color-bt-border)", background: "transparent" }}
+          style={{ border: "1.5px dashed var(--color-bt-border)", background: "var(--color-bt-surface-invitation)" }}
         >
           {/* Skeleton tile previews */}
           <div className="mb-3 flex justify-center gap-2">
@@ -1267,7 +1267,7 @@ function AboutCard({ trip, onEdit }: { trip: TripData; onEdit?: () => void }) {
         data-testid="edit-trip-details-btn"
         onClick={onEdit}
         className="w-full rounded-xl p-4 text-center"
-        style={{ border: "2px dashed var(--color-bt-border)", background: "transparent" }}
+        style={{ border: "1.5px dashed var(--color-bt-border)", background: "var(--color-bt-surface-invitation)" }}
       >
         <Pencil size={20} className="mx-auto mb-2" style={{ color: "var(--color-bt-text-dim)" }} />
         <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>

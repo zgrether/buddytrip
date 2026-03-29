@@ -76,12 +76,13 @@ content panels. They frame the app — they don't contain content.
 **Separation:** border only, no shadow. Content panels use `--shadow-raised`
 for elevation; chrome uses `1px solid var(--color-bt-border)` for definition.
 
-**Chrome elements:**
+**Chrome elements (persistent app frame only):**
 - Global top app bar (`TopNav`) — `border-bottom`
-- Page breadcrumb bar (`TripBreadcrumb`) — `border-bottom`
-- Trip tab bar (`TripTabBar`) — `border-bottom`
 - Bottom navigation bar (`BottomNav`) — `border-top`
-- Any future persistent navigation element
+
+**Not chrome — contextual page structure (blend with page background):**
+- Page breadcrumb bar (`TripBreadcrumb`) — inherits `--color-bt-base`
+- Trip tab bar (`TripTabBar`) — inherits `--color-bt-base`
 
 ### Surface border
 
@@ -152,6 +153,24 @@ uses this token for its `border-color`.
 ---
 
 ## Section 4: Component Patterns
+
+### Invitation panel (empty state CTA)
+
+Used for empty states that invite the user to add content.
+
+```
+Background:    var(--color-bt-surface-invitation)
+               rgba(255,255,255,0.6) light / rgba(255,255,255,0.03) dark
+Border:        1.5px dashed var(--color-bt-border)
+Border radius: rounded-xl (same as content panels)
+```
+
+**Use for:** "Add a Competition", "Add Quick Info", "Add a Trip Description"
+and any future empty-state CTA that signals "content can go here."
+
+**Do NOT use for:** error states, loading states, informational callouts.
+
+---
 
 ### Collapsible planning panel (PlanningRow)
 

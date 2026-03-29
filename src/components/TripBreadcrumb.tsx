@@ -27,7 +27,7 @@ export function TripBreadcrumb({
   return (
     <div
       className="flex h-10 items-center justify-between px-4"
-      style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
+      style={{ borderBottom: "1px solid var(--color-bt-border)" }}
     >
       <div className="flex min-w-0 items-center gap-2 text-sm">
         <button
