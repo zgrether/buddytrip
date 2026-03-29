@@ -1603,8 +1603,8 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* 1. Planning rows — owners/planners always see this; members only see it pre-completion */}
-      {(canEditProp || !isCompleted) && (isBlank || isLocked) && (
+      {/* 1. Planning rows — visible for all users regardless of trip status */}
+      {(isBlank || isLocked) && (
         <PlanningSection
           trip={trip}
           ideas={ideas as IdeaWithVotes[]}

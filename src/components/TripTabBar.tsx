@@ -21,7 +21,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({ activeTab, onTabChange, showCo
   return (
     <div
       className="flex border-b"
-      style={{ borderColor: "var(--color-bt-border)" }}
+      style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       {tabs.map(({ id, label }) => {
         const active = activeTab === id;

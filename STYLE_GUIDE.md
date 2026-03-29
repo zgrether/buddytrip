@@ -61,6 +61,28 @@ in the dates response grid, inactive filter chips.
 **Use:** deeply nested elevated elements, tooltips, popovers.
 **Examples:** reserved for future nesting needs.
 
+### Chrome Surface (navigation elements)
+
+Chrome elements sit above the page background but are distinct from
+content panels. They frame the app — they don't contain content.
+
+**Rule:** all chrome elements share exactly one surface token.
+
+| | Light | Dark |
+|-------|-------|------|
+| Token | `--color-bt-card` | `--color-bt-card` |
+| Value | `#ffffff` (white) | `#1e293b` (slate-800) |
+
+**Separation:** border only, no shadow. Content panels use `--shadow-raised`
+for elevation; chrome uses `1px solid var(--color-bt-border)` for definition.
+
+**Chrome elements:**
+- Global top app bar (`TopNav`) — `border-bottom`
+- Page breadcrumb bar (`TripBreadcrumb`) — `border-bottom`
+- Trip tab bar (`TripTabBar`) — `border-bottom`
+- Bottom navigation bar (`BottomNav`) — `border-top`
+- Any future persistent navigation element
+
 ### Surface border
 
 | | Light | Dark |
