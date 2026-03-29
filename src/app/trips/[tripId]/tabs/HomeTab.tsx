@@ -1613,8 +1613,8 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* 1. Planning rows — primary focus, visible first */}
-      {!isCompleted && (isBlank || isLocked) && (
+      {/* 1. Planning rows — owners/planners always see this; members only see it pre-completion */}
+      {(canEditProp || !isCompleted) && (isBlank || isLocked) && (
         <PlanningSection
           trip={trip}
           ideas={ideas as IdeaWithVotes[]}
