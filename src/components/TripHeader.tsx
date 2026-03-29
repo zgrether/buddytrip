@@ -217,16 +217,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       {displayLocation && (
         <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
           <MapPin size={13} className="shrink-0" />
-          {canEdit && onDestinationChange ? (
-            <InlineEdit
-              value={displayLocation}
-              onSave={onDestinationChange}
-              className="text-sm"
-              style={{ color: subColor }}
-            />
-          ) : (
-            <span>{displayLocation}</span>
-          )}
+          <span>{displayLocation}</span>
         </div>
       )}
 
@@ -234,18 +225,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       {dateRange && dateRange !== "Dates TBD" && (
         <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
           <Calendar size={11} className="shrink-0" />
-          {canEdit && onDatesTap ? (
-            <button
-              onClick={onDatesTap}
-              className="cursor-pointer text-left underline decoration-dotted underline-offset-2 text-xs"
-              style={{ color: metaColor }}
-              data-testid="dates-tap"
-            >
-              {dateRange}
-            </button>
-          ) : (
-            <span>{dateRange}</span>
-          )}
+          <span>{dateRange}</span>
         </div>
       )}
     </LocationHero>

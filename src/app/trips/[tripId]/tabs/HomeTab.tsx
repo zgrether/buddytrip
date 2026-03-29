@@ -1183,7 +1183,7 @@ function PlanningSection({
           {/* CTA */}
           <button
             onClick={() => onTabChange?.("crew")}
-            className="text-sm font-medium"
+            className="text-xs font-medium"
             style={{ color: "var(--color-bt-accent)" }}
           >
             {canEdit ? "Manage crew \u2192" : "View crew \u2192"}
@@ -1210,10 +1210,10 @@ function PlanningSection({
               <button
                 onClick={() => unlockDates.mutate({ tripId: trip.id })}
                 disabled={unlockDates.isPending}
-                className="text-xs"
-                style={{ color: "var(--color-bt-text-dim)" }}
+                className="text-xs font-medium"
+                style={{ color: "var(--color-bt-accent)" }}
               >
-                {unlockDates.isPending ? "Unlocking…" : "Change dates"}
+                {unlockDates.isPending ? "Unlocking…" : "Change dates \u2192"}
               </button>
             )}
           </div>
