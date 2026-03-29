@@ -840,6 +840,7 @@ function PlanningRow({
   state,
   isOpen,
   onToggle,
+  headerAction,
   children,
 }: {
   icon: React.ReactNode;
@@ -849,6 +850,8 @@ function PlanningRow({
   state: ArcCardState;
   isOpen: boolean;
   onToggle: () => void;
+  /** Optional element rendered right-aligned in the header, before the chevron */
+  headerAction?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const isDone = state === "done";
@@ -876,9 +879,12 @@ function PlanningRow({
       }}
     >
       {/* Header row — always visible, tappable to expand */}
-      <button
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left"
         onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(); }}
       >
         <span className="flex-shrink-0" style={{ color: noteWarn ? "var(--color-bt-warning)" : labelColor }}>
           {isDone ? <Check size={16} /> : icon}
@@ -897,6 +903,11 @@ function PlanningRow({
             {note}
           </p>
         </div>
+        {headerAction && (
+          <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+            {headerAction}
+          </div>
+        )}
         <ChevronDown
           size={15}
           className="flex-shrink-0 transition-transform duration-200"
@@ -905,7 +916,7 @@ function PlanningRow({
             transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
           }}
         />
-      </button>
+      </div>
 
       {/* Expanded body */}
       {isOpen && children && (
@@ -946,7 +957,25 @@ function PlanningSection({
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   const unlockDates = trpc.datePoll.unlock.useMutation({
-    onSuccess() {
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId: trip.id });
+      await utils.datePoll.get.cancel({ tripId: trip.id });
+      const prevTrip = utils.trips.getById.getData({ tripId: trip.id });
+      const prevPoll = utils.datePoll.get.getData({ tripId: trip.id });
+      if (prevTrip) {
+        utils.trips.getById.setData({ tripId: trip.id }, { ...prevTrip, start_date: null, end_date: null });
+      }
+      utils.datePoll.get.setData({ tripId: trip.id }, (old) => {
+        if (!old) return old;
+        return { ...old, lockedWindowId: null };
+      });
+      return { prevTrip, prevPoll };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prevTrip !== undefined) utils.trips.getById.setData({ tripId: trip.id }, context.prevTrip);
+      if (context?.prevPoll !== undefined) utils.datePoll.get.setData({ tripId: trip.id }, context.prevPoll);
+    },
+    onSettled() {
       utils.trips.getById.invalidate({ tripId: trip.id });
       utils.datePoll.get.invalidate({ tripId: trip.id });
     },
@@ -1154,7 +1183,7 @@ function PlanningSection({
           {/* CTA */}
           <button
             onClick={() => onTabChange?.("crew")}
-            className="text-sm font-medium"
+            className="text-xs font-medium"
             style={{ color: "var(--color-bt-accent)" }}
           >
             {canEdit ? "Manage crew \u2192" : "View crew \u2192"}
@@ -1181,10 +1210,10 @@ function PlanningSection({
               <button
                 onClick={() => unlockDates.mutate({ tripId: trip.id })}
                 disabled={unlockDates.isPending}
-                className="text-xs"
-                style={{ color: "var(--color-bt-text-dim)" }}
+                className="text-xs font-medium"
+                style={{ color: "var(--color-bt-accent)" }}
               >
-                {unlockDates.isPending ? "Unlocking…" : "Change dates"}
+                {unlockDates.isPending ? "Unlocking…" : "Change dates \u2192"}
               </button>
             )}
           </div>
@@ -1574,8 +1603,8 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* 1. Planning rows — primary focus, visible first */}
-      {!isCompleted && (isBlank || isLocked) && (
+      {/* 1. Planning rows — owners/planners always see this; members only see it pre-completion */}
+      {(canEditProp || !isCompleted) && (isBlank || isLocked) && (
         <PlanningSection
           trip={trip}
           ideas={ideas as IdeaWithVotes[]}
