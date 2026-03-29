@@ -913,9 +913,9 @@ function CoursesSection({
                         disabled={closeRound.isPending}
                         className="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-opacity disabled:opacity-50"
                         style={{
-                          background: "#f59e0b22",
-                          color: "#f59e0b",
-                          border: "1px solid #f59e0b44",
+                          background: "var(--color-bt-warning-faint)",
+                          color: "var(--color-bt-warning)",
+                          border: "1px solid var(--color-bt-warning-border)",
                         }}
                       >
                         <CheckCircle size={12} />
