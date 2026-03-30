@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { parseLocalDate } from "@/lib/dates";
 
-export type TripStatus = "planning" | "ready" | "upcoming" | "past";
+export type TripStatus = "planning" | "upcoming" | "past";
 
 interface StatusBadgeProps {
   status: TripStatus;
@@ -13,7 +13,6 @@ const CONFIG: Record<
   { label: string; bg: string; text: string }
 > = {
   planning: { label: "PLANNING", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
-  ready:    { label: "READY",    bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
   upcoming: { label: "UPCOMING", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
   past:     { label: "PAST",     bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
 };
@@ -33,7 +32,6 @@ export const StatusBadge: FC<StatusBadgeProps> = ({ status, className }) => {
 export function getTripStatus(trip: {
   start_date?: string | null;
   end_date?: string | null;
-  locked_destination_title?: string | null;
 }): TripStatus {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -44,10 +42,6 @@ export function getTripStatus(trip: {
   // 2. Upcoming — has confirmed future dates
   if (trip.start_date && parseLocalDate(trip.start_date) >= today) return "upcoming";
 
-  // 3. Ready — destination locked, dates not yet set
-  // (includes: dates were locked then unlocked for re-voting)
-  if (trip.locked_destination_title && !trip.start_date) return "ready";
-
-  // 4. Planning — still figuring things out
+  // 3. Planning — no confirmed dates yet (regardless of destination)
   return "planning";
 }
