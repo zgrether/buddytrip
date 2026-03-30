@@ -9,6 +9,7 @@ import {
   AlertCircle,
   ChevronRight,
   Lock,
+  X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -190,6 +191,25 @@ export function DatesSection({
     },
   });
 
+  // ── removeWindow ─────────────────────────────────────────────────────
+  const removeWindow = trpc.datePoll.removeWindow.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) => {
+        if (!old) return old;
+        return { ...old, windows: old.windows.filter((w) => w.id !== vars.windowId) };
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
   // ── lockWindow ───────────────────────────────────────────────────────
   const lockWindow = trpc.datePoll.lockWindow.useMutation({
     onSettled() {
@@ -294,6 +314,9 @@ export function DatesSection({
         onTabChange={onTabChange}
         onAddWindow={(start, end) => {
           addWindow.mutate({ tripId, id: crypto.randomUUID(), startDate: start, endDate: end });
+        }}
+        onRemoveWindow={(windowId) => {
+          removeWindow.mutate({ tripId, windowId });
         }}
         onLock={(windowId) => {
           lockWindow.mutate({ tripId, windowId });
@@ -473,6 +496,7 @@ function OwnerView({
   currentUserId,
   onTabChange,
   onAddWindow,
+  onRemoveWindow,
   onLock,
   onGridVote,
 }: {
@@ -484,11 +508,13 @@ function OwnerView({
   currentUserId: string;
   onTabChange?: (tab: string) => void;
   onAddWindow: (start: string, end: string) => void;
+  onRemoveWindow: (windowId: string) => void;
   onLock: (windowId: string) => void;
   onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
 }) {
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ windowId: string; label: string } | null>(null);
 
   return (
     <div className="space-y-3">
@@ -540,6 +566,11 @@ function OwnerView({
             members={members}
             currentUserId={currentUserId}
             onGridVote={onGridVote}
+            onRemoveWindow={(windowId) => {
+              const w = windows.find((w) => w.id === windowId);
+              if (!w) return;
+              setDeleteConfirm({ windowId, label: fmtDateRange(w.start_date, w.end_date) });
+            }}
             onLockClick={(windowId) => {
               const w = windows.find((w) => w.id === windowId);
               if (!w) return;
@@ -574,6 +605,18 @@ function OwnerView({
           onCancel={() => setLockConfirm(null)}
         />
       )}
+
+      {/* Delete confirm dialog */}
+      {deleteConfirm && (
+        <DeleteConfirmDialog
+          label={deleteConfirm.label}
+          onConfirm={() => {
+            onRemoveWindow(deleteConfirm.windowId);
+            setDeleteConfirm(null);
+          }}
+          onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 }
@@ -585,12 +628,14 @@ function ResponseGrid({
   members,
   currentUserId,
   onGridVote,
+  onRemoveWindow,
   onLockClick,
 }: {
   windows: DateWindow[];
   members: TripMember[];
   currentUserId: string;
   onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
+  onRemoveWindow: (windowId: string) => void;
   onLockClick: (windowId: string) => void;
 }) {
   const { resolvedTheme } = useTheme();
@@ -645,7 +690,15 @@ function ResponseGrid({
             />
             {/* Date column headers */}
             {windows.map((w) => (
-              <th key={w.id} className="px-1 pb-2 text-center" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
+              <th key={w.id} className="relative px-1 pb-2 text-center" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
+                <button
+                  onClick={() => onRemoveWindow(w.id)}
+                  className="absolute right-1 top-0 rounded p-0.5 transition-colors hover:text-[color:var(--color-bt-text)]"
+                  style={{ color: "var(--color-bt-text-dim)", lineHeight: 1 }}
+                  aria-label="Remove date option"
+                >
+                  <X size={12} />
+                </button>
                 <span className="block text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {fmtDateRange(w.start_date, w.end_date)}
                 </span>
@@ -1000,6 +1053,52 @@ function LockConfirmDialog({
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             Lock It In
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteConfirmDialog({
+  label,
+  onConfirm,
+  onCancel,
+}: {
+  label: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl p-5"
+        style={{ background: "var(--color-bt-card)" }}
+      >
+        <p className="mb-2 text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Remove {label}?
+        </p>
+        <p className="mb-5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          Votes for this date will also be deleted.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-xl border py-2 text-sm font-medium"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-xl py-2 text-sm font-semibold"
+            style={{ background: "var(--color-bt-danger)", color: "white" }}
+          >
+            Remove
           </button>
         </div>
       </div>
