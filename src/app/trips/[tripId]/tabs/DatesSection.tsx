@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import { useTheme } from "next-themes";
 import {
   Check,
-  Ghost,
   Plus,
   AlertCircle,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { RoleBadge } from "@/components/RoleBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { parseLocalDate } from "@/lib/dates";
 
@@ -680,35 +678,22 @@ function ResponseGrid({
           {/* One row per crew member */}
           {sorted.map((m, i) => (
             <tr key={m.user_id} style={i % 2 === 1 ? { background: isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)" } : undefined}>
-              {/* Crew cell: avatar + name */}
+              {/* Crew cell: name only */}
               <td
                 className="py-1.5 pr-2"
                 style={{ borderRight: "1px solid var(--color-bt-border)" }}
               >
-                <div className="flex items-center gap-1.5">
-                  {m.isGuest ? (
-                    <div
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                    >
-                      <Ghost size={12} />
-                    </div>
-                  ) : (
-                    <div
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                      style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                    >
-                      {m.displayName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                <div className="flex items-center gap-1">
                   <span
                     className="min-w-0 flex-1 truncate text-[13px] font-medium"
                     style={{ color: "var(--color-bt-text)" }}
                   >
                     {m.displayName}
                   </span>
-                  {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
-                    <RoleBadge role={m.role as "Owner" | "Planner"} />
+                  {m.user_id === currentUserId && (
+                    <span className="shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                      you
+                    </span>
                   )}
                 </div>
               </td>
@@ -829,9 +814,9 @@ function VoteCell({
               className="flex flex-1 items-center justify-center rounded-lg py-2 text-xs transition-all"
               style={{
                 fontWeight: isActive ? 600 : 500,
-                background: isActive ? c.bg : "var(--color-bt-card-raised)",
+                background: isActive ? c.bg : "transparent",
                 color: isActive ? c.text : "var(--color-bt-text-dim)",
-                border: "none",
+                border: isActive ? "none" : "1px solid var(--color-bt-border)",
                 cursor: disabled ? "default" : "pointer",
               }}
             >
