@@ -80,6 +80,8 @@ uses this token for its `border-color`.
 
 ## Section 2: Typography Tokens
 
+> **Light mode contrast rule:** Light mode text must use darker values than dark mode — not the same values. Muted text in dark mode is light (`#94a3b8`) because it sits on a dark surface. Muted text in light mode must be dark enough (`#64748b` or darker) to read on a light surface. Never use opacity to dim text — use explicit token values. Opacity-based dimming compounds the contrast problem, especially in light mode.
+
 | Role | Token | Light | Dark | Use |
 |------|-------|-------|------|-----|
 | Primary text | `--color-bt-text` | `#0f172a` | `#f1f5f9` | Headings, labels, names, body text |

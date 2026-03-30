@@ -132,7 +132,7 @@ function CrewMemberRow({
         {m.isGuest ? (
           <div
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)", opacity: 0.6 }}
+            style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
           >
             <Ghost size={14} />
           </div>
@@ -168,11 +168,11 @@ function CrewMemberRow({
         {/* Status — not shown for Owner (always in) */}
         {m.role !== "Owner" && (
           m.isGuest ? (
-            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.5 }}>
+            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
               Unknown
             </span>
           ) : m.status === "draft" ? (
-            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
+            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
               Not invited yet
             </span>
           ) : m.status === "invited" ? (
