@@ -669,7 +669,7 @@ function ResponseGrid({
                   {m.isGuest ? (
                     <div
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)", opacity: 0.6 }}
+                      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
                     >
                       <Ghost size={12} />
                     </div>
