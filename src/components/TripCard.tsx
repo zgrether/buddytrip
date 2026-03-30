@@ -51,7 +51,6 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const status = getTripStatus(trip);
-  const { outline, cityPin, showPin, rotation } = getLocationInfo(trip.location ?? "");
 
   // Show locked destination when locked; suppress trip.location when in comparison mode
   // (same logic as the trip detail page to avoid stale destination bleeding through
@@ -59,6 +58,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   // unlockDestination doesn't clear it).
   const displayDest = trip.locked_destination_title
     ?? (trip.comparison_mode ? null : trip.location);
+
+  const { outline, cityPin, showPin, rotation } = getLocationInfo(displayDest ?? "");
 
   const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
   const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.55)";
