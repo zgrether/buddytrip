@@ -81,9 +81,11 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       onClick={handleClick}
       className="relative w-full overflow-hidden rounded-xl p-4 text-left transition-all"
       style={{
-        // Non-PAST: always teal tint (pass null so temporal gradient returns its teal fallback).
-        // PAST: pass actual date so temporal gradient returns the desaturated slate stop.
-        background: isDark ? temporalGradient(status !== "past" ? null : trip.start_date, true) : "var(--color-bt-card)",
+        // Non-PAST: always teal tint (null → temporal gradient teal fallback).
+        // PAST: flat card color — no gradient tint of any kind.
+        background: isDark
+          ? (status === "past" ? "var(--color-bt-card)" : temporalGradient(null, true))
+          : "var(--color-bt-card)",
         border: isDark ? "none" : "1px solid var(--color-bt-border)",
         boxShadow: isDark
           ? "var(--shadow-card)"
