@@ -324,7 +324,7 @@ export default function TripDetailPage() {
       </main>
 
       {/* ── Bottom navigation ─────────────────────────────────────────────── */}
-      <TripBottomNav tripId={tripId} eventId={trip.event_id} showComp={showComp} />
+      <TripBottomNav tripId={tripId} eventId={trip.event_id} />
 
       {/* ── Edit trip details modal ───────────────────────────────────────── */}
       {showEditDetails && (
