@@ -12,9 +12,9 @@ const CONFIG: Record<
   TripStatus,
   { label: string; bg: string; text: string }
 > = {
-  planning: { label: "PLANNING", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
-  upcoming: { label: "UPCOMING", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
-  past:     { label: "PAST",     bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
+  planning: { label: "PLANNING", bg: "var(--color-bt-blue-bg)", text: "var(--color-bt-planning)" },
+  upcoming: { label: "UPCOMING", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
+  past: { label: "PAST", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
 };
 
 export const StatusBadge: FC<StatusBadgeProps> = ({ status, className }) => {
@@ -36,17 +36,7 @@ export function getTripStatus(trip: {
 }): TripStatus {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  // 1. Past — end date has passed
   if (trip.end_date && parseLocalDate(trip.end_date) < today) return "past";
-
-  // 2. Upcoming — destination locked + confirmed future dates
-  if (
-    trip.locked_destination_title &&
-    trip.start_date &&
-    parseLocalDate(trip.start_date) >= today
-  ) return "upcoming";
-
-  // 3. Planning — no locked destination or no confirmed dates
+  if (trip.locked_destination_title && trip.start_date) return "upcoming";
   return "planning";
 }

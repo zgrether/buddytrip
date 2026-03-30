@@ -469,7 +469,7 @@ don't apply. No migration needed.
 | `--color-bt-overlay` | `rgba(0,0,0,0.5)` | `rgba(0,0,0,0.7)` | Modal backdrop |
 | `--color-bt-subtle-border` | `#e2e8f0` | `#1e293b` | Secondary borders |
 | `--color-bt-dim-faint` | `rgba(100,116,139,0.12)` | `rgba(148,163,184,0.12)` | Disabled/inactive fill |
-| `--color-bt-state-fill` | `rgba(0,0,0,0.05)` | `rgba(255,255,255,0.06)` | Toggle/state bg |
+| `--color-bt-state-fill` | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.13)` | State silhouette watermark fill (LocationHero) |
 | `--color-bt-state-stroke` | `rgba(0,0,0,0.15)` | `rgba(255,255,255,0.20)` | Toggle/state border |
 | `--color-bt-tile-bg` | `transparent` | `transparent` | Schedule tile bg |
 | `--color-bt-past-bg` | `#f8fafc` | `#1e293b` | Past schedule bg |

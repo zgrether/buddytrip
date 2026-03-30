@@ -41,22 +41,16 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   for (const trip of trips) {
     sections[getTripStatus(trip)].push(trip);
   }
-
-  // UPCOMING — soonest departure first
+  // upcoming: soonest first; planning: most recently updated first; past: most recently ended first
   sections.upcoming.sort((a, b) =>
     (a.start_date ?? "").localeCompare(b.start_date ?? "")
   );
-
-  // PLANNING — most recently updated first
   sections.planning.sort((a, b) =>
     (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
   );
-
-  // PAST — most recently ended first
   sections.past.sort((a, b) =>
     (b.end_date ?? "").localeCompare(a.end_date ?? "")
   );
-
   return sections;
 }
 
