@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { parseLocalDate } from "@/lib/dates";
 
-export type TripStatus = "live" | "ready" | "upcoming" | "past";
+export type TripStatus = "planning" | "upcoming" | "past";
 
 interface StatusBadgeProps {
   status: TripStatus;
@@ -12,9 +12,8 @@ const CONFIG: Record<
   TripStatus,
   { label: string; bg: string; text: string }
 > = {
-  live: { label: "LIVE", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
-  ready: { label: "READY", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
-  upcoming: { label: "UPCOMING", bg: "var(--color-bt-blue-bg)", text: "var(--color-bt-planning)" },
+  planning: { label: "PLANNING", bg: "var(--color-bt-blue-bg)", text: "var(--color-bt-planning)" },
+  upcoming: { label: "UPCOMING", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
   past: { label: "PAST", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
 };
 
@@ -35,14 +34,9 @@ export function getTripStatus(trip: {
   end_date?: string | null;
   locked_destination_title?: string | null;
 }): TripStatus {
-  const now = new Date();
-  if (trip.end_date && parseLocalDate(trip.end_date) < now) return "past";
-  if (
-    trip.start_date &&
-    parseLocalDate(trip.start_date) <= now &&
-    (!trip.end_date || parseLocalDate(trip.end_date) >= now)
-  )
-    return "live";
-  if (trip.locked_destination_title) return "ready";
-  return "upcoming";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (trip.end_date && parseLocalDate(trip.end_date) < today) return "past";
+  if (trip.locked_destination_title && trip.start_date) return "upcoming";
+  return "planning";
 }

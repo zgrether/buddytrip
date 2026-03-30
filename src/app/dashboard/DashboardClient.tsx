@@ -33,14 +33,23 @@ type NotificationItem = {
 
 function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   const sections: Record<TripStatus, TripRow[]> = {
-    live: [],
-    ready: [],
+    planning: [],
     upcoming: [],
     past: [],
   };
   for (const trip of trips) {
     sections[getTripStatus(trip)].push(trip);
   }
+  // upcoming: soonest first; planning: most recently updated first; past: most recently ended first
+  sections.upcoming.sort((a, b) =>
+    (a.start_date ?? "").localeCompare(b.start_date ?? "")
+  );
+  sections.planning.sort((a, b) =>
+    (b.created_at ?? "").localeCompare(a.created_at ?? "")
+  );
+  sections.past.sort((a, b) =>
+    (b.end_date ?? "").localeCompare(a.end_date ?? "")
+  );
   return sections;
 }
 
@@ -194,18 +203,13 @@ export default function DashboardClient() {
           /* ── Trip sections ───────────────────────────────────────────────── */
           <div className="space-y-6">
             <TripSection
-              label="Live"
-              trips={sections.live}
-              unreadByTrip={unreadByTrip}
-            />
-            <TripSection
-              label="Ready"
-              trips={sections.ready}
-              unreadByTrip={unreadByTrip}
-            />
-            <TripSection
               label="Upcoming"
               trips={sections.upcoming}
+              unreadByTrip={unreadByTrip}
+            />
+            <TripSection
+              label="Planning"
+              trips={sections.planning}
               unreadByTrip={unreadByTrip}
             />
 

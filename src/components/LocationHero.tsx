@@ -81,7 +81,7 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
             <path
               d={outline.path}
               style={{
-                fill: isDark ? "rgba(255,255,255,0.10)" : "var(--color-bt-state-fill)",
+                fill: "var(--color-bt-state-fill)",
               }}
               stroke="none"
             />
