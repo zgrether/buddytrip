@@ -81,12 +81,16 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       onClick={handleClick}
       className="relative w-full overflow-hidden rounded-xl p-4 text-left transition-all"
       style={{
-        background: isDark ? temporalGradient(trip.start_date, true) : "var(--color-bt-card)",
+        // Non-PAST: always teal tint (pass null so temporal gradient returns its teal fallback).
+        // PAST: pass actual date so temporal gradient returns the desaturated slate stop.
+        background: isDark ? temporalGradient(status !== "past" ? null : trip.start_date, true) : "var(--color-bt-card)",
         border: isDark ? "none" : "1px solid var(--color-bt-border)",
-        boxShadow: isDark ? "var(--shadow-card)" : "-4px 0 0 var(--color-bt-accent), var(--shadow-card)",
+        boxShadow: isDark
+          ? "var(--shadow-card)"
+          : `${status === "past" ? "-4px 0 0 var(--color-bt-border)" : "-4px 0 0 var(--color-bt-accent)"}, var(--shadow-card)`,
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = isDark ? "var(--shadow-raised)" : "-4px 0 0 var(--color-bt-accent), var(--shadow-raised)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = isDark ? "var(--shadow-card)" : "-4px 0 0 var(--color-bt-accent), var(--shadow-card)"; }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = isDark ? "var(--shadow-raised)" : `${status === "past" ? "-4px 0 0 var(--color-bt-border)" : "-4px 0 0 var(--color-bt-accent)"}, var(--shadow-raised)`; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = isDark ? "var(--shadow-card)" : `${status === "past" ? "-4px 0 0 var(--color-bt-border)" : "-4px 0 0 var(--color-bt-accent)"}, var(--shadow-card)`; }}
     >
       {/* State outline watermark — fixed size, clips overflow */}
       {outline && (
@@ -154,8 +158,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         <span>{formatDateRange(trip.start_date, trip.end_date)}</span>
       </div>
 
-      {/* Countdown strip for "ready" trips */}
-      {status === "ready" && trip.start_date && (
+      {/* Upcoming countdown — only when trip has a future start date */}
+      {status === "upcoming" && trip.start_date && (
         <div
           className="mt-3 rounded-md px-3 py-1.5 text-center text-xs font-medium"
           style={{ background: "var(--color-bt-ready-bg)", color: "var(--color-bt-ready)" }}
@@ -163,19 +167,6 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
           {getDaysUntil(trip.start_date) <= 0
             ? "Starting today!"
             : `${getDaysUntil(trip.start_date)} days until departure`}
-        </div>
-      )}
-
-      {/* Live indicator */}
-      {status === "live" && (
-        <div className="mt-3 flex items-center gap-1.5">
-          <span
-            className="h-2 w-2 animate-pulse rounded-full"
-            style={{ background: "var(--color-bt-accent)" }}
-          />
-          <span className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
-            In progress
-          </span>
         </div>
       )}
     </button>

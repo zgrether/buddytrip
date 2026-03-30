@@ -33,7 +33,7 @@ type NotificationItem = {
 
 function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   const sections: Record<TripStatus, TripRow[]> = {
-    live: [],
+    planning: [],
     ready: [],
     upcoming: [],
     past: [],
@@ -194,8 +194,8 @@ export default function DashboardClient() {
           /* ── Trip sections ───────────────────────────────────────────────── */
           <div className="space-y-6">
             <TripSection
-              label="Live"
-              trips={sections.live}
+              label="Planning"
+              trips={sections.planning}
               unreadByTrip={unreadByTrip}
             />
             <TripSection
