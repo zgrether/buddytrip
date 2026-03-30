@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Ghost, Mail, X } from "lucide-react";
+import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -45,6 +46,7 @@ function CrewMemberRow({
   isOwner,
   isMe,
   isExpanded,
+  index,
   onToggle,
   onUpdated,
 }: {
@@ -54,9 +56,12 @@ function CrewMemberRow({
   isOwner: boolean;
   isMe: boolean;
   isExpanded: boolean;
+  index: number;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
   const [editName, setEditName] = useState(m.displayName);
   const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
@@ -117,7 +122,10 @@ function CrewMemberRow({
   return (
     <div
       className="border-b"
-      style={{ borderColor: "var(--color-bt-border)" }}
+      style={{
+        borderColor: "var(--color-bt-border)",
+        background: index % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
+      }}
     >
       {/* ── Main row (tappable) ──────────────────────────────────────────── */}
       <div
@@ -400,7 +408,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
       {/* Member list — flat, sorted by role then name */}
       <div>
-        {sorted.map((m) => {
+        {sorted.map((m, i) => {
           const isMe = m.user_id === currentUser?.id;
           return (
             <CrewMemberRow
@@ -410,6 +418,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               canEdit={canEdit}
               isOwner={isOwner}
               isMe={isMe}
+              index={i}
               isExpanded={expandedId === m.user_id}
               onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
               onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}

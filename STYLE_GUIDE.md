@@ -187,57 +187,34 @@ Shadow (closed): var(--shadow-card)
 Shadow (open):   var(--shadow-raised)
 ```
 
-### Table row (dates response grid)
+### Data table (dates grid, crew list, any future tabular data)
 
-```
-Default row bg:      transparent (inherits card)
-Alternate row bg:    var(--color-bt-card-raised)
-Row divider:         none (zebra striping only)
-Cell padding:        px-1 py-1.5
-Crew column width:   140px fixed
-Crew column border:  1px solid var(--color-bt-border) (right edge)
-```
+**Borders:**
+- Row dividers: `1px solid var(--color-bt-border)` between rows
+- Row header right border: `1px solid var(--color-bt-border)` (anchors crew name column)
+- Column header bottom border: `1px solid var(--color-bt-border)` separating headers from data
+- No vertical borders on data cells
 
-### Vote button — inactive (wide mode, 3-button row)
+**Alternating rows:**
+- Odd: transparent
+- Even: `rgba(0,0,0,0.025)` light / `rgba(255,255,255,0.025)` dark — barely perceptible; scanability only
 
+**Voted cells (yes / maybe / no):** fill only, no border
 ```
-Background:    var(--color-bt-card-raised)
-Border:        0.5px solid var(--color-bt-border)
-Text:          var(--color-bt-text-dim)
-Font:          11px, weight 500
-Height:        28px
-Radius:        rounded
-Padding:       px-2
+Yes:    bg rgba(0, 212, 170, 0.15)   text var(--color-bt-accent)
+Maybe:  bg rgba(245, 158, 11, 0.15)  text #d97706  (amber-600, not orange)
+No:     bg rgba(239, 68, 68, 0.15)   text #dc2626
 ```
 
-### Vote button — active (yes / maybe / no)
-
+**Empty/unvoted cells:** no fill, dashed border
 ```
-Yes:    bg var(--color-bt-accent),   text white,           weight 700
-Maybe:  bg var(--color-bt-warning),  text var(--color-bt-base-alt), weight 700
-No:     bg var(--color-bt-danger),   text white,           weight 700
-Border: none (all active states)
-```
-
-### Compact chip — unvoted
-
-```
-Size:       h-7 w-7
+Border:     1px dashed var(--color-bt-border)
 Character:  · (middle dot)
 Text:       var(--color-bt-text-dim)
-Border:     1px dashed var(--color-bt-border)
-Background: transparent
 ```
 
-### Compact chip — voted
-
-```
-Size:       h-7 w-7
-Character:  ✓ / ~ / ✗
-Background: [state]-faint token
-Text:       [state] token
-Border:     1px solid [state]-border token
-```
+Never use a full cell grid (borders on all 4 sides of every cell).
+Never increase alternating row opacity above 0.03.
 
 ### Role badge (RoleBadge component)
 

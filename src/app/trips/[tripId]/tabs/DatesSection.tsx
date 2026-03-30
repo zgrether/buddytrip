@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useTheme } from "next-themes";
 import {
   Check,
   Ghost,
@@ -592,6 +593,8 @@ function ResponseGrid({
   onGridVote: (userId: string, windowId: string, answer: VoteAnswer | null) => void;
   onLockClick: (windowId: string) => void;
 }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -638,11 +641,11 @@ function ResponseGrid({
             {/* Corner cell */}
             <th
               className="pb-2 text-left"
-              style={{ borderRight: "1px solid var(--color-bt-border)" }}
+              style={{ borderRight: "1px solid var(--color-bt-border)", borderBottom: "1px solid var(--color-bt-border)" }}
             />
             {/* Date column headers */}
             {windows.map((w) => (
-              <th key={w.id} className="px-1 pb-2 text-center">
+              <th key={w.id} className="px-1 pb-2 text-center" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
                 <span className="block text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
                   {fmtDateRange(w.start_date, w.end_date)}
                 </span>
@@ -656,7 +659,7 @@ function ResponseGrid({
         <tbody>
           {/* One row per crew member */}
           {sorted.map((m, i) => (
-            <tr key={m.user_id} style={i % 2 === 1 ? { background: "var(--color-bt-card-raised)" } : undefined}>
+            <tr key={m.user_id} style={i % 2 === 1 ? { background: isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)" } : undefined}>
               {/* Crew cell: avatar + name */}
               <td
                 className="py-1.5 pr-2"
@@ -809,9 +812,9 @@ function WideCellButtons({
   onVote: (next: VoteAnswer | null) => void;
 }) {
   const chips: { type: VoteAnswer; sym: string; activeBg: string; activeColor: string }[] = [
-    { type: "yes",   sym: "✓", activeBg: "var(--color-bt-accent)",  activeColor: "white" },
-    { type: "maybe", sym: "~", activeBg: "var(--color-bt-warning)", activeColor: "var(--color-bt-base-alt)" },
-    { type: "no",    sym: "✗", activeBg: "var(--color-bt-danger)",  activeColor: "white" },
+    { type: "yes",   sym: "✓", activeBg: "rgba(0, 212, 170, 0.15)",  activeColor: "var(--color-bt-accent)" },
+    { type: "maybe", sym: "~", activeBg: "rgba(245, 158, 11, 0.15)", activeColor: "#d97706" },
+    { type: "no",    sym: "✗", activeBg: "rgba(239, 68, 68, 0.15)",  activeColor: "#dc2626" },
   ];
 
   return (
@@ -828,9 +831,9 @@ function WideCellButtons({
               height: "28px",
               fontSize: "11px",
               fontWeight: isActive ? 700 : 500,
-              background: isActive ? activeBg : "var(--color-bt-card-raised)",
+              background: isActive ? activeBg : "transparent",
               color: isActive ? activeColor : "var(--color-bt-text-dim)",
-              border: isActive ? "none" : "1px solid var(--color-bt-border)",
+              border: isActive ? "none" : "1px dashed var(--color-bt-border)",
               cursor: interactive ? "pointer" : "default",
             }}
           >
@@ -853,10 +856,10 @@ function CompactChip({
   interactive: boolean;
   onVote: (next: VoteAnswer | null) => void;
 }) {
-  const styles: Record<string, { bg: string; color: string; border: string; sym: string }> = {
-    yes:   { bg: "var(--color-bt-accent-faint)",  color: "var(--color-bt-accent)",  border: "var(--color-bt-accent-border)",  sym: "✓" },
-    maybe: { bg: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)", border: "var(--color-bt-warning-border)", sym: "~" },
-    no:    { bg: "var(--color-bt-danger-faint)",  color: "var(--color-bt-danger)",  border: "var(--color-bt-danger-border)",  sym: "✗" },
+  const styles: Record<string, { bg: string; color: string; sym: string }> = {
+    yes:   { bg: "rgba(0, 212, 170, 0.15)",  color: "var(--color-bt-accent)", sym: "✓" },
+    maybe: { bg: "rgba(245, 158, 11, 0.15)", color: "#d97706",                sym: "~" },
+    no:    { bg: "rgba(239, 68, 68, 0.15)",  color: "#dc2626",                sym: "✗" },
   };
   const s = answer ? styles[answer] : null;
 
@@ -868,11 +871,11 @@ function CompactChip({
       }`}
       style={
         s
-          ? { background: s.bg, color: s.color, border: `1px solid ${s.border}` }
+          ? { background: s.bg, color: s.color }
           : {
               background: "transparent",
               color: "var(--color-bt-text-dim)",
-              border: "1px dashed var(--color-bt-state-stroke)",
+              border: "1px dashed var(--color-bt-border)",
             }
       }
     >
