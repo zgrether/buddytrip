@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, MapPin, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { UserMenu } from "@/components/UserMenu";
+import { DestinationPicker, type DestinationMode } from "@/components/DestinationPicker";
 
 export default function TripNewPage() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function TripNewPage() {
   const [nameError, setNameError] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [destinationMode, setDestinationMode] = useState<null | "known" | "exploring">(null);
+  const [destinationMode, setDestinationMode] = useState<DestinationMode>(null);
   const [destinationText, setDestinationText] = useState("");
 
   const createTrip = trpc.trips.create.useMutation({
@@ -146,76 +147,12 @@ export default function TripNewPage() {
           )}
         </div>
 
-        {/* Optional destination decision */}
-        <div>
-          <label
-            className="mb-1.5 block text-sm font-medium"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            Where are you headed?{" "}
-            <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
-          </label>
-
-          <div className="flex flex-col gap-2">
-            {/* Known destination */}
-            <button
-              type="button"
-              onClick={() => setDestinationMode((m) => m === "known" ? null : "known")}
-              className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all"
-              style={{
-                background: destinationMode === "known" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-                borderColor: destinationMode === "known" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-              }}
-            >
-              <MapPin size={18} style={{ color: destinationMode === "known" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", flexShrink: 0 }} />
-              <div>
-                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  I know where we&apos;re going
-                </p>
-                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Lock in a destination now
-                </p>
-              </div>
-            </button>
-
-            {destinationMode === "known" && (
-              <input
-                autoFocus
-                type="text"
-                value={destinationText}
-                onChange={(e) => setDestinationText(e.target.value)}
-                placeholder="Bandon Dunes, OR"
-                className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
-                style={{
-                  background: "var(--color-bt-card)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-            )}
-
-            {/* Exploring */}
-            <button
-              type="button"
-              onClick={() => setDestinationMode((m) => m === "exploring" ? null : "exploring")}
-              className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all"
-              style={{
-                background: destinationMode === "exploring" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-                borderColor: destinationMode === "exploring" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-              }}
-            >
-              <Sparkles size={18} style={{ color: destinationMode === "exploring" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", flexShrink: 0 }} />
-              <div>
-                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  Not sure yet — let&apos;s figure it out
-                </p>
-                <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Browse ideas and vote with the crew
-                </p>
-              </div>
-            </button>
-          </div>
-        </div>
+        <DestinationPicker
+          mode={destinationMode}
+          onModeChange={setDestinationMode}
+          destinationText={destinationText}
+          onDestinationTextChange={setDestinationText}
+        />
 
         {/* Create */}
         <button

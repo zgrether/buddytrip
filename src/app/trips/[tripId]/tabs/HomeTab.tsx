@@ -1053,7 +1053,7 @@ function PlanningSection({
             </p>
             {isOwner && (
               <button
-                onClick={() => router.push(`/trips/${trip.id}/compare`)}
+                onClick={() => router.push(`/trips/${trip.id}/change-destination`)}
                 className="text-xs font-medium"
                 style={{ color: "var(--color-bt-accent)" }}
               >
