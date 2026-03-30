@@ -390,14 +390,6 @@ function MemberView({
 
           {windows.map((w) => {
             const myVote = myVoteFor(w);
-            const borderColor =
-              myVote === "yes"
-                ? "var(--color-bt-accent)"
-                : myVote === "no"
-                ? "var(--color-bt-danger)"
-                : myVote === "maybe"
-                ? "var(--color-bt-warning)"
-                : "var(--color-bt-border)";
 
             return (
               <div
@@ -405,7 +397,7 @@ function MemberView({
                 className="rounded-xl p-4 transition-colors"
                 style={{
                   background: "var(--color-bt-card)",
-                  border: `${myVote ? "2px" : "1px"} solid ${borderColor}`,
+                  border: "1px solid var(--color-bt-border)",
                 }}
               >
                 <div className="mb-3 flex items-center justify-between">
