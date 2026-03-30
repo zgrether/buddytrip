@@ -46,8 +46,8 @@ const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
 
 const VOTE_COLORS: Record<VoteAnswer, { bg: string; text: string }> = {
   yes:   { bg: "var(--color-bt-vote-yes)",   text: "var(--color-bt-vote-yes-text)" },
-  maybe: { bg: "var(--color-bt-vote-maybe)", text: "var(--color-bt-vote-color)"    },
-  no:    { bg: "var(--color-bt-vote-no)",    text: "var(--color-bt-vote-color)"    },
+  maybe: { bg: "var(--color-bt-vote-maybe)", text: "var(--color-bt-vote-yes-text)" },
+  no:    { bg: "var(--color-bt-vote-no)",    text: "var(--color-bt-vote-yes-text)" },
 };
 
 const VOTE_LABELS: Record<VoteAnswer, { sym: string; label: string }> = {
