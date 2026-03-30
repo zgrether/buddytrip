@@ -683,19 +683,14 @@ function ResponseGrid({
                 className="py-1.5 pr-2"
                 style={{ borderRight: "1px solid var(--color-bt-border)" }}
               >
-                <div className="flex items-center gap-1">
-                  <span
-                    className="min-w-0 flex-1 truncate text-[13px] font-medium"
-                    style={{ color: "var(--color-bt-text)" }}
-                  >
-                    {m.displayName}
-                  </span>
-                  {m.user_id === currentUserId && (
-                    <span className="shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      you
-                    </span>
+                <span
+                  className="truncate text-[13px] font-medium"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {m.displayName}{m.user_id === currentUserId && (
+                    <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>
                   )}
-                </div>
+                </span>
               </td>
               {/* Vote cell per window */}
               {windows.map((w) => {
