@@ -52,6 +52,13 @@
   --color-bt-past-bg: #f8fafc;
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.6);
 
+  /* Vote answer colors — semantic, mode-independent (same in light & dark) */
+  --color-bt-vote-yes: #00d4aa;
+  --color-bt-vote-yes-text: #0d1f1a;
+  --color-bt-vote-maybe: #f59e0b;
+  --color-bt-vote-no: #ef4444;
+  --color-bt-vote-color: #ffffff;      /* text on colored vote bg (maybe, no) */
+
   color-scheme: light;
 }
 

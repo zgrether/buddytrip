@@ -131,6 +131,19 @@ uses this token for its `border-color`.
 | Ghost / Unknown | `--color-bt-border` | `--color-bt-text-dim` | `--color-bt-border` |
 | Planning / In-progress | `--color-bt-card` | `--color-bt-accent` | `--color-bt-accent-border` |
 
+### Vote answer colors (date poll — solid fills, mode-independent)
+
+These apply in **both light and dark mode** — vote colors are semantic and do not change per theme. Use solid fills only; never opacity-reduced backgrounds on voted cells.
+
+| Answer | Background token | Text token | Value |
+|--------|-----------------|-----------|-------|
+| Yes / Works | `--color-bt-vote-yes` | `--color-bt-vote-yes-text` | bg `#00d4aa` · text `#0d1f1a` |
+| Maybe | `--color-bt-vote-maybe` | `--color-bt-vote-color` | bg `#f59e0b` · text `#ffffff` |
+| No / Can't | `--color-bt-vote-no` | `--color-bt-vote-color` | bg `#ef4444` · text `#ffffff` |
+| Unvoted | `transparent` | `--color-bt-text-dim` | dashed border, `?` placeholder |
+
+**Implementation rule:** all vote cells — compact chips, wide 3-button rows, member view buttons — must use `VoteCell` with these tokens. No separate component per context.
+
 ### Background token values
 
 | Token | Light | Dark |
