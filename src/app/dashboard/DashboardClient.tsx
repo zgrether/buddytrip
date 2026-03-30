@@ -17,6 +17,7 @@ interface TripRow {
   start_date?: string | null;
   end_date?: string | null;
   locked_destination_title?: string | null;
+  updated_at?: string | null;
   myRole?: TripRole | null;
   myStatus?: string | null;
   created_at?: string | null;
@@ -45,7 +46,7 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
     (a.start_date ?? "").localeCompare(b.start_date ?? "")
   );
   sections.planning.sort((a, b) =>
-    (b.created_at ?? "").localeCompare(a.created_at ?? "")
+    (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
   );
   sections.past.sort((a, b) =>
     (b.end_date ?? "").localeCompare(a.end_date ?? "")

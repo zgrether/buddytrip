@@ -197,7 +197,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   const displayLocation = location || lockedTitle || "";
 
   return (
-    <LocationHero location={displayLocation || tripName} tripName={tripName} tripStartDate={status === "past" ? null : tripStartDate}>
+    <LocationHero location={displayLocation || tripName} tripName={tripName} tripStartDate={status === "past" ? tripStartDate : null}>
       {/* Row 1: trip name + settings + badge */}
       <div className="flex items-start justify-between">
         <h1
