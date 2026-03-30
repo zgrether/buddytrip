@@ -221,4 +221,36 @@ describe("datePoll router", () => {
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  // ── removeWindow ────────────────────────────────────────────────────────
+
+  it("removeWindow — owner can remove a window (votes cascade)", async () => {
+    const caller = ctx.caller();
+    // Add a window and cast a vote on it
+    const removeId = genId("dw");
+    await caller.datePoll.addWindow({ tripId, id: removeId, startDate: "2026-12-01", endDate: "2026-12-05" });
+    await caller.datePoll.vote({ tripId, windowId: removeId, answer: "yes" });
+
+    const result = await caller.datePoll.removeWindow({ tripId, windowId: removeId });
+    expect(result.success).toBe(true);
+
+    // Confirm the window no longer appears in the poll
+    const poll = await caller.datePoll.get({ tripId });
+    expect(poll.windows.find((w) => w.id === removeId)).toBeUndefined();
+  });
+
+  it("removeWindow — planner can remove a window", async () => {
+    const caller = ctx.callerAs("planner");
+    const removeId = genId("dw");
+    await ctx.caller().datePoll.addWindow({ tripId, id: removeId, startDate: "2026-12-10", endDate: "2026-12-14" });
+    const result = await caller.datePoll.removeWindow({ tripId, windowId: removeId });
+    expect(result.success).toBe(true);
+  });
+
+  it("removeWindow — member cannot remove a window", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.datePoll.removeWindow({ tripId, windowId: windowId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });

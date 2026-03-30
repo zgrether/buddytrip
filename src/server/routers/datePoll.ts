@@ -223,6 +223,29 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // removeWindow — Owner or Planner: delete a date window (votes cascade)
+  // -----------------------------------------------------------------------
+  removeWindow: authedProcedure
+    .input(z.object({ tripId: z.string(), windowId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("date_windows")
+        .delete()
+        .eq("id", input.windowId)
+        .eq("trip_id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to remove date window: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // lockWindow — Owner or Planner: lock the winning window
   // -----------------------------------------------------------------------
   lockWindow: authedProcedure
