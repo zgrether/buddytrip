@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import { useTheme } from "next-themes";
 import {
   Check,
-  Ghost,
   Plus,
   AlertCircle,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { RoleBadge } from "@/components/RoleBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { parseLocalDate } from "@/lib/dates";
 
@@ -43,6 +41,20 @@ interface TripMember {
 }
 
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+
+// ── Vote color constants (single source of truth) ────────────────────────
+
+const VOTE_COLORS: Record<VoteAnswer, { bg: string; text: string }> = {
+  yes:   { bg: "var(--color-bt-vote-yes)",   text: "var(--color-bt-vote-yes-text)" },
+  maybe: { bg: "var(--color-bt-vote-maybe)", text: "var(--color-bt-vote-yes-text)" },
+  no:    { bg: "var(--color-bt-vote-no)",    text: "var(--color-bt-vote-yes-text)" },
+};
+
+const VOTE_LABELS: Record<VoteAnswer, { sym: string; label: string }> = {
+  yes:   { sym: "✓", label: "✓ Works" },
+  maybe: { sym: "~", label: "~ Maybe" },
+  no:    { sym: "✗", label: "✗ Can't" },
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -378,14 +390,6 @@ function MemberView({
 
           {windows.map((w) => {
             const myVote = myVoteFor(w);
-            const borderColor =
-              myVote === "yes"
-                ? "var(--color-bt-accent)"
-                : myVote === "no"
-                ? "var(--color-bt-danger)"
-                : myVote === "maybe"
-                ? "var(--color-bt-warning)"
-                : "var(--color-bt-border)";
 
             return (
               <div
@@ -393,7 +397,7 @@ function MemberView({
                 className="rounded-xl p-4 transition-colors"
                 style={{
                   background: "var(--color-bt-card)",
-                  border: `${myVote ? "2px" : "1px"} solid ${borderColor}`,
+                  border: "1px solid var(--color-bt-border)",
                 }}
               >
                 <div className="mb-3 flex items-center justify-between">
@@ -407,26 +411,14 @@ function MemberView({
                     {nightCount(w.start_date, w.end_date)} nights
                   </span>
                 </div>
-                <div className="flex gap-2">
-                  <VoteButton
-                    label="✓ Works"
-                    type="yes"
-                    active={myVote === "yes"}
-                    onClick={() => onVote(w.id, "yes")}
-                  />
-                  <VoteButton
-                    label="~ Maybe"
-                    type="maybe"
-                    active={myVote === "maybe"}
-                    onClick={() => onVote(w.id, "maybe")}
-                  />
-                  <VoteButton
-                    label="✗ Can't"
-                    type="no"
-                    active={myVote === "no"}
-                    onClick={() => onVote(w.id, "no")}
-                  />
-                </div>
+                <VoteCell
+                  answer={myVote}
+                  mode="wide"
+                  onVote={(ans) => {
+                    const answer = ans ?? myVote;
+                    if (answer) onVote(w.id, answer);
+                  }}
+                />
               </div>
             );
           })}
@@ -449,41 +441,6 @@ function MemberView({
   );
 }
 
-// ── Vote Button (used in MemberView and GhostVoteSheet equivalent) ────────
-
-function VoteButton({
-  label,
-  type,
-  active,
-  onClick,
-}: {
-  label: string;
-  type: VoteAnswer;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const activeStyles = {
-    yes:   { bg: "var(--color-bt-accent)",  color: "white" },
-    maybe: { bg: "var(--color-bt-warning)", color: "var(--color-bt-base-alt)" },
-    no:    { bg: "var(--color-bt-danger)",  color: "white" },
-  };
-  const a = activeStyles[type];
-
-  return (
-    <button
-      onClick={onClick}
-      className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs transition-all"
-      style={{
-        background: active ? a.bg : "var(--color-bt-card-raised)",
-        border: "none",
-        color: active ? a.color : "var(--color-bt-text-dim)",
-        fontWeight: active ? 700 : 500,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
 
 // ── Owner View ───────────────────────────────────────────────────────────
 
@@ -713,37 +670,19 @@ function ResponseGrid({
           {/* One row per crew member */}
           {sorted.map((m, i) => (
             <tr key={m.user_id} style={i % 2 === 1 ? { background: isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)" } : undefined}>
-              {/* Crew cell: avatar + name */}
+              {/* Crew cell: name only */}
               <td
                 className="py-1.5 pr-2"
                 style={{ borderRight: "1px solid var(--color-bt-border)" }}
               >
-                <div className="flex items-center gap-1.5">
-                  {m.isGuest ? (
-                    <div
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                    >
-                      <Ghost size={12} />
-                    </div>
-                  ) : (
-                    <div
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                      style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                    >
-                      {m.displayName.charAt(0).toUpperCase()}
-                    </div>
+                <span
+                  className="truncate text-[13px] font-medium"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {m.displayName}{m.user_id === currentUserId && (
+                    <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>
                   )}
-                  <span
-                    className="min-w-0 flex-1 truncate text-[13px] font-medium"
-                    style={{ color: "var(--color-bt-text)" }}
-                  >
-                    {m.displayName}
-                  </span>
-                  {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
-                    <RoleBadge role={m.role as "Owner" | "Planner"} />
-                  )}
-                </div>
+                </span>
               </td>
               {/* Vote cell per window */}
               {windows.map((w) => {
@@ -754,8 +693,8 @@ function ResponseGrid({
                   <td key={w.id} className="px-1 py-1.5 text-center">
                     <VoteCell
                       answer={answer}
-                      isWide={useWideMode}
-                      interactive={isInteractive}
+                      mode={useWideMode ? "wide" : "compact"}
+                      disabled={!isInteractive}
                       onVote={(next) => onGridVote(m.user_id!, w.id, next)}
                     />
                   </td>
@@ -834,97 +773,61 @@ function ResponseGrid({
   );
 }
 
-// ── Vote Cell ─────────────────────────────────────────────────────────────
+// ── VoteCell — unified vote component (wide: 3 buttons, compact: chip) ───
 
 function VoteCell({
   answer,
-  isWide,
-  interactive,
+  mode,
   onVote,
+  disabled = false,
 }: {
   answer: VoteAnswer | null;
-  isWide: boolean;
-  interactive: boolean;
+  mode: "wide" | "compact";
   onVote: (next: VoteAnswer | null) => void;
+  disabled?: boolean;
 }) {
-  if (isWide) {
-    return <WideCellButtons answer={answer} interactive={interactive} onVote={onVote} />;
+  if (mode === "wide") {
+    return (
+      <div className="flex items-center gap-1">
+        {(["yes", "maybe", "no"] as VoteAnswer[]).map((type) => {
+          const isActive = answer === type;
+          const c = VOTE_COLORS[type];
+          const l = VOTE_LABELS[type];
+          return (
+            <button
+              key={type}
+              disabled={disabled}
+              onClick={() => onVote(isActive ? null : type)}
+              className="flex flex-1 items-center justify-center rounded-lg py-2 text-xs transition-all"
+              style={{
+                fontWeight: isActive ? 600 : 500,
+                background: isActive ? c.bg : "transparent",
+                color: isActive ? c.text : "var(--color-bt-text-dim)",
+                border: isActive ? "none" : "1px solid var(--color-bt-border)",
+                cursor: disabled ? "default" : "pointer",
+              }}
+            >
+              {l.label}
+            </button>
+          );
+        })}
+      </div>
+    );
   }
-  return <CompactChip answer={answer} interactive={interactive} onVote={onVote} />;
-}
 
-// ── Wide cell: 3 symbol buttons ───────────────────────────────────────────
-
-function WideCellButtons({
-  answer,
-  interactive,
-  onVote,
-}: {
-  answer: VoteAnswer | null;
-  interactive: boolean;
-  onVote: (next: VoteAnswer | null) => void;
-}) {
-  const chips: { type: VoteAnswer; sym: string; activeBg: string; activeColor: string }[] = [
-    { type: "yes",   sym: "✓", activeBg: "rgba(0, 212, 170, 0.15)",  activeColor: "var(--color-bt-accent)" },
-    { type: "maybe", sym: "~", activeBg: "rgba(245, 158, 11, 0.15)", activeColor: "#d97706" },
-    { type: "no",    sym: "✗", activeBg: "rgba(239, 68, 68, 0.15)",  activeColor: "#dc2626" },
-  ];
-
-  return (
-    <div className="flex items-center gap-1">
-      {chips.map(({ type, sym, activeBg, activeColor }) => {
-        const isActive = answer === type;
-        return (
-          <button
-            key={type}
-            disabled={!interactive}
-            onClick={() => onVote(isActive ? null : type)}
-            className="flex flex-1 items-center justify-center rounded px-2 transition-all"
-            style={{
-              height: "28px",
-              fontSize: "11px",
-              fontWeight: isActive ? 700 : 500,
-              background: isActive ? activeBg : "transparent",
-              color: isActive ? activeColor : "var(--color-bt-text-dim)",
-              border: isActive ? "none" : "1px dashed var(--color-bt-border)",
-              cursor: interactive ? "pointer" : "default",
-            }}
-          >
-            {sym}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Compact cell: single cycling chip ─────────────────────────────────────
-
-function CompactChip({
-  answer,
-  interactive,
-  onVote,
-}: {
-  answer: VoteAnswer | null;
-  interactive: boolean;
-  onVote: (next: VoteAnswer | null) => void;
-}) {
-  const styles: Record<string, { bg: string; color: string; sym: string }> = {
-    yes:   { bg: "rgba(0, 212, 170, 0.15)",  color: "var(--color-bt-accent)", sym: "✓" },
-    maybe: { bg: "rgba(245, 158, 11, 0.15)", color: "#d97706",                sym: "~" },
-    no:    { bg: "rgba(239, 68, 68, 0.15)",  color: "#dc2626",                sym: "✗" },
-  };
-  const s = answer ? styles[answer] : null;
+  // compact mode — single cycling chip
+  const s = answer ? VOTE_COLORS[answer] : null;
+  const sym = answer ? VOTE_LABELS[answer].sym : "?";
 
   return (
     <div
-      onClick={interactive ? () => onVote(nextAnswerCompact(answer)) : undefined}
-      className={`mx-auto flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-transform ${
-        interactive ? "cursor-pointer active:scale-90" : ""
+      onClick={disabled ? undefined : () => onVote(nextAnswerCompact(answer))}
+      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-md text-xs font-bold transition-transform ${
+        !disabled ? "cursor-pointer active:scale-90" : ""
       }`}
       style={
         s
-          ? { background: s.bg, color: s.color }
+          ? { background: s.bg, color: s.text }
           : {
               background: "transparent",
               color: "var(--color-bt-text-dim)",
@@ -932,7 +835,7 @@ function CompactChip({
             }
       }
     >
-      {s ? s.sym : "·"}
+      {sym}
     </div>
   );
 }
