@@ -46,7 +46,7 @@
   --color-bt-overlay: rgba(0, 0, 0, 0.5);
   --color-bt-subtle-border: #e2e8f0;
   --color-bt-dim-faint: rgba(100, 116, 139, 0.12);
-  --color-bt-state-fill: rgba(0, 150, 120, 0.12);
+  --color-bt-state-fill: rgba(0, 0, 0, 0.08);
   --color-bt-state-stroke: rgba(0, 0, 0, 0.15);
   --color-bt-tile-bg: transparent;
   --color-bt-past-bg: #f8fafc;
