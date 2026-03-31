@@ -2,6 +2,7 @@
 
 import {
   Calendar,
+  CalendarDays,
   Hotel,
   Clock,
   Utensils,
@@ -9,6 +10,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate } from "@/lib/dates";
 import { ExpensesSection, type ExpenseMember } from "./ExpensesSection";
@@ -63,10 +65,11 @@ function ReservationsSection({
 
   if (reservations.length === 0) {
     return (
-      <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-        No reservations yet.{" "}
-        {canEdit && "Add tee times, hotels, and more from the planner view."}
-      </p>
+      <EmptyState
+        icon={<CalendarDays className="h-10 w-10" />}
+        headline="No reservations yet"
+        subtext="Tee times, hotels, and more will appear here."
+      />
     );
   }
 
@@ -136,7 +139,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
     <div className="space-y-6 px-4">
       <section>
         <h2
-          className="mb-3 text-sm font-semibold uppercase tracking-wider"
+          className="mt-0 mb-3 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Reservations
@@ -147,7 +150,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
       {/* Expenses — moved from More tab per SPEC 2 */}
       <section>
         <h2
-          className="mb-3 text-sm font-semibold uppercase tracking-wider"
+          className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Expenses

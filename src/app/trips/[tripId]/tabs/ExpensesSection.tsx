@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { DollarSign, Plus, Trash2 } from "lucide-react";
+import { DollarSign, Plus, Receipt, Trash2 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 
 export interface ExpenseMember {
@@ -103,9 +104,21 @@ export function ExpensesSection({
   return (
     <div className="space-y-3">
       {expenses.length === 0 ? (
-        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          No expenses recorded yet.
-        </p>
+        <EmptyState
+          icon={<Receipt className="h-10 w-10" />}
+          headline="No expenses yet"
+          action={canEdit && !showAdd ? (
+            <button
+              data-testid="show-add-expense-btn"
+              onClick={() => setShowAdd(true)}
+              className="flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
+            >
+              <Plus size={16} />
+              Add Expense
+            </button>
+          ) : undefined}
+        />
       ) : (
         <>
           <div className="space-y-2">
@@ -249,7 +262,7 @@ export function ExpensesSection({
               </button>
             </div>
           </div>
-        ) : (
+        ) : expenses.length > 0 ? (
           <button
             data-testid="show-add-expense-btn"
             onClick={() => setShowAdd(true)}
@@ -259,6 +272,8 @@ export function ExpensesSection({
             <Plus size={16} />
             Add Expense
           </button>
+        ) : (
+          null
         )
       )}
     </div>

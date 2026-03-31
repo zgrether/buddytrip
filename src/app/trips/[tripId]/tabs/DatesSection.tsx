@@ -513,7 +513,7 @@ function OwnerView({
       {windows.length > 0 && members.length > 0 && (
         <>
           <p
-            className="text-[11px] font-bold uppercase tracking-widest"
+            className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Responses
@@ -705,7 +705,7 @@ function ResponseGrid({
           {/* Yes count row */}
           <tr>
             <td
-              className="py-1.5 pr-2 text-[11px] font-bold uppercase tracking-widest"
+              className="py-1.5 pr-2 text-xs font-semibold uppercase tracking-wider"
               style={{
                 color: "var(--color-bt-text-dim)",
                 borderTop: "1px solid var(--color-bt-border)",
@@ -737,7 +737,7 @@ function ResponseGrid({
           {/* Lock row */}
           <tr>
             <td
-              className="py-1.5 pr-2 text-[11px] font-bold uppercase tracking-widest"
+              className="py-1.5 pr-2 text-xs font-semibold uppercase tracking-wider"
               style={{
                 color: "var(--color-bt-text-dim)",
                 borderTop: "1px solid var(--color-bt-border)",

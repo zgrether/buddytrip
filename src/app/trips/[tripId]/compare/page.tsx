@@ -102,7 +102,7 @@ function CommentsSection({ tripId, ideaId, variant = "thread" }: { tripId: strin
     return (
       <div className="flex h-full min-h-0 flex-col">
         <p
-          className="mb-2 flex-shrink-0 text-[10px] font-semibold uppercase tracking-wider"
+          className="mb-3 flex-shrink-0 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Crew Chat

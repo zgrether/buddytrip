@@ -407,6 +407,12 @@ export function CrewTab({ trip, canEdit }: TabProps) {
       )}
 
       {/* Member list — flat, sorted by role then name */}
+      <h2
+        className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Crew
+      </h2>
       <div>
         {sorted.map((m, i) => {
           const isMe = m.user_id === currentUser?.id;
