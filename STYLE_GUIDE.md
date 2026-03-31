@@ -468,3 +468,15 @@ don't apply. No migration needed.
 | `--shadow-card` | light shadow | heavier shadow | Card elevation |
 | `--shadow-raised` | medium shadow | heavier shadow | Expanded panels |
 | `--shadow-floating` | strong shadow | heavier shadow | Tooltips, popovers |
+
+---
+
+## Addendum (2026-03-31) — Status Review
+
+**Status: STILL RELEVANT — keep as living reference.**
+
+This is the active style guide. The `--color-bt-*` token system is fully implemented in `src/app/globals.css` with light/dark mode support. CLAUDE.md references this document ("Before making any styling change, read STYLE_GUIDE.md").
+
+**Migration checklist (Section 7):** Many hardcoded hex values have been fixed in recent commits (e.g., vote cell styles unified via `VoteCell` component). Some items may remain — the checklist should be re-audited against current code to update completion status.
+
+**Note:** The vote answer color tokens (`--color-bt-vote-yes`, `--color-bt-vote-maybe`, `--color-bt-vote-no`) were added after the initial guide was written and are now documented in Section 3. These are the authoritative vote colors.

@@ -1,6 +1,8 @@
 # BuddyTrip — Permission Model
 
-*Complete reference for which roles can perform which actions. Derived from every `isOwner`, `canEdit`, and `viewerRole` check in the prototype.*
+*Authoritative reference for which roles can perform which actions.*
+*Enforced via `requireTripRole()` middleware (tRPC), RLS policies
+(migrations 003, 008, 009, 010), and frontend `canEdit`/`isOwner` guards.*
 
 ---
 
@@ -75,9 +77,9 @@
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
 | View tiles | ✓ | ✓ | ✓ | None | TripDetail HomeTab |
-| Add tile | ✓ | — | — | `isOwner` | TripDetail HomeTab |
-| Edit tile | ✓ | — | — | `isOwner` | TripDetail HomeTab |
-| Delete tile | ✓ | — | — | `isOwner` | TripDetail HomeTab |
+| Add tile | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
+| Edit tile | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
+| Delete tile | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
 
 ### Crew
 
@@ -86,6 +88,7 @@
 | View crew roster | ✓ | ✓ | ✓ | None | TripDetail CrewTab |
 | Add crew member | ✓ | ✓ | — | `canEdit` | TripDetail CrewTab |
 | Send invite to member | ✓ | ✓ | — | `canEdit && !isMe` | TripDetail CrewTab |
+| Change own RSVP status | ✓ | ✓ | ✓ | `isMe` | TripDetail CrewTab |
 | Promote Member → Planner | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
 | Demote Planner → Member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
 | Remove crew member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
@@ -100,14 +103,14 @@
 | Edit teams | ✓ | ✓ | — | `canEdit` | TripDetail CompTab, CompetitionSetup |
 | Add / remove rounds | ✓ | ✓ | — | `canEdit` | TripDetail CompTab |
 | Add / remove side events | ✓ | ✓ | — | `canEdit` | TripDetail CompTab |
-| Enter scores | ✓ | ✓ | ✓ | None (no role check) | LiveLeaderboard |
+| Enter scores | ✓ | ✓ | ✓ | None (any trip member) | LiveLeaderboard |
 
 ### Logistics
 
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
-| View bookings | ✓ | ✓ | ✓ | None | TripDetail LogisticsTab |
-| Add booking (stub) | ✓ | ✓ | — | `canEdit` | TripDetail LogisticsTab |
+| View bookings | ✓ | ✓ | ✓ | None | TripDetail ScheduleTab |
+| Add booking | ✓ | ✓ | — | `canEdit` | TripDetail ScheduleTab |
 
 ### Expenses
 
@@ -123,54 +126,62 @@
 |--------|:-----:|:-------:|:------:|------|-----------|
 | View trip chat | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
 | Send trip chat message | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
-| View own team chat | ✓ | ✓ | ✓ | Team membership (TEAM_ASSIGNMENTS) | TripDetail, TripMessages |
-| Send team chat message | ✓ | ✓ | ✓ | Team membership (TEAM_ASSIGNMENTS) | TripDetail, TripMessages |
-| View other team's chat | — | — | — | Blocked by team filtering | TripMessages |
+| View own team chat | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
+| Send team chat message | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
+| View other team's chat | — | — | — | Blocked by RLS + team filtering | TripMessages |
 
 ---
 
-## Notes for Migration (RLS Policies)
+## RLS Enforcement Summary
 
-### Owner-only actions (enforce via RLS + server function)
-These actions have the highest trust requirement. In Supabase, enforce with RLS policies that check `trip_members.role = 'owner'` for the requesting user:
+These are implemented in production via Supabase RLS policies.
+
+### Owner-only actions
+RLS checks `trip_members.role = 'owner'` for the requesting user:
 
 - Destination lock / unlock / override
 - Crew role management (promote, demote, remove)
 - Trip settings (series link, ownership transfer, archive, delete)
-- Quick info tile CRUD
-- Expense edit (split modification)
+- Expense split modification
 
-### Owner + Planner actions (enforce via RLS)
-Check `trip_members.role IN ('owner', 'planner')`:
+### Owner + Planner actions
+RLS checks `trip_members.role IN ('owner', 'planner')`:
 
 - Trip description edit
 - Idea / destination addition and detail editing
 - Date setup, poll management, and date locking
+- Quick info tile CRUD
 - Competition setup (enable, disable, teams, rounds, sides)
 - Crew addition and invitations
 - Expense creation
 - Booking creation
 
-### All-role actions (enforce via trip membership)
-Check `EXISTS (SELECT 1 FROM trip_members WHERE trip_id = ? AND user_id = auth.uid())`:
+### All-member actions
+RLS checks `EXISTS (SELECT 1 FROM trip_members WHERE trip_id = ? AND user_id = auth.uid())`:
 
-- Vote on destinations
-- Vote on dates
+- Vote on destinations and dates
 - Comment on ideas
 - Send chat messages (trip channel)
 - Enter scores
+- Change own RSVP status
 - View all trip data
 
-### Team-scoped actions (enforce via team membership)
-Check team assignment in addition to trip membership:
+### Team-scoped actions
+RLS checks team assignment in addition to trip membership:
 
 - View team chat: `team_assignments.user_id = auth.uid() AND team_assignments.team_id = message.team_id`
 - Send team chat: same check on INSERT
 
-### Open questions for production
+---
 
-1. **Score entry gating** — Currently any user can enter scores (LiveLeaderboard has no `viewerRole` prop). Should this be restricted to Owner + Planner? Or to the designated scorer for each group?
-2. **Expense editing scope** — Currently only Owner can edit splits. Should Planner also be able to? Should the person who created the expense be able to edit it?
-3. **Idea removal** — Currently Owner-only. Should the person who proposed an idea be able to remove it?
-4. **Self-service RSVP** — Members can't currently change their own RSVP status through the UI. This should be added.
-5. **Trip creation** — Currently unprotected (any logged-in user). Is this correct, or should it require an invitation to a series?
+## Resolved Design Decisions
+
+These were open questions during development. Documented here for reference.
+
+| Question | Decision |
+|----------|---------|
+| Score entry gating | Any trip member can enter scores — no role restriction |
+| Expense editing scope | Owner-only for split modification |
+| Idea removal | Owner-only |
+| Self-service RSVP | Implemented — members change their own status |
+| Trip creation | Any logged-in user can create |

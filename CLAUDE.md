@@ -3,8 +3,8 @@
 ## Project Overview
 
 - **BuddyTrip** — mobile-first group trip planning and competition scoring app
-- Spec repo: github.com/zgrether/buddytripworkflow (read-only)
-- buddytrip-2.html is the visual spec, types.ts is the data spec, PERMISSIONS.md is the auth spec
+- Repo: github.com/zgrether/buddytrip
+- Deployed: buddytrip-app.vercel.app
 
 ## Stack
 
@@ -33,17 +33,23 @@
 - `seed.sql` is never run automatically — manual development use only
 - Before launch: `TRUNCATE TABLE users CASCADE` wipes all test data
 
-## Spec Document Authority
+## Document Authority
 
-- Data shape conflicts → defer to `types.ts` and `SCHEMA.md`
-- Permission conflicts → defer to `PERMISSIONS.md`
-- UI/behavior conflicts → defer to `buddytrip-2.html`
-- Realtime/polling decisions → defer to `REALTIME.md`
-- If spec documents conflict with each other → stop and flag, do not silently resolve
+| Question | Defer to |
+|----------|---------|
+| What's done vs. what's next? | `PROJECT_STATUS.md` |
+| What's deferred and why? | `DEFERRED.md` |
+| Who can do what? | `PERMISSIONS.md` |
+| How should it look? | `STYLE_GUIDE.md` |
+| What shape is the data? | `supabase/migrations/` (migrations are authoritative) |
+| How does Realtime work? | Hooks in `src/hooks/useRealtime*.ts` (code is authoritative) |
+| What patterns must CC follow? | This file (`CLAUDE.md`) |
+
+If documents conflict with each other → stop and flag, do not silently resolve.
 
 ## Code Conventions
 
-- All decisions about what to build next come from `PLAN_OF_ATTACK.md`
+- All decisions about what to build next come from `PROJECT_STATUS.md` (Phase 4 task list)
 - Supabase queries use the typed client from `src/lib/supabase.ts`
 - Auth guards use the `useTripRole(tripId)` hook
 - Error handling: tRPC procedures throw `TRPCError` with appropriate codes
@@ -51,6 +57,17 @@
 - Before making any styling change, read `STYLE_GUIDE.md`
 - Never use hardcoded hex color values — use tokens from the `--color-bt-*` system
 - Never set background colors outside the surface hierarchy defined in `STYLE_GUIDE.md` Section 1
+
+## Enforced Patterns
+
+These patterns have been established through prior work. Follow them exactly — do not invent alternatives.
+
+1. **Optimistic updates** — TanStack Query `onMutate` with rollback on error
+2. **TypeScript cache typing** — explicit generics on `queryClient.setQueryData`
+3. **Migration naming** — `NNN_descriptive_name.sql` (sequential, no gaps)
+4. **RLS INSERT RETURNING split** — separate INSERT and SELECT to avoid RLS race condition
+5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
+6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
 
 ## What "Done" Means for Any Task
 
