@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Send, MessageSquare, Users } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -176,12 +177,11 @@ function ChatPane({
         className="flex-1 space-y-4 overflow-y-auto px-4 py-4"
       >
         {displayed.length === 0 ? (
-          <div className="flex flex-col items-center py-16 gap-3">
-            <MessageSquare size={32} style={{ color: "var(--color-bt-border)" }} />
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              No messages yet. Say something!
-            </p>
-          </div>
+          <EmptyState
+            icon={<MessageSquare className="h-10 w-10" />}
+            headline="No messages yet"
+            subtext="Say something!"
+          />
         ) : (
           displayed.map((msg) => (
             <MessageBubble
@@ -287,10 +287,18 @@ export default function TripMessagesPage() {
         pageName="Messages"
       />
 
-      {/* Channel selector */}
+      {/* Page title + Channel selector */}
+      <div className="flex-shrink-0 px-4 pt-3 pb-2">
+        <h1
+          className="text-lg font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          Messages
+        </h1>
+      </div>
       <div
         className="flex-shrink-0 flex gap-1 px-4 py-2"
-        style={{ borderBottom: "1px solid var(--color-bt-border)", background: "var(--color-bt-card)" }}
+        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
       >
         <button
           data-testid="channel-trip"

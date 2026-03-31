@@ -112,7 +112,7 @@ export default function ChangeDestinationPage() {
         {/* Trip name — read-only context */}
         <div>
           <p
-            className="text-xs font-medium uppercase tracking-wider"
+            className="mt-0 mb-3 text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Trip

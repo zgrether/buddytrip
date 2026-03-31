@@ -427,7 +427,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       {/* ── Quick links ─────────────────────────────────────────────────── */}
       <section>
         <h2
-          className="mb-3 text-sm font-semibold uppercase tracking-wider"
+          className="mt-0 mb-3 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Quick Links
@@ -453,7 +453,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       {/* ── Expenses ──────────────────────────────────────────────────────── */}
       <section>
         <h2
-          className="mb-3 text-sm font-semibold uppercase tracking-wider"
+          className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Expenses
@@ -469,7 +469,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       {canEdit && (
         <section>
           <h2
-            className="mb-3 text-sm font-semibold uppercase tracking-wider"
+            className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Trip Details
@@ -614,7 +614,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       {isOwner && (
         <section>
           <h2
-            className="mb-3 text-sm font-semibold uppercase tracking-wider"
+            className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Destination
@@ -721,7 +721,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       {isOwner && (
         <section>
           <h2
-            className="mb-3 text-sm font-semibold uppercase tracking-wider"
+            className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Members
@@ -742,7 +742,7 @@ export function MoreTab({ trip, canEdit, isOwner }: TabProps) {
       {isOwner && (
         <section>
           <h2
-            className="mb-3 text-sm font-semibold uppercase tracking-wider"
+            className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Danger Zone
