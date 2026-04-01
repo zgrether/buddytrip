@@ -22,6 +22,8 @@ import { AddExpenseModal } from "./AddExpenseModal";
 
 export interface ExpenseMember {
   user_id: string;
+  role?: string | null;
+  isGuest?: boolean;
   user?: { id: string; name?: string | null; email?: string | null } | null;
 }
 
@@ -187,9 +189,16 @@ export function ExpensesSection({
 
   const hasExpenses = expenses.length > 0;
   const peopleCount = members.length;
+  const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
   const balanceRows = members
     .filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
-    .sort((a, b) => (balances.get(a.user_id) ?? 0) - (balances.get(b.user_id) ?? 0));
+    .sort((a, b) => {
+      const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
+      const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
+      return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
+    });
 
   return (
     <div className="space-y-3">
