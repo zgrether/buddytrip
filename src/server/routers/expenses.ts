@@ -171,12 +171,14 @@ export const expensesRouter = router({
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user!.id;
+
       // Verify caller has a split row for this expense
       const { data: existing } = await ctx.supabase
         .from("expense_splits")
         .select("expense_id, user_id")
         .eq("expense_id", input.expenseId)
-        .eq("user_id", ctx.user.id)
+        .eq("user_id", userId)
         .maybeSingle();
 
       if (!existing) {
@@ -193,7 +195,7 @@ export const expensesRouter = router({
           amount: input.optOut ? 0 : null,
         })
         .eq("expense_id", input.expenseId)
-        .eq("user_id", ctx.user.id);
+        .eq("user_id", userId);
 
       if (error) {
         throw new TRPCError({
