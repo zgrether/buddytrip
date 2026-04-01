@@ -203,7 +203,7 @@ export function EditExpenseModal({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="rounded-lg border px-2 py-1 text-sm outline-none"
+                className="rounded-lg border px-3 py-2 text-sm outline-none"
                 style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               />
             </div>
