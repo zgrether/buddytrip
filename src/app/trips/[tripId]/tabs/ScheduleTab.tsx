@@ -13,7 +13,6 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate } from "@/lib/dates";
-import { ExpensesSection, type ExpenseMember } from "./ExpensesSection";
 import type { TabProps } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -133,10 +132,8 @@ function ReservationsSection({
 // ── ScheduleTab ─────────────────────────────────────────────────────────
 
 export function ScheduleTab({ trip, canEdit }: TabProps) {
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
-
   return (
-    <div className="space-y-6 px-4">
+    <div className="px-4">
       <section>
         <h2
           className="mt-0 mb-3 text-xs font-semibold uppercase tracking-wider"
@@ -145,21 +142,6 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
           Reservations
         </h2>
         <ReservationsSection tripId={trip.id} canEdit={canEdit} />
-      </section>
-
-      {/* Expenses — moved from More tab per SPEC 2 */}
-      <section>
-        <h2
-          className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Expenses
-        </h2>
-        <ExpensesSection
-          tripId={trip.id}
-          members={members as ExpenseMember[]}
-          canEdit={canEdit}
-        />
       </section>
     </div>
   );
