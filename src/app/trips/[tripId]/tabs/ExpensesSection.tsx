@@ -24,6 +24,7 @@ export interface ExpenseMember {
   user_id: string;
   role?: string | null;
   isGuest?: boolean;
+  displayName?: string | null;
   user?: { id: string; name?: string | null; email?: string | null } | null;
 }
 
@@ -50,7 +51,7 @@ export interface ExpenseItem {
 export function memberName(members: ExpenseMember[], userId: string | null | undefined) {
   if (!userId) return "Unknown";
   const m = members.find((x) => x.user_id === userId);
-  return m?.user?.name ?? m?.user?.email ?? userId.slice(0, 6);
+  return m?.displayName ?? m?.user?.name ?? m?.user?.email ?? userId.slice(0, 6);
 }
 
 function computeUserShare(expense: ExpenseItem, userId: string): number | null {
@@ -319,7 +320,23 @@ export function ExpensesSection({
             })}
           </div>
 
-          {/* ── Zone 3: Balances ──────────────────────────────────────── */}
+          {/* ── Hero Total ────────────────────────────────────────────── */}
+          <div
+            className="rounded-2xl px-5 py-4 text-center"
+            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+          >
+            <p className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+              ${total.toFixed(2)}
+            </p>
+            <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Total trip expenses
+            </p>
+            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {expenses.length} {expenses.length === 1 ? "expense" : "expenses"} · {peopleCount} {peopleCount === 1 ? "person" : "people"}
+            </p>
+          </div>
+
+          {/* ── Balances ──────────────────────────────────────────────── */}
           {balanceRows.length > 0 && (
             <div>
               <h2
@@ -354,22 +371,6 @@ export function ExpensesSection({
               })}
             </div>
           )}
-
-          {/* ── Hero Total ────────────────────────────────────────────── */}
-          <div
-            className="rounded-2xl px-5 py-4 text-center"
-            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <p className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-              ${total.toFixed(2)}
-            </p>
-            <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Total trip expenses
-            </p>
-            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {expenses.length} {expenses.length === 1 ? "expense" : "expenses"} · {peopleCount} {peopleCount === 1 ? "person" : "people"}
-            </p>
-          </div>
         </>
       )}
 
