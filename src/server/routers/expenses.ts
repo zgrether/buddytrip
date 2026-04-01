@@ -68,7 +68,7 @@ export const expensesRouter = router({
         ).min(1),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
       const { data: expense, error } = await ctx.supabase
         .from("expenses")

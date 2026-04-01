@@ -31,19 +31,20 @@ describe("expenses router", () => {
     expenseId = exp.id;
   });
 
-  it("create — member cannot create", async () => {
+  it("create — member can create", async () => {
     const member = ctx.getUser("member");
     const caller = ctx.callerAs("member");
-    await expect(
-      caller.expenses.create({
-        tripId,
-        id: genId("exp"),
-        title: "Nope",
-        amount: 100,
-        paidByUserId: member.id,
-        splitAmong: [{ userId: member.id }],
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const exp = await caller.expenses.create({
+      tripId,
+      id: genId("exp"),
+      title: "Member Expense",
+      amount: 50,
+      paidByUserId: member.id,
+      splitAmong: [{ userId: member.id }, { userId: ctx.user.id }],
+    });
+    expect(exp.title).toBe("Member Expense");
+    // Clean up
+    await ctx.caller().expenses.remove({ tripId, expenseId: exp.id });
   });
 
   it("list — any member can view with splits and opted_out", async () => {

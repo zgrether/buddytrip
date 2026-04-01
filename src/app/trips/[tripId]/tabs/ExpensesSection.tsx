@@ -192,17 +192,15 @@ export function ExpensesSection({
     <div className="space-y-3">
       {/* ── Expense list ──────────────────────────────────────────────── */}
       {/* Add expense button — always at the top */}
-      {canEdit && (
-        <button
-          data-testid="show-add-expense-btn"
-          onClick={() => setShowAdd(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
-        >
-          <Plus size={16} />
-          Add Expense
-        </button>
-      )}
+      <button
+        data-testid="show-add-expense-btn"
+        onClick={() => setShowAdd(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+        style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
+      >
+        <Plus size={16} />
+        Add Expense
+      </button>
 
       {expenses.length === 0 ? (
         <EmptyState
@@ -235,15 +233,19 @@ export function ExpensesSection({
                 >
                   <DollarSign size={14} style={{ color: "var(--color-bt-accent)" }} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                      {expense.title}
-                    </p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {expense.title}
+                      </p>
+                      {expense.date && (
+                        <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-x-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                       <span>Paid by {memberName(members, expense.paid_by_user_id)}</span>
                       <span>split {activeSplitCount} ways</span>
-                      {expense.date && (
-                        <span>{new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                      )}
                     </div>
                     {userSplit && (
                       <p className="mt-0.5 text-xs" style={{
