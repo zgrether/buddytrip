@@ -186,10 +186,7 @@ export function ExpensesSection({
     }
   }
 
-  const total = (expenses as ExpenseItem[]).reduce((sum, e) => sum + e.amount, 0);
-
   const hasExpenses = expenses.length > 0;
-  const peopleCount = members.length;
   const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
   const balanceRows = members
     .filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
@@ -318,22 +315,6 @@ export function ExpensesSection({
                 </div>
               );
             })}
-          </div>
-
-          {/* ── Hero Total ────────────────────────────────────────────── */}
-          <div
-            className="rounded-2xl px-5 py-4 text-center"
-            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <p className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-              ${total.toFixed(2)}
-            </p>
-            <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Total trip expenses
-            </p>
-            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {expenses.length} {expenses.length === 1 ? "expense" : "expenses"} · {peopleCount} {peopleCount === 1 ? "person" : "people"}
-            </p>
           </div>
 
           {/* ── Balances ──────────────────────────────────────────────── */}
