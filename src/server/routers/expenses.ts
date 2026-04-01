@@ -26,11 +26,11 @@ export const expensesRouter = router({
 
       // Fetch splits for all expenses
       const expenseIds = (expenses ?? []).map((e) => e.id);
-      let splits: { expense_id: string; user_id: string; amount: number | null }[] = [];
+      let splits: { expense_id: string; user_id: string; amount: number | null; opted_out: boolean }[] = [];
       if (expenseIds.length > 0) {
         const { data: s } = await ctx.supabase
           .from("expense_splits")
-          .select("expense_id, user_id, amount")
+          .select("expense_id, user_id, amount, opted_out")
           .in("expense_id", expenseIds);
         splits = s ?? [];
       }
@@ -59,7 +59,13 @@ export const expensesRouter = router({
         title: z.string().min(1).max(200),
         amount: z.number().min(0),
         paidByUserId: z.string(),
-        splitAmong: z.array(z.string()).min(1),
+        date: z.string().nullable().optional(),
+        splitAmong: z.array(
+          z.object({
+            userId: z.string(),
+            amount: z.number().min(0).nullable().optional(),
+          })
+        ).min(1),
       })
     )
     .use(requireTripRole("Planner"))
@@ -72,6 +78,7 @@ export const expensesRouter = router({
           title: input.title,
           amount: input.amount,
           paid_by_user_id: input.paidByUserId,
+          ...(input.date !== undefined ? { date: input.date } : {}),
         })
         .select()
         .single();
@@ -83,11 +90,11 @@ export const expensesRouter = router({
         });
       }
 
-      // Insert splits (even split by default — amount = null)
-      const splitRows = input.splitAmong.map((userId) => ({
+      // Insert splits — amount null means even split computed at read time
+      const splitRows = input.splitAmong.map((s) => ({
         expense_id: input.id,
-        user_id: userId,
-        amount: null,
+        user_id: s.userId,
+        amount: s.amount ?? null,
       }));
 
       const { error: splitErr } = await ctx.supabase
@@ -108,22 +115,46 @@ export const expensesRouter = router({
 
   // -----------------------------------------------------------------------
   // updateSplits — Owner only (isOwner)
+  // Also supports updating the expense title and amount.
   // -----------------------------------------------------------------------
   updateSplits: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         expenseId: z.string(),
+        title: z.string().min(1).max(200).optional(),
+        amount: z.number().min(0).optional(),
+        date: z.string().nullable().optional(),
         splits: z.array(
           z.object({
             userId: z.string(),
             amount: z.number().min(0).nullable(),
+            optedOut: z.boolean().optional(),
           })
         ),
       })
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Update expense title/amount/date if provided
+      if (input.title !== undefined || input.amount !== undefined || input.date !== undefined) {
+        const updates: Record<string, unknown> = {};
+        if (input.title !== undefined) updates.title = input.title;
+        if (input.amount !== undefined) updates.amount = input.amount;
+        if (input.date !== undefined) updates.date = input.date;
+        const { error: expErr } = await ctx.supabase
+          .from("expenses")
+          .update(updates)
+          .eq("id", input.expenseId)
+          .eq("trip_id", ctx.tripId);
+        if (expErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to update expense: ${expErr.message}`,
+          });
+        }
+      }
+
       // Delete existing splits
       await ctx.supabase
         .from("expense_splits")
@@ -135,6 +166,7 @@ export const expensesRouter = router({
         expense_id: input.expenseId,
         user_id: s.userId,
         amount: s.amount,
+        opted_out: s.optedOut ?? false,
       }));
 
       const { error } = await ctx.supabase
@@ -145,6 +177,55 @@ export const expensesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update splits",
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // optOut — any trip member can opt out of / rejoin their own split
+  // -----------------------------------------------------------------------
+  optOut: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        expenseId: z.string(),
+        optOut: z.boolean(),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user!.id;
+
+      // Verify caller has a split row for this expense
+      const { data: existing } = await ctx.supabase
+        .from("expense_splits")
+        .select("expense_id, user_id")
+        .eq("expense_id", input.expenseId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "You are not included in this expense",
+        });
+      }
+
+      const { error } = await ctx.supabase
+        .from("expense_splits")
+        .update({
+          opted_out: input.optOut,
+          amount: input.optOut ? 0 : null,
+        })
+        .eq("expense_id", input.expenseId)
+        .eq("user_id", userId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update opt-out status",
         });
       }
 

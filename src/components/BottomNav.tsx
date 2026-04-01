@@ -7,7 +7,7 @@ import { useRouter, usePathname } from "next/navigation";
 // ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
 // This is the old "tab" concept — now handled by TripTabBar.tsx
 // Re-export TabId for backwards compat during transition
-export type TabId = "home" | "schedule" | "crew" | "comp";
+export type TabId = "home" | "schedule" | "crew" | "expenses" | "comp";
 
 // ── Bottom nav item ────────────────────────────────────────────────────────
 
