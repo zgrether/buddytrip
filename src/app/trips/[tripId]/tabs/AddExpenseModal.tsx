@@ -164,43 +164,43 @@ export function AddExpenseModal({
             />
           </div>
 
-          {/* Paid by */}
-          <div>
-            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Paid by
-            </label>
-            <div className="relative">
-              <select
-                data-testid="expense-paidby-select"
-                value={paidByUserId}
-                onChange={(e) => setPaidByUserId(e.target.value)}
-                className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-              >
-                {members.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {memberName(members, m.user_id)}
-                  </option>
-                ))}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-bt-text-dim)" }} />
-              </svg>
+          {/* Paid by + Date on same line */}
+          <div className="flex gap-3">
+            <div className="min-w-0 flex-1">
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                Paid by
+              </label>
+              <div className="relative">
+                <select
+                  data-testid="expense-paidby-select"
+                  value={paidByUserId}
+                  onChange={(e) => setPaidByUserId(e.target.value)}
+                  className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm outline-none"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                >
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {memberName(members, m.user_id)}
+                    </option>
+                  ))}
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-bt-text-dim)" }} />
+                </svg>
+              </div>
             </div>
-          </div>
-
-          {/* Date (optional) */}
-          <div>
-            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Date (optional)
-            </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            />
+            <div className="w-36 flex-shrink-0">
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                Date (optional)
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              />
+            </div>
           </div>
 
           {/* Even / Custom toggle */}

@@ -327,14 +327,14 @@ export function ExpensesSection({
               return (
                 <div
                   key={m.user_id}
-                  className="flex items-center justify-between border-b px-1 py-2 text-xs"
+                  className="flex items-center justify-between border-b px-1 py-2.5"
                   style={{
                     borderColor: "var(--color-bt-border)",
                     background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
                   }}
                 >
-                  <span style={{ color: "var(--color-bt-text-dim)" }}>{memberName(members, m.user_id)}</span>
-                  <span style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
+                  <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{memberName(members, m.user_id)}</span>
+                  <span className="text-sm font-medium" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
                     {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
                   </span>
                 </div>
