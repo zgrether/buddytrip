@@ -21,6 +21,10 @@ export function EditExpenseModal({
   const utils = trpc.useUtils();
   useModalBackButton(onClose);
 
+  // Editable expense fields
+  const [title, setTitle] = useState(expense.title);
+  const [amount, setAmount] = useState(String(expense.amount));
+
   // Pre-populate from current splits
   const [includedIds, setIncludedIds] = useState<string[]>(() =>
     expense.splits.filter((s) => !s.opted_out).map((s) => s.user_id)
@@ -49,6 +53,8 @@ export function EditExpenseModal({
           exp.id === vars.expenseId
             ? {
                 ...exp,
+                ...(vars.title !== undefined ? { title: vars.title } : {}),
+                ...(vars.amount !== undefined ? { amount: vars.amount } : {}),
                 splits: vars.splits.map((s) => ({
                   expense_id: vars.expenseId,
                   user_id: s.userId,
@@ -91,6 +97,8 @@ export function EditExpenseModal({
     }
   }
 
+  const amountNum = Number(amount) || 0;
+
   function handleSave() {
     const splits = includedIds.map((uid) => ({
       userId: uid,
@@ -107,7 +115,17 @@ export function EditExpenseModal({
       splits.push({ userId: uid, amount: 0, optedOut: true });
     }
 
-    updateSplits.mutate({ tripId, expenseId: expense.id, splits });
+    // Include title/amount only if changed
+    const titleChanged = title.trim() !== expense.title ? title.trim() : undefined;
+    const amountChanged = amountNum !== expense.amount ? amountNum : undefined;
+
+    updateSplits.mutate({
+      tripId,
+      expenseId: expense.id,
+      splits,
+      ...(titleChanged !== undefined ? { title: titleChanged } : {}),
+      ...(amountChanged !== undefined ? { amount: amountChanged } : {}),
+    });
   }
 
   return (
@@ -135,15 +153,26 @@ export function EditExpenseModal({
           </button>
         </div>
 
-        {/* Read-only expense info */}
-        <div className="mb-4 space-y-1">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {expense.title}
-            </p>
-            <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              ${expense.amount.toFixed(2)}
-            </span>
+        {/* Editable expense info */}
+        <div className="mb-4 space-y-2">
+          <div className="flex gap-3">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Description"
+              className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            />
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="$ 0.00"
+              className="w-28 flex-shrink-0 rounded-lg border px-3 py-2 text-right text-sm outline-none"
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            />
           </div>
           <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             Paid by {memberName(expense.paid_by_user_id)}
@@ -153,7 +182,7 @@ export function EditExpenseModal({
         {/* Split panel */}
         <SplitPanel
           members={members}
-          totalAmount={expense.amount}
+          totalAmount={amountNum}
           includedIds={includedIds}
           overrides={overrides}
           optedOutIds={optedOutIds}
@@ -181,7 +210,7 @@ export function EditExpenseModal({
             Cancel
           </button>
           <button
-            disabled={updateSplits.isPending || includedIds.length === 0}
+            disabled={updateSplits.isPending || includedIds.length === 0 || !title.trim() || amountNum <= 0}
             onClick={handleSave}
             className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}

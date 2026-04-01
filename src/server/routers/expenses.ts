@@ -113,12 +113,15 @@ export const expensesRouter = router({
 
   // -----------------------------------------------------------------------
   // updateSplits — Owner only (isOwner)
+  // Also supports updating the expense title and amount.
   // -----------------------------------------------------------------------
   updateSplits: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         expenseId: z.string(),
+        title: z.string().min(1).max(200).optional(),
+        amount: z.number().min(0).optional(),
         splits: z.array(
           z.object({
             userId: z.string(),
@@ -130,6 +133,24 @@ export const expensesRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Update expense title/amount if provided
+      if (input.title !== undefined || input.amount !== undefined) {
+        const updates: Record<string, unknown> = {};
+        if (input.title !== undefined) updates.title = input.title;
+        if (input.amount !== undefined) updates.amount = input.amount;
+        const { error: expErr } = await ctx.supabase
+          .from("expenses")
+          .update(updates)
+          .eq("id", input.expenseId)
+          .eq("trip_id", ctx.tripId);
+        if (expErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to update expense: ${expErr.message}`,
+          });
+        }
+      }
+
       // Delete existing splits
       await ctx.supabase
         .from("expense_splits")
