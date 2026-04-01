@@ -26,11 +26,11 @@ export const expensesRouter = router({
 
       // Fetch splits for all expenses
       const expenseIds = (expenses ?? []).map((e) => e.id);
-      let splits: { expense_id: string; user_id: string; amount: number | null }[] = [];
+      let splits: { expense_id: string; user_id: string; amount: number | null; opted_out: boolean }[] = [];
       if (expenseIds.length > 0) {
         const { data: s } = await ctx.supabase
           .from("expense_splits")
-          .select("expense_id, user_id, amount")
+          .select("expense_id, user_id, amount, opted_out")
           .in("expense_id", expenseIds);
         splits = s ?? [];
       }
@@ -123,6 +123,7 @@ export const expensesRouter = router({
           z.object({
             userId: z.string(),
             amount: z.number().min(0).nullable(),
+            optedOut: z.boolean().optional(),
           })
         ),
       })
@@ -140,6 +141,7 @@ export const expensesRouter = router({
         expense_id: input.expenseId,
         user_id: s.userId,
         amount: s.amount,
+        opted_out: s.optedOut ?? false,
       }));
 
       const { error } = await ctx.supabase
@@ -150,6 +152,53 @@ export const expensesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update splits",
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // optOut — any trip member can opt out of / rejoin their own split
+  // -----------------------------------------------------------------------
+  optOut: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        expenseId: z.string(),
+        optOut: z.boolean(),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      // Verify caller has a split row for this expense
+      const { data: existing } = await ctx.supabase
+        .from("expense_splits")
+        .select("expense_id, user_id")
+        .eq("expense_id", input.expenseId)
+        .eq("user_id", ctx.user.id)
+        .maybeSingle();
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "You are not included in this expense",
+        });
+      }
+
+      const { error } = await ctx.supabase
+        .from("expense_splits")
+        .update({
+          opted_out: input.optOut,
+          amount: input.optOut ? 0 : null,
+        })
+        .eq("expense_id", input.expenseId)
+        .eq("user_id", ctx.user.id);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update opt-out status",
         });
       }
 
