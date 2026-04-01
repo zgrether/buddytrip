@@ -185,12 +185,34 @@ export function ExpensesSection({
 
   const total = (expenses as ExpenseItem[]).reduce((sum, e) => sum + e.amount, 0);
 
-  // Members with non-zero balances for the summary table
-  const balanceRows = members.filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01);
+  const hasExpenses = expenses.length > 0;
+  const peopleCount = members.length;
+  const currentUserBalance = currentUser ? (balances.get(currentUser.id) ?? 0) : null;
+  const otherBalanceRows = members
+    .filter((m) => m.user_id !== currentUser?.id && Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
+    .sort((a, b) => (balances.get(a.user_id) ?? 0) - (balances.get(b.user_id) ?? 0));
 
   return (
     <div className="space-y-3">
-      {/* ── Expense list ──────────────────────────────────────────────── */}
+      {/* ── Zone 1: Hero Total ───────────────────────────────────────── */}
+      {hasExpenses && (
+        <div
+          className="rounded-2xl px-5 py-4 text-center"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <p className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+            ${total.toFixed(2)}
+          </p>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            Total trip expenses
+          </p>
+          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {expenses.length} {expenses.length === 1 ? "expense" : "expenses"} · {peopleCount} {peopleCount === 1 ? "person" : "people"}
+          </p>
+        </div>
+      )}
+
+      {/* ── Zone 2: Expense List ─────────────────────────────────────── */}
       {/* Add expense button — always at the top */}
       <button
         data-testid="show-add-expense-btn"
@@ -202,7 +224,7 @@ export function ExpensesSection({
         Add Expense
       </button>
 
-      {expenses.length === 0 ? (
+      {!hasExpenses ? (
         <EmptyState
           icon={<Receipt className="h-10 w-10" />}
           headline="No expenses yet"
@@ -307,43 +329,63 @@ export function ExpensesSection({
             })}
           </div>
 
-          {/* Totals — crew tab table style */}
-          <div>
-            <h2
-              className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Totals
-            </h2>
-            {/* Total row */}
+          {/* ── Zone 3a: Your Balance ──────────────────────────────────── */}
+          {currentUser && currentUserBalance !== null && (
             <div
-              className="flex justify-between border-b px-1 py-2 text-xs font-medium"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+              className="rounded-2xl px-5 py-4"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
-              <span>Total</span>
-              <span style={{ color: "var(--color-bt-text)" }}>${total.toFixed(2)}</span>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                Your Balance
+              </p>
+              {Math.abs(currentUserBalance) < 0.01 ? (
+                <>
+                  <p className="text-xl font-bold" style={{ color: "var(--color-bt-text-dim)" }}>$0.00</p>
+                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>You&apos;re all settled up</p>
+                </>
+              ) : currentUserBalance > 0 ? (
+                <>
+                  <p className="text-xl font-bold" style={{ color: "var(--color-bt-accent)" }}>+${currentUserBalance.toFixed(2)}</p>
+                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-accent)" }}>You&apos;re owed money</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xl font-bold" style={{ color: "var(--color-bt-danger)" }}>-${Math.abs(currentUserBalance).toFixed(2)}</p>
+                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-danger)" }}>You owe money</p>
+                </>
+              )}
             </div>
-            {/* Balance rows */}
-            {balanceRows.map((m, i) => {
-              const bal = balances.get(m.user_id) ?? 0;
-              return (
-                <div
-                  key={m.user_id}
-                  className="flex items-center justify-between border-b px-1 py-2.5"
-                  style={{
-                    borderColor: "var(--color-bt-border)",
-                    background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
-                  }}
-                >
-                  <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{memberName(members, m.user_id)}</span>
-                  <span className="text-sm font-medium" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
-                    {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+          )}
 
+          {/* ── Zone 3b: Group Balances ────────────────────────────────── */}
+          {otherBalanceRows.length > 0 && (
+            <div>
+              <h2
+                className="mb-2 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Group Balances
+              </h2>
+              {otherBalanceRows.map((m, i) => {
+                const bal = balances.get(m.user_id) ?? 0;
+                return (
+                  <div
+                    key={m.user_id}
+                    className="flex items-center justify-between border-b px-1 py-2.5"
+                    style={{
+                      borderColor: "var(--color-bt-border)",
+                      background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
+                    }}
+                  >
+                    <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{memberName(members, m.user_id)}</span>
+                    <span className="text-sm font-medium" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
+                      {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
