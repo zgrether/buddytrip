@@ -35,6 +35,7 @@ export function AddExpenseModal({
     members.map((m) => m.user_id)
   );
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [date, setDate] = useState("");
 
   const createExpense = trpc.expenses.create.useMutation({
     async onMutate(vars) {
@@ -47,6 +48,7 @@ export function AddExpenseModal({
           title: vars.title,
           amount: vars.amount,
           paid_by_user_id: vars.paidByUserId,
+          date: vars.date ?? null,
           created_at: new Date().toISOString(),
           splits: vars.splitAmong.map((s) => ({
             expense_id: vars.id,
@@ -113,6 +115,7 @@ export function AddExpenseModal({
       title: title.trim(),
       amount: amountNum,
       paidByUserId,
+      date: date || null,
       splitAmong: splitData,
     });
   }
@@ -184,6 +187,20 @@ export function AddExpenseModal({
                 <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-bt-text-dim)" }} />
               </svg>
             </div>
+          </div>
+
+          {/* Date (optional) */}
+          <div>
+            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Date (optional)
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            />
           </div>
 
           {/* Even / Custom toggle */}

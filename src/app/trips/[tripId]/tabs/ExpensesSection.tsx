@@ -38,6 +38,7 @@ export interface ExpenseItem {
   title: string;
   amount: number;
   paid_by_user_id: string;
+  date: string | null;
   created_at: string | null;
   splits: ExpenseSplit[];
 }
@@ -190,23 +191,23 @@ export function ExpensesSection({
   return (
     <div className="space-y-3">
       {/* ── Expense list ──────────────────────────────────────────────── */}
+      {/* Add expense button — always at the top */}
+      {canEdit && (
+        <button
+          data-testid="show-add-expense-btn"
+          onClick={() => setShowAdd(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
+        >
+          <Plus size={16} />
+          Add Expense
+        </button>
+      )}
+
       {expenses.length === 0 ? (
         <EmptyState
           icon={<Receipt className="h-10 w-10" />}
           headline="No expenses yet"
-          action={
-            canEdit ? (
-              <button
-                data-testid="show-add-expense-btn"
-                onClick={() => setShowAdd(true)}
-                className="flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
-              >
-                <Plus size={16} />
-                Add Expense
-              </button>
-            ) : undefined
-          }
         />
       ) : (
         <>
@@ -240,6 +241,9 @@ export function ExpensesSection({
                     <div className="flex flex-wrap gap-x-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                       <span>Paid by {memberName(members, expense.paid_by_user_id)}</span>
                       <span>split {activeSplitCount} ways</span>
+                      {expense.date && (
+                        <span>{new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                      )}
                     </div>
                     {userSplit && (
                       <p className="mt-0.5 text-xs" style={{
@@ -301,14 +305,20 @@ export function ExpensesSection({
             })}
           </div>
 
-          {/* Total + balances — crew tab table style */}
+          {/* Totals — crew tab table style */}
           <div>
-            {/* Header row */}
+            <h2
+              className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Totals
+            </h2>
+            {/* Total row */}
             <div
               className="flex justify-between border-b px-1 py-2 text-xs font-medium"
               style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
             >
-              <span>Total expenses</span>
+              <span>Total</span>
               <span style={{ color: "var(--color-bt-text)" }}>${total.toFixed(2)}</span>
             </div>
             {/* Balance rows */}
@@ -332,18 +342,6 @@ export function ExpensesSection({
             })}
           </div>
 
-          {/* Add expense button */}
-          {canEdit && (
-            <button
-              data-testid="show-add-expense-btn"
-              onClick={() => setShowAdd(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
-            >
-              <Plus size={16} />
-              Add Expense
-            </button>
-          )}
         </>
       )}
 

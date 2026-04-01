@@ -59,6 +59,7 @@ export const expensesRouter = router({
         title: z.string().min(1).max(200),
         amount: z.number().min(0),
         paidByUserId: z.string(),
+        date: z.string().nullable().optional(),
         splitAmong: z.array(
           z.object({
             userId: z.string(),
@@ -77,6 +78,7 @@ export const expensesRouter = router({
           title: input.title,
           amount: input.amount,
           paid_by_user_id: input.paidByUserId,
+          ...(input.date !== undefined ? { date: input.date } : {}),
         })
         .select()
         .single();
@@ -122,6 +124,7 @@ export const expensesRouter = router({
         expenseId: z.string(),
         title: z.string().min(1).max(200).optional(),
         amount: z.number().min(0).optional(),
+        date: z.string().nullable().optional(),
         splits: z.array(
           z.object({
             userId: z.string(),
@@ -133,11 +136,12 @@ export const expensesRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // Update expense title/amount if provided
-      if (input.title !== undefined || input.amount !== undefined) {
+      // Update expense title/amount/date if provided
+      if (input.title !== undefined || input.amount !== undefined || input.date !== undefined) {
         const updates: Record<string, unknown> = {};
         if (input.title !== undefined) updates.title = input.title;
         if (input.amount !== undefined) updates.amount = input.amount;
+        if (input.date !== undefined) updates.date = input.date;
         const { error: expErr } = await ctx.supabase
           .from("expenses")
           .update(updates)

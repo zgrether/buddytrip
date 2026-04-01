@@ -25,6 +25,7 @@ export function EditExpenseModal({
   // Editable expense fields
   const [title, setTitle] = useState(expense.title);
   const [amount, setAmount] = useState(String(expense.amount));
+  const [date, setDate] = useState(expense.date ?? "");
 
   // Pre-populate from current splits
   const [includedIds, setIncludedIds] = useState<string[]>(() =>
@@ -56,6 +57,7 @@ export function EditExpenseModal({
                 ...exp,
                 ...(vars.title !== undefined ? { title: vars.title } : {}),
                 ...(vars.amount !== undefined ? { amount: vars.amount } : {}),
+                ...(vars.date !== undefined ? { date: vars.date } : {}),
                 splits: vars.splits.map((s) => ({
                   expense_id: vars.expenseId,
                   user_id: s.userId,
@@ -113,9 +115,11 @@ export function EditExpenseModal({
       splits.push({ userId: uid, amount: 0, optedOut: true });
     }
 
-    // Include title/amount only if changed
+    // Include title/amount/date only if changed
     const titleChanged = title.trim() !== expense.title ? title.trim() : undefined;
     const amountChanged = amountNum !== expense.amount ? amountNum : undefined;
+    const dateVal = date || null;
+    const dateChanged = dateVal !== (expense.date ?? null) ? dateVal : undefined;
 
     updateSplits.mutate({
       tripId,
@@ -123,6 +127,7 @@ export function EditExpenseModal({
       splits,
       ...(titleChanged !== undefined ? { title: titleChanged } : {}),
       ...(amountChanged !== undefined ? { amount: amountChanged } : {}),
+      ...(dateChanged !== undefined ? { date: dateChanged } : {}),
     });
   }
 
@@ -167,9 +172,18 @@ export function EditExpenseModal({
               className="w-28 flex-shrink-0"
             />
           </div>
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Paid by {memberName(expense.paid_by_user_id)}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Paid by {memberName(expense.paid_by_user_id)}
+            </p>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="rounded-lg border px-2 py-1 text-xs outline-none"
+              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+            />
+          </div>
         </div>
 
         {/* Split panel */}
