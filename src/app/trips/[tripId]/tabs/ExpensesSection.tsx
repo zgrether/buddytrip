@@ -530,34 +530,40 @@ export function ExpensesSection({
             <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Paid by
             </label>
-            <select
-              data-testid="expense-paidby-select"
-              value={paidByUserId}
-              onChange={(e) => setPaidByUserId(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            >
-              {members.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {memberName(m.user_id)}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                data-testid="expense-paidby-select"
+                value={paidByUserId}
+                onChange={(e) => setPaidByUserId(e.target.value)}
+                className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              >
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {memberName(m.user_id)}
+                  </option>
+                ))}
+              </select>
+              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-bt-text-dim)" }} />
+              </svg>
+            </div>
           </div>
 
           {/* Split among + optional override breakdown */}
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                Split among
-              </label>
-              {showSplitAmounts && (
-                <div className="flex gap-1 pr-8 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  <span className="w-14 text-right">Share</span>
-                  <span className="w-16 text-right">Override</span>
-                </div>
-              )}
-            </div>
+            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Split among
+            </label>
+            {showSplitAmounts && (
+              <div className="mb-1 flex items-center gap-2 px-3 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                <div className="h-4 w-4 flex-shrink-0" />
+                <div className="min-w-0 flex-1" />
+                <span className="w-14 flex-shrink-0 text-right">Share</span>
+                <span className="w-16 flex-shrink-0 text-right">Override</span>
+                <div className="w-6 flex-shrink-0" />
+              </div>
+            )}
 
             <div className="space-y-1">
               {members.map((m) => {
