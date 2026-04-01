@@ -187,9 +187,8 @@ export function ExpensesSection({
 
   const hasExpenses = expenses.length > 0;
   const peopleCount = members.length;
-  const currentUserBalance = currentUser ? (balances.get(currentUser.id) ?? 0) : null;
-  const otherBalanceRows = members
-    .filter((m) => m.user_id !== currentUser?.id && Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
+  const balanceRows = members
+    .filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
     .sort((a, b) => (balances.get(a.user_id) ?? 0) - (balances.get(b.user_id) ?? 0));
 
   return (
@@ -329,45 +328,18 @@ export function ExpensesSection({
             })}
           </div>
 
-          {/* ── Zone 3a: Your Balance ──────────────────────────────────── */}
-          {currentUser && currentUserBalance !== null && (
-            <div
-              className="rounded-2xl px-5 py-4"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Your Balance
-              </p>
-              {Math.abs(currentUserBalance) < 0.01 ? (
-                <>
-                  <p className="text-xl font-bold" style={{ color: "var(--color-bt-text-dim)" }}>$0.00</p>
-                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>You&apos;re all settled up</p>
-                </>
-              ) : currentUserBalance > 0 ? (
-                <>
-                  <p className="text-xl font-bold" style={{ color: "var(--color-bt-accent)" }}>+${currentUserBalance.toFixed(2)}</p>
-                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-accent)" }}>You&apos;re owed money</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-xl font-bold" style={{ color: "var(--color-bt-danger)" }}>-${Math.abs(currentUserBalance).toFixed(2)}</p>
-                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-danger)" }}>You owe money</p>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── Zone 3b: Group Balances ────────────────────────────────── */}
-          {otherBalanceRows.length > 0 && (
+          {/* ── Zone 3: Balances ──────────────────────────────────────── */}
+          {balanceRows.length > 0 && (
             <div>
               <h2
                 className="mb-2 text-xs font-semibold uppercase tracking-wider"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                Group Balances
+                Balances
               </h2>
-              {otherBalanceRows.map((m, i) => {
+              {balanceRows.map((m, i) => {
                 const bal = balances.get(m.user_id) ?? 0;
+                const isCurrentUser = m.user_id === currentUser?.id;
                 return (
                   <div
                     key={m.user_id}
@@ -377,7 +349,12 @@ export function ExpensesSection({
                       background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
                     }}
                   >
-                    <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{memberName(members, m.user_id)}</span>
+                    <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                      {memberName(members, m.user_id)}
+                      {isCurrentUser && (
+                        <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
+                      )}
+                    </span>
                     <span className="text-sm font-medium" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
                       {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
                     </span>
