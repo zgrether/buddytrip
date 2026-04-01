@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { trpc } from "@/lib/trpc-client";
 import { SplitPanel } from "./SplitPanel";
+import { CurrencyInput, memberName as getMemberName } from "./ExpensesSection";
 import type { ExpenseItem, ExpenseMember } from "./ExpensesSection";
 
 export function EditExpenseModal({
@@ -79,10 +80,7 @@ export function EditExpenseModal({
     },
   });
 
-  const memberName = (uid: string) => {
-    const m = members.find((x) => x.user_id === uid);
-    return m?.user?.name ?? m?.user?.email ?? uid.slice(0, 6);
-  };
+  const memberName = (uid: string) => getMemberName(members, uid);
 
   function handleToggle(uid: string) {
     if (includedIds.includes(uid)) {
@@ -163,15 +161,10 @@ export function EditExpenseModal({
               className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
               style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
             />
-            <input
-              type="number"
-              min={0}
-              step={0.01}
+            <CurrencyInput
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="$ 0.00"
-              className="w-28 flex-shrink-0 rounded-lg border px-3 py-2 text-right text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              onChange={setAmount}
+              className="w-28 flex-shrink-0"
             />
           </div>
           <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>

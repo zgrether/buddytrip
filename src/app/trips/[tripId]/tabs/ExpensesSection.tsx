@@ -10,11 +10,13 @@ import {
   UserMinus,
   UserPlus,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { EmptyState } from "@/components/EmptyState";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
-import { SplitPanel, computeSplitDisplay } from "./SplitPanel";
+import { SplitPanel } from "./SplitPanel";
 import { EditExpenseModal } from "./EditExpenseModal";
+import { AddExpenseModal } from "./AddExpenseModal";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -42,7 +44,7 @@ export interface ExpenseItem {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function memberName(members: ExpenseMember[], userId: string | null | undefined) {
+export function memberName(members: ExpenseMember[], userId: string | null | undefined) {
   if (!userId) return "Unknown";
   const m = members.find((x) => x.user_id === userId);
   return m?.user?.name ?? m?.user?.email ?? userId.slice(0, 6);
@@ -52,13 +54,53 @@ function computeUserShare(expense: ExpenseItem, userId: string): number | null {
   const split = expense.splits.find((s) => s.user_id === userId);
   if (!split || split.opted_out) return null;
   if (split.amount !== null) return split.amount;
-  // Even split: (total - overridden) / nullSplitCount
   const activeSplits = expense.splits.filter((s) => !s.opted_out);
   const overridedTotal = activeSplits
     .filter((s) => s.amount !== null)
     .reduce((sum, s) => sum + (s.amount as number), 0);
   const nullCount = activeSplits.filter((s) => s.amount === null).length;
   return nullCount > 0 ? (expense.amount - overridedTotal) / nullCount : 0;
+}
+
+// ── CurrencyInput ────────────────────────────────────────────────────────
+
+export function CurrencyInput({
+  value,
+  onChange,
+  placeholder = "0.00",
+  className = "",
+  "data-testid": testId,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+  "data-testid"?: string;
+}) {
+  return (
+    <div
+      className={`relative flex items-center rounded-lg border ${className}`}
+      style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)" }}
+    >
+      <span
+        className="pointer-events-none pl-3 text-sm"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        $
+      </span>
+      <input
+        data-testid={testId}
+        type="number"
+        min={0}
+        step={0.01}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="min-w-0 flex-1 bg-transparent py-2 pl-1 pr-3 text-right text-sm outline-none"
+        style={{ color: "var(--color-bt-text)" }}
+      />
+    </div>
+  );
 }
 
 // ── ExpensesSection ──────────────────────────────────────────────────────
@@ -75,65 +117,18 @@ export function ExpensesSection({
   isOwner?: boolean;
 }) {
   const currentUser = useCurrentUser();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
 
-  // ── Form state ──
+  // ── Modal state ──
   const [showAdd, setShowAdd] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newAmount, setNewAmount] = useState("");
-  const defaultPaidBy =
-    members.find((m) => m.user_id === currentUser?.id)?.user_id ??
-    members[0]?.user_id ??
-    "";
-  const [paidByUserId, setPaidByUserId] = useState(defaultPaidBy);
-  const [splitMode, setSplitMode] = useState<"even" | "custom">("even");
-  const [splitAmong, setSplitAmong] = useState<string[]>(
-    members.map((m) => m.user_id)
-  );
-  const [newOverrides, setNewOverrides] = useState<Record<string, string>>({});
-
-  // ── Edit modal state ──
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
 
   // ── Queries ──
   const { data: expenses = [] } = trpc.expenses.list.useQuery({ tripId });
 
   // ── Mutations ──
-  const createExpense = trpc.expenses.create.useMutation({
-    async onMutate(vars) {
-      await utils.expenses.list.cancel({ tripId });
-      const prev = utils.expenses.list.getData({ tripId });
-      utils.expenses.list.setData({ tripId }, [
-        {
-          id: vars.id,
-          trip_id: tripId,
-          title: vars.title,
-          amount: vars.amount,
-          paid_by_user_id: vars.paidByUserId,
-          created_at: new Date().toISOString(),
-          splits: vars.splitAmong.map((s) => ({
-            expense_id: vars.id,
-            user_id: s.userId,
-            amount: s.amount ?? null,
-            opted_out: false,
-          })),
-        },
-        ...(prev ?? []),
-      ]);
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined)
-        utils.expenses.list.setData({ tripId }, context.prev);
-    },
-    onSuccess() {
-      resetForm();
-    },
-    onSettled() {
-      utils.expenses.list.invalidate({ tripId });
-    },
-  });
-
   const removeExpense = trpc.expenses.remove.useMutation({
     onSuccess: () => utils.expenses.list.invalidate({ tripId }),
   });
@@ -165,44 +160,6 @@ export function ExpensesSection({
     },
   });
 
-  // ── Form helpers ──
-  function resetForm() {
-    setShowAdd(false);
-    setNewTitle("");
-    setNewAmount("");
-    setPaidByUserId(defaultPaidBy);
-    setSplitMode("even");
-    setSplitAmong(members.map((m) => m.user_id));
-    setNewOverrides({});
-  }
-
-  function toggleSplit(userId: string) {
-    if (splitAmong.includes(userId)) {
-      setSplitAmong((prev) => prev.filter((id) => id !== userId));
-      setNewOverrides((prev) => {
-        const next = { ...prev };
-        delete next[userId];
-        return next;
-      });
-    } else {
-      setSplitAmong((prev) => [...prev, userId]);
-    }
-  }
-
-  function resetNewOverride(uid: string) {
-    setNewOverrides((prev) => {
-      const next = { ...prev };
-      delete next[uid];
-      return next;
-    });
-  }
-
-  function switchToEven() {
-    setSplitMode("even");
-    setSplitAmong(members.map((m) => m.user_id));
-    setNewOverrides({});
-  }
-
   // ── Balance computation ──
   const balances = new Map<string, number>();
   for (const expense of expenses as ExpenseItem[]) {
@@ -227,12 +184,8 @@ export function ExpensesSection({
 
   const total = (expenses as ExpenseItem[]).reduce((sum, e) => sum + e.amount, 0);
 
-  // ── Even split per-person amount ──
-  const totalAmountNum = Number(newAmount) || 0;
-  const evenPerPerson =
-    totalAmountNum > 0 && members.length > 0
-      ? totalAmountNum / members.length
-      : 0;
+  // Members with non-zero balances for the summary table
+  const balanceRows = members.filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01);
 
   return (
     <div className="space-y-3">
@@ -242,7 +195,7 @@ export function ExpensesSection({
           icon={<Receipt className="h-10 w-10" />}
           headline="No expenses yet"
           action={
-            canEdit && !showAdd ? (
+            canEdit ? (
               <button
                 data-testid="show-add-expense-btn"
                 onClick={() => setShowAdd(true)}
@@ -288,7 +241,6 @@ export function ExpensesSection({
                       <span>Paid by {memberName(members, expense.paid_by_user_id)}</span>
                       <span>split {activeSplitCount} ways</span>
                     </div>
-                    {/* Your share or opted out */}
                     {userSplit && (
                       <p className="mt-0.5 text-xs" style={{
                         color: isOptedOut ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
@@ -304,7 +256,6 @@ export function ExpensesSection({
                   <span className="flex-shrink-0 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                     ${expense.amount.toFixed(2)}
                   </span>
-                  {/* Opt out / rejoin button (any member, own split only) */}
                   {userSplit && (
                     <button
                       onClick={() =>
@@ -322,7 +273,6 @@ export function ExpensesSection({
                       {isOptedOut ? <UserPlus size={13} /> : <UserMinus size={13} />}
                     </button>
                   )}
-                  {/* Owner edit button */}
                   {isOwner && (
                     <button
                       data-testid={`edit-splits-${expense.id}`}
@@ -333,7 +283,6 @@ export function ExpensesSection({
                       <Pencil size={13} />
                     </button>
                   )}
-                  {/* Delete button */}
                   {canEdit && (
                     <button
                       data-testid={`remove-expense-${expense.id}`}
@@ -352,20 +301,28 @@ export function ExpensesSection({
             })}
           </div>
 
-          {/* Total + balances */}
-          <div
-            className="rounded-xl p-3"
-            style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <div className="mb-2 flex justify-between text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-              <span>Total</span>
+          {/* Total + balances — crew tab table style */}
+          <div>
+            {/* Header row */}
+            <div
+              className="flex justify-between border-b px-1 py-2 text-xs font-medium"
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+            >
+              <span>Total expenses</span>
               <span style={{ color: "var(--color-bt-text)" }}>${total.toFixed(2)}</span>
             </div>
-            {members.map((m) => {
+            {/* Balance rows */}
+            {balanceRows.map((m, i) => {
               const bal = balances.get(m.user_id) ?? 0;
-              if (Math.abs(bal) < 0.01) return null;
               return (
-                <div key={m.user_id} className="flex justify-between text-xs">
+                <div
+                  key={m.user_id}
+                  className="flex items-center justify-between border-b px-1 py-2 text-xs"
+                  style={{
+                    borderColor: "var(--color-bt-border)",
+                    background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
+                  }}
+                >
                   <span style={{ color: "var(--color-bt-text-dim)" }}>{memberName(members, m.user_id)}</span>
                   <span style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
                     {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
@@ -376,7 +333,7 @@ export function ExpensesSection({
           </div>
 
           {/* Add expense button */}
-          {canEdit && !showAdd && (
+          {canEdit && (
             <button
               data-testid="show-add-expense-btn"
               onClick={() => setShowAdd(true)}
@@ -390,153 +347,13 @@ export function ExpensesSection({
         </>
       )}
 
-      {/* ── Add expense form ──────────────────────────────────────────── */}
-      {canEdit && showAdd && (
-        <div
-          className="space-y-3 rounded-xl p-4"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            Add Expense
-          </p>
-
-          {/* Side-by-side Description + Amount */}
-          <div className="flex gap-3">
-            <input
-              data-testid="expense-title-input"
-              placeholder="Description (e.g. Dinner)"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            />
-            <input
-              data-testid="expense-amount-input"
-              type="number"
-              min={0}
-              step={0.01}
-              placeholder="$ 0.00"
-              value={newAmount}
-              onChange={(e) => setNewAmount(e.target.value)}
-              className="w-28 flex-shrink-0 rounded-lg border px-3 py-2 text-right text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            />
-          </div>
-
-          {/* Paid by */}
-          <div>
-            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Paid by
-            </label>
-            <div className="relative">
-              <select
-                data-testid="expense-paidby-select"
-                value={paidByUserId}
-                onChange={(e) => setPaidByUserId(e.target.value)}
-                className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-              >
-                {members.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {memberName(members, m.user_id)}
-                  </option>
-                ))}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-bt-text-dim)" }} />
-              </svg>
-            </div>
-          </div>
-
-          {/* Even / Custom toggle */}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={switchToEven}
-              className="flex-1 rounded-lg border px-3 py-2 text-sm"
-              style={{
-                background: splitMode === "even" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-                borderColor: splitMode === "even" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                color: splitMode === "even" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-              }}
-            >
-              Even split{evenPerPerson > 0 ? ` · $${evenPerPerson.toFixed(2)}` : ""}
-            </button>
-            <button
-              type="button"
-              onClick={() => setSplitMode("custom")}
-              className="flex-1 rounded-lg border px-3 py-2 text-sm"
-              style={{
-                background: splitMode === "custom" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-                borderColor: splitMode === "custom" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                color: splitMode === "custom" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-              }}
-            >
-              Custom split
-            </button>
-          </div>
-
-          {/* Custom split panel */}
-          {splitMode === "custom" && (
-            <SplitPanel
-              members={members}
-              totalAmount={totalAmountNum}
-              includedIds={splitAmong}
-              overrides={newOverrides}
-              onToggle={toggleSplit}
-              onOverrideChange={(uid, val) =>
-                setNewOverrides((prev) => ({ ...prev, [uid]: val }))
-              }
-              onResetOverride={resetNewOverride}
-            />
-          )}
-
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={resetForm}
-              className="flex-1 rounded-lg border py-2 text-sm"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              Cancel
-            </button>
-            <button
-              data-testid="save-expense-btn"
-              disabled={
-                !newTitle.trim() ||
-                !newAmount ||
-                Number(newAmount) <= 0 ||
-                !paidByUserId ||
-                (splitMode === "custom" && splitAmong.length === 0) ||
-                createExpense.isPending
-              }
-              onClick={() => {
-                const splitData =
-                  splitMode === "even"
-                    ? members.map((m) => ({ userId: m.user_id, amount: null as number | null }))
-                    : splitAmong.map((uid) => ({
-                        userId: uid,
-                        amount:
-                          newOverrides[uid] && newOverrides[uid] !== ""
-                            ? Number(newOverrides[uid])
-                            : null,
-                      }));
-                createExpense.mutate({
-                  tripId,
-                  id: crypto.randomUUID(),
-                  title: newTitle.trim(),
-                  amount: Number(newAmount),
-                  paidByUserId,
-                  splitAmong: splitData,
-                });
-              }}
-              className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              Add Expense
-            </button>
-          </div>
-        </div>
+      {/* ── Add Expense Modal ─────────────────────────────────────────── */}
+      {showAdd && (
+        <AddExpenseModal
+          tripId={tripId}
+          members={members}
+          onClose={() => setShowAdd(false)}
+        />
       )}
 
       {/* ── Edit Expense Modal ────────────────────────────────────────── */}
