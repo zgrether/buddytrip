@@ -16,6 +16,7 @@ import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
+import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
@@ -295,7 +296,7 @@ export default function TripDetailPage() {
 
         {/* ── Tab bar ───────────────────────────────────────────────────── */}
         <div className="mt-4">
-          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={showComp} />
+          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={showComp} canEdit={canEdit} />
         </div>
       </div>
 
@@ -317,6 +318,9 @@ export default function TripDetailPage() {
         )}
         {activeTab === "crew" && (
           <CrewTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
+        )}
+        {activeTab === "expenses" && (
+          <ExpensesTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
         )}
         {activeTab === "comp" && (
           <CompTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
