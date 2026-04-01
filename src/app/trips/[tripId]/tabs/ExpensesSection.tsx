@@ -22,6 +22,9 @@ import { AddExpenseModal } from "./AddExpenseModal";
 
 export interface ExpenseMember {
   user_id: string;
+  role?: string | null;
+  isGuest?: boolean;
+  displayName?: string | null;
   user?: { id: string; name?: string | null; email?: string | null } | null;
 }
 
@@ -48,7 +51,7 @@ export interface ExpenseItem {
 export function memberName(members: ExpenseMember[], userId: string | null | undefined) {
   if (!userId) return "Unknown";
   const m = members.find((x) => x.user_id === userId);
-  return m?.user?.name ?? m?.user?.email ?? userId.slice(0, 6);
+  return m?.displayName ?? m?.user?.name ?? m?.user?.email ?? userId.slice(0, 6);
 }
 
 function computeUserShare(expense: ExpenseItem, userId: string): number | null {
@@ -183,28 +186,33 @@ export function ExpensesSection({
     }
   }
 
-  const total = (expenses as ExpenseItem[]).reduce((sum, e) => sum + e.amount, 0);
-
-  // Members with non-zero balances for the summary table
-  const balanceRows = members.filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01);
+  const hasExpenses = expenses.length > 0;
+  const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+  const balanceRows = members
+    .filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
+    .sort((a, b) => {
+      const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
+      const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
+      return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
+    });
 
   return (
     <div className="space-y-3">
-      {/* ── Expense list ──────────────────────────────────────────────── */}
+      {/* ── Zone 2: Expense List ─────────────────────────────────────── */}
       {/* Add expense button — always at the top */}
-      {canEdit && (
-        <button
-          data-testid="show-add-expense-btn"
-          onClick={() => setShowAdd(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
-        >
-          <Plus size={16} />
-          Add Expense
-        </button>
-      )}
+      <button
+        data-testid="show-add-expense-btn"
+        onClick={() => setShowAdd(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+        style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-accent)" }}
+      >
+        <Plus size={16} />
+        Add Expense
+      </button>
 
-      {expenses.length === 0 ? (
+      {!hasExpenses ? (
         <EmptyState
           icon={<Receipt className="h-10 w-10" />}
           headline="No expenses yet"
@@ -235,15 +243,19 @@ export function ExpensesSection({
                 >
                   <DollarSign size={14} style={{ color: "var(--color-bt-accent)" }} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                      {expense.title}
-                    </p>
+                    <div className="flex items-baseline gap-2">
+                      <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {expense.title}
+                      </p>
+                      {expense.date && (
+                        <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-x-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                       <span>Paid by {memberName(members, expense.paid_by_user_id)}</span>
                       <span>split {activeSplitCount} ways</span>
-                      {expense.date && (
-                        <span>{new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                      )}
                     </div>
                     {userSplit && (
                       <p className="mt-0.5 text-xs" style={{
@@ -305,43 +317,41 @@ export function ExpensesSection({
             })}
           </div>
 
-          {/* Totals — crew tab table style */}
-          <div>
-            <h2
-              className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Totals
-            </h2>
-            {/* Total row */}
-            <div
-              className="flex justify-between border-b px-1 py-2 text-xs font-medium"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              <span>Total</span>
-              <span style={{ color: "var(--color-bt-text)" }}>${total.toFixed(2)}</span>
+          {/* ── Balances ──────────────────────────────────────────────── */}
+          {balanceRows.length > 0 && (
+            <div>
+              <h2
+                className="mb-2 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Balances
+              </h2>
+              {balanceRows.map((m, i) => {
+                const bal = balances.get(m.user_id) ?? 0;
+                const isCurrentUser = m.user_id === currentUser?.id;
+                return (
+                  <div
+                    key={m.user_id}
+                    className="flex items-center justify-between border-b px-1 py-2.5"
+                    style={{
+                      borderColor: "var(--color-bt-border)",
+                      background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
+                    }}
+                  >
+                    <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                      {memberName(members, m.user_id)}
+                      {isCurrentUser && (
+                        <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
+                      )}
+                    </span>
+                    <span className="text-sm font-medium" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
+                      {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            {/* Balance rows */}
-            {balanceRows.map((m, i) => {
-              const bal = balances.get(m.user_id) ?? 0;
-              return (
-                <div
-                  key={m.user_id}
-                  className="flex items-center justify-between border-b px-1 py-2.5"
-                  style={{
-                    borderColor: "var(--color-bt-border)",
-                    background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
-                  }}
-                >
-                  <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{memberName(members, m.user_id)}</span>
-                  <span className="text-sm font-medium" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
-                    {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
+          )}
         </>
       )}
 

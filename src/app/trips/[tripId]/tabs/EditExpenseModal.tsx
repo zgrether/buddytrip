@@ -26,6 +26,7 @@ export function EditExpenseModal({
   const [title, setTitle] = useState(expense.title);
   const [amount, setAmount] = useState(String(expense.amount));
   const [date, setDate] = useState(expense.date ?? "");
+  const [paidByUserId, setPaidByUserId] = useState(expense.paid_by_user_id);
 
   // Pre-populate from current splits
   const [includedIds, setIncludedIds] = useState<string[]>(() =>
@@ -58,6 +59,7 @@ export function EditExpenseModal({
                 ...(vars.title !== undefined ? { title: vars.title } : {}),
                 ...(vars.amount !== undefined ? { amount: vars.amount } : {}),
                 ...(vars.date !== undefined ? { date: vars.date } : {}),
+                ...(vars.paidByUserId !== undefined ? { paid_by_user_id: vars.paidByUserId } : {}),
                 splits: vars.splits.map((s) => ({
                   expense_id: vars.expenseId,
                   user_id: s.userId,
@@ -115,11 +117,12 @@ export function EditExpenseModal({
       splits.push({ userId: uid, amount: 0, optedOut: true });
     }
 
-    // Include title/amount/date only if changed
+    // Include fields only if changed
     const titleChanged = title.trim() !== expense.title ? title.trim() : undefined;
     const amountChanged = amountNum !== expense.amount ? amountNum : undefined;
     const dateVal = date || null;
     const dateChanged = dateVal !== (expense.date ?? null) ? dateVal : undefined;
+    const paidByChanged = paidByUserId !== expense.paid_by_user_id ? paidByUserId : undefined;
 
     updateSplits.mutate({
       tripId,
@@ -128,6 +131,7 @@ export function EditExpenseModal({
       ...(titleChanged !== undefined ? { title: titleChanged } : {}),
       ...(amountChanged !== undefined ? { amount: amountChanged } : {}),
       ...(dateChanged !== undefined ? { date: dateChanged } : {}),
+      ...(paidByChanged !== undefined ? { paidByUserId: paidByChanged } : {}),
     });
   }
 
@@ -159,30 +163,56 @@ export function EditExpenseModal({
         {/* Editable expense info */}
         <div className="mb-4 space-y-2">
           <div className="flex gap-3">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Description"
-              className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            />
-            <CurrencyInput
-              value={amount}
-              onChange={setAmount}
-              className="w-28 flex-shrink-0"
-            />
+            <div className="min-w-0 flex-1">
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Expense</label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Description"
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              />
+            </div>
+            <div className="w-36 flex-shrink-0">
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Cost</label>
+              <CurrencyInput
+                value={amount}
+                onChange={setAmount}
+                className="w-full"
+              />
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <p className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Paid by {memberName(expense.paid_by_user_id)}
-            </p>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="rounded-lg border px-2 py-1 text-xs outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            />
+            <div className="min-w-0 flex-1">
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Paid by</label>
+              <div className="relative">
+                <select
+                  value={paidByUserId}
+                  onChange={(e) => setPaidByUserId(e.target.value)}
+                  className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm outline-none"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                >
+                  {members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {memberName(m.user_id)}
+                    </option>
+                  ))}
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-bt-text-dim)" }} />
+                </svg>
+              </div>
+            </div>
+            <div className="w-36 flex-shrink-0">
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              />
+            </div>
           </div>
         </div>
 

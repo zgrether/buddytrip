@@ -68,7 +68,7 @@ export const expensesRouter = router({
         ).min(1),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
       const { data: expense, error } = await ctx.supabase
         .from("expenses")
@@ -125,6 +125,7 @@ export const expensesRouter = router({
         title: z.string().min(1).max(200).optional(),
         amount: z.number().min(0).optional(),
         date: z.string().nullable().optional(),
+        paidByUserId: z.string().optional(),
         splits: z.array(
           z.object({
             userId: z.string(),
@@ -136,12 +137,13 @@ export const expensesRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // Update expense title/amount/date if provided
-      if (input.title !== undefined || input.amount !== undefined || input.date !== undefined) {
+      // Update expense fields if provided
+      if (input.title !== undefined || input.amount !== undefined || input.date !== undefined || input.paidByUserId !== undefined) {
         const updates: Record<string, unknown> = {};
         if (input.title !== undefined) updates.title = input.title;
         if (input.amount !== undefined) updates.amount = input.amount;
         if (input.date !== undefined) updates.date = input.date;
+        if (input.paidByUserId !== undefined) updates.paid_by_user_id = input.paidByUserId;
         const { error: expErr } = await ctx.supabase
           .from("expenses")
           .update(updates)
