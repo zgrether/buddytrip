@@ -59,7 +59,12 @@ export const expensesRouter = router({
         title: z.string().min(1).max(200),
         amount: z.number().min(0),
         paidByUserId: z.string(),
-        splitAmong: z.array(z.string()).min(1),
+        splitAmong: z.array(
+          z.object({
+            userId: z.string(),
+            amount: z.number().min(0).nullable().optional(),
+          })
+        ).min(1),
       })
     )
     .use(requireTripRole("Planner"))
@@ -83,11 +88,11 @@ export const expensesRouter = router({
         });
       }
 
-      // Insert splits (even split by default — amount = null)
-      const splitRows = input.splitAmong.map((userId) => ({
+      // Insert splits — amount null means even split computed at read time
+      const splitRows = input.splitAmong.map((s) => ({
         expense_id: input.id,
-        user_id: userId,
-        amount: null,
+        user_id: s.userId,
+        amount: s.amount ?? null,
       }));
 
       const { error: splitErr } = await ctx.supabase

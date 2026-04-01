@@ -7,7 +7,6 @@ import {
   Clock,
   Utensils,
   Car,
-  Plus,
   X,
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";

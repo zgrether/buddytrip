@@ -25,7 +25,7 @@ describe("expenses router", () => {
       title: "Golf Round",
       amount: 350,
       paidByUserId: ctx.user.id,
-      splitAmong: [ctx.user.id, member.id],
+      splitAmong: [{ userId: ctx.user.id }, { userId: member.id }],
     });
     expect(exp.title).toBe("Golf Round");
     expenseId = exp.id;
@@ -41,7 +41,7 @@ describe("expenses router", () => {
         title: "Nope",
         amount: 100,
         paidByUserId: member.id,
-        splitAmong: [member.id],
+        splitAmong: [{ userId: member.id }],
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
