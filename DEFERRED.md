@@ -218,15 +218,6 @@ requires SQL INSERT. Build an admin form at `/admin/catalog`.
 
 ---
 
-### Per-person expense split overrides
-
-`expense_splits.amount` column exists and is nullable. When null, split
-is even. Per-person override amounts are in the schema but not in the UI.
-
-**Effort:** low — column exists, just needs UI in expense edit flow.
-
----
-
 ### "Frequently trips with" crew shortcut
 
 Query `trip_members` for users who appear most frequently across the
