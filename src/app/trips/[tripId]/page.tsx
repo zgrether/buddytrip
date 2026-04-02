@@ -91,7 +91,7 @@ function EditTripDetailsModal({
             disabled={updateTrip.isPending}
             onClick={() => updateTrip.mutate({
               tripId: trip.id,
-              description: description.trim() || undefined,
+              description: description.trim() || null,
             })}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
