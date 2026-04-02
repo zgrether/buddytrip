@@ -253,9 +253,9 @@ test.describe("TripDetail — SPEC 2 structure", () => {
 
     await settingsBtn.click();
 
-    // Settings modal should appear with edit form and delete button
-    await expect(page.getByTestId("edit-title")).toBeVisible();
-    await expect(page.getByTestId("delete-trip-btn")).toBeVisible();
+    // Settings modal should appear with trip name input and delete button
+    await expect(page.getByTestId("settings-trip-name")).toBeVisible();
+    await expect(page.getByTestId("settings-delete-btn")).toBeVisible();
   });
 
   test("switches to Crew tab and shows members list", async ({ page }) => {

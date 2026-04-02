@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MoreHorizontal, Save, X } from "lucide-react";
+import { MoreHorizontal, Lock, Save, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -18,6 +18,7 @@ import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
+import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
 // ── EditTripDetailsModal ──────────────────────────────────────────────────
@@ -26,12 +27,11 @@ function EditTripDetailsModal({
   trip,
   onClose,
 }: {
-  trip: { id: string; title: string; description?: string | null };
+  trip: { id: string; description?: string | null };
   onClose: () => void;
 }) {
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
-  const [title, setTitle] = useState(trip.title);
   const [description, setDescription] = useState(trip.description ?? "");
 
   const updateTrip = trpc.trips.update.useMutation({
@@ -55,7 +55,7 @@ function EditTripDetailsModal({
       >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Edit Trip
+            Edit description
           </h2>
           <button
             onClick={onClose}
@@ -64,17 +64,6 @@ function EditTripDetailsModal({
           >
             <X size={18} />
           </button>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Name</label>
-          <input
-            data-testid="edit-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-          />
         </div>
 
         <div>
@@ -99,10 +88,9 @@ function EditTripDetailsModal({
           </button>
           <button
             data-testid="save-trip-btn"
-            disabled={!title.trim() || updateTrip.isPending}
+            disabled={updateTrip.isPending}
             onClick={() => updateTrip.mutate({
               tripId: trip.id,
-              title: title.trim(),
               description: description.trim() || undefined,
             })}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
@@ -238,6 +226,7 @@ export default function TripDetailPage() {
   }
 
   const status = getTripStatus(trip);
+  const tripIsReadOnly = checkReadOnly(trip);
   // When exploring (comparison_mode=true, no lock), don't fall back to
   // trip.location — lockDestination writes to that column and unlockDestination
   // doesn't clear it, so the old destination would bleed through to the header.
@@ -246,7 +235,10 @@ export default function TripDetailPage() {
   const showComp = !!trip.event_id || compUnlocked;
   const isLocked = !!trip.locked_destination_title;
 
-  const settingsButton = isOwner ? (
+  // Effective canEdit: forced false when read-only
+  const effectiveCanEdit = tripIsReadOnly ? false : canEdit;
+
+  const settingsButton = (canEdit && !tripIsReadOnly) ? (
     <button
       data-testid="trip-settings-btn"
       onClick={() => setShowSettings(true)}
@@ -302,28 +294,40 @@ export default function TripDetailPage() {
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
       <main className="mx-auto max-w-[896px] pb-24 pt-4">
+        {/* Read-only banner */}
+        {tripIsReadOnly && activeTab === "home" && (
+          <div
+            className="mx-4 mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
+            style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+          >
+            <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+            <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              This trip is read-only
+            </span>
+          </div>
+        )}
         {activeTab === "home" && (
           <HomeTab
             trip={trip}
             role={role}
-            canEdit={canEdit}
+            canEdit={effectiveCanEdit}
             isOwner={isOwner}
             onTabChange={(tab) => setActiveTab(tab as TabId)}
-            onEdit={canEdit ? () => setShowEditDetails(true) : undefined}
-            onEnableComp={canEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+            onEdit={effectiveCanEdit ? () => setShowEditDetails(true) : undefined}
+            onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
           />
         )}
         {activeTab === "schedule" && (
-          <ScheduleTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
+          <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
         )}
         {activeTab === "crew" && (
-          <CrewTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
+          <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
         )}
         {activeTab === "expenses" && (
-          <ExpensesTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
+          <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
         )}
         {activeTab === "comp" && (
-          <CompTab trip={trip} role={role} canEdit={canEdit} isOwner={isOwner} />
+          <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
         )}
       </main>
 
@@ -339,10 +343,11 @@ export default function TripDetailPage() {
       )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
-      {showSettings && (
+      {showSettings && role && (
         <TripSettingsModal
-          trip={trip}
-          isOwner={isOwner}
+          tripId={tripId}
+          tripName={trip.title}
+          viewerRole={role}
           onClose={() => setShowSettings(false)}
         />
       )}
