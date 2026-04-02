@@ -17,6 +17,8 @@ interface TripRow {
   start_date?: string | null;
   end_date?: string | null;
   locked_destination_title?: string | null;
+  trip_status_override?: string | null;
+  saved_at?: string | null;
   updated_at?: string | null;
   myRole?: TripRole | null;
   myStatus?: string | null;
@@ -51,6 +53,9 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   );
   sections.past.sort((a, b) =>
     (b.end_date ?? "").localeCompare(a.end_date ?? "")
+  );
+  sections.saved.sort((a, b) =>
+    (b.saved_at ?? "").localeCompare(a.saved_at ?? "")
   );
   return sections;
 }
@@ -214,6 +219,14 @@ export default function DashboardClient() {
               trips={sections.planning}
               unreadByTrip={unreadByTrip}
             />
+
+            {sections.saved.length > 0 && (
+              <TripSection
+                label="Saved"
+                trips={sections.saved}
+                unreadByTrip={unreadByTrip}
+              />
+            )}
 
             {/* Past — collapsible */}
             {sections.past.length > 0 && (
