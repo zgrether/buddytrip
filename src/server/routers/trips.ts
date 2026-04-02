@@ -326,29 +326,135 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // archive — Owner only
+  // renameTripName — Owner or Planner can rename
   // -----------------------------------------------------------------------
-  archive: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx }) => {
-      // Archiving = soft delete via notes or a flag; for now we use
-      // the delete approach since schema doesn't have an archived column.
-      // The spec says "Archive trip" but schema has no status/archived field.
-      // We'll delete the trip for now (matches "Delete trip" permission).
-      const { error } = await ctx.supabase
+  renameTripName: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        name: z.string().min(1).max(100).transform((s) => s.trim()),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
         .from("trips")
-        .delete()
-        .eq("id", ctx.tripId);
+        .update({ title: input.name })
+        .eq("id", ctx.tripId)
+        .select("id, title")
+        .single();
 
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to archive trip",
+          message: "Failed to rename trip",
+        });
+      }
+
+      return { id: data.id, name: data.title };
+    }),
+
+  // -----------------------------------------------------------------------
+  // transferOwnership — Owner only
+  // -----------------------------------------------------------------------
+  transferOwnership: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        newOwnerId: z.string(),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user!.id;
+
+      if (input.newOwnerId === userId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot transfer ownership to yourself",
+        });
+      }
+
+      // Verify new owner is a trip member
+      const { data: member } = await ctx.supabase
+        .from("trip_members")
+        .select("user_id, role")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.newOwnerId)
+        .single();
+
+      if (!member) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User is not a member of this trip",
+        });
+      }
+
+      // Step 1: Promote new owner FIRST (current user is still Owner
+      // so RLS has_trip_role('Owner') passes for this update)
+      const { error: promoteErr } = await ctx.supabase
+        .from("trip_members")
+        .update({ role: "Owner" })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.newOwnerId);
+
+      if (promoteErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to promote new owner",
+        });
+      }
+
+      // Step 2: Demote current owner to Planner (self-update passes
+      // RLS user_id = auth.uid() clause)
+      const { error: demoteErr } = await ctx.supabase
+        .from("trip_members")
+        .update({ role: "Planner" })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", userId);
+
+      if (demoteErr) {
+        // Rollback: restore new owner to their previous role
+        await ctx.supabase
+          .from("trip_members")
+          .update({ role: member.role })
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", input.newOwnerId);
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to demote current owner",
         });
       }
 
       return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // saveTrip — Owner only, moves trip to Saved section
+  // -----------------------------------------------------------------------
+  saveTrip: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx }) => {
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({
+          trip_status_override: "saved",
+          saved_at: new Date().toISOString(),
+        })
+        .eq("id", ctx.tripId)
+        .select()
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to save trip",
+        });
+      }
+
+      return data;
     }),
 
   // -----------------------------------------------------------------------

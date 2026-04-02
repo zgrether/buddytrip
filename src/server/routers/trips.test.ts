@@ -173,6 +173,95 @@ describe("trips router", () => {
     expect(plannerMember!.role).toBe("Planner");
   });
 
+  // renameTripName
+  it("renameTripName — owner can rename", async () => {
+    const caller = ctx.caller();
+    const result = await caller.trips.renameTripName({ tripId, name: "Renamed Trip" });
+    expect(result.name).toBe("Renamed Trip");
+  });
+
+  it("renameTripName — planner can rename", async () => {
+    const caller = ctx.callerAs("planner");
+    const result = await caller.trips.renameTripName({ tripId, name: "Planner Renamed" });
+    expect(result.name).toBe("Planner Renamed");
+  });
+
+  it("renameTripName — member cannot rename", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.trips.renameTripName({ tripId, name: "Hacked" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  // transferOwnership
+  it("transferOwnership — owner can transfer to member", async () => {
+    const caller = ctx.caller();
+    const member = ctx.getUser("member");
+    const result = await caller.trips.transferOwnership({ tripId, newOwnerId: member.id });
+    expect(result.success).toBe(true);
+
+    // Verify roles swapped
+    const { data: rows } = await ctx.admin
+      .from("trip_members")
+      .select("user_id, role")
+      .eq("trip_id", tripId)
+      .in("user_id", [ctx.user.id, member.id]);
+    const oldOwner = rows?.find((r) => r.user_id === ctx.user.id);
+    const newOwner = rows?.find((r) => r.user_id === member.id);
+    expect(oldOwner?.role).toBe("Planner");
+    expect(newOwner?.role).toBe("Owner");
+
+    // Transfer back so subsequent tests work (owner is now the member user)
+    const memberCaller = ctx.callerAs("member"); // member is now Owner
+    await memberCaller.trips.transferOwnership({ tripId, newOwnerId: ctx.user.id });
+  });
+
+  it("transferOwnership — cannot transfer to self", async () => {
+    const caller = ctx.caller();
+    await expect(
+      caller.trips.transferOwnership({ tripId, newOwnerId: ctx.user.id })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("transferOwnership — planner cannot transfer", async () => {
+    const caller = ctx.callerAs("planner");
+    const member = ctx.getUser("member");
+    await expect(
+      caller.trips.transferOwnership({ tripId, newOwnerId: member.id })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("transferOwnership — cannot transfer to non-member", async () => {
+    const caller = ctx.caller();
+    const outsider = ctx.getUser("outsider");
+    await expect(
+      caller.trips.transferOwnership({ tripId, newOwnerId: outsider.id })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  // saveTrip
+  it("saveTrip — owner can save", async () => {
+    const caller = ctx.caller();
+    const result = await caller.trips.saveTrip({ tripId });
+    expect(result.trip_status_override).toBe("saved");
+    expect(result.saved_at).toBeTruthy();
+  });
+
+  it("saveTrip — planner cannot save", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.trips.saveTrip({ tripId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  // Clear saved status so delete works normally
+  it("setup — clear saved status", async () => {
+    await ctx.admin
+      .from("trips")
+      .update({ trip_status_override: null, saved_at: null })
+      .eq("id", tripId);
+  });
+
   // delete
   it("delete — member cannot delete", async () => {
     const caller = ctx.callerAs("member");
