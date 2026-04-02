@@ -390,21 +390,8 @@ export const tripsRouter = router({
         });
       }
 
-      // Step 1: Demote current owner to Planner
-      const { error: demoteErr } = await ctx.supabase
-        .from("trip_members")
-        .update({ role: "Planner" })
-        .eq("trip_id", ctx.tripId)
-        .eq("user_id", userId);
-
-      if (demoteErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to demote current owner",
-        });
-      }
-
-      // Step 2: Promote new owner
+      // Step 1: Promote new owner FIRST (current user is still Owner
+      // so RLS has_trip_role('Owner') passes for this update)
       const { error: promoteErr } = await ctx.supabase
         .from("trip_members")
         .update({ role: "Owner" })
@@ -412,16 +399,31 @@ export const tripsRouter = router({
         .eq("user_id", input.newOwnerId);
 
       if (promoteErr) {
-        // Rollback: restore current user as Owner
-        await ctx.supabase
-          .from("trip_members")
-          .update({ role: "Owner" })
-          .eq("trip_id", ctx.tripId)
-          .eq("user_id", userId);
-
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to promote new owner",
+        });
+      }
+
+      // Step 2: Demote current owner to Planner (self-update passes
+      // RLS user_id = auth.uid() clause)
+      const { error: demoteErr } = await ctx.supabase
+        .from("trip_members")
+        .update({ role: "Planner" })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", userId);
+
+      if (demoteErr) {
+        // Rollback: restore new owner to their previous role
+        await ctx.supabase
+          .from("trip_members")
+          .update({ role: member.role })
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", input.newOwnerId);
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to demote current owner",
         });
       }
 
