@@ -1,7 +1,7 @@
 import type { FC } from "react";
-import { parseLocalDate } from "@/lib/dates";
+import { getEffectiveStatus, type TripDisplayStatus } from "@/lib/tripStatus";
 
-export type TripStatus = "planning" | "upcoming" | "past";
+export type TripStatus = TripDisplayStatus;
 
 interface StatusBadgeProps {
   status: TripStatus;
@@ -15,6 +15,7 @@ const CONFIG: Record<
   planning: { label: "PLANNING", bg: "var(--color-bt-blue-bg)", text: "var(--color-bt-planning)" },
   upcoming: { label: "UPCOMING", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
   past: { label: "PAST", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
+  saved: { label: "SAVED", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
 };
 
 export const StatusBadge: FC<StatusBadgeProps> = ({ status, className }) => {
@@ -33,10 +34,7 @@ export function getTripStatus(trip: {
   start_date?: string | null;
   end_date?: string | null;
   locked_destination_title?: string | null;
+  trip_status_override?: string | null;
 }): TripStatus {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (trip.end_date && parseLocalDate(trip.end_date) < today) return "past";
-  if (trip.locked_destination_title && trip.start_date) return "upcoming";
-  return "planning";
+  return getEffectiveStatus(trip);
 }

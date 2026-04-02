@@ -37,6 +37,7 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
     planning: [],
     upcoming: [],
     past: [],
+    saved: [],
   };
   for (const trip of trips) {
     sections[getTripStatus(trip)].push(trip);
