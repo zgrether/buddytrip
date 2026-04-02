@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import { StatusBadge, getTripStatus } from "./StatusBadge";
 import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
+import { isGrayscale as checkGrayscale } from "@/lib/tripStatus";
 import { trpc } from "@/lib/trpc-client";
 import type { TripRole } from "@/server/middleware";
 import { getLocationInfo } from "@/lib/locationUtils";
@@ -19,6 +20,7 @@ interface Trip {
   start_date?: string | null;
   end_date?: string | null;
   locked_destination_title?: string | null;
+  trip_status_override?: string | null;
   comparison_mode?: boolean | null;
   myRole?: TripRole | null;
 }
@@ -51,6 +53,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const status = getTripStatus(trip);
+  const grayscale = checkGrayscale(trip);
 
   // Show locked destination when locked; suppress trip.location when in comparison mode
   // (same logic as the trip detail page to avoid stale destination bleeding through
@@ -86,6 +89,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
           ? (status === "past" ? "var(--color-bt-card)" : temporalGradient(null, true))
           : "var(--color-bt-card)",
         border: isDark ? "none" : "1px solid var(--color-bt-border)",
+        filter: grayscale ? "grayscale(100%)" : undefined,
         boxShadow: isDark
           ? "var(--shadow-card)"
           : status !== "past"
