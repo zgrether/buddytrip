@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -13,6 +13,23 @@ type InviteState =
   | { kind: "success"; tripId: string; tripName: string };
 
 export default function InvitePage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="flex min-h-screen items-center justify-center"
+          style={{ background: "var(--color-bt-base)" }}
+        >
+          <Loader2 size={32} className="animate-spin" style={{ color: "var(--color-bt-accent)" }} />
+        </div>
+      }
+    >
+      <InviteContent />
+    </Suspense>
+  );
+}
+
+function InviteContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
