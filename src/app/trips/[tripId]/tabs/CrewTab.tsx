@@ -83,7 +83,7 @@ function CrewMemberRow({
   });
 
   const display = m.displayName;
-  const roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
+  const _roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
   const rsvpCfg = m.status ? RSVP_LABEL[m.status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
   const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
@@ -315,7 +315,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showEmailPanel, setShowEmailPanel] = useState(false);
 
-  const addMember = trpc.tripMembers.add.useMutation();
   const createGhost = trpc.ghostCrew.create.useMutation();
   const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
 

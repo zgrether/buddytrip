@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 interface UserAvatarProps {
   name: string | null;
   avatarUrl: string | null;
@@ -23,11 +25,13 @@ export function UserAvatar({ name, avatarUrl, size = "md", sizePx }: UserAvatarP
 
   if (avatarUrl) {
     return (
-      <img
+      <Image
         src={avatarUrl}
         alt={name ?? "User avatar"}
+        width={px}
+        height={px}
         className="flex-shrink-0 rounded-full object-cover"
-        style={{ width: px, height: px }}
+        unoptimized
       />
     );
   }

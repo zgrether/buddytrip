@@ -16,13 +16,12 @@ export default function InvitePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
-  const [state, setState] = useState<InviteState>({ kind: "loading" });
+  const [state, setState] = useState<InviteState>(
+    token ? { kind: "loading" } : { kind: "error", message: "No invite token provided." }
+  );
 
   useEffect(() => {
-    if (!token) {
-      setState({ kind: "error", message: "No invite token provided." });
-      return;
-    }
+    if (!token) return;
 
     async function processInvite() {
       const supabase = createClient();

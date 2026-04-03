@@ -728,7 +728,7 @@ function TeamsSection({
           <div className="space-y-2">
             {members.map((m) => {
               const assignedTeamId = assignmentByMember.get(m.memberId);
-              const assignedTeam = teams.find((t) => t.id === assignedTeamId);
+              const _assignedTeam = teams.find((t) => t.id === assignedTeamId);
               return (
                 <div
                   key={m.memberId}
