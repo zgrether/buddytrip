@@ -110,10 +110,13 @@ describe("tripMembers router", () => {
   });
 
   it("inviteByEmail — existing real user gets added directly", async () => {
+    // Use a fresh trip so outsider isn't already a member
+    const freshTripId = await ctx.createTrip("Invite Fresh Trip");
+    await ctx.addTripMember(freshTripId, "planner", "Planner");
     const caller = ctx.callerAs("planner");
     const outsider = ctx.getUser("outsider");
     const result = await caller.tripMembers.inviteByEmail({
-      tripId,
+      tripId: freshTripId,
       email: outsider.email,
     });
     expect(result.status).toBe("added_existing");
