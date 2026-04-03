@@ -205,7 +205,7 @@ export const tripsRouter = router({
       z.object({
         tripId: z.string(),
         title: z.string().min(1).max(200).optional(),
-        description: z.string().max(2000).nullable().optional(),
+        description: z.string().max(2000).optional(),
         location: z.string().max(500).nullable().optional(),
         costTier: z.enum(["$", "$$", "$$$", "$$$$"]).nullable().optional(),
         imageUrl: z.string().nullable().optional(),
