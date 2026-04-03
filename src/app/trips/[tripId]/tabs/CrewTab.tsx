@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Ghost, Mail, X } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -316,6 +317,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
   const addMember = trpc.tripMembers.add.useMutation();
   const createGhost = trpc.ghostCrew.create.useMutation();
+  const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -336,13 +338,9 @@ export function CrewTab({ trip, canEdit }: TabProps) {
     setIsAdding(true);
     try {
       if (email) {
-        const existing = await utils.users.search.fetch({ query: email });
-        const realUser = existing?.find((u) => !u.is_guest);
-        if (realUser) {
-          await addMember.mutateAsync({ tripId, userId: realUser.id, role: "Member", status: "draft" });
-        } else {
-          await createGhost.mutateAsync({ tripId, name, email, role: "Member" });
-        }
+        // Email provided: use inviteByEmail which handles both
+        // existing accounts (adds directly) and new users (creates invite + sends email)
+        await inviteByEmail.mutateAsync({ tripId, email, role: "Member" });
       } else {
         await createGhost.mutateAsync({ tripId, name, role: "Member" });
       }
@@ -438,7 +436,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
       {showEmailPanel && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "rgba(0,0,0,0.4)" }}
+          style={{ background: "var(--color-bt-overlay)" }}
           onClick={() => setShowEmailPanel(false)}
         >
           <div
@@ -447,24 +445,19 @@ export function CrewTab({ trip, canEdit }: TabProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <p className="mb-2 text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Send email to crew
+              Invite by email
             </p>
             <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Email sending will be available once the invite system is set up.
-              For now, copy the invite link to share manually.
+              Enter an email to send an invite. If they already have a BuddyTrip account, they&apos;ll be added directly.
             </p>
-            <button
-              onClick={() => {
-                navigator.clipboard
-                  .writeText(`${window.location.origin}/invite?trip=${tripId}`)
-                  .catch(() => {});
-                setShowEmailPanel(false);
-              }}
-              className="w-full rounded-xl py-2.5 text-sm font-semibold"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              Copy invite link
-            </button>
+            <CrewSearchInput
+              tripId={tripId}
+              defaultRole="Member"
+              defaultStatus="invited"
+              allowGhost
+              allowInvite
+              onAdded={() => setShowEmailPanel(false)}
+            />
           </div>
         </div>
       )}
