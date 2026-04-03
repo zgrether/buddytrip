@@ -62,18 +62,6 @@ historical records).
 
 ---
 
-### Expense settlement view
-
-Per-person balances are computed in `ExpensesSection`, but there's no
-Venmo-style "who owes who" net summary.
-
-**Approach:** compute net balances from `expenses` + `expense_splits` at
-query time. No new schema needed.
-
-**When:** before first real trip using the app for expenses.
-
----
-
 ### Magic link / social auth
 
 Currently email + password only. Magic link (passwordless) and Google
