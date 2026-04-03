@@ -64,6 +64,9 @@ export default function DashboardClient() {
   const router = useRouter();
   const [pastExpanded, setPastExpanded] = useState(false);
 
+  // ── Current user ──────────────────────────────────────────────────────────
+  const { data: me } = trpc.users.getMe.useQuery();
+
   // ── Trips ──────────────────────────────────────────────────────────────────
   const { data: trips = [], isLoading: tripsLoading } =
     trpc.trips.list.useQuery();

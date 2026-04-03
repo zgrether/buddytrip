@@ -109,12 +109,8 @@ export function CrewSearchInput({
     setAlreadyMemberName(null);
     try {
       const result = await inviteByEmail.mutateAsync({ tripId, email: email.trim(), role: defaultRole });
-      if (result.status === "already_member") {
+      if (result.status === "already_member" && "displayName" in result) {
         setAlreadyMemberName(result.displayName);
-        return;
-      }
-      if (result.status === "real_account_exists") {
-        setInviteError("A BuddyTrip account exists for that email — try searching for it.");
         return;
       }
       resetAll();

@@ -213,7 +213,7 @@ export const tripMembersRouter = router({
 
       // Fetch inviter name and trip name for email content
       const [inviterResult, tripResult] = await Promise.all([
-        ctx.supabase.from("users").select("name, nickname").eq("id", ctx.user.id).single(),
+        ctx.supabase.from("users").select("name, nickname").eq("id", ctx.user!.id).single(),
         ctx.supabase.from("trips").select("title").eq("id", ctx.tripId).single(),
       ]);
       const inviterName = inviterResult.data?.nickname ?? inviterResult.data?.name ?? "Someone";
@@ -278,7 +278,7 @@ export const tripMembersRouter = router({
           name: email.split("@")[0],
           email,
           is_guest: true,
-          created_by: ctx.user.id,
+          created_by: ctx.user!.id,
         });
         if (userError) {
           throw new TRPCError({
@@ -309,7 +309,7 @@ export const tripMembersRouter = router({
           trip_id: ctx.tripId,
           email,
           role: input.role,
-          created_by: ctx.user.id,
+          created_by: ctx.user!.id,
         })
         .select("token")
         .single();

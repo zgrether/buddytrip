@@ -96,7 +96,7 @@ describe("tripMembers router", () => {
       tripId,
       email: "newperson@example.com",
     });
-    expect(result.status).toBe("invited");
+    expect(result.status).toBe("invited_new");
     expect(result.userId).toBeTruthy();
   });
 
@@ -107,6 +107,16 @@ describe("tripMembers router", () => {
       email: "newperson@example.com",
     });
     expect(result.status).toBe("already_member");
+  });
+
+  it("inviteByEmail — existing real user gets added directly", async () => {
+    const caller = ctx.callerAs("planner");
+    const outsider = ctx.getUser("outsider");
+    const result = await caller.tripMembers.inviteByEmail({
+      tripId,
+      email: outsider.email,
+    });
+    expect(result.status).toBe("added_existing");
   });
 
   it("inviteByEmail — member cannot invite", async () => {
