@@ -1,7 +1,7 @@
 # BuddyTrip — Project Status
 
 *Single source of truth for project state, architecture, and what's next.*
-*Last updated: 2026-03-31*
+*Last updated: 2026-04-03*
 
 ---
 
@@ -24,8 +24,9 @@ leaderboard, in-app notifications.
 | Framework | Next.js 15 (App Router) |
 | UI | React 18 + Tailwind v4 |
 | API | tRPC v11 + TanStack Query v5 |
-| Database | Supabase (Postgres) — 26+ tables, 22 migrations |
-| Auth | Supabase Auth (email/password) |
+| Database | Supabase (Postgres) — 26+ tables, 28 migrations |
+| Auth | Supabase Auth (email/password, Google OAuth, magic link) |
+| Email | Resend (invite emails) |
 | Realtime | Supabase Realtime (chat, leaderboard, notifications) |
 | Validation | Zod |
 | Icons | Lucide React |

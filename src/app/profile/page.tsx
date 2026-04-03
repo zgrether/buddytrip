@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, startTransition } from "react";
+import { useState, useEffect, useRef, startTransition } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Save } from "lucide-react";
+import { Camera, LogOut, Save } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
 import { TopNav } from "@/components/TopNav";
+import { UserAvatar } from "@/components/UserAvatar";
 
 // ── ProfilePage ───────────────────────────────────────────────────────────
 
@@ -29,6 +30,9 @@ export default function ProfilePage() {
   }, [me?.id]);
   const [saved, setSaved] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const updateMe = trpc.users.updateMe.useMutation({
     onSuccess: () => {
@@ -54,7 +58,50 @@ export default function ProfilePage() {
     router.push("/login");
   };
 
-  const initial = ((me?.name ?? me?.email) || "?").charAt(0).toUpperCase();
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !me) return;
+    setAvatarError("");
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Image must be under 5MB.");
+      return;
+    }
+
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const allowed = ["jpg", "jpeg", "png", "webp", "gif"];
+    if (!allowed.includes(ext)) {
+      setAvatarError("Only jpg, png, webp, or gif files are allowed.");
+      return;
+    }
+
+    setAvatarUploading(true);
+    try {
+      const supabase = createClient();
+      const filePath = `${me.id}/avatar.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      // Append timestamp to bust cache
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+      await updateMe.mutateAsync({ avatar_url: publicUrl });
+      utils.users.getMe.invalidate();
+    } catch {
+      setAvatarError("Failed to upload. Please try again.");
+    } finally {
+      setAvatarUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div
@@ -75,13 +122,49 @@ export default function ProfilePage() {
           <div key={me?.id ?? "loading"} className="space-y-6">
             {/* Avatar + identity */}
             <div className="flex flex-col items-center gap-3 py-4">
-              <div
+              <button
                 data-testid="profile-avatar"
-                className="flex h-20 w-20 items-center justify-center rounded-full text-3xl font-bold"
-                style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={avatarUploading}
+                className="group relative"
               >
-                {initial}
-              </div>
+                {avatarUploading ? (
+                  <div
+                    className="flex items-center justify-center rounded-full"
+                    style={{ width: 80, height: 80, background: "var(--color-bt-card-raised)" }}
+                  >
+                    <div
+                      className="h-6 w-6 animate-spin rounded-full border-2"
+                      style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <UserAvatar
+                      name={me?.name ?? me?.email ?? null}
+                      avatarUrl={me?.avatar_url ?? null}
+                      sizePx={80}
+                    />
+                    <div
+                      className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100"
+                      style={{ background: "var(--color-bt-overlay)" }}
+                    >
+                      <Camera size={20} style={{ color: "#fff" }} />
+                    </div>
+                  </>
+                )}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={handleAvatarUpload}
+              />
+              {avatarError && (
+                <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{avatarError}</p>
+              )}
               <div className="text-center">
                 {me?.name && (
                   <p

@@ -195,9 +195,9 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // inviteByEmail — Planner/Owner can invite someone by email who has no
-  //                 BuddyTrip account yet. Creates a guest user row + a
-  //                 trip_members row with status 'invited'.
+  // inviteByEmail — Planner/Owner can invite someone by email.
+  //   - If a real account exists: adds them to the trip + sends notification
+  //   - If no account: creates guest row + invites row + sends invite email
   // -----------------------------------------------------------------------
   inviteByEmail: authedProcedure
     .input(
@@ -211,31 +211,74 @@ export const tripMembersRouter = router({
     .mutation(async ({ ctx, input }) => {
       const email = input.email.trim().toLowerCase();
 
-      // Check if a real (non-guest) account already exists for this email
+      // Fetch inviter name and trip name for email content
+      const [inviterResult, tripResult] = await Promise.all([
+        ctx.supabase.from("users").select("name, nickname").eq("id", ctx.user!.id).single(),
+        ctx.supabase.from("trips").select("title").eq("id", ctx.tripId).single(),
+      ]);
+      const inviterName = inviterResult.data?.nickname ?? inviterResult.data?.name ?? "Someone";
+      const tripName = tripResult.data?.title ?? "a trip";
+
+      // Check if a real (non-guest) account exists for this email
       const { data: existing } = await ctx.supabase
         .from("users")
         .select("id, name, nickname, is_guest")
         .eq("email", email)
         .maybeSingle();
 
+      // ── Path A: Real account exists — add to trip directly ──────────
       if (existing && !existing.is_guest) {
-        // Real account exists — caller should use the Find flow instead
-        return { status: "real_account_exists" as const };
+        // Check if already a member
+        const { data: alreadyMember } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .eq("user_id", existing.id)
+          .maybeSingle();
+
+        if (alreadyMember) {
+          const displayName = existing.nickname ?? existing.name ?? email;
+          return { status: "already_member" as const, displayName };
+        }
+
+        // Add to trip with status 'in'
+        await ctx.supabase.from("trip_members").insert({
+          trip_id: ctx.tripId,
+          user_id: existing.id,
+          role: input.role,
+          status: "in",
+        });
+
+        // Send notification email (best effort — don't fail on email error)
+        try {
+          const { sendInviteExistingUser } = await import("@/lib/email");
+          await sendInviteExistingUser({
+            toEmail: email,
+            toName: existing.nickname ?? existing.name ?? email.split("@")[0],
+            inviterName,
+            tripName,
+            tripId: ctx.tripId,
+          });
+        } catch {
+          // Email failure shouldn't block the mutation
+        }
+
+        return { status: "added_existing" as const };
       }
 
+      // ── Path B: No real account — create guest + invite ─────────────
       let guestUserId: string;
 
       if (existing?.is_guest) {
-        // Reuse the existing guest row
         guestUserId = existing.id;
       } else {
-        // Create a new guest user row
         const newId = crypto.randomUUID();
         const { error: userError } = await ctx.supabase.from("users").insert({
           id: newId,
           name: email.split("@")[0],
           email,
           is_guest: true,
+          created_by: ctx.user!.id,
         });
         if (userError) {
           throw new TRPCError({
@@ -246,10 +289,10 @@ export const tripMembersRouter = router({
         guestUserId = newId;
       }
 
-      // Check if already a member of this trip
+      // Check if already a member
       const { data: alreadyMember } = await ctx.supabase
         .from("trip_members")
-        .select("id")
+        .select("user_id")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", guestUserId)
         .maybeSingle();
@@ -259,24 +302,47 @@ export const tripMembersRouter = router({
         return { status: "already_member" as const, displayName };
       }
 
-      const { error } = await ctx.supabase
-        .from("trip_members")
+      // Create invite row with token
+      const { data: invite, error: inviteError } = await ctx.supabase
+        .from("invites")
         .insert({
-          id: crypto.randomUUID(),
           trip_id: ctx.tripId,
-          user_id: guestUserId,
+          email,
           role: input.role,
-          status: "invited",
-        });
+          created_by: ctx.user!.id,
+        })
+        .select("token")
+        .single();
 
-      if (error) {
+      if (inviteError || !invite) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to create invite. Please try again.",
         });
       }
 
-      return { status: "invited" as const, userId: guestUserId };
+      // Add to trip_members with status 'invited'
+      await ctx.supabase.from("trip_members").insert({
+        trip_id: ctx.tripId,
+        user_id: guestUserId,
+        role: input.role,
+        status: "invited",
+      });
+
+      // Send invite email (best effort)
+      try {
+        const { sendInviteNewUser } = await import("@/lib/email");
+        await sendInviteNewUser({
+          toEmail: email,
+          inviterName,
+          tripName,
+          token: invite.token,
+        });
+      } catch {
+        // Email failure shouldn't block the mutation
+      }
+
+      return { status: "invited_new" as const, userId: guestUserId };
     }),
 
   // -----------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, User } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
+import { UserAvatar } from "@/components/UserAvatar";
 
 export function UserMenu() {
   const router = useRouter();
@@ -13,7 +14,6 @@ export function UserMenu() {
   const ref = useRef<HTMLDivElement>(null);
 
   const { data: me } = trpc.users.getMe.useQuery();
-  const initial = ((me?.name ?? me?.email) || "?").charAt(0).toUpperCase();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -38,10 +38,13 @@ export function UserMenu() {
         aria-label="User menu"
         data-testid="user-menu-btn"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-colors hover:opacity-80"
-        style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
+        className="transition-opacity hover:opacity-80"
       >
-        {initial}
+        <UserAvatar
+          name={me?.name ?? me?.email ?? null}
+          avatarUrl={me?.avatar_url ?? null}
+          sizePx={36}
+        />
       </button>
 
       {open && (

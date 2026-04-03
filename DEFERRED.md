@@ -1,7 +1,7 @@
 # BuddyTrip — Deferred Work
 
 *Only genuinely open items. Organized by when they need to happen.*
-*Last updated: 2026-03-31*
+*Last updated: 2026-04-03*
 
 ---
 
@@ -9,67 +9,32 @@
 
 Items that must be resolved before onboarding real (non-test) users.
 
-### Invite email flow (stubbed)
+### Apple OAuth
 
-The invite flow creates a guest user and `trip_members` row, shows an
-"Invited" badge, and copies a link to clipboard — but no email is sent
-and the `/invite` route doesn't exist.
+Needs Apple Developer account and domain verification. Low effort
+once credentials are available — Supabase supports it natively.
 
-**What's already done:** guest `users` row created, `trip_members` row
-with `status: 'invited'`, invite link copied to clipboard (stub URL),
-`inviteByEmail` handles already-member case.
-
-**What's needed:**
-1. Choose email provider (recommend Resend — simple Next.js SDK, free tier)
-2. Create `invites` table (`id`, `trip_id`, `email`, `role`, `token`,
-   `created_by`, `created_at`, `accepted_at`, `expires_at`)
-3. Update `inviteByEmail` mutation to send email with token link
-4. Build `/invite?token=xxx` route — validate, check expiry, redirect
-   to signup (new user) or auto-add to trip (existing user)
-5. Post-signup hook — check pending invites matching email, auto-add
-
-**Depends on:** auth flow stable, email provider chosen.
+**When:** after domain purchase.
 
 ---
 
-### Guest-to-member account merge
+### Swap Resend sender domain
 
-When a user signs up with an email matching an `is_guest: true` row,
-their ghost ID needs to be merged with their new auth ID across 10+ tables:
-`trip_members`, `expense_splits`, `idea_votes`, `idea_comments`,
-`group_result_scores`, `player_hole_scores`, `team_assignments`,
-`notification_events`, `quick_info_tiles`, `messages`.
+Currently using `onboarding@resend.dev` (Resend's default shared
+sender). Swap to `noreply@buddytrip.app` (or similar) once a custom
+domain is purchased and verified with Resend.
 
-**Approach:** DB function triggered post-signup: find guest row matching
-email → update all FK references → set `is_guest = false`. Do NOT
-create a second users row.
-
-**Depends on:** invite email flow.
+**File:** `src/lib/email.ts` — change `FROM` constant.
 
 ---
 
-### Guest user deletion cascade
+### Admin email template management UI
 
-`expense_splits.user_id` has `ON DELETE CASCADE`. If a guest user is
-ever deleted, their expense splits disappear silently — settlement math
-breaks.
+Email templates are currently plain HTML strings in `src/lib/email.ts`.
+Build an admin UI at `/admin/emails` for editing templates without
+code changes.
 
-**Fix:** change to `RESTRICT` (block deletion if splits exist) or
-soft-delete users with `is_deleted` flag (preferred — preserves
-historical records).
-
-**When:** before building user account deletion or guest-to-member upgrade.
-
----
-
-### Magic link / social auth
-
-Currently email + password only. Magic link (passwordless) and Google
-OAuth would reduce signup friction significantly.
-
-**Effort:** low — Supabase supports both natively.
-
-**When:** before first public user onboarding push.
+**When:** after admin interface is built.
 
 ---
 
