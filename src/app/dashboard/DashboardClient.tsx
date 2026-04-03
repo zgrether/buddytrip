@@ -64,11 +64,6 @@ export default function DashboardClient() {
   const router = useRouter();
   const [pastExpanded, setPastExpanded] = useState(false);
 
-  // ── Current user (for avatar) ──────────────────────────────────────────────
-  const { data: me } = trpc.users.getMe.useQuery();
-  const _avatarInitial =
-    ((me?.name ?? me?.email) || "").charAt(0).toUpperCase() || undefined;
-
   // ── Trips ──────────────────────────────────────────────────────────────────
   const { data: trips = [], isLoading: tripsLoading } =
     trpc.trips.list.useQuery();

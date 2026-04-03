@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { UserAvatar } from "@/components/UserAvatar";
 import {
   Trophy,
   Users,
@@ -738,17 +739,7 @@ function TeamsSection({
                     border: "1px solid var(--color-bt-border)",
                   }}
                 >
-                  <div
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                    style={{
-                      background: assignedTeam
-                        ? `${assignedTeam.color}22`
-                        : "var(--color-bt-base)",
-                      color: assignedTeam?.color ?? "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    {m.displayName.charAt(0).toUpperCase()}
-                  </div>
+                  <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
                   <p
                     className="min-w-0 flex-1 truncate text-sm"
                     style={{ color: "var(--color-bt-text)" }}

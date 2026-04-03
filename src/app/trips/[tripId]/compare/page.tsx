@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { TopNav } from "@/components/TopNav";
+import { UserAvatar } from "@/components/UserAvatar";
 import {
   ThumbsUp,
   Lock,
@@ -117,17 +118,11 @@ function CommentsSection({ tripId, ideaId, variant = "thread" }: { tripId: strin
           )}
           {comments.map((c) => {
             const isMe = c.user_id === currentUser?.id;
-            const initials = isMe
-              ? (currentUser?.email ?? "?").charAt(0).toUpperCase()
-              : "?";
             const label = isMe ? (currentUser?.email ?? "You") : c.user_id.slice(0, 8);
             return (
               <div key={c.id} className="flex items-start gap-2">
-                <div
-                  className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                >
-                  {initials}
+                <div className="mt-0.5">
+                  <UserAvatar name={isMe ? (currentUser?.email ?? null) : c.user_id.slice(0, 8)} avatarUrl={null} size="sm" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="mb-0.5 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -199,20 +194,12 @@ function CommentsSection({ tripId, ideaId, variant = "thread" }: { tripId: strin
           {/* Comment list — first 3 auto-expanded */}
           {visibleComments.map((c) => {
             const isMe = c.user_id === currentUser?.id;
-            const initials = isMe
-              ? (currentUser?.email ?? "?").charAt(0).toUpperCase()
-              : "?";
             const label = isMe
               ? (currentUser?.email ?? "You")
               : c.user_id.slice(0, 8);
             return (
               <div key={c.id} className="flex gap-2">
-                <div
-                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                >
-                  {initials}
-                </div>
+                <UserAvatar name={isMe ? (currentUser?.email ?? null) : c.user_id.slice(0, 8)} avatarUrl={null} sizePx={28} />
                 <div
                   className="flex-1 rounded-xl px-3 py-2"
                   style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
@@ -249,12 +236,7 @@ function CommentsSection({ tripId, ideaId, variant = "thread" }: { tripId: strin
             }}
             className="flex gap-2"
           >
-            <div
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-              style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-            >
-              {(currentUser?.email ?? "?").charAt(0).toUpperCase()}
-            </div>
+            <UserAvatar name={currentUser?.email ?? null} avatarUrl={null} sizePx={28} />
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -1680,19 +1662,7 @@ function CrewBottomSheet({
 
               return (
                 <div key={m.user_id} className="flex items-center gap-2">
-                  <div
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                    style={{
-                      background: isPending
-                        ? 'var(--color-bt-past-bg)'
-                        : 'var(--color-bt-tag-bg)',
-                      color: isPending
-                        ? 'var(--color-bt-text-dim)'
-                        : 'var(--color-bt-accent)',
-                    }}
-                  >
-                    {display.charAt(0).toUpperCase()}
-                  </div>
+                  <UserAvatar name={display} avatarUrl={null} sizePx={28} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm"
                       style={{ color: isPending
@@ -1984,22 +1954,13 @@ export default function IdeaComparisonPage() {
                             const isPending = m.status === "invited";
                             const isMe = m.user_id === currentUser?.id;
                             const display = m.displayName;
-                            const initial = display.charAt(0).toUpperCase();
                             const roleColor =
                               m.role === "Owner"
                                 ? "var(--color-bt-owner)"
                                 : "var(--color-bt-planning)";
                             return (
                               <div key={m.user_id} className="flex items-center gap-2">
-                                <div
-                                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                                  style={{
-                                    background: isPending ? "var(--color-bt-past-bg)" : "var(--color-bt-tag-bg)",
-                                    color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
-                                  }}
-                                >
-                                  {initial}
-                                </div>
+                                <UserAvatar name={display} avatarUrl={null} size="sm" />
                                 <div className="min-w-0 flex-1">
                                   <p
                                     className="truncate text-xs"

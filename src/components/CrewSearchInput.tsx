@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Ghost, Link, Loader2, Plus, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { UserAvatar } from "@/components/UserAvatar";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -183,12 +184,7 @@ export function CrewSearchInput({
                 border: "1px solid color-mix(in srgb, var(--color-bt-accent) 30%, transparent)",
               }}
             >
-              <span
-                className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {displayName(user).charAt(0).toUpperCase()}
-              </span>
+              <UserAvatar name={displayName(user)} avatarUrl={null} sizePx={16} />
               {user.nickname ?? user.name?.split(" ")[0]}
               <Plus size={10} />
             </button>
@@ -233,12 +229,7 @@ export function CrewSearchInput({
           className="flex items-center gap-2 rounded-lg px-3 py-2"
           style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
         >
-          <div
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-          >
-            {displayName(search.user).charAt(0).toUpperCase()}
-          </div>
+          <UserAvatar name={displayName(search.user)} avatarUrl={null} size="sm" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
               {search.user.name ?? search.user.email}

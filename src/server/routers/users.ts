@@ -9,7 +9,7 @@ export const usersRouter = router({
   getMe: authedProcedure.query(async ({ ctx }) => {
     const { data, error } = await ctx.supabase
       .from("users")
-      .select("id, name, nickname, email")
+      .select("id, name, nickname, email, avatar_url")
       .eq("id", ctx.user.id)
       .single();
 
@@ -24,32 +24,34 @@ export const usersRouter = router({
   }),
 
   // -----------------------------------------------------------------------
-  // updateMe — update current user's name/nickname
+  // updateMe — update current user's name/nickname/avatar_url
   // -----------------------------------------------------------------------
   updateMe: authedProcedure
     .input(
       z.object({
         name: z.string().min(1).max(200).optional(),
         nickname: z.string().min(1).max(100).optional(),
+        avatar_url: z.string().url().optional().nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (!input.name && !input.nickname) {
+      if (!input.name && !input.nickname && input.avatar_url === undefined) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "At least one field (name or nickname) must be provided",
+          message: "At least one field must be provided",
         });
       }
 
-      const update: Record<string, string> = {};
+      const update: Record<string, string | null> = {};
       if (input.name) update.name = input.name;
       if (input.nickname) update.nickname = input.nickname;
+      if (input.avatar_url !== undefined) update.avatar_url = input.avatar_url;
 
       const { data, error } = await ctx.supabase
         .from("users")
         .update(update)
         .eq("id", ctx.user.id)
-        .select("id, name, nickname, email")
+        .select("id, name, nickname, email, avatar_url")
         .single();
 
       if (error) {

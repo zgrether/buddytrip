@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { UserAvatar } from "@/components/UserAvatar";
 import {
   Plus,
   Hotel,
@@ -1154,12 +1155,8 @@ function PlanningSection({
           {confirmedMembers.length > 0 && (
             <div className="flex -space-x-2">
               {confirmedMembers.slice(0, 5).map((m) => (
-                <div
-                  key={m.user_id}
-                  className="flex h-8 w-8 items-center justify-center rounded-full ring-2 ring-[var(--color-bt-card)] text-xs font-semibold"
-                  style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-                >
-                  {m.displayName.charAt(0).toUpperCase()}
+                <div key={m.user_id} className="rounded-full ring-2 ring-[var(--color-bt-card)]">
+                  <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
                 </div>
               ))}
               {confirmedMembers.length > 5 && (

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Ghost, Mail, X } from "lucide-react";
+import { UserAvatar } from "@/components/UserAvatar";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -81,7 +82,6 @@ function CrewMemberRow({
   });
 
   const display = m.displayName;
-  const initial = display.charAt(0).toUpperCase();
   const roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
   const rsvpCfg = m.status ? RSVP_LABEL[m.status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
@@ -145,12 +145,7 @@ function CrewMemberRow({
             <Ghost size={14} />
           </div>
         ) : (
-          <div
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-            style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-          >
-            {initial}
-          </div>
+          <UserAvatar name={display} avatarUrl={null} size="md" />
         )}
 
         {/* Name + email */}
