@@ -5,10 +5,19 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Swap to noreply@buddytrip.app once domain is purchased and verified
 const FROM = "BuddyTrip <onboarding@resend.dev>";
 
+const DEV_TO_EMAIL = process.env.RESEND_DEV_TO_EMAIL;
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_VERCEL_URL
     ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
     : "http://localhost:3000";
+
+function resolveRecipient(toEmail: string): string {
+  if (process.env.NODE_ENV === "development" && DEV_TO_EMAIL) {
+    return DEV_TO_EMAIL;
+  }
+  return toEmail;
+}
 
 // ── Email for existing BuddyTrip users (already have an account) ────────
 
@@ -29,7 +38,7 @@ export async function sendInviteExistingUser({
 
   return resend.emails.send({
     from: FROM,
-    to: toEmail,
+    to: resolveRecipient(toEmail),
     subject: `${inviterName} added you to ${tripName}`,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -69,7 +78,7 @@ export async function sendInviteNewUser({
 
   return resend.emails.send({
     from: FROM,
-    to: toEmail,
+    to: resolveRecipient(toEmail),
     subject: `${inviterName} invited you to join ${tripName} on BuddyTrip`,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
