@@ -112,6 +112,7 @@ export const tripsRouter = router({
       // INSERT ... RETURNING requires the SELECT policy to pass on the
       // new row, but the SELECT policy is `is_trip_member(id)` which is
       // false until we add the creator as a member in step 2.
+      const hasLockedDest = !!input.lockedDestination;
       const { error } = await ctx.supabase.from("trips").insert({
         id: input.id,
         title: input.title,
@@ -123,7 +124,10 @@ export const tripsRouter = router({
         comparison_mode: input.comparisonMode ?? false,
         locked_destination_title: input.lockedDestination?.title ?? null,
         locked_destination_location: input.lockedDestination?.location ?? null,
-        locked_destination_at: input.lockedDestination ? now : null,
+        locked_destination_at: hasLockedDest ? now : null,
+        // Stage: known destination → planning, otherwise → idea
+        stage: hasLockedDest ? "planning" : "idea",
+        ...(hasLockedDest ? { stage_advanced_to_planning_at: now } : {}),
       });
 
       if (error) {
