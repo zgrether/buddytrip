@@ -275,3 +275,108 @@ describe("trips router", () => {
     tripId = "";
   });
 });
+
+// ── Stage model tests ──────────────────────────────────────────────────
+
+describe("trips router — stage model", () => {
+  let ctx: TestContext;
+  let stageTrip: string;
+
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+  });
+
+  afterAll(async () => {
+    if (stageTrip) ctx.trackTrip(stageTrip);
+    await ctx.cleanup();
+  });
+
+  it("new trip without locked destination starts in idea stage", async () => {
+    const caller = ctx.caller();
+    const id = `test-stage-idea-${Date.now()}`;
+    const trip = await caller.trips.create({ id, title: "Stage Test" });
+    ctx.trackTrip(id);
+    stageTrip = id;
+
+    const fetched = await caller.trips.getById({ tripId: id });
+    expect((fetched as { stage: string }).stage).toBe("idea");
+  });
+
+  it("new trip with locked destination starts in planning stage", async () => {
+    const caller = ctx.caller();
+    const id = `test-stage-known-${Date.now()}`;
+    const trip = await caller.trips.create({
+      id,
+      title: "Known Dest Stage",
+      lockedDestination: { title: "Pebble Beach", location: "Monterey, CA" },
+    });
+    ctx.trackTrip(id);
+
+    const fetched = await caller.trips.getById({ tripId: id });
+    expect((fetched as { stage: string }).stage).toBe("planning");
+  });
+
+  it("advanceToPlanning — owner can advance from idea with locked destination", async () => {
+    // Lock destination on the idea trip
+    const caller = ctx.caller();
+    await caller.trips.lockDestination({
+      tripId: stageTrip,
+      title: "Kohler",
+      location: "Kohler, WI",
+    });
+
+    const result = await caller.trips.advanceToPlanning({ tripId: stageTrip });
+    expect(result.stage).toBe("planning");
+  });
+
+  it("advanceToPlanning — cannot advance from planning", async () => {
+    const caller = ctx.caller();
+    await expect(
+      caller.trips.advanceToPlanning({ tripId: stageTrip })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("advanceToPlanning — planner cannot call", async () => {
+    // Create a fresh idea trip for this test
+    const id = `test-stage-planner-${Date.now()}`;
+    const caller = ctx.caller();
+    await caller.trips.create({ id, title: "Planner Test" });
+    ctx.trackTrip(id);
+    await ctx.addTripMember(id, "planner", "Planner");
+    await caller.trips.lockDestination({
+      tripId: id,
+      title: "Test",
+      location: "Test",
+    });
+
+    const plannerCaller = ctx.callerAs("planner");
+    await expect(
+      plannerCaller.trips.advanceToPlanning({ tripId: id })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("advanceToGoing — requires locked date", async () => {
+    const caller = ctx.caller();
+    await expect(
+      caller.trips.advanceToGoing({ tripId: stageTrip, rsvpMessage: "Let's go!" })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("changeDestination — planner can change in planning stage", async () => {
+    await ctx.addTripMember(stageTrip, "planner", "Planner");
+    const caller = ctx.callerAs("planner");
+    const result = await caller.trips.changeDestination({
+      tripId: stageTrip,
+      destination: "Bandon Dunes",
+    });
+    expect(result.locked_destination_title).toBe("Bandon Dunes");
+  });
+
+  it("changeDestination — member cannot call", async () => {
+    await ctx.addTripMember(stageTrip, "member", "Member");
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.trips.changeDestination({ tripId: stageTrip, destination: "Hacked" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
