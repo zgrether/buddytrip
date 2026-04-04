@@ -19,6 +19,7 @@ import {
   MapPin,
   ThumbsUp,
   Loader2,
+  Minus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -503,6 +504,93 @@ function SetDestinationModal({
           Set Destination
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── ChangeDestinationModal ────────────────────────────────────────────────
+
+// ── RSVP Panel (GOING/NOW stage Home tab) ────────────────────────────────
+
+const RSVP_OPTIONS = [
+  { value: "in" as const, label: "In", icon: Check, selectedBg: "var(--color-bt-vote-yes)", selectedText: "var(--color-bt-vote-yes-text)" },
+  { value: "maybe" as const, label: "Maybe", icon: Minus, selectedBg: "var(--color-bt-vote-maybe)", selectedText: "#ffffff" },
+  { value: "out" as const, label: "Can't make it", icon: X, selectedBg: "var(--color-bt-vote-no)", selectedText: "#ffffff" },
+];
+
+function RsvpPanel({
+  tripId,
+  members,
+  currentUserId,
+}: {
+  tripId: string;
+  members: { user_id: string | null; rsvp_status?: string | null }[];
+  currentUserId: string | null;
+}) {
+  const utils = trpc.useUtils();
+
+  const setRsvp = trpc.tripMembers.setRsvpStatus.useMutation({
+    async onMutate(vars) {
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      utils.tripMembers.list.setData({ tripId }, (old) =>
+        old?.map((m) =>
+          m.user_id === currentUserId ? { ...m, rsvp_status: vars.rsvpStatus } : m
+        )
+      );
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev) utils.tripMembers.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.tripMembers.list.invalidate({ tripId });
+    },
+  });
+
+  const myMember = members.find((m) => m.user_id === currentUserId);
+  const myRsvp = (myMember as { rsvp_status?: string | null } | undefined)?.rsvp_status ?? null;
+
+  const inCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "in").length;
+  const maybeCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "maybe").length;
+  const outCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "out").length;
+  const pendingCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status == null).length;
+
+  return (
+    <div
+      className="mx-4 rounded-xl px-4 py-4 lg:mx-0"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <p className="mb-3 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+        Are you in?
+      </p>
+
+      <div className="flex gap-2">
+        {RSVP_OPTIONS.map((opt) => {
+          const isSelected = myRsvp === opt.value;
+          const Icon = opt.icon;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => setRsvp.mutate({ tripId, rsvpStatus: opt.value })}
+              disabled={setRsvp.isPending}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+              style={{
+                background: isSelected ? opt.selectedBg : "var(--color-bt-card-raised)",
+                color: isSelected ? opt.selectedText : "var(--color-bt-text)",
+                border: isSelected ? "none" : "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Icon size={14} />
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="mt-3 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        {inCount} in · {maybeCount} maybe · {outCount} out · {pendingCount} pending
+      </p>
     </div>
   );
 }
@@ -1723,36 +1811,9 @@ export function HomeTab({
             </div>
           )}
 
-          {/* ── GOING / NOW stage: RSVP panel (stub) ──────────────── */}
+          {/* ── GOING / NOW stage: RSVP panel ──────────────────────── */}
           {(stage === "going" || status === "now") && (
-            <div
-              className="mx-4 rounded-xl p-5 lg:mx-0"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-            >
-              {/* TODO: Task B — RSVP tracking */}
-              <p className="mb-3 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                Your RSVP
-              </p>
-              <div className="flex gap-2">
-                {(["In", "Maybe", "Out"] as const).map((label) => (
-                  <button
-                    key={label}
-                    disabled
-                    className="flex-1 rounded-xl py-2.5 text-sm font-medium opacity-40"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      color: "var(--color-bt-text-dim)",
-                      border: "1px solid var(--color-bt-border)",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                RSVP tracking coming soon.
-              </p>
-            </div>
+            <RsvpPanel tripId={trip.id} members={members} currentUserId={currentUser?.id ?? null} />
           )}
 
           {/* ── Planning rows — gated by stage ────────────────────── */}

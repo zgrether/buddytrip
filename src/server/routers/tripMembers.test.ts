@@ -144,3 +144,97 @@ describe("tripMembers router", () => {
     expect(result.success).toBe(true);
   });
 });
+
+// ── RSVP tests ──────────────────────────────────────────────────────────
+
+describe("tripMembers router — RSVP", () => {
+  let ctx: TestContext;
+  let tripId: string;
+
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+    // Create trip and advance to going stage for RSVP testing
+    tripId = await ctx.createTrip("RSVP Test Trip");
+    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "member", "Member");
+
+    // Set destination + advance through stages
+    const admin = ctx.admin;
+    await admin.from("trips").update({
+      locked_destination_title: "Test Dest",
+      locked_destination_location: "Test, TX",
+    }).eq("id", tripId);
+    await admin.from("trips").update({ stage: "planning" }).eq("id", tripId);
+    await admin.from("trips").update({
+      stage: "going",
+      rsvp_message: "Let's go!",
+    }).eq("id", tripId);
+  });
+
+  afterAll(async () => {
+    await ctx.cleanup();
+  });
+
+  it("setRsvpStatus — member can set own status", async () => {
+    const caller = ctx.callerAs("member");
+    const result = await caller.tripMembers.setRsvpStatus({
+      tripId,
+      rsvpStatus: "in",
+    });
+    expect(result.rsvp_status).toBe("in");
+  });
+
+  it("setRsvpStatus — member can change status", async () => {
+    const caller = ctx.callerAs("member");
+    const result = await caller.tripMembers.setRsvpStatus({
+      tripId,
+      rsvpStatus: "maybe",
+    });
+    expect(result.rsvp_status).toBe("maybe");
+  });
+
+  it("setRsvpStatus — cannot set in non-going stage", async () => {
+    // Create a fresh trip in idea stage
+    const ideaTripId = await ctx.createTrip("Idea RSVP Test");
+    await ctx.addTripMember(ideaTripId, "member", "Member");
+
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.tripMembers.setRsvpStatus({ tripId: ideaTripId, rsvpStatus: "in" })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("setRsvpStatusForMember — planner can set for any member", async () => {
+    const member = ctx.getUser("member");
+    const caller = ctx.callerAs("planner");
+    const result = await caller.tripMembers.setRsvpStatusForMember({
+      tripId,
+      userId: member.id,
+      rsvpStatus: "out",
+    });
+    expect(result.rsvp_status).toBe("out");
+  });
+
+  it("setRsvpStatusForMember — null clears status", async () => {
+    const member = ctx.getUser("member");
+    const caller = ctx.callerAs("planner");
+    const result = await caller.tripMembers.setRsvpStatusForMember({
+      tripId,
+      userId: member.id,
+      rsvpStatus: null,
+    });
+    expect(result.rsvp_status).toBeNull();
+  });
+
+  it("setRsvpStatusForMember — member cannot set for others", async () => {
+    const planner = ctx.getUser("planner");
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.tripMembers.setRsvpStatusForMember({
+        tripId,
+        userId: planner.id,
+        rsvpStatus: "in",
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
