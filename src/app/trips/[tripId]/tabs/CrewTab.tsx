@@ -195,14 +195,14 @@ function CrewMemberRow({
         {/* fixed so every row aligns regardless of content.                   */}
         <div className="flex flex-shrink-0 items-center">
           {/* Col 1: role badge */}
-          <div className="flex w-[68px] flex-shrink-0 justify-end">
+          <div className="flex w-[68px] flex-shrink-0 justify-center">
             {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
               <RoleBadge role={m.role} />
             )}
           </div>
 
           {/* Col 2: vote chip (going stage) or invite status (earlier stages) */}
-          <div className="flex w-[64px] flex-shrink-0 justify-end">
+          <div className="flex w-[64px] flex-shrink-0 justify-center">
             {showRsvpStatus ? (() => {
               const rsvp = m.rsvp_status;
               const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
@@ -479,7 +479,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   return (
     <div className="space-y-4 px-4">
       {/* Header row */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-center gap-2">
         {canEdit && showRsvpStatus && pendingWithEmailCount > 0 && (
           <button
             onClick={async () => {
