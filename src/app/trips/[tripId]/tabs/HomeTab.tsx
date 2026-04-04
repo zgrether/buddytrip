@@ -507,6 +507,93 @@ function SetDestinationModal({
   );
 }
 
+// ── ChangeDestinationModal ────────────────────────────────────────────────
+
+function ChangeDestinationModal({
+  tripId,
+  onClose,
+}: {
+  tripId: string;
+  onClose: () => void;
+}) {
+  useModalBackButton(onClose);
+  const utils = trpc.useUtils();
+  const [destination, setDestination] = useState("");
+
+  const changeDest = trpc.trips.changeDestination.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      utils.datePoll.get.invalidate({ tripId });
+      onClose();
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[400px] rounded-t-2xl p-6 lg:rounded-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Change destination
+        </h2>
+
+        <div
+          className="mt-3 flex items-start gap-2 rounded-xl px-4 py-3"
+          style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+        >
+          <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
+          <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
+            This will update the destination for everyone. Date availability responses
+            will be reset since the dates may change too.
+          </p>
+        </div>
+
+        <input
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+          placeholder="New destination"
+          autoFocus
+          className="mt-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && destination.trim()) {
+              changeDest.mutate({ tripId, destination: destination.trim() });
+            }
+          }}
+        />
+
+        <button
+          onClick={() => changeDest.mutate({ tripId, destination: destination.trim() })}
+          disabled={!destination.trim() || changeDest.isPending}
+          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {changeDest.isPending ? "Updating..." : "Update destination"}
+        </button>
+
+        <button
+          onClick={onClose}
+          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Competition Panel ─────────────────────────────────────────────────────
 
 function CompetitionPanel({
@@ -956,6 +1043,8 @@ function PlanningSection({
   const utils = trpc.useUtils();
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [showSetDest, setShowSetDest] = useState(false);
+  const [showChangeDest, setShowChangeDest] = useState(false);
+  const stage = trip.stage ?? "idea";
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   const unlockDates = trpc.datePoll.unlock.useMutation({
@@ -1053,9 +1142,9 @@ function PlanningSection({
                 </span>
               )}
             </p>
-            {isOwner && (
+            {canEdit && stage === "planning" && (
               <button
-                onClick={() => router.push(`/trips/${trip.id}/change-destination`)}
+                onClick={() => setShowChangeDest(true)}
                 className="text-xs font-medium"
                 style={{ color: "var(--color-bt-accent)" }}
               >
@@ -1136,6 +1225,13 @@ function PlanningSection({
               <SetDestinationModal
                 tripId={trip.id}
                 onClose={() => setShowSetDest(false)}
+              />
+            )}
+
+            {showChangeDest && (
+              <ChangeDestinationModal
+                tripId={trip.id}
+                onClose={() => setShowChangeDest(false)}
               />
             )}
           </div>
@@ -1492,7 +1588,7 @@ export function HomeTab({
   const isLocked = !!trip.locked_destination_title;
   const isExploring = !!trip.comparison_mode && !isLocked;
   const isBlank = !trip.comparison_mode && !isLocked;
-  const stage = (trip as { stage?: string }).stage ?? "idea";
+  const stage = trip.stage ?? "idea";
 
   // Pending-actions interstitial: show when member has no votes on an open poll
   const datesLocked = !!(trip.start_date && trip.end_date);
@@ -1604,7 +1700,7 @@ export function HomeTab({
       )}
 
       {/* ── GOING / NOW stage: About panel with RSVP message ──────────── */}
-      {(stage === "going" || status === "now") && (trip as { rsvp_message?: string | null }).rsvp_message && (
+      {(stage === "going" || status === "now") && trip.rsvp_message && (
         <div
           className="mx-4 rounded-xl p-5"
           style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
@@ -1618,7 +1714,7 @@ export function HomeTab({
             </span>
           )}
           <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-            {(trip as { rsvp_message?: string | null }).rsvp_message}
+            {trip.rsvp_message}
           </p>
         </div>
       )}
