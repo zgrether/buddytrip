@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, Mail, MailX, Send, X } from "lucide-react";
+import { Ghost, Mail, Send, X } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { useTheme } from "next-themes";
@@ -154,7 +154,7 @@ function CrewMemberRow({
       <div
         className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
         style={{
-          background: rsvpCfg && m.role !== "Owner" && !m.isGuest ? `${rsvpCfg.color}0a` : undefined,
+          background: rsvpCfg && !m.isGuest ? `${rsvpCfg.color}0a` : undefined,
           cursor: editable ? "pointer" : undefined,
         }}
         onClick={editable ? onToggle : undefined}
@@ -179,99 +179,74 @@ function CrewMemberRow({
               <span className="ml-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
             )}
           </p>
-          {m.user?.email && (
+          {m.user?.email ? (
             <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {m.user.email}
             </p>
-          )}
+          ) : m.isGuest ? (
+            <p className="truncate text-xs opacity-40" style={{ color: "var(--color-bt-text-dim)" }}>
+              no email on file
+            </p>
+          ) : null}
         </div>
 
-        {/* Role badge — only for Owner and Planner */}
-        {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
-          <RoleBadge role={m.role} />
-        )}
-
-        {/* No-email indicator — left of the vote chip so owner can see at a glance */}
-        {showRsvpStatus && m.isGuest && !m.user?.email && (
-          <span
-            className="flex-shrink-0"
-            title="No email on file"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <MailX size={14} />
-          </span>
-        )}
-
-        {/* RSVP / Status — context-dependent */}
-        {showRsvpStatus && (() => {
-          const rsvp = m.rsvp_status;
-          const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
-          return cfg ? (
-            <span
-              className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs"
-              style={{ background: cfg.bg, color: cfg.color }}
-            >
-              {cfg.label}
-            </span>
-          ) : (
-            <span
-              className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-            >
-              Pending
-            </span>
-          );
-        })()}
-        {m.role !== "Owner" && !showRsvpStatus && (
-          m.isGuest ? (
-            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-              –
-            </span>
-          ) : m.status === "draft" ? (
-            <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-              Not invited yet
-            </span>
-          ) : m.status === "invited" ? (
-            <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-ready)" }}>
-              Invited
-            </span>
-          ) : null
-        )}
-
-        {/* Nudge button (going stage, non-owner, non-self, has email, pending/maybe) */}
-        {showRsvpStatus && m.role !== "Owner" && canEdit && !isMe && !!m.user?.email &&
-          (m.rsvp_status == null || m.rsvp_status === "maybe") && (
-          <button
-            onClick={handleNudge}
-            disabled={nudgeCrewMember.isPending || nudgeSent}
-            className="flex flex-shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs disabled:opacity-40"
-            style={{
-              color: nudgeSent ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-            title="Send RSVP nudge"
-          >
-            {nudgeSent ? (
-              <span>Sent ✓</span>
-            ) : (
-              <>
-                <Send size={11} />
-                <span>Nudge</span>
-              </>
+        {/* ── Right side: fixed 3-column layout ───────────────────────────── */}
+        {/* Col 1 (badge) | Col 2 (vote/status) | Col 3 (delete) — widths are */}
+        {/* fixed so every row aligns regardless of content.                   */}
+        <div className="flex flex-shrink-0 items-center">
+          {/* Col 1: role badge */}
+          <div className="flex w-[68px] flex-shrink-0 justify-end">
+            {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
+              <RoleBadge role={m.role} />
             )}
-          </button>
-        )}
+          </div>
 
-        {/* Delete (X) button */}
-        {editable && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setConfirmRemove(true); }}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={14} />
-          </button>
-        )}
+          {/* Col 2: vote chip (going stage) or invite status (earlier stages) */}
+          <div className="flex w-[64px] flex-shrink-0 justify-end">
+            {showRsvpStatus ? (() => {
+              const rsvp = m.rsvp_status;
+              const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
+              return cfg ? (
+                <span
+                  className="rounded-full px-2 py-0.5 text-xs"
+                  style={{ background: cfg.bg, color: cfg.color }}
+                >
+                  {cfg.label}
+                </span>
+              ) : (
+                <span
+                  className="rounded-full px-2 py-0.5 text-xs"
+                  style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+                >
+                  Pending
+                </span>
+              );
+            })() : m.role !== "Owner" ? (
+              m.status === "draft" ? (
+                <span className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Not invited
+                </span>
+              ) : m.status === "invited" ? (
+                <span className="text-xs" style={{ color: "var(--color-bt-ready)" }}>
+                  Invited
+                </span>
+              ) : null
+            ) : null}
+          </div>
+
+          {/* Col 3: delete */}
+          <div className="flex w-7 flex-shrink-0 justify-center">
+            {editable && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmRemove(true); }}
+                className="flex h-7 w-7 items-center justify-center rounded-lg"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Remove confirmation ──────────────────────────────────────────── */}
@@ -326,11 +301,11 @@ function CrewMemberRow({
             />
           </div>
 
-          {/* RSVP override (going stage) */}
+          {/* RSVP override + nudge (going stage) */}
           {showRsvpStatus && (
             <div>
               <p className="mb-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>RSVP</p>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {(["in", "maybe", "out"] as const).map((val) => {
                   const cfg = RSVP_LABEL[val];
                   const isSelected = m.rsvp_status === val;
@@ -364,6 +339,20 @@ function CrewMemberRow({
                     style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
                   >
                     Clear
+                  </button>
+                )}
+                {/* Nudge — only when member has email and hasn't confirmed */}
+                {m.user?.email && m.role !== "Owner" && (m.rsvp_status == null || m.rsvp_status === "maybe") && (
+                  <button
+                    onClick={handleNudge}
+                    disabled={nudgeCrewMember.isPending || nudgeSent}
+                    className="ml-auto flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs disabled:opacity-40"
+                    style={{
+                      color: nudgeSent ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {nudgeSent ? "Sent ✓" : <><Send size={11} /><span>Nudge</span></>}
                   </button>
                 )}
               </div>
