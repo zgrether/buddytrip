@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, Mail, X } from "lucide-react";
+import { Ghost, Mail, MailX, Send, X } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { useTheme } from "next-themes";
@@ -12,12 +12,17 @@ import type { TabProps } from "./types";
 
 // ── RSVP helpers ──────────────────────────────────────────────────────────
 
-const RSVP_LABEL: Record<string, { label: string; color: string }> = {
-  in:      { label: "In",       color: "var(--color-bt-accent)" },
-  likely:  { label: "Likely",   color: "var(--color-bt-ready)" },
-  maybe:   { label: "Maybe",    color: "var(--color-bt-planning)" },
-  out:     { label: "Can't go", color: "var(--color-bt-danger)" },
+const RSVP_LABEL: Record<string, { label: string; color: string; bg: string }> = {
+  in:      { label: "In",    color: "var(--color-bt-accent)", bg: "var(--color-bt-accent-faint, rgba(0,212,170,0.1))" },
+  maybe:   { label: "Maybe", color: "var(--color-bt-warning)", bg: "var(--color-bt-warning-faint, rgba(245,158,11,0.1))" },
+  out:     { label: "Out",   color: "var(--color-bt-danger)", bg: "var(--color-bt-danger-faint, rgba(239,68,68,0.1))" },
 };
+
+const RSVP_SORT_ORDER: Record<string, number> = { in: 0, maybe: 1, out: 3 };
+function rsvpSortKey(rsvpStatus: string | null): number {
+  if (rsvpStatus === null || rsvpStatus === undefined) return 2; // pending after maybe, before out
+  return RSVP_SORT_ORDER[rsvpStatus] ?? 2;
+}
 
 const ROLE_COLOR: Record<string, string> = {
   Owner:   "var(--color-bt-accent)",
@@ -49,6 +54,7 @@ function CrewMemberRow({
   isMe,
   isExpanded,
   index,
+  showRsvpStatus,
   onToggle,
   onUpdated,
 }: {
@@ -59,6 +65,7 @@ function CrewMemberRow({
   isMe: boolean;
   isExpanded: boolean;
   index: number;
+  showRsvpStatus: boolean;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
@@ -84,7 +91,9 @@ function CrewMemberRow({
 
   const display = m.displayName;
   const _roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
-  const rsvpCfg = m.status ? RSVP_LABEL[m.status] : null;
+  const rsvpCfg = (m as { rsvp_status?: string | null }).rsvp_status
+    ? RSVP_LABEL[(m as { rsvp_status?: string | null }).rsvp_status!]
+    : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
   const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
 
@@ -169,11 +178,30 @@ function CrewMemberRow({
           <RoleBadge role={m.role} />
         )}
 
-        {/* Status — not shown for Owner (always in) */}
-        {m.role !== "Owner" && (
+        {/* RSVP / Status — context-dependent */}
+        {m.role !== "Owner" && showRsvpStatus && (() => {
+          const rsvp = (m as { rsvp_status?: string | null }).rsvp_status;
+          const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
+          return cfg ? (
+            <span
+              className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs"
+              style={{ background: cfg.bg, color: cfg.color }}
+            >
+              {cfg.label}
+            </span>
+          ) : (
+            <span
+              className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+            >
+              Pending
+            </span>
+          );
+        })()}
+        {m.role !== "Owner" && !showRsvpStatus && (
           m.isGuest ? (
             <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-              Unknown
+              –
             </span>
           ) : m.status === "draft" ? (
             <span className="flex-shrink-0 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -182,10 +210,6 @@ function CrewMemberRow({
           ) : m.status === "invited" ? (
             <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-ready)" }}>
               Invited
-            </span>
-          ) : rsvpCfg ? (
-            <span className="flex-shrink-0 text-xs" style={{ color: rsvpCfg.color }}>
-              {rsvpCfg.label}
             </span>
           ) : null
         )}
@@ -418,13 +442,30 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         </div>
       )}
 
-      {/* Member list — flat, sorted by role then name */}
+      {/* Member list */}
       <h2
-        className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
+        className="mt-6 mb-1 text-xs font-semibold uppercase tracking-wider"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         {sectionLabel}
       </h2>
+
+      {/* RSVP headcount summary (GOING/NOW stage) */}
+      {showRsvpStatus && (() => {
+        const inC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "in").length;
+        const maybeC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "maybe").length;
+        const outC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "out").length;
+        const pendC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status == null).length;
+        return (
+          <p
+            className="mb-3 inline-block rounded-full px-3 py-1.5 text-[13px]"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+          >
+            {inC} in · {maybeC} maybe · {pendC} pending · {outC} out
+          </p>
+        );
+      })()}
+
       <div>
         {sorted.map((m, i) => {
           const isMe = m.user_id === currentUser?.id;
@@ -438,6 +479,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               isMe={isMe}
               index={i}
               isExpanded={expandedId === m.user_id}
+              showRsvpStatus={showRsvpStatus}
               onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
               onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
             />
