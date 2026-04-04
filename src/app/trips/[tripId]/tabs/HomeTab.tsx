@@ -1699,98 +1699,138 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* ── GOING / NOW stage: About panel with RSVP message ──────────── */}
-      {(stage === "going" || status === "now") && trip.rsvp_message && (
-        <div
-          className="mx-4 rounded-xl p-5"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          {status === "now" && (
-            <span
-              className="mb-2 inline-block rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider"
-              style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))", color: "var(--color-bt-warning)" }}
+      {/* ── Two-column desktop layout ─────────────────────────────────── */}
+      <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+        {/* ── Left column: primary planning content ─────────────────── */}
+        <div className="space-y-4">
+          {/* ── GOING / NOW stage: About panel with RSVP message ──── */}
+          {(stage === "going" || status === "now") && trip.rsvp_message && (
+            <div
+              className="mx-4 rounded-xl p-5 lg:mx-0"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
             >
-              {countdownLabel(trip) ?? "NOW"}
-            </span>
+              {status === "now" && (
+                <span
+                  className="mb-2 inline-block rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider"
+                  style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))", color: "var(--color-bt-warning)" }}
+                >
+                  {countdownLabel(trip) ?? "NOW"}
+                </span>
+              )}
+              <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+                {trip.rsvp_message}
+              </p>
+            </div>
           )}
-          <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-            {trip.rsvp_message}
-          </p>
+
+          {/* ── GOING / NOW stage: RSVP panel (stub) ──────────────── */}
+          {(stage === "going" || status === "now") && (
+            <div
+              className="mx-4 rounded-xl p-5 lg:mx-0"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            >
+              {/* TODO: Task B — RSVP tracking */}
+              <p className="mb-3 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Your RSVP
+              </p>
+              <div className="flex gap-2">
+                {(["In", "Maybe", "Out"] as const).map((label) => (
+                  <button
+                    key={label}
+                    disabled
+                    className="flex-1 rounded-xl py-2.5 text-sm font-medium opacity-40"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                RSVP tracking coming soon.
+              </p>
+            </div>
+          )}
+
+          {/* ── Planning rows — gated by stage ────────────────────── */}
+          {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
+            <PlanningSection
+              trip={trip}
+              ideas={ideas as IdeaWithVotes[]}
+              poll={poll}
+              tripMembers={members}
+              reservations={reservations}
+              canEdit={canEditProp}
+              isOwner={!!isOwner}
+              onTabChange={onTabChange}
+            />
+          )}
+
+          {/* ── GOING/NOW: planning rows in collapsed done state ──── */}
+          {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
+            <PlanningSection
+              trip={trip}
+              ideas={ideas as IdeaWithVotes[]}
+              poll={poll}
+              tripMembers={members}
+              reservations={reservations}
+              canEdit={false}
+              isOwner={false}
+              onTabChange={onTabChange}
+            />
+          )}
+
+          {/* Competition panel */}
+          <CompetitionPanel
+            trip={trip}
+            canEdit={canEditProp}
+            onSetupComp={onEnableComp}
+          />
         </div>
-      )}
 
-      {/* ── GOING / NOW stage: RSVP panel (stub) ─────────────────────── */}
-      {(stage === "going" || status === "now") && (
-        <div
-          className="mx-4 rounded-xl p-5"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          {/* TODO: Task B — RSVP tracking */}
-          <p className="mb-3 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Your RSVP
-          </p>
-          <div className="flex gap-2">
-            {(["In", "Maybe", "Out"] as const).map((label) => (
-              <button
-                key={label}
-                disabled
-                className="flex-1 rounded-xl py-2.5 text-sm font-medium opacity-40"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            RSVP tracking coming soon.
-          </p>
+        {/* ── Right column: per-stage supplementary content ─────────── */}
+        <div className="mt-4 space-y-4 lg:mt-0">
+          {/* IDEA stage: co-planners + about */}
+          {stage === "idea" && (
+            <>
+              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+            </>
+          )}
+
+          {/* PLANNING stage: logistics + quick info */}
+          {stage === "planning" && (
+            <>
+              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+            </>
+          )}
+
+          {/* GOING/NOW stage: logistics details + confirmed dates */}
+          {(stage === "going" || status === "now" || status === "past") && (
+            <>
+              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+              {trip.start_date && trip.end_date && (
+                <div
+                  className="rounded-xl p-4"
+                  style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+                >
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Dates
+                  </p>
+                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                    {formatDateRange(trip.start_date, trip.end_date)}
+                  </p>
+                </div>
+              )}
+              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+            </>
+          )}
         </div>
-      )}
-
-      {/* ── Planning rows — gated by stage ────────────────────────────── */}
-      {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
-        <PlanningSection
-          trip={trip}
-          ideas={ideas as IdeaWithVotes[]}
-          poll={poll}
-          tripMembers={members}
-          reservations={reservations}
-          canEdit={canEditProp}
-          isOwner={!!isOwner}
-          onTabChange={onTabChange}
-        />
-      )}
-
-      {/* ── GOING/NOW: show planning rows in collapsed done state ──── */}
-      {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
-        <PlanningSection
-          trip={trip}
-          ideas={ideas as IdeaWithVotes[]}
-          poll={poll}
-          tripMembers={members}
-          reservations={reservations}
-          canEdit={false}
-          isOwner={false}
-          onTabChange={onTabChange}
-        />
-      )}
-
-      {/* 2. Competition panel */}
-      <CompetitionPanel
-        trip={trip}
-        canEdit={canEditProp}
-        onSetupComp={onEnableComp}
-      />
-
-      {/* 3. Quick Info Tiles */}
-      <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-
-      {/* 4. About card */}
-      <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+      </div>
 
     </div>
   );

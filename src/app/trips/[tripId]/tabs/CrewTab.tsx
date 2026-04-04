@@ -351,7 +351,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
     }
   };
 
-  const stage = (trip as { stage?: string }).stage ?? "idea";
+  const stage = trip.stage ?? "idea";
 
   // Stage-aware config
   const sectionLabel = stage === "idea" ? "CO-PLANNERS" : "CREW";
