@@ -191,8 +191,19 @@ function CrewMemberRow({
           <RoleBadge role={m.role} />
         )}
 
+        {/* No-email indicator — left of the vote chip so owner can see at a glance */}
+        {showRsvpStatus && m.isGuest && !m.user?.email && (
+          <span
+            className="flex-shrink-0"
+            title="No email on file"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <MailX size={14} />
+          </span>
+        )}
+
         {/* RSVP / Status — context-dependent */}
-        {m.role !== "Owner" && showRsvpStatus && (() => {
+        {showRsvpStatus && (() => {
           const rsvp = m.rsvp_status;
           const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
           return cfg ? (
@@ -227,39 +238,28 @@ function CrewMemberRow({
           ) : null
         )}
 
-        {/* Nudge / no-email indicator (going stage, non-owner, non-self) */}
-        {showRsvpStatus && m.role !== "Owner" && canEdit && !isMe && (
-          m.user?.email ? (
-            (m.rsvp_status == null || m.rsvp_status === "maybe") ? (
-              <button
-                onClick={handleNudge}
-                disabled={nudgeCrewMember.isPending || nudgeSent}
-                className="flex flex-shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs disabled:opacity-40"
-                style={{
-                  color: nudgeSent ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-                title="Send RSVP nudge"
-              >
-                {nudgeSent ? (
-                  <span>Sent ✓</span>
-                ) : (
-                  <>
-                    <Send size={11} />
-                    <span>Nudge</span>
-                  </>
-                )}
-              </button>
-            ) : null
-          ) : m.isGuest ? (
-            <span
-              className="flex-shrink-0"
-              title="No email on file"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <MailX size={14} />
-            </span>
-          ) : null
+        {/* Nudge button (going stage, non-owner, non-self, has email, pending/maybe) */}
+        {showRsvpStatus && m.role !== "Owner" && canEdit && !isMe && !!m.user?.email &&
+          (m.rsvp_status == null || m.rsvp_status === "maybe") && (
+          <button
+            onClick={handleNudge}
+            disabled={nudgeCrewMember.isPending || nudgeSent}
+            className="flex flex-shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+            style={{
+              color: nudgeSent ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+            title="Send RSVP nudge"
+          >
+            {nudgeSent ? (
+              <span>Sent ✓</span>
+            ) : (
+              <>
+                <Send size={11} />
+                <span>Nudge</span>
+              </>
+            )}
+          </button>
         )}
 
         {/* Delete (X) button */}
