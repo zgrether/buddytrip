@@ -104,3 +104,143 @@ export async function sendInviteNewUser({
     `,
   });
 }
+
+// ── RSVP blast email for existing users ─────────────────────────────────
+
+export async function sendRsvpBlastExistingUser({
+  toEmail,
+  toName,
+  tripName,
+  tripId,
+  destination,
+  lockedDate,
+  rsvpMessage,
+}: {
+  toEmail: string;
+  toName: string;
+  tripName: string;
+  tripId: string;
+  destination: string | null;
+  lockedDate: string | null;
+  rsvpMessage: string;
+}) {
+  const tripUrl = `${BASE_URL}/trips/${tripId}`;
+  const destLine = destination
+    ? `You're headed to <strong>${destination}</strong>${lockedDate ? ` &mdash; <strong>${lockedDate}</strong>.` : "."}`
+    : "";
+
+  return resend.emails.send({
+    from: FROM,
+    to: resolveRecipient(toEmail),
+    subject: `It's happening — ${tripName} is official`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <p style="margin:0 0 16px">Hey ${toName},</p>
+        <p style="margin:0 0 16px">
+          <strong>${tripName}</strong> is official. ${destLine}
+        </p>
+        <p style="margin:0 0 24px">${rsvpMessage}</p>
+        <a href="${tripUrl}"
+           style="display:inline-block;background:#2dd4bf;color:#0d1f1a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">
+          View Trip &amp; RSVP
+        </a>
+        <p style="margin:24px 0 0;color:#94a3b8;font-size:14px">
+          See you there,<br/>The BuddyTrip crew
+        </p>
+      </div>
+    `,
+  });
+}
+
+// ── RSVP blast email for new users (guest/invited) ──────────────────────
+
+export async function sendRsvpBlastNewUser({
+  toEmail,
+  inviterName,
+  tripName,
+  destination,
+  lockedDate,
+  rsvpMessage,
+  token,
+}: {
+  toEmail: string;
+  inviterName: string;
+  tripName: string;
+  destination: string | null;
+  lockedDate: string | null;
+  rsvpMessage: string;
+  token: string;
+}) {
+  const inviteUrl = `${BASE_URL}/invite?token=${token}`;
+  const destLine = destination
+    ? `You're headed to <strong>${destination}</strong>${lockedDate ? ` &mdash; <strong>${lockedDate}</strong>.` : "."}`
+    : "";
+
+  return resend.emails.send({
+    from: FROM,
+    to: resolveRecipient(toEmail),
+    subject: `${inviterName} says it's time — join ${tripName} on BuddyTrip`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <p style="margin:0 0 16px">Hey,</p>
+        <p style="margin:0 0 16px">
+          <strong>${tripName}</strong> is official. ${destLine}
+        </p>
+        <p style="margin:0 0 16px">${rsvpMessage}</p>
+        <p style="margin:0 0 24px">
+          ${inviterName} invited you to join the crew on BuddyTrip.
+        </p>
+        <a href="${inviteUrl}"
+           style="display:inline-block;background:#2dd4bf;color:#0d1f1a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">
+          Accept Invite &amp; RSVP
+        </a>
+        <p style="margin:24px 0 8px;color:#94a3b8;font-size:14px">
+          BuddyTrip is free to join.
+        </p>
+        <p style="margin:0;color:#94a3b8;font-size:14px">
+          See you there,<br/>The BuddyTrip crew
+        </p>
+      </div>
+    `,
+  });
+}
+
+// ── Nudge email ─────────────────────────────────────────────────────────
+
+export async function sendNudgeEmail({
+  toEmail,
+  toName,
+  inviterName,
+  tripName,
+  tripId,
+}: {
+  toEmail: string;
+  toName: string;
+  inviterName: string;
+  tripName: string;
+  tripId: string;
+}) {
+  const tripUrl = `${BASE_URL}/trips/${tripId}`;
+
+  return resend.emails.send({
+    from: FROM,
+    to: resolveRecipient(toEmail),
+    subject: `Still need your RSVP for ${tripName}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <p style="margin:0 0 16px">Hey ${toName},</p>
+        <p style="margin:0 0 24px">
+          ${inviterName} is still waiting on your RSVP for
+          <strong>${tripName}</strong>. Are you in?
+        </p>
+        <a href="${tripUrl}"
+           style="display:inline-block;background:#2dd4bf;color:#0d1f1a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">
+          Respond now
+        </a>
+        <p style="margin:24px 0 0;color:#94a3b8;font-size:14px">
+          See you there,<br/>The BuddyTrip crew
+        </p>
+      </div>
+    `,
+  });
+}
