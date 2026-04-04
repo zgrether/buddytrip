@@ -16,7 +16,7 @@ export const tripMembersRouter = router({
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
         .from("trip_members")
-        .select("id, trip_id, user_id, role, status, joined_at")
+        .select("id, trip_id, user_id, role, status, rsvp_status, joined_at")
         .eq("trip_id", ctx.tripId)
         .order("joined_at", { ascending: true });
 
