@@ -21,6 +21,7 @@ interface Trip {
   end_date?: string | null;
   locked_destination_title?: string | null;
   trip_status_override?: string | null;
+  stage?: string | null;
   comparison_mode?: boolean | null;
   myRole?: TripRole | null;
 }
@@ -177,8 +178,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         <span>{formatDateRange(trip.start_date, trip.end_date)}</span>
       </div>
 
-      {/* Countdown strip for upcoming trips */}
-      {status === "upcoming" && trip.start_date && (
+      {/* Countdown strip for going/now trips */}
+      {(status === "going" || status === "now") && trip.start_date && (
         <div
           className="mt-3 rounded-md px-3 py-1.5 text-center text-xs font-medium"
           style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
