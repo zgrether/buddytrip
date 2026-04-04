@@ -17,6 +17,11 @@ export interface TripData {
   locked_destination_title?: string | null;
   locked_destination_location?: string | null;
   locked_destination_at?: string | null;
+  stage?: string | null;
+  stage_advanced_to_planning_at?: string | null;
+  stage_advanced_to_going_at?: string | null;
+  rsvp_message?: string | null;
+  trip_status_override?: string | null;
   event_id?: string | null;
   series_id?: string | null;
   created_at?: string | null;

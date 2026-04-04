@@ -18,6 +18,7 @@ interface TripRow {
   end_date?: string | null;
   locked_destination_title?: string | null;
   trip_status_override?: string | null;
+  stage?: string | null;
   saved_at?: string | null;
   updated_at?: string | null;
   myRole?: TripRole | null;
@@ -36,19 +37,28 @@ type NotificationItem = {
 
 function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   const sections: Record<TripStatus, TripRow[]> = {
+    idea: [],
     planning: [],
-    upcoming: [],
+    going: [],
+    now: [],
     past: [],
     saved: [],
   };
   for (const trip of trips) {
     sections[getTripStatus(trip)].push(trip);
   }
-  // upcoming: soonest first; planning: most recently updated first; past: most recently ended first
-  sections.upcoming.sort((a, b) =>
+  // now: soonest-ending first; going: soonest-starting first
+  sections.now.sort((a, b) =>
+    (a.end_date ?? "").localeCompare(b.end_date ?? "")
+  );
+  sections.going.sort((a, b) =>
     (a.start_date ?? "").localeCompare(b.start_date ?? "")
   );
+  // planning + idea: most recently updated first
   sections.planning.sort((a, b) =>
+    (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
+  );
+  sections.idea.sort((a, b) =>
     (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
   );
   sections.past.sort((a, b) =>
@@ -207,14 +217,20 @@ export default function DashboardClient() {
         ) : (
           /* ── Trip sections ───────────────────────────────────────────────── */
           <div className="space-y-6">
+            {/* NOW — pinned at top when trips are happening */}
+            {sections.now.length > 0 && (
+              <TripSection
+                label="Now"
+                trips={sections.now}
+                unreadByTrip={unreadByTrip}
+                labelColor="var(--color-bt-warning)"
+              />
+            )}
+
+            {/* Active — groups IDEA + PLANNING + GOING */}
             <TripSection
-              label="Upcoming"
-              trips={sections.upcoming}
-              unreadByTrip={unreadByTrip}
-            />
-            <TripSection
-              label="Planning"
-              trips={sections.planning}
+              label="Active"
+              trips={[...sections.going, ...sections.planning, ...sections.idea]}
               unreadByTrip={unreadByTrip}
             />
 
@@ -273,10 +289,12 @@ function TripSection({
   label,
   trips,
   unreadByTrip,
+  labelColor,
 }: {
   label: string;
   trips: TripRow[];
   unreadByTrip: Map<string, number>;
+  labelColor?: string;
 }) {
   if (trips.length === 0) return null;
   return (
@@ -284,7 +302,7 @@ function TripSection({
       <h2
         data-testid={`section-${label.toLowerCase()}`}
         className="mb-3 text-sm font-semibold uppercase tracking-widest"
-        style={{ color: "var(--color-bt-text-dim)" }}
+        style={{ color: labelColor ?? "var(--color-bt-text-dim)" }}
       >
         {label}
       </h2>

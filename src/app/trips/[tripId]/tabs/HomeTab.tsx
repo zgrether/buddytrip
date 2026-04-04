@@ -25,6 +25,7 @@ import Link from "next/link";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange, parseLocalDate } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
+import { countdownLabel } from "@/lib/tripStatus";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
@@ -506,6 +507,93 @@ function SetDestinationModal({
   );
 }
 
+// ── ChangeDestinationModal ────────────────────────────────────────────────
+
+function ChangeDestinationModal({
+  tripId,
+  onClose,
+}: {
+  tripId: string;
+  onClose: () => void;
+}) {
+  useModalBackButton(onClose);
+  const utils = trpc.useUtils();
+  const [destination, setDestination] = useState("");
+
+  const changeDest = trpc.trips.changeDestination.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      utils.datePoll.get.invalidate({ tripId });
+      onClose();
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[400px] rounded-t-2xl p-6 lg:rounded-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Change destination
+        </h2>
+
+        <div
+          className="mt-3 flex items-start gap-2 rounded-xl px-4 py-3"
+          style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+        >
+          <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
+          <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
+            This will update the destination for everyone. Date availability responses
+            will be reset since the dates may change too.
+          </p>
+        </div>
+
+        <input
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+          placeholder="New destination"
+          autoFocus
+          className="mt-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && destination.trim()) {
+              changeDest.mutate({ tripId, destination: destination.trim() });
+            }
+          }}
+        />
+
+        <button
+          onClick={() => changeDest.mutate({ tripId, destination: destination.trim() })}
+          disabled={!destination.trim() || changeDest.isPending}
+          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {changeDest.isPending ? "Updating..." : "Update destination"}
+        </button>
+
+        <button
+          onClick={onClose}
+          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Competition Panel ─────────────────────────────────────────────────────
 
 function CompetitionPanel({
@@ -955,6 +1043,8 @@ function PlanningSection({
   const utils = trpc.useUtils();
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [showSetDest, setShowSetDest] = useState(false);
+  const [showChangeDest, setShowChangeDest] = useState(false);
+  const stage = trip.stage ?? "idea";
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   const unlockDates = trpc.datePoll.unlock.useMutation({
@@ -1052,9 +1142,9 @@ function PlanningSection({
                 </span>
               )}
             </p>
-            {isOwner && (
+            {canEdit && stage === "planning" && (
               <button
-                onClick={() => router.push(`/trips/${trip.id}/change-destination`)}
+                onClick={() => setShowChangeDest(true)}
                 className="text-xs font-medium"
                 style={{ color: "var(--color-bt-accent)" }}
               >
@@ -1135,6 +1225,13 @@ function PlanningSection({
               <SetDestinationModal
                 tripId={trip.id}
                 onClose={() => setShowSetDest(false)}
+              />
+            )}
+
+            {showChangeDest && (
+              <ChangeDestinationModal
+                tripId={trip.id}
+                onClose={() => setShowChangeDest(false)}
               />
             )}
           </div>
@@ -1487,10 +1584,11 @@ export function HomeTab({
   });
 
   const status = getTripStatus(trip);
-  const isCompleted = status === "past";
+  const _isCompleted = status === "past";
   const isLocked = !!trip.locked_destination_title;
   const isExploring = !!trip.comparison_mode && !isLocked;
   const isBlank = !trip.comparison_mode && !isLocked;
+  const stage = trip.stage ?? "idea";
 
   // Pending-actions interstitial: show when member has no votes on an open poll
   const datesLocked = !!(trip.start_date && trip.end_date);
@@ -1508,7 +1606,8 @@ export function HomeTab({
   const ownerMember = members.find((m) => m.role === "Owner");
   const ownerFirstName = ownerMember?.displayName?.split(" ")[0] ?? "The organizer";
 
-  if (isExploring) {
+  // Idea zone only shown in idea stage
+  if (isExploring && stage === "idea") {
     return (
       <div className="flex flex-col gap-4 px-4">
         {/* Idea Zone summary panel */}
@@ -1600,32 +1699,138 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* 1. Planning rows — visible for all users regardless of trip status */}
-      {(isBlank || isLocked) && (
-        <PlanningSection
-          trip={trip}
-          ideas={ideas as IdeaWithVotes[]}
-          poll={poll}
-          tripMembers={members}
-          reservations={reservations}
-          canEdit={canEditProp}
-          isOwner={!!isOwner}
-          onTabChange={onTabChange}
-        />
-      )}
+      {/* ── Two-column desktop layout ─────────────────────────────────── */}
+      <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+        {/* ── Left column: primary planning content ─────────────────── */}
+        <div className="space-y-4">
+          {/* ── GOING / NOW stage: About panel with RSVP message ──── */}
+          {(stage === "going" || status === "now") && trip.rsvp_message && (
+            <div
+              className="mx-4 rounded-xl p-5 lg:mx-0"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            >
+              {status === "now" && (
+                <span
+                  className="mb-2 inline-block rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider"
+                  style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))", color: "var(--color-bt-warning)" }}
+                >
+                  {countdownLabel(trip) ?? "NOW"}
+                </span>
+              )}
+              <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+                {trip.rsvp_message}
+              </p>
+            </div>
+          )}
 
-      {/* 2. Competition panel */}
-      <CompetitionPanel
-        trip={trip}
-        canEdit={canEditProp}
-        onSetupComp={onEnableComp}
-      />
+          {/* ── GOING / NOW stage: RSVP panel (stub) ──────────────── */}
+          {(stage === "going" || status === "now") && (
+            <div
+              className="mx-4 rounded-xl p-5 lg:mx-0"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            >
+              {/* TODO: Task B — RSVP tracking */}
+              <p className="mb-3 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Your RSVP
+              </p>
+              <div className="flex gap-2">
+                {(["In", "Maybe", "Out"] as const).map((label) => (
+                  <button
+                    key={label}
+                    disabled
+                    className="flex-1 rounded-xl py-2.5 text-sm font-medium opacity-40"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                RSVP tracking coming soon.
+              </p>
+            </div>
+          )}
 
-      {/* 3. Quick Info Tiles */}
-      <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+          {/* ── Planning rows — gated by stage ────────────────────── */}
+          {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
+            <PlanningSection
+              trip={trip}
+              ideas={ideas as IdeaWithVotes[]}
+              poll={poll}
+              tripMembers={members}
+              reservations={reservations}
+              canEdit={canEditProp}
+              isOwner={!!isOwner}
+              onTabChange={onTabChange}
+            />
+          )}
 
-      {/* 4. About card */}
-      <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+          {/* ── GOING/NOW: planning rows in collapsed done state ──── */}
+          {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
+            <PlanningSection
+              trip={trip}
+              ideas={ideas as IdeaWithVotes[]}
+              poll={poll}
+              tripMembers={members}
+              reservations={reservations}
+              canEdit={false}
+              isOwner={false}
+              onTabChange={onTabChange}
+            />
+          )}
+
+          {/* Competition panel */}
+          <CompetitionPanel
+            trip={trip}
+            canEdit={canEditProp}
+            onSetupComp={onEnableComp}
+          />
+        </div>
+
+        {/* ── Right column: per-stage supplementary content ─────────── */}
+        <div className="mt-4 space-y-4 lg:mt-0">
+          {/* IDEA stage: co-planners + about */}
+          {stage === "idea" && (
+            <>
+              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+            </>
+          )}
+
+          {/* PLANNING stage: logistics + quick info */}
+          {stage === "planning" && (
+            <>
+              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+            </>
+          )}
+
+          {/* GOING/NOW stage: logistics details + confirmed dates */}
+          {(stage === "going" || status === "now" || status === "past") && (
+            <>
+              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+              {trip.start_date && trip.end_date && (
+                <div
+                  className="rounded-xl p-4"
+                  style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+                >
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Dates
+                  </p>
+                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                    {formatDateRange(trip.start_date, trip.end_date)}
+                  </p>
+                </div>
+              )}
+              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
+            </>
+          )}
+        </div>
+      </div>
 
     </div>
   );

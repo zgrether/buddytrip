@@ -112,6 +112,7 @@ export const tripsRouter = router({
       // INSERT ... RETURNING requires the SELECT policy to pass on the
       // new row, but the SELECT policy is `is_trip_member(id)` which is
       // false until we add the creator as a member in step 2.
+      const hasLockedDest = !!input.lockedDestination;
       const { error } = await ctx.supabase.from("trips").insert({
         id: input.id,
         title: input.title,
@@ -123,7 +124,10 @@ export const tripsRouter = router({
         comparison_mode: input.comparisonMode ?? false,
         locked_destination_title: input.lockedDestination?.title ?? null,
         locked_destination_location: input.lockedDestination?.location ?? null,
-        locked_destination_at: input.lockedDestination ? now : null,
+        locked_destination_at: hasLockedDest ? now : null,
+        // Stage: known destination → planning, otherwise → idea
+        stage: hasLockedDest ? "planning" : "idea",
+        ...(hasLockedDest ? { stage_advanced_to_planning_at: now } : {}),
       });
 
       if (error) {
@@ -478,5 +482,187 @@ export const tripsRouter = router({
       }
 
       return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // advanceToPlanning — Owner advances trip from IDEA → PLANNING
+  // Requires: destination is locked
+  // -----------------------------------------------------------------------
+  advanceToPlanning: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx }) => {
+      // Fetch current trip state
+      const { data: trip, error: fetchErr } = await ctx.supabase
+        .from("trips")
+        .select("stage, locked_destination_title")
+        .eq("id", ctx.tripId)
+        .single();
+
+      if (fetchErr || !trip) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      }
+
+      if (trip.stage !== "idea") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Trip is not in the idea stage.",
+        });
+      }
+
+      if (!trip.locked_destination_title) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Lock a destination before advancing to planning.",
+        });
+      }
+
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({
+          stage: "planning",
+          stage_advanced_to_planning_at: new Date().toISOString(),
+        })
+        .eq("id", ctx.tripId)
+        .select("id, stage")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to advance stage" });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // advanceToGoing — Owner advances trip from PLANNING → GOING
+  // Requires: at least one date is locked, rsvpMessage provided
+  // -----------------------------------------------------------------------
+  advanceToGoing: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        rsvpMessage: z.string().min(1, "A message for your crew is required."),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch current trip state
+      const { data: trip, error: fetchErr } = await ctx.supabase
+        .from("trips")
+        .select("stage")
+        .eq("id", ctx.tripId)
+        .single();
+
+      if (fetchErr || !trip) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      }
+
+      if (trip.stage !== "planning") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Trip is not in the planning stage.",
+        });
+      }
+
+      // Check for locked date
+      const { data: poll } = await ctx.supabase
+        .from("date_polls")
+        .select("locked_window_id")
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+
+      if (!poll?.locked_window_id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Lock a date before sending the RSVP — your crew will want to know when.",
+        });
+      }
+
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({
+          stage: "going",
+          stage_advanced_to_going_at: new Date().toISOString(),
+          rsvp_message: input.rsvpMessage.trim(),
+        })
+        .eq("id", ctx.tripId)
+        .select("id, stage, rsvp_message")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to advance stage" });
+      }
+
+      // TODO: Task B — RSVP blast email to all trip members
+      console.log("RSVP blast would send here for trip:", ctx.tripId);
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // changeDestination — Owner/Planner can change destination in PLANNING stage
+  // Resets date poll votes since dates may change
+  // -----------------------------------------------------------------------
+  changeDestination: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        destination: z.string().min(1, "Destination is required."),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch current stage
+      const { data: trip, error: fetchErr } = await ctx.supabase
+        .from("trips")
+        .select("stage")
+        .eq("id", ctx.tripId)
+        .single();
+
+      if (fetchErr || !trip) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      }
+
+      if (trip.stage !== "planning") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Destination can only be changed in the planning stage.",
+        });
+      }
+
+      const dest = input.destination.trim();
+
+      // Update destination
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({
+          locked_destination_title: dest,
+          locked_destination_location: dest,
+          locked_destination_at: new Date().toISOString(),
+        })
+        .eq("id", ctx.tripId)
+        .select("id, locked_destination_title")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to change destination" });
+      }
+
+      // Reset date poll votes — dates may change with new destination
+      const { data: windows } = await ctx.supabase
+        .from("date_windows")
+        .select("id")
+        .eq("trip_id", ctx.tripId);
+
+      if (windows && windows.length > 0) {
+        const windowIds = windows.map((w) => w.id);
+        await ctx.supabase
+          .from("date_poll_votes")
+          .delete()
+          .in("window_id", windowIds);
+      }
+
+      return data;
     }),
 });

@@ -351,11 +351,24 @@ export function CrewTab({ trip, canEdit }: TabProps) {
     }
   };
 
+  const stage = trip.stage ?? "idea";
+
+  // Stage-aware config
+  const sectionLabel = stage === "idea" ? "CO-PLANNERS" : "CREW";
+  const helperText =
+    stage === "idea"
+      ? "Add anyone you're thinking of inviting. Make them a planner if you want their help deciding where to go."
+      : stage === "planning"
+        ? "Building your roster. Add everyone you're considering — you'll send the official RSVP when you're ready."
+        : null;
+  const showRsvpStatus = stage === "going";
+  const showSendEmail = stage !== "idea";
+
   return (
     <div className="space-y-4 px-4">
       {/* Header row */}
       <div className="flex items-center justify-end">
-        {canEdit && (
+        {canEdit && showSendEmail && (
           <button
             onClick={() => setShowEmailPanel(true)}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
@@ -366,6 +379,13 @@ export function CrewTab({ trip, canEdit }: TabProps) {
           </button>
         )}
       </div>
+
+      {/* Stage-aware helper text */}
+      {helperText && (
+        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          {helperText}
+        </p>
+      )}
 
       {/* Inline add row */}
       {canEdit && (
@@ -403,7 +423,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wider"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Crew
+        {sectionLabel}
       </h2>
       <div>
         {sorted.map((m, i) => {

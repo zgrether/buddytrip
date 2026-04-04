@@ -116,10 +116,47 @@ tappable to open a hole-by-hole view with non-editable cells.
 
 ---
 
+### RSVP blast email (Task B — separate spec)
+
+When owner advances to GOING, send RSVP email to all crew members.
+Email includes trip details (destination, dates, RSVP message) and
+a link to the trip. Currently stubbed with console.log.
+
+**Also includes:**
+- In/Maybe/Out RSVP tracking on crew tab
+- RSVP panel on Home tab with selectors
+- Headcount summary chip in crew tab header (GOING/NOW stage)
+
+**Depends on:** stage model (done), Resend email integration (done).
+
+---
+
 ## v2 / Post-Launch
 
 Lower priority items. Build after core planning flows are stable and
 the app has real users.
+
+### D-Day countdown nudges
+
+Automated check-ins at key milestones before the trip:
+- D-30: RSVP check — notify owner if anyone hasn't responded
+- D-14: Reservations check — prompt for booking confirmations
+- D-7: Competition check — remind to set up teams/rounds
+
+**When:** after push notifications or scheduled email system.
+
+---
+
+### NOW stage live behavior
+
+What changes when the trip is actively happening:
+- Messaging, scorecard, and schedule promoted front and center
+- Real-time crew location sharing (optional)
+- Trip dashboard optimized for in-the-moment use
+
+**When:** after first real trip uses the app during travel.
+
+---
 
 ### Quick Score (no-auth scorecard)
 
