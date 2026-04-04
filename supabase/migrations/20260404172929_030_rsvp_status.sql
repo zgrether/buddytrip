@@ -39,10 +39,14 @@ ALTER TABLE notification_events
     'rsvp_response'
   ));
 
--- ── 4. RLS: no new policies needed ──────────────────────────────────────
--- The existing trip_members_update policy (migration 003) already allows:
---   - Self-update (user_id = auth.uid())
---   - Owner update (has_trip_role(trip_id, ARRAY['Owner']))
--- This covers both setRsvpStatus (self) and setRsvpStatusForMember (owner).
--- The Planner role for setRsvpStatusForMember is enforced at the tRPC
--- middleware layer, not at the RLS level.
+-- ── 4. RLS: extend trip_members UPDATE to include Planner ───────────────
+-- Original policy (migration 003) only allowed self-update or Owner.
+-- Planners also need to update rsvp_status for ghost members they manage.
+
+DROP POLICY IF EXISTS trip_members_update ON trip_members;
+
+CREATE POLICY trip_members_update ON trip_members FOR UPDATE TO authenticated
+  USING (
+    user_id = auth.uid()::text
+    OR has_trip_role(trip_id, ARRAY['Owner', 'Planner'])
+  );
