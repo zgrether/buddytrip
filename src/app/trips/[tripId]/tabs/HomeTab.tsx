@@ -25,6 +25,7 @@ import Link from "next/link";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange, parseLocalDate } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
+import { countdownLabel } from "@/lib/tripStatus";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
@@ -1487,10 +1488,11 @@ export function HomeTab({
   });
 
   const status = getTripStatus(trip);
-  const isCompleted = status === "past";
+  const _isCompleted = status === "past";
   const isLocked = !!trip.locked_destination_title;
   const isExploring = !!trip.comparison_mode && !isLocked;
   const isBlank = !trip.comparison_mode && !isLocked;
+  const stage = (trip as { stage?: string }).stage ?? "idea";
 
   // Pending-actions interstitial: show when member has no votes on an open poll
   const datesLocked = !!(trip.start_date && trip.end_date);
@@ -1508,7 +1510,8 @@ export function HomeTab({
   const ownerMember = members.find((m) => m.role === "Owner");
   const ownerFirstName = ownerMember?.displayName?.split(" ")[0] ?? "The organizer";
 
-  if (isExploring) {
+  // Idea zone only shown in idea stage
+  if (isExploring && stage === "idea") {
     return (
       <div className="flex flex-col gap-4 px-4">
         {/* Idea Zone summary panel */}
@@ -1600,8 +1603,60 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* 1. Planning rows — visible for all users regardless of trip status */}
-      {(isBlank || isLocked) && (
+      {/* ── GOING / NOW stage: About panel with RSVP message ──────────── */}
+      {(stage === "going" || status === "now") && (trip as { rsvp_message?: string | null }).rsvp_message && (
+        <div
+          className="mx-4 rounded-xl p-5"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        >
+          {status === "now" && (
+            <span
+              className="mb-2 inline-block rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider"
+              style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))", color: "var(--color-bt-warning)" }}
+            >
+              {countdownLabel(trip) ?? "NOW"}
+            </span>
+          )}
+          <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+            {(trip as { rsvp_message?: string | null }).rsvp_message}
+          </p>
+        </div>
+      )}
+
+      {/* ── GOING / NOW stage: RSVP panel (stub) ─────────────────────── */}
+      {(stage === "going" || status === "now") && (
+        <div
+          className="mx-4 rounded-xl p-5"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        >
+          {/* TODO: Task B — RSVP tracking */}
+          <p className="mb-3 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Your RSVP
+          </p>
+          <div className="flex gap-2">
+            {(["In", "Maybe", "Out"] as const).map((label) => (
+              <button
+                key={label}
+                disabled
+                className="flex-1 rounded-xl py-2.5 text-sm font-medium opacity-40"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            RSVP tracking coming soon.
+          </p>
+        </div>
+      )}
+
+      {/* ── Planning rows — gated by stage ────────────────────────────── */}
+      {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
         <PlanningSection
           trip={trip}
           ideas={ideas as IdeaWithVotes[]}
@@ -1610,6 +1665,20 @@ export function HomeTab({
           reservations={reservations}
           canEdit={canEditProp}
           isOwner={!!isOwner}
+          onTabChange={onTabChange}
+        />
+      )}
+
+      {/* ── GOING/NOW: show planning rows in collapsed done state ──── */}
+      {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
+        <PlanningSection
+          trip={trip}
+          ideas={ideas as IdeaWithVotes[]}
+          poll={poll}
+          tripMembers={members}
+          reservations={reservations}
+          canEdit={false}
+          isOwner={false}
           onTabChange={onTabChange}
         />
       )}

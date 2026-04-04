@@ -114,6 +114,7 @@ export default function TripDetailPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showEditDetails, setShowEditDetails] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
+  const [showAdvanceSheet, setShowAdvanceSheet] = useState<"planning" | "going" | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -286,6 +287,29 @@ export default function TripDetailPage() {
           onDatesTap={() => setActiveTab("schedule")}
         />
 
+        {/* ── Stage advancement link (owner only) ──────────────────────── */}
+        {isOwner && (trip as { stage?: string }).stage === "idea" && (
+          <button
+            onClick={() => {
+              // Open advancement sheet — handled via state
+              setShowAdvanceSheet("planning");
+            }}
+            className="mt-2 text-xs font-medium hover:underline"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            Ready to start planning →
+          </button>
+        )}
+        {isOwner && (trip as { stage?: string }).stage === "planning" && (
+          <button
+            onClick={() => setShowAdvanceSheet("going")}
+            className="mt-2 text-xs font-medium hover:underline"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            Make it official →
+          </button>
+        )}
+
         {/* ── Tab bar ───────────────────────────────────────────────────── */}
         <div className="mt-4">
           <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={showComp} canEdit={canEdit} />
@@ -351,6 +375,204 @@ export default function TripDetailPage() {
           onClose={() => setShowSettings(false)}
         />
       )}
+
+      {/* ── Stage advancement sheets ─────────────────────────────────────── */}
+      {showAdvanceSheet === "planning" && (
+        <AdvanceToPlanningSheet
+          tripId={tripId}
+          hasLockedDestination={!!trip.locked_destination_title}
+          onClose={() => setShowAdvanceSheet(null)}
+        />
+      )}
+      {showAdvanceSheet === "going" && (
+        <AdvanceToGoingSheet
+          tripId={tripId}
+          destination={trip.locked_destination_title ?? ""}
+          dateRange={formatDateRange(trip.start_date, trip.end_date)}
+          onClose={() => setShowAdvanceSheet(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── AdvanceToPlanningSheet ───────────────────────────────────────────────
+
+function AdvanceToPlanningSheet({
+  tripId,
+  hasLockedDestination,
+  onClose,
+}: {
+  tripId: string;
+  hasLockedDestination: boolean;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const advance = trpc.trips.advanceToPlanning.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      onClose();
+    },
+  });
+  useModalBackButton(onClose);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-2xl p-6 lg:rounded-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Start planning
+        </h2>
+        {hasLockedDestination ? (
+          <>
+            <p className="mt-2 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              You&apos;ve picked a destination. Time to figure out the when — add your crew
+              and start narrowing down dates.
+            </p>
+            <button
+              onClick={() => advance.mutate({ tripId })}
+              disabled={advance.isPending}
+              className="mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              {advance.isPending ? "Advancing..." : "Let's plan it"}
+            </button>
+            <button
+              onClick={onClose}
+              className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Not yet
+            </button>
+          </>
+        ) : (
+          <div
+            className="mt-4 flex items-start gap-3 rounded-xl px-4 py-3"
+            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+          >
+            <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
+            <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
+              Lock a destination first before moving to planning.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AdvanceToGoingSheet ─────────────────────────────────────────────────
+
+function AdvanceToGoingSheet({
+  tripId,
+  destination,
+  dateRange,
+  onClose,
+}: {
+  tripId: string;
+  destination: string;
+  dateRange: string;
+  onClose: () => void;
+}) {
+  const [message, setMessage] = useState("");
+  const utils = trpc.useUtils();
+
+  // Check if a date is locked
+  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
+  const hasLockedDate = !!poll?.lockedWindowId;
+
+  const advance = trpc.trips.advanceToGoing.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      onClose();
+    },
+  });
+  useModalBackButton(onClose);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[560px] rounded-t-2xl p-6 lg:rounded-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Make it official
+        </h2>
+        <p className="mt-2 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          Write a message to your crew — this will appear on the home tab for everyone
+          and kick off the RSVP.
+        </p>
+
+        {hasLockedDate ? (
+          <>
+            {/* Preview chip */}
+            <div
+              className="mt-4 rounded-xl px-3 py-2 text-[13px]"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+            >
+              {dateRange ? `${dateRange} · ${destination}` : destination}
+            </div>
+
+            {/* Message textarea */}
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="What do you want to say?"
+              rows={3}
+              className="mt-3 w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              This will appear on the home tab for everyone to review. They can provide
+              their RSVP below it.
+            </p>
+
+            <button
+              onClick={() => advance.mutate({ tripId, rsvpMessage: message.trim() })}
+              disabled={advance.isPending || !message.trim()}
+              className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              {advance.isPending ? "Sending..." : "Send it"}
+            </button>
+            <button
+              onClick={onClose}
+              className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Not yet
+            </button>
+          </>
+        ) : (
+          <div
+            className="mt-4 flex items-start gap-3 rounded-xl px-4 py-3"
+            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+          >
+            <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
+            <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
+              Lock a date first — your crew will want to know when.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
