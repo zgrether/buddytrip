@@ -44,7 +44,7 @@ describe("Phase 0 Smoke Test", () => {
   });
 
   it("should compute trip_status via Postgres function", async () => {
-    // Trip has no dates/locked destination → 'planning'
+    // Trip has no dates/locked destination → 'idea' (stage model default)
     const admin = ctx.admin;
     const { data, error } = await admin
       .from("trips")
@@ -53,7 +53,7 @@ describe("Phase 0 Smoke Test", () => {
       .single();
 
     expect(error).toBeNull();
-    expect(data?.trip_status).toBe("planning");
+    expect(data?.trip_status).toBe("idea");
   });
 
   it("should have all core tables accessible", async () => {

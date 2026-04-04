@@ -53,6 +53,12 @@ describe("trips router", () => {
     expect(trips.some((t: { id: string }) => t.id === tripId)).toBe(false);
   });
 
+  // Stage must be 'going' for member visibility (RLS: idea/planning = planner-only)
+  it("setup — advance to going for member visibility", async () => {
+    await ctx.admin.from("trips").update({ stage: "planning" }).eq("id", tripId);
+    await ctx.admin.from("trips").update({ stage: "going" }).eq("id", tripId);
+  });
+
   // getById
   it("getById — member can view trip", async () => {
     const caller = ctx.callerAs("member");

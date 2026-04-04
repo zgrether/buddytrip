@@ -88,15 +88,16 @@ describe("countdownLabel", () => {
   });
 
   it("returns 'X days to go' for 2+ days", () => {
-    const threeDays = new Date();
-    threeDays.setDate(threeDays.getDate() + 3);
+    // Use 2 days from now (safely inside the 3-day NOW window)
+    const twoDays = new Date();
+    twoDays.setDate(twoDays.getDate() + 2);
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + 7);
     const result = countdownLabel({
       stage: "going",
-      start_date: threeDays.toISOString().split("T")[0],
+      start_date: twoDays.toISOString().split("T")[0],
       end_date: endDate.toISOString().split("T")[0],
     });
-    expect(result).toBe("3 days to go");
+    expect(result).toBe("2 days to go");
   });
 });
