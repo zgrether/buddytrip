@@ -115,6 +115,7 @@ export default function TripDetailPage() {
   const [showEditDetails, setShowEditDetails] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"planning" | "going" | null>(null);
+  const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -192,6 +193,13 @@ export default function TripDetailPage() {
       router.replace(`/trips/${tripId}/compare`);
     }
   }, [trip, role, tripId, router]);
+
+  // ── Toast auto-dismiss ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // ── Loading ───────────────────────────────────────────────────────────────
   // Wait for ALL queries (trip + home-tab data) before rendering so every
@@ -390,7 +398,34 @@ export default function TripDetailPage() {
           destination={trip.locked_destination_title ?? ""}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
           onClose={() => setShowAdvanceSheet(null)}
+          onAdvanced={(ghosts) => {
+            if (ghosts.length > 0) {
+              setToast({
+                message: `No email on file for: ${ghosts.join(", ")}. They won't receive the RSVP blast.`,
+                variant: "warning",
+              });
+            }
+          }}
         />
+      )}
+
+      {/* ── Toast notification ─────────────────────────────────────────── */}
+      {toast && (
+        <div
+          className="fixed bottom-24 left-1/2 z-[100] w-full max-w-sm -translate-x-1/2 px-4"
+          onClick={() => setToast(null)}
+        >
+          <div
+            className="rounded-xl px-4 py-3 text-sm shadow-lg"
+            style={{
+              background: "rgba(217,119,6,0.1)",
+              color: "var(--color-bt-warning)",
+              border: "1px solid var(--color-bt-warning)",
+            }}
+          >
+            {toast.message}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -476,11 +511,13 @@ function AdvanceToGoingSheet({
   destination,
   dateRange,
   onClose,
+  onAdvanced,
 }: {
   tripId: string;
   destination: string;
   dateRange: string;
   onClose: () => void;
+  onAdvanced: (ghostsWithoutEmail: string[]) => void;
 }) {
   const [message, setMessage] = useState("");
   const utils = trpc.useUtils();
@@ -490,9 +527,10 @@ function AdvanceToGoingSheet({
   const hasLockedDate = !!poll?.lockedWindowId;
 
   const advance = trpc.trips.advanceToGoing.useMutation({
-    onSuccess() {
+    onSuccess(result) {
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
+      onAdvanced(result.ghostsWithoutEmail ?? []);
       onClose();
     },
   });

@@ -39,6 +39,7 @@ type Member = {
   user_id: string | null;
   role: string;
   status: string | null;
+  rsvp_status?: string | null;
   displayName: string;
   isGuest: boolean;
   user: { email: string | null; is_guest?: boolean } | null;
@@ -89,11 +90,23 @@ function CrewMemberRow({
     onSuccess() { utils.tripMembers.list.invalidate({ tripId }); },
   });
 
+  const nudgeCrewMember = trpc.tripMembers.nudgeCrewMember.useMutation();
+  const setRsvpForMember = trpc.tripMembers.setRsvpStatusForMember.useMutation({
+    onSuccess() { utils.tripMembers.list.invalidate({ tripId }); },
+  });
+  const [nudgeSent, setNudgeSent] = useState(false);
+
+  const handleNudge = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!m.user_id) return;
+    await nudgeCrewMember.mutateAsync({ tripId, userId: m.user_id });
+    setNudgeSent(true);
+    setTimeout(() => setNudgeSent(false), 2000);
+  };
+
   const display = m.displayName;
   const _roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
-  const rsvpCfg = (m as { rsvp_status?: string | null }).rsvp_status
-    ? RSVP_LABEL[(m as { rsvp_status?: string | null }).rsvp_status!]
-    : null;
+  const rsvpCfg = m.rsvp_status ? RSVP_LABEL[m.rsvp_status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
   const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
 
@@ -180,7 +193,7 @@ function CrewMemberRow({
 
         {/* RSVP / Status — context-dependent */}
         {m.role !== "Owner" && showRsvpStatus && (() => {
-          const rsvp = (m as { rsvp_status?: string | null }).rsvp_status;
+          const rsvp = m.rsvp_status;
           const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
           return cfg ? (
             <span
@@ -210,6 +223,41 @@ function CrewMemberRow({
           ) : m.status === "invited" ? (
             <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-ready)" }}>
               Invited
+            </span>
+          ) : null
+        )}
+
+        {/* Nudge / no-email indicator (going stage, non-owner, non-self) */}
+        {showRsvpStatus && m.role !== "Owner" && canEdit && !isMe && (
+          m.user?.email ? (
+            (m.rsvp_status == null || m.rsvp_status === "maybe") ? (
+              <button
+                onClick={handleNudge}
+                disabled={nudgeCrewMember.isPending || nudgeSent}
+                className="flex flex-shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+                style={{
+                  color: nudgeSent ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+                title="Send RSVP nudge"
+              >
+                {nudgeSent ? (
+                  <span>Sent ✓</span>
+                ) : (
+                  <>
+                    <Send size={11} />
+                    <span>Nudge</span>
+                  </>
+                )}
+              </button>
+            ) : null
+          ) : m.isGuest ? (
+            <span
+              className="flex-shrink-0"
+              title="No email on file"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <MailX size={14} />
             </span>
           ) : null
         )}
@@ -278,6 +326,50 @@ function CrewMemberRow({
             />
           </div>
 
+          {/* RSVP override (going stage) */}
+          {showRsvpStatus && (
+            <div>
+              <p className="mb-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>RSVP</p>
+              <div className="flex gap-1.5">
+                {(["in", "maybe", "out"] as const).map((val) => {
+                  const cfg = RSVP_LABEL[val];
+                  const isSelected = m.rsvp_status === val;
+                  return (
+                    <button
+                      key={val}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (m.user_id) setRsvpForMember.mutate({ tripId, userId: m.user_id, rsvpStatus: val });
+                      }}
+                      disabled={setRsvpForMember.isPending}
+                      className="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40"
+                      style={{
+                        background: isSelected ? cfg.bg : "var(--color-bt-base)",
+                        color: isSelected ? cfg.color : "var(--color-bt-text-dim)",
+                        border: `1px solid ${isSelected ? cfg.color : "var(--color-bt-border)"}`,
+                      }}
+                    >
+                      {cfg.label}
+                    </button>
+                  );
+                })}
+                {m.rsvp_status && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (m.user_id) setRsvpForMember.mutate({ tripId, userId: m.user_id, rsvpStatus: null });
+                    }}
+                    disabled={setRsvpForMember.isPending}
+                    className="rounded-lg px-2.5 py-1 text-xs disabled:opacity-40"
+                    style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Actions row — planner toggle + save/cancel */}
           <div className="flex items-center gap-2">
             {/* Planner toggle — Owner only, real members only */}
@@ -341,6 +433,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
   const createGhost = trpc.ghostCrew.create.useMutation();
   const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
+  const nudgeAll = trpc.tripMembers.nudgeAllPending.useMutation();
+  const [nudgeAllSent, setNudgeAllSent] = useState(false);
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -377,6 +471,11 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
   const stage = trip.stage ?? "idea";
 
+  // Count pending members who have an email (can actually be nudged)
+  const pendingWithEmailCount = members.filter(
+    (m) => (m as { rsvp_status?: string | null }).rsvp_status == null && !!m.user?.email
+  ).length;
+
   // Stage-aware config
   const sectionLabel = stage === "idea" ? "CO-PLANNERS" : "CREW";
   const helperText =
@@ -391,7 +490,22 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   return (
     <div className="space-y-4 px-4">
       {/* Header row */}
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {canEdit && showRsvpStatus && pendingWithEmailCount > 0 && (
+          <button
+            onClick={async () => {
+              await nudgeAll.mutateAsync({ tripId });
+              setNudgeAllSent(true);
+              setTimeout(() => setNudgeAllSent(false), 3000);
+            }}
+            disabled={nudgeAll.isPending || nudgeAllSent}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+            style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            <Send size={13} />
+            {nudgeAllSent ? "Sent ✓" : `Nudge pending (${pendingWithEmailCount})`}
+          </button>
+        )}
         {canEdit && showSendEmail && (
           <button
             onClick={() => setShowEmailPanel(true)}
