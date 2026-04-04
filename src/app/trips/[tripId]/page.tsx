@@ -265,7 +265,7 @@ export default function TripDetailPage() {
       />
 
       {/* ── Trip header card ──────────────────────────────────────────────── */}
-      <div className="mx-auto max-w-[896px] px-4 pt-4">
+      <div className="mx-auto max-w-[1280px] px-4 pt-4">
         <TripHeader
           tripName={trip.title}
           status={status}
@@ -293,7 +293,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-[896px] pb-24 pt-4">
+      <main className="mx-auto max-w-[1280px] pb-24 pt-4">
         {/* Read-only banner */}
         {tripIsReadOnly && activeTab === "home" && (
           <div
