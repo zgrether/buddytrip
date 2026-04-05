@@ -1148,9 +1148,9 @@ function RsvpDraftPanel({
   });
 
   const hasDraft = !!(draft.trim());
-  const state: ArcCardState = hasDraft ? "inProgress" : "none";
+  const state: ArcCardState = hasDraft ? "done" : "none";
   const note = hasDraft ? "Draft saved" : "Not written yet";
-  const noteWarn = hasDraft;
+  const noteWarn = false;
 
   const handleBlur = () => {
     const trimmed = draft.trim();
@@ -1165,7 +1165,6 @@ function RsvpDraftPanel({
       label="RSVP Message"
       note={note}
       noteWarn={noteWarn}
-      warnState={hasDraft}
       state={state}
       isOpen={isOpen && isOwner}
       onToggle={isOwner ? onToggle : () => {}}
