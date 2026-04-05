@@ -188,6 +188,7 @@ export default function TripDetailPage() {
           isLocked={isLocked}
           canEdit={canEdit}
           myRole={role}
+          isOwner={isOwner}
           tripStartDate={trip.start_date}
           onDestinationChange={(value) => {
             lockDestination.mutate({
