@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MoreHorizontal, Lock, HelpCircle, X } from "lucide-react";
+import { MoreHorizontal, Lock, HelpCircle, X, Calendar, Plus, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -20,7 +20,6 @@ import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { FloatingChatButton } from "./components/FloatingChatButton";
 import { ChatDrawer } from "./components/ChatDrawer";
 import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
 import { SidebarChatPanel } from "./components/PlanningChatPanel";
@@ -147,7 +146,6 @@ export default function TripDetailPage() {
   const tripIsReadOnly = checkReadOnly(trip);
   const stage = (trip as { stage?: string }).stage ?? "idea";
   // IDEA stage: IdeaZonePanel renders its own floating action buttons
-  const showFloatingChat = stage === "planning" && activeTab === "home";
   // When exploring (comparison_mode=true, no lock), don't fall back to
   // trip.location — lockDestination writes to that column and unlockDestination
   // doesn't clear it, so the old destination would bleed through to the header.
@@ -289,6 +287,20 @@ export default function TripDetailPage() {
             {/* Right: persistent sidebar — desktop only */}
             <div className="hidden lg:flex lg:flex-col gap-4">
               <StageContextBar tripId={tripId} stage={stage} displayStatus={status} />
+              {effectiveCanEdit && (
+                <button
+                  onClick={() => setActiveTab("schedule")}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                  style={{
+                    border: "1.5px dashed var(--color-bt-accent)",
+                    color: "var(--color-bt-accent)",
+                    background: "transparent",
+                  }}
+                >
+                  <Plus size={16} />
+                  Add date
+                </button>
+              )}
               <SidebarChatPanel
                 tripId={tripId}
                 memberNames={Object.fromEntries(
@@ -421,9 +433,41 @@ export default function TripDetailPage() {
         );
       })()}
 
-      {/* ── Floating chat button + drawer (IDEA/PLANNING mobile) ──────── */}
-      {showFloatingChat && (
-        <FloatingChatButton onClick={() => setShowChatDrawer(true)} />
+      {/* ── Planning mobile pill FAB ──────────────────────────────────── */}
+      {stage === "planning" && (
+        <div
+          className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center lg:hidden"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+            borderRadius: "1rem",
+            boxShadow: "var(--shadow-floating)",
+            width: "3rem",
+          }}
+        >
+          {effectiveCanEdit && (
+            <>
+              <button
+                onClick={() => setActiveTab("schedule")}
+                className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+                style={{ borderRadius: "1rem 1rem 0 0" }}
+                aria-label="Add date"
+              >
+                <Calendar size={18} style={{ color: "var(--color-bt-accent)" }} />
+              </button>
+              <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
+            </>
+          )}
+          <button
+            onClick={() => setShowChatDrawer(true)}
+            data-testid="floating-chat-btn"
+            className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+            style={{ borderRadius: effectiveCanEdit ? "0 0 1rem 1rem" : "1rem" }}
+            aria-label="Open crew chat"
+          >
+            <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        </div>
       )}
       <ChatDrawer
         tripId={tripId}
