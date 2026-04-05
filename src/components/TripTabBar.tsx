@@ -23,6 +23,8 @@ interface TripTabBarProps {
   onTabChange: (tab: TabId) => void;
   showComp?: boolean;
   canEdit?: boolean;
+  /** Trip stage — used to disable Expenses in PLANNING and hide Competition */
+  stage?: string;
 }
 
 export const TripTabBar: FC<TripTabBarProps> = ({
@@ -30,12 +32,17 @@ export const TripTabBar: FC<TripTabBarProps> = ({
   onTabChange,
   showComp = false,
   canEdit = false,
+  stage,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [iconMode, setIconMode] = useState(false);
 
   const tabs = ALL_TABS.filter((t) => {
-    if (t.id === "comp") return canEdit && showComp;
+    if (t.id === "comp") {
+      // In PLANNING stage, never show Competition tab
+      if (stage === "planning") return false;
+      return canEdit && showComp;
+    }
     return true;
   });
 
@@ -58,6 +65,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({
     >
       {tabs.map(({ id, label, Icon }) => {
         const active = activeTab === id;
+        const isDisabled = stage === "planning" && id === "expenses";
         return (
           <button
             key={id}
@@ -65,10 +73,16 @@ export const TripTabBar: FC<TripTabBarProps> = ({
             onClick={() => onTabChange(id)}
             className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-medium transition-colors"
             style={{
-              color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              color: isDisabled
+                ? "var(--color-bt-text-dim)"
+                : active
+                  ? "var(--color-bt-accent)"
+                  : "var(--color-bt-text-dim)",
               borderBottom: active
                 ? "2px solid var(--color-bt-accent)"
                 : "2px solid transparent",
+              opacity: isDisabled ? 0.4 : 1,
+              cursor: isDisabled ? "not-allowed" : "pointer",
             }}
           >
             {iconMode ? (

@@ -99,7 +99,7 @@ export default function TripDetailPage() {
   // ── Toast auto-dismiss ────────────────────────────────────────────────────
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 5000);
+    const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -206,10 +206,24 @@ export default function TripDetailPage() {
           }}
         />
 
-        {/* ── Tab bar ───────────────────────────────────────────────────── */}
-        <div className="mt-4">
-          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={showComp} canEdit={canEdit} />
-        </div>
+        {/* ── Tab bar (hidden in IDEA stage) ──────────────────────────── */}
+        {stage !== "idea" && (
+          <div className="mt-4">
+            <TripTabBar
+              activeTab={activeTab}
+              onTabChange={(tab) => {
+                if (stage === "planning" && tab === "expenses") {
+                  setToast({ message: "Expenses are available once the trip moves to Ready.", variant: "warning" });
+                  return;
+                }
+                setActiveTab(tab);
+              }}
+              showComp={showComp}
+              canEdit={canEdit}
+              stage={stage}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
