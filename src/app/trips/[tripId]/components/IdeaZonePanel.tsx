@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTheme } from "next-themes";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
@@ -1478,7 +1478,7 @@ function CrewChatWidget({
     },
   });
 
-  const handleSend = useCallback(() => {
+  const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed || sendMessage.isPending || !currentUser?.id) return;
 
@@ -1499,7 +1499,7 @@ function CrewChatWidget({
 
     setText("");
     sendMessage.mutate({ tripId, id, channel: "trip", text: trimmed });
-  }, [text, tripId, currentUser?.id, sendMessage]);
+  };
 
   return (
     <div

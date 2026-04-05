@@ -36,7 +36,7 @@ interface TripHeaderProps {
 
 // ── Inline editable text ─────────────────────────────────────────────────
 
-function InlineEdit({
+function _InlineEdit({
   value,
   onSave,
   placeholder,

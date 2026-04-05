@@ -22,7 +22,6 @@ import {
   Minus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange, parseLocalDate } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
@@ -1128,7 +1127,6 @@ function PlanningSection({
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
 }) {
-  const router = useRouter();
   const utils = trpc.useUtils();
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [showSetDest, setShowSetDest] = useState(false);
@@ -1536,7 +1534,7 @@ export function HomeTab({
   const status = getTripStatus(trip);
   const _isCompleted = status === "past";
   const isLocked = !!trip.locked_destination_title;
-  const isExploring = !!trip.comparison_mode && !isLocked;
+  const _isExploring = !!trip.comparison_mode && !isLocked;
   const isBlank = !trip.comparison_mode && !isLocked;
   const stage = trip.stage ?? "idea";
 

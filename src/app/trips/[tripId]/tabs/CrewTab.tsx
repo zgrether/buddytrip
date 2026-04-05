@@ -19,7 +19,7 @@ const RSVP_LABEL: Record<string, { label: string; color: string; bg: string }> =
 };
 
 const RSVP_SORT_ORDER: Record<string, number> = { in: 0, maybe: 1, out: 3 };
-function rsvpSortKey(rsvpStatus: string | null): number {
+function _rsvpSortKey(rsvpStatus: string | null): number {
   if (rsvpStatus === null || rsvpStatus === undefined) return 2; // pending after maybe, before out
   return RSVP_SORT_ORDER[rsvpStatus] ?? 2;
 }
