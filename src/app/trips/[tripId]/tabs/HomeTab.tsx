@@ -1292,19 +1292,6 @@ function PlanningSection({
               )}
             </div>
 
-            {showSetDest && (
-              <SetDestinationModal
-                tripId={trip.id}
-                onClose={() => setShowSetDest(false)}
-              />
-            )}
-
-            {showChangeDest && (
-              <ChangeDestinationModal
-                tripId={trip.id}
-                onClose={() => setShowChangeDest(false)}
-              />
-            )}
           </div>
         )}
       </PlanningRow>
@@ -1417,6 +1404,20 @@ function PlanningSection({
           </button>
         </div>
       </PlanningRow>
+
+      {/* Modals rendered outside PlanningRows so they aren't gated by isOpen */}
+      {showSetDest && (
+        <SetDestinationModal
+          tripId={trip.id}
+          onClose={() => setShowSetDest(false)}
+        />
+      )}
+      {showChangeDest && (
+        <ChangeDestinationModal
+          tripId={trip.id}
+          onClose={() => setShowChangeDest(false)}
+        />
+      )}
     </section>
   );
 }
