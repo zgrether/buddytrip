@@ -20,6 +20,8 @@ import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { FloatingChatButton } from "./components/FloatingChatButton";
+import { ChatDrawer } from "./components/ChatDrawer";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -31,6 +33,7 @@ export default function TripDetailPage() {
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -47,7 +50,7 @@ export default function TripDetailPage() {
   // states so the page waits for ALL data before rendering — no 2-phase pop-in.
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
   const { isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
-  const { isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
   const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
   const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
@@ -139,6 +142,7 @@ export default function TripDetailPage() {
   const status = getTripStatus(trip);
   const tripIsReadOnly = checkReadOnly(trip);
   const stage = (trip as { stage?: string }).stage ?? "idea";
+  const showFloatingChat = (stage === "idea" || stage === "planning") && activeTab === "home";
   // When exploring (comparison_mode=true, no lock), don't fall back to
   // trip.location — lockDestination writes to that column and unlockDestination
   // doesn't clear it, so the old destination would bleed through to the header.
@@ -296,6 +300,19 @@ export default function TripDetailPage() {
           }}
         />
       )}
+
+      {/* ── Floating chat button + drawer (IDEA/PLANNING mobile) ──────── */}
+      {showFloatingChat && (
+        <FloatingChatButton onClick={() => setShowChatDrawer(true)} />
+      )}
+      <ChatDrawer
+        tripId={tripId}
+        isOpen={showChatDrawer}
+        onClose={() => setShowChatDrawer(false)}
+        memberNames={Object.fromEntries(
+          members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
+        )}
+      />
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
       {toast && (
