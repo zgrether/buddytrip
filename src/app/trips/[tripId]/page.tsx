@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MoreHorizontal, Lock, Save, X } from "lucide-react";
+import { MoreHorizontal, Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -21,90 +21,6 @@ import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
-// ── EditTripDetailsModal ──────────────────────────────────────────────────
-
-function EditTripDetailsModal({
-  trip,
-  onClose,
-}: {
-  trip: { id: string; description?: string | null };
-  onClose: () => void;
-}) {
-  useModalBackButton(onClose);
-  const utils = trpc.useUtils();
-  const [description, setDescription] = useState(trip.description ?? "");
-
-  const updateTrip = trpc.trips.update.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId: trip.id });
-      utils.trips.list.invalidate();
-      onClose();
-    },
-  });
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0"
-        style={{ background: "var(--color-bt-overlay)" }}
-        onClick={onClose}
-      />
-      <div
-        className="relative w-full max-w-sm rounded-2xl p-5 space-y-4"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Edit description
-          </h2>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Description</label>
-          <textarea
-            data-testid="edit-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)", resize: "none" }}
-          />
-        </div>
-
-        <div className="flex gap-3 pt-1">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-xl border py-2.5 text-sm"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-          >
-            Cancel
-          </button>
-          <button
-            data-testid="save-trip-btn"
-            disabled={updateTrip.isPending}
-            onClick={() => updateTrip.mutate({
-              tripId: trip.id,
-              description: description.trim(),
-            })}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            <Save size={14} />
-            {updateTrip.isPending ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
 export default function TripDetailPage() {
@@ -112,7 +28,6 @@ export default function TripDetailPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
-  const [showEditDetails, setShowEditDetails] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
@@ -273,6 +188,7 @@ export default function TripDetailPage() {
           isLocked={isLocked}
           canEdit={canEdit}
           myRole={role}
+          isOwner={isOwner}
           tripStartDate={trip.start_date}
           onDestinationChange={(value) => {
             lockDestination.mutate({
@@ -316,7 +232,6 @@ export default function TripDetailPage() {
             canEdit={effectiveCanEdit}
             isOwner={isOwner}
             onTabChange={(tab) => setActiveTab(tab as TabId)}
-            onEdit={effectiveCanEdit ? () => setShowEditDetails(true) : undefined}
             onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
           />
         )}
@@ -336,14 +251,6 @@ export default function TripDetailPage() {
 
       {/* ── Bottom navigation ─────────────────────────────────────────────── */}
       <TripBottomNav tripId={tripId} eventId={trip.event_id} />
-
-      {/* ── Edit trip details modal ───────────────────────────────────────── */}
-      {showEditDetails && (
-        <EditTripDetailsModal
-          trip={trip}
-          onClose={() => setShowEditDetails(false)}
-        />
-      )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (
@@ -460,7 +367,7 @@ function AdvanceToGoingSheet({
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="What do you want to say?"
+              placeholder="What do you want to share with your crew?"
               rows={3}
               className="mt-3 w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={{
@@ -470,12 +377,11 @@ function AdvanceToGoingSheet({
               }}
             />
             <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              This will appear on the home tab for everyone to review. They can provide
-              their RSVP below it.
+              This becomes your trip&apos;s About section — share the details, get people excited.
             </p>
 
             <button
-              onClick={() => advance.mutate({ tripId, rsvpMessage: message.trim() })}
+              onClick={() => advance.mutate({ tripId, aboutMessage: message.trim() })}
               disabled={advance.isPending || !message.trim()}
               className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}

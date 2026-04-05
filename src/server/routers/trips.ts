@@ -536,13 +536,13 @@ export const tripsRouter = router({
 
   // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
-  // Requires: at least one date is locked, rsvpMessage provided
+  // Requires: at least one date is locked, aboutMessage provided
   // -----------------------------------------------------------------------
   advanceToGoing: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
-        rsvpMessage: z.string().min(1, "A message for your crew is required."),
+        aboutMessage: z.string().min(1, "A message for your crew is required."),
       })
     )
     .use(requireTripRole("Owner"))
@@ -584,10 +584,10 @@ export const tripsRouter = router({
         .update({
           stage: "going",
           stage_advanced_to_going_at: new Date().toISOString(),
-          rsvp_message: input.rsvpMessage.trim(),
+          about_message: input.aboutMessage.trim(),
         })
         .eq("id", ctx.tripId)
-        .select("id, stage, rsvp_message")
+        .select("id, stage, about_message")
         .single();
 
       if (error || !data) {
@@ -663,7 +663,7 @@ export const tripsRouter = router({
                 tripName: tripDetails?.title ?? "the trip",
                 destination: tripDetails?.locked_destination_title ?? null,
                 lockedDate: lockedDateLabel,
-                rsvpMessage: input.rsvpMessage.trim(),
+                rsvpMessage: input.aboutMessage.trim(),
                 token,
               });
             }
@@ -675,7 +675,7 @@ export const tripsRouter = router({
               tripId: ctx.tripId,
               destination: tripDetails?.locked_destination_title ?? null,
               lockedDate: lockedDateLabel,
-              rsvpMessage: input.rsvpMessage.trim(),
+              rsvpMessage: input.aboutMessage.trim(),
             });
           }
         }
@@ -684,6 +684,51 @@ export const tripsRouter = router({
       }
 
       return { ...data, ghostsWithoutEmail };
+    }),
+
+  // -----------------------------------------------------------------------
+  // updateAboutMessage — Owner/Planner can update about_message on a GOING+ trip
+  // -----------------------------------------------------------------------
+  updateAboutMessage: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        aboutMessage: z.string().nullable(),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: trip, error: fetchErr } = await ctx.supabase
+        .from("trips")
+        .select("stage")
+        .eq("id", ctx.tripId)
+        .single();
+
+      if (fetchErr || !trip) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      }
+
+      if (trip.stage !== "going") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "About message can only be updated once the trip is in the going stage.",
+        });
+      }
+
+      const newMessage = input.aboutMessage?.trim() || null;
+
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({ about_message: newMessage })
+        .eq("id", ctx.tripId)
+        .select("id, about_message")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update about message" });
+      }
+
+      return data;
     }),
 
   // -----------------------------------------------------------------------

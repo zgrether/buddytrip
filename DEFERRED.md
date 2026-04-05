@@ -18,6 +18,15 @@ once credentials are available — Supabase supports it natively.
 
 ---
 
+### About panel email blast
+
+When owner taps "Notify crew of update" on the About panel, currently
+only fires in-app notifications. Should also send an email via Resend
+to all crew members with the current about_message content.
+Depends on: domain purchase + Resend custom sender setup.
+
+---
+
 ### Swap Resend sender domain
 
 Currently using `onboarding@resend.dev` (Resend's default shared
@@ -246,6 +255,15 @@ TripNew's "Let's put it to a vote" path was designed to call Claude for
 entry only.
 
 **Effort:** low — API call spec was fully written. Nice-to-have.
+
+---
+
+### RSVP status indicator on dashboard TripCard
+
+In GOING/NOW stage, show the current user's RSVP status on the TripCard
+on the dashboard — a small chip showing "In", "Maybe", "Out", or "Pending"
+next to the stage badge. Gives at-a-glance visibility without opening the trip.
+Requires joining trip_members.rsvp_status in the dashboard trips query.
 
 ---
 

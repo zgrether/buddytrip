@@ -32,6 +32,8 @@ interface TripHeaderProps {
   myRole?: TripRole | null;
   /** Called when a future stepper step is tapped */
   onStepClick?: (stepKey: string) => void;
+  /** Hide progress stepper for non-owners */
+  isOwner?: boolean;
 }
 
 // ── Plain card (no locked destination) ───────────────────────────────────
@@ -46,6 +48,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   settingsSlot,
   myRole,
   onStepClick,
+  isOwner,
 }) => (
   <div
     className="rounded-2xl border p-5"
@@ -95,8 +98,8 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       </div>
     )}
 
-    {/* Progress stepper */}
-    <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />
+    {/* Progress stepper — owners only */}
+    {isOwner && <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />}
   </div>
 );
 
@@ -117,6 +120,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   tripStartDate,
   myRole,
   onStepClick,
+  isOwner,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -167,8 +171,8 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         </div>
       )}
 
-      {/* Progress stepper */}
-      <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />
+      {/* Progress stepper — owners only */}
+      {isOwner && <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />}
     </LocationHero>
   );
 };

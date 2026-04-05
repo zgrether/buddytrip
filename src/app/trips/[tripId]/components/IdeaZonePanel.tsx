@@ -1133,8 +1133,10 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
       {/* ── 5. Sticky compare bar ── */}
       {localIdeas.length > 0 && (
         <div
-          className={`fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3 ${onClose ? "z-[60]" : "z-40"}`}
+          className="fixed bottom-0 left-0 right-0 px-4 pt-3"
           style={{
+            zIndex: 60,
+            paddingBottom: "4.5rem",
             background: "var(--color-bt-card)",
             borderTop: "1px solid var(--color-bt-accent-border)",
             boxShadow: "0 -4px 12px rgba(0,0,0,.08)",

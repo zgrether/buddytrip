@@ -20,12 +20,13 @@ import {
   ThumbsUp,
   Loader2,
   Minus,
+  Edit2,
+  Bell,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange, parseLocalDate } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
-import { countdownLabel } from "@/lib/tripStatus";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
@@ -638,8 +639,7 @@ function ChangeDestinationModal({
         >
           <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
           <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
-            This will update the destination for everyone. Date availability responses
-            will be reset since the dates may change too.
+            Changing the destination will reset any date poll responses.
           </p>
         </div>
 
@@ -1421,55 +1421,176 @@ function PlanningSection({
   );
 }
 
-// ── About Card ───────────────────────────────────────────────────────────
+// ── About Panel (GOING / NOW / PAST) ────────────────────────────────────
 
-function AboutCard({ trip, onEdit }: { trip: TripData; onEdit?: () => void }) {
-  if (!trip.description && !onEdit) return null;
+function AboutPanel({ tripId, aboutMessage, canEdit, isPast }: { tripId: string; aboutMessage?: string | null; canEdit: boolean; isPast: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(aboutMessage ?? "");
+  const [notifyState, setNotifyState] = useState<"idle" | "confirm" | "sending" | "success" | "error">("idle");
+  const utils = trpc.useUtils();
 
-  if (!trip.description) {
-    return (
-      <button
-        data-testid="edit-trip-details-btn"
-        onClick={onEdit}
-        className="w-full rounded-xl p-4 text-center"
-        style={{ border: "1.5px dashed var(--color-bt-border)", background: "var(--color-bt-surface-invitation)" }}
-      >
-        <Pencil size={20} className="mx-auto mb-2" style={{ color: "var(--color-bt-text-dim)" }} />
-        <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Add a Trip Description
-        </p>
-        <p className="text-xs mt-0.5" style={{ color: "var(--color-bt-text-dim)" }}>
-          You&apos;re planning something epic. Get your crew excited with a little backstory.
-        </p>
-      </button>
-    );
-  }
+  const update = trpc.trips.updateAboutMessage.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      setEditing(false);
+    },
+  });
+
+  const notifyCrew = trpc.tripMembers.notifyCrewAboutUpdate.useMutation({
+    onSuccess() {
+      setNotifyState("success");
+      setTimeout(() => setNotifyState("idle"), 2000);
+    },
+    onError() {
+      setNotifyState("error");
+      setTimeout(() => setNotifyState("idle"), 3000);
+    },
+  });
+
+  if (!aboutMessage && !canEdit) return null;
+
+  const showNotifyButton = canEdit && !isPast && !editing && !!aboutMessage?.trim();
 
   return (
-    <section
-      className="rounded-xl p-4"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          About
-        </p>
-        {onEdit && (
-          <button
-            data-testid="edit-trip-details-btn"
-            onClick={onEdit}
-            className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-black/10"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Edit trip details"
-          >
-            <Pencil size={12} />
-          </button>
+    <>
+      <div
+        className="mx-4 rounded-xl p-5 lg:mx-0"
+        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      >
+        {/* Header row */}
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            About
+          </p>
+          <div className="flex items-center gap-2">
+            {showNotifyButton && (
+              notifyState === "success" ? (
+                <p className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
+                  Crew notified ✓
+                </p>
+              ) : notifyState === "error" ? (
+                <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
+                  Couldn&apos;t send — try again
+                </p>
+              ) : (
+                <button
+                  onClick={() => setNotifyState("confirm")}
+                  disabled={notifyState === "sending"}
+                  className="flex items-center gap-1 rounded-xl border px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                >
+                  <Bell size={13} />
+                  Notify Crew
+                </button>
+              )
+            )}
+            {canEdit && !editing && (
+              <button
+                onClick={() => { setDraft(aboutMessage ?? ""); setEditing(true); }}
+                className="flex items-center justify-center rounded p-0.5 transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+                aria-label="Edit about message"
+              >
+                <Edit2 size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {editing ? (
+          <>
+            <div className="relative">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={4}
+                autoFocus
+                className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+              {draft && (
+                <button
+                  onClick={() => setDraft("")}
+                  className="absolute right-2 top-2 rounded p-0.5 transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                  aria-label="Clear"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={() => update.mutate({ tripId, aboutMessage: draft.trim() || null })}
+                disabled={update.isPending}
+                className="rounded-lg px-4 py-1.5 text-sm font-semibold transition-opacity disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {update.isPending ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                className="rounded-lg px-4 py-1.5 text-sm transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          aboutMessage && (
+            <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+              {aboutMessage}
+            </p>
+          )
         )}
       </div>
-      <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-        {trip.description}
-      </p>
-    </section>
+
+      {/* Notify crew confirmation modal */}
+      {notifyState === "confirm" && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setNotifyState("idle")}
+        >
+          <div
+            className="w-full max-w-[400px] rounded-t-2xl p-6 lg:rounded-2xl"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Send out this update?
+            </h2>
+            {aboutMessage && (
+              <p
+                className="mt-3 rounded-xl px-4 py-3 text-sm leading-relaxed"
+                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+              >
+                {aboutMessage}
+              </p>
+            )}
+            <button
+              onClick={() => { setNotifyState("sending"); notifyCrew.mutate({ tripId }); }}
+              className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              Yes, notify crew
+            </button>
+            <button
+              onClick={() => setNotifyState("idle")}
+              className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1480,9 +1601,8 @@ export function HomeTab({
   canEdit: canEditProp,
   isOwner,
   onTabChange,
-  onEdit,
   onEnableComp,
-}: TabProps & { onTabChange?: (tab: string) => void; onEdit?: () => void; onEnableComp?: () => void }) {
+}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
@@ -1625,24 +1745,9 @@ export function HomeTab({
       <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
         {/* ── Left column: primary planning content ─────────────────── */}
         <div className="space-y-4">
-          {/* ── GOING / NOW stage: About panel with RSVP message ──── */}
-          {(stage === "going" || status === "now") && trip.rsvp_message && (
-            <div
-              className="mx-4 rounded-xl p-5 lg:mx-0"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-            >
-              {status === "now" && (
-                <span
-                  className="mb-2 inline-block rounded px-2 py-0.5 text-[10px] font-semibold tracking-wider"
-                  style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))", color: "var(--color-bt-warning)" }}
-                >
-                  {countdownLabel(trip) ?? "NOW"}
-                </span>
-              )}
-              <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-                {trip.rsvp_message}
-              </p>
-            </div>
+          {/* ── GOING / NOW / PAST stage: About panel ──────────────── */}
+          {(stage === "going" || status === "now" || status === "past") && (
+            <AboutPanel tripId={trip.id} aboutMessage={trip.about_message} canEdit={canEditProp} isPast={status === "past"} />
           )}
 
           {/* ── GOING / NOW stage: RSVP panel ──────────────────────── */}
@@ -1688,23 +1793,17 @@ export function HomeTab({
 
         {/* ── Right column: per-stage supplementary content ─────────── */}
         <div className="mt-4 space-y-4 lg:mt-0">
-          {/* IDEA stage: co-planners + about */}
+          {/* IDEA stage: quick info */}
           {stage === "idea" && (
-            <>
-              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
-            </>
+            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
           )}
 
-          {/* PLANNING stage: logistics + quick info */}
+          {/* PLANNING stage: quick info */}
           {stage === "planning" && (
-            <>
-              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
-            </>
+            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
           )}
 
-          {/* GOING/NOW stage: logistics details + confirmed dates */}
+          {/* GOING/NOW stage: quick info + confirmed dates */}
           {(stage === "going" || status === "now" || status === "past") && (
             <>
               <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
@@ -1721,7 +1820,6 @@ export function HomeTab({
                   </p>
                 </div>
               )}
-              <AboutCard trip={trip} onEdit={canEditProp ? onEdit : undefined} />
             </>
           )}
         </div>

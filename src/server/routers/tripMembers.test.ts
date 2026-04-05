@@ -167,7 +167,7 @@ describe("tripMembers router — RSVP", () => {
     await admin.from("trips").update({ stage: "planning" }).eq("id", tripId);
     await admin.from("trips").update({
       stage: "going",
-      rsvp_message: "Let's go!",
+      about_message: "Let's go!",
     }).eq("id", tripId);
   });
 
