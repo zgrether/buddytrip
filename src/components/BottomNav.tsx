@@ -131,7 +131,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       {items.filter((i) => !i.hidden).map(({ id, label, Icon, href, badge }) => {
         const active =
           id === "trip-home"
-            ? pathname === `/trips/${tripId}` || pathname === `/trips/${tripId}/compare`
+            ? pathname === `/trips/${tripId}`
             : pathname === href;
         return (
           <button

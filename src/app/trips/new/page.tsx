@@ -48,11 +48,7 @@ export default function TripNewPage() {
         comparisonMode: isExploring,
       });
 
-      if (isExploring) {
-        router.replace(`/trips/${tripId}/compare`);
-      } else {
-        router.replace(`/trips/${tripId}`);
-      }
+      router.replace(`/trips/${tripId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
       setIsSubmitting(false);

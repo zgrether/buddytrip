@@ -35,10 +35,10 @@ export default function ChangeDestinationPage() {
   const unlockDestination = trpc.trips.unlockDestination.useMutation({
     onSuccess() {
       utils.trips.getById.invalidate({ tripId });
-      router.replace(`/trips/${tripId}/compare`);
+      router.replace(`/trips/${tripId}`);
     },
     onError(e) {
-      setError(e.message ?? "Failed to open idea zone");
+      setError(e.message ?? "Failed to unlock destination");
     },
   });
 
@@ -147,7 +147,7 @@ export default function ChangeDestinationPage() {
                 Saving...
               </>
             ) : mode === "exploring" ? (
-              "Open Idea Zone"
+              "Unlock Destination"
             ) : (
               "Set Destination"
             )}
