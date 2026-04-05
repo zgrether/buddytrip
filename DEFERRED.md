@@ -267,6 +267,15 @@ Requires joining trip_members.rsvp_status in the dashboard trips query.
 
 ---
 
+### Unread message count persistence
+
+The floating chat button unread count currently resets on page reload
+(tracked in component state/sessionStorage only). A proper unread count
+requires a last_read_at timestamp per user per trip in the database.
+Schema: add last_read_at to trip_members or a separate message_reads table.
+
+---
+
 ## UX Polish (Logged, Not Urgent)
 
 ### Field Mode (outdoor scoring)
