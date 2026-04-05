@@ -1183,7 +1183,7 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-0">
           <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Add ideas
+            Add destination ideas
           </p>
           <button
             onClick={onClose}
@@ -1506,7 +1506,7 @@ function CrewChatWidget({
 
   return (
     <div
-      className="hidden lg:flex mt-3 flex-col rounded-xl border"
+      className="hidden lg:flex flex-col rounded-xl border"
       style={{
         background: "var(--color-bt-card)",
         borderColor: "var(--color-bt-border)",
@@ -1619,7 +1619,7 @@ function CoPlannerPanel({
 
   return (
     <div
-      className="hidden lg:block mt-3 rounded-xl border px-3 py-3"
+      className="hidden lg:block rounded-xl border px-3 py-3"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1662,13 +1662,17 @@ function CoPlannerPanel({
       {/* Add planner — reuses CrewSearchInput with Planner default */}
       {isOwner && (
         <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+          <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+            Get some help
+          </p>
           <CrewSearchInput
             tripId={tripId}
             defaultRole="Planner"
             defaultStatus="draft"
-            allowGhost
+            allowGhost={false}
             allowInvite
-            placeholder="Add a planner by email..."
+            showSearchIcon
+            placeholder="Search by email..."
             frequentTripmates={[]}
           />
         </div>
@@ -1770,7 +1774,7 @@ export default function IdeaZonePanel({
             }}
           >
             <Plus size={16} />
-            Add idea
+            Add destination idea
           </button>
         )}
       </div>
@@ -1795,14 +1799,7 @@ export default function IdeaZonePanel({
         </div>
 
         {/* Right: sidebar */}
-        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start space-y-0">
-          <VotingPanel
-            tripId={tripId}
-            ideas={votingPanelIdeas}
-            currentUserId={currentUser?.id}
-            members={memberData}
-          />
-
+        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start space-y-3">
           {canEdit && (
             <button
               data-testid="add-idea-btn"
@@ -1815,21 +1812,28 @@ export default function IdeaZonePanel({
               }}
             >
               <Plus size={16} />
-              Add idea
+              Add destination idea
             </button>
           )}
+
+          <CoPlannerPanel
+            tripId={tripId}
+            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+            isOwner={isOwner}
+          />
+
+          <VotingPanel
+            tripId={tripId}
+            ideas={votingPanelIdeas}
+            currentUserId={currentUser?.id}
+            members={memberData}
+          />
 
           <CrewChatWidget
             tripId={tripId}
             memberNames={Object.fromEntries(
               members.map((m) => [m.memberId, m.displayName])
             )}
-          />
-
-          <CoPlannerPanel
-            tripId={tripId}
-            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
-            isOwner={isOwner}
           />
         </div>
       </div>
