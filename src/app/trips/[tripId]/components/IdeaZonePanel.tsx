@@ -1205,6 +1205,7 @@ function ZeroIdeasFork({ tripId, canEdit }: { tripId: string; canEdit: boolean }
 
   const lockDestination = trpc.trips.lockDestination.useMutation();
   const advanceToPlanning = trpc.trips.advanceToPlanning.useMutation();
+  const unlockDestination = trpc.trips.unlockDestination.useMutation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSetDestination = async () => {
@@ -1213,7 +1214,13 @@ function ZeroIdeasFork({ tripId, canEdit }: { tripId: string; canEdit: boolean }
     setIsSubmitting(true);
     try {
       await lockDestination.mutateAsync({ tripId, title: t, location: t });
-      await advanceToPlanning.mutateAsync({ tripId });
+      try {
+        await advanceToPlanning.mutateAsync({ tripId });
+      } catch {
+        // Rollback the lock if advancing fails
+        await unlockDestination.mutateAsync({ tripId });
+        throw new Error("Failed to advance to planning. Destination lock rolled back.");
+      }
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
     } catch (err) {
@@ -1347,16 +1354,23 @@ function SetDestinationSheet({
 
   const lockDestination = trpc.trips.lockDestination.useMutation();
   const advanceToPlanning = trpc.trips.advanceToPlanning.useMutation();
+  const unlockDestination = trpc.trips.unlockDestination.useMutation();
 
   const handleConfirm = async () => {
     setIsSubmitting(true);
     try {
       await lockDestination.mutateAsync({
         tripId,
-        title: idea.location,
+        title: idea.title,
         location: idea.location,
       });
-      await advanceToPlanning.mutateAsync({ tripId });
+      try {
+        await advanceToPlanning.mutateAsync({ tripId });
+      } catch {
+        // Rollback the lock if advancing fails
+        await unlockDestination.mutateAsync({ tripId });
+        throw new Error("Failed to advance to planning. Destination lock rolled back.");
+      }
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
       utils.ideas.list.invalidate({ tripId });

@@ -282,6 +282,11 @@ export default function TripDetailPage() {
             });
           }}
           onDatesTap={() => setActiveTab("schedule")}
+          onStepClick={(stepKey) => {
+            if (stepKey === "going" && isOwner && (trip as { stage?: string }).stage === "planning") {
+              setShowAdvanceSheet("going");
+            }
+          }}
         />
 
         {/* ── Tab bar ───────────────────────────────────────────────────── */}

@@ -1,3 +1,4 @@
+// TODO: Move this file to src/app/trips/[tripId]/components/ when compare/ directory is cleaned up.
 "use client";
 
 import { useState } from "react";

@@ -168,6 +168,17 @@ deleted — no save/archive mechanism exists.
 
 ---
 
+### Remove ideaComments tRPC router (dead code)
+
+The `ideaComments` router (`src/server/routers/ideaComments.ts`) and `idea_comments`
+table are dead code after the idea zone integration removed per-idea chat threads
+in favour of the trip-level crew chat. The router, its test file, and the table can
+be deleted once confirmed no other feature depends on them.
+
+**When:** next cleanup pass.
+
+---
+
 ### Quick Score (no-auth scorecard)
 
 Standalone scorecard for any game, no account required. Homepage CTA:

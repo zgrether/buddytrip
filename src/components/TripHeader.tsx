@@ -30,6 +30,8 @@ interface TripHeaderProps {
   tripStartDate?: string | null;
   /** Current user's role in this trip */
   myRole?: TripRole | null;
+  /** Called when a future stepper step is tapped */
+  onStepClick?: (stepKey: string) => void;
 }
 
 // ── Inline editable text ─────────────────────────────────────────────────
@@ -122,6 +124,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   dateRange,
   settingsSlot,
   myRole,
+  onStepClick,
 }) => (
   <div
     className="rounded-2xl border p-5"
@@ -172,7 +175,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
     )}
 
     {/* Progress stepper */}
-    <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} />
+    <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />
   </div>
 );
 
@@ -192,6 +195,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   onDatesTap: _onDatesTap,
   tripStartDate,
   myRole,
+  onStepClick,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -243,7 +247,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
       )}
 
       {/* Progress stepper */}
-      <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} />
+      <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />
     </LocationHero>
   );
 };

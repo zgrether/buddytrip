@@ -7,6 +7,8 @@ interface ProgressStepperProps {
   stage: string;
   displayStatus: TripDisplayStatus;
   countdownText?: string | null;
+  /** Called when a future step circle is tapped. Key is the step key ("idea"|"planning"|"going"|"done"). */
+  onStepClick?: (stepKey: string) => void;
 }
 
 const STEPS = [
@@ -31,7 +33,7 @@ function getStepState(stepIndex: number, currentIndex: number): StepState {
   return "future";
 }
 
-export function ProgressStepper({ stage, displayStatus, countdownText }: ProgressStepperProps) {
+export function ProgressStepper({ stage, displayStatus, countdownText, onStepClick }: ProgressStepperProps) {
   const currentIndex = getCurrentIndex(stage, displayStatus);
 
   return (
@@ -42,12 +44,15 @@ export function ProgressStepper({ stage, displayStatus, countdownText }: Progres
           const state = getStepState(i, currentIndex);
           const isLast = i === STEPS.length - 1;
 
+          const isTappable = onStepClick && state === "future" && i === currentIndex + 1;
+
           return (
             <div key={step.key} className={`flex items-center ${isLast ? "" : "flex-1"}`}>
               {/* Circle */}
               <div className="flex flex-col items-center">
                 <div
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold lg:h-7 lg:w-7"
+                  onClick={isTappable ? () => onStepClick(step.key) : undefined}
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold lg:h-7 lg:w-7${isTappable ? " cursor-pointer transition-opacity hover:opacity-80" : ""}`}
                   style={{
                     background:
                       state === "completed" || state === "current"
