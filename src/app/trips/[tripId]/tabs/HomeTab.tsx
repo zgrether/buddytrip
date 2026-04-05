@@ -33,7 +33,7 @@ import { hashToHue } from "@/components/LocationHero";
 import { DatesSection } from "./DatesSection";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
-import { PlanningChatPanel } from "../components/PlanningChatPanel";
+import { SidebarChatPanel } from "../components/PlanningChatPanel";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -1798,7 +1798,7 @@ export function HomeTab({
         <div className="mt-4 space-y-4 lg:mt-0">
           {/* PLANNING stage: crew chat (desktop) + logistics below */}
           {stage === "planning" && (
-            <PlanningChatPanel
+            <SidebarChatPanel
               tripId={trip.id}
               memberNames={Object.fromEntries(
                 members.map((m: { user_id?: string | null; memberId?: string; displayName: string }) => [m.user_id ?? m.memberId ?? "", m.displayName])
