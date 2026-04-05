@@ -65,10 +65,10 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
       style={isDark ? darkStyle : lightStyle}
       data-testid="location-hero"
     >
-      {/* State outline watermark — fixed size, clips overflow */}
+      {/* State outline watermark — top-aligned with content */}
       {outline ? (
         <div
-          className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 overflow-hidden"
+          className="pointer-events-none absolute right-5 top-5 overflow-hidden"
           style={{ width: '80px', height: '64px' }}
           aria-hidden="true"
         >
@@ -112,7 +112,7 @@ export function LocationHero({ location, tripName, tripStartDate, children }: Lo
         </svg>
       )}
 
-      <div className="relative z-10 px-5 pb-5 pt-5">
+      <div className="relative z-10 px-5 pb-3 pt-5">
         {children}
       </div>
     </div>

@@ -37,7 +37,7 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
   const currentIndex = getCurrentIndex(stage, displayStatus);
 
   return (
-    <div className="pt-3 pb-3">
+    <div className="pt-3">
       {/* Stepper row — items-start so labels below circles don't shift the line */}
       <div className="flex items-start">
         {STEPS.map((step, i) => {
