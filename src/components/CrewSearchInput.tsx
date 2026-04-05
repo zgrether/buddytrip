@@ -56,11 +56,25 @@ export function CrewSearchInput({
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
+  const updateRole = trpc.tripMembers.updateRole.useMutation({
+    onSuccess() {
+      resetAll();
+      utils.tripMembers.list.invalidate({ tripId });
+      onAdded?.();
+    },
+  });
+
   const addMember = trpc.tripMembers.add.useMutation({
     onSuccess() {
       resetAll();
       utils.tripMembers.list.invalidate({ tripId });
       onAdded?.();
+    },
+    onError(err) {
+      // Already on trip — promote to the desired role instead
+      if (err.data?.code === "CONFLICT" && search.kind === "found") {
+        updateRole.mutate({ tripId, userId: search.user.id, role: defaultRole });
+      }
     },
   });
 
