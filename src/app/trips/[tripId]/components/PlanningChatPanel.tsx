@@ -17,12 +17,13 @@ interface ChatMessage {
   _optimistic?: boolean;
 }
 
-interface PlanningChatPanelProps {
+interface SidebarChatPanelProps {
   tripId: string;
   memberNames: Record<string, string>;
 }
 
-export function PlanningChatPanel({ tripId, memberNames }: PlanningChatPanelProps) {
+/** Shared desktop sidebar chat — used in both IDEA and PLANNING stages */
+export function SidebarChatPanel({ tripId, memberNames }: SidebarChatPanelProps) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
