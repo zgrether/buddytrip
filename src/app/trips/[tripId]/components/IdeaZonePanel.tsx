@@ -58,7 +58,6 @@ function IdeaCard({
   tripId,
   canEdit,
   isOwner,
-  isLeading,
   tripStartDate,
   currentUserId,
   memberData,
@@ -71,7 +70,6 @@ function IdeaCard({
   tripId: string;
   canEdit: boolean;
   isOwner: boolean;
-  isLeading?: boolean;
   tripStartDate?: string | null;
   currentUserId?: string;
   memberData: { memberId: string; displayName: string }[];
@@ -143,8 +141,7 @@ function IdeaCard({
       className="overflow-hidden rounded-2xl transition-shadow"
       style={{
         background: "var(--color-bt-card)",
-        border: `1px solid ${isLeading ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-        borderLeft: isLeading ? "4px solid var(--color-bt-accent)" : undefined,
+        border: "1px solid var(--color-bt-border)",
         boxShadow: "var(--shadow-card)",
       }}
     >
@@ -590,43 +587,22 @@ function IdeaCard({
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
             >
               {isOwner ? (
-                isLeading ? (
-                  <button
-                    data-testid={`set-destination-${idea.id}`}
-                    onClick={() => onSetDestination(idea)}
-                    className="flex-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
-                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                  >
-                    Set as destination and start planning
-                  </button>
-                ) : (
-                  <button
-                    data-testid={`set-destination-${idea.id}`}
-                    onClick={() => onSetDestination(idea)}
-                    className="text-sm font-medium transition-opacity hover:opacity-70"
-                    style={{ color: "var(--color-bt-accent)" }}
-                  >
-                    Set as destination
-                  </button>
-                )
+                <button
+                  data-testid={`set-destination-${idea.id}`}
+                  onClick={() => onSetDestination(idea)}
+                  className="text-sm font-medium transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  Set as destination
+                </button>
               ) : (
                 <span />
               )}
-              {canEdit && !isLeading && (
+              {canEdit && (
                 <button
                   data-testid={`remove-idea-${idea.id}`}
                   onClick={() => onDelete(idea)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-              {canEdit && isLeading && (
-                <button
-                  data-testid={`remove-idea-${idea.id}`}
-                  onClick={() => onDelete(idea)}
-                  className="ml-2 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <Trash2 size={14} />
@@ -1783,10 +1759,6 @@ export default function IdeaZonePanel({
 
   const ideasTyped = ideas as Idea[];
 
-  // Compute leading
-  const maxVotes = Math.max(...ideasTyped.map((i) => i.votes.length), 0);
-  const isLeading = (idea: Idea) => maxVotes > 0 && idea.votes.length === maxVotes;
-
   // Member data for voter avatars
   const memberData = members.map((m) => ({
     memberId: m.user_id,
@@ -1844,7 +1816,6 @@ export default function IdeaZonePanel({
             tripId={tripId}
             canEdit={canEdit}
             isOwner={isOwner}
-            isLeading={isLeading(idea)}
             tripStartDate={trip.start_date}
             currentUserId={currentUser?.id}
             memberData={memberData}
@@ -1883,7 +1854,6 @@ export default function IdeaZonePanel({
               tripId={tripId}
               canEdit={canEdit}
               isOwner={isOwner}
-              isLeading={isLeading(idea)}
               tripStartDate={trip.start_date}
               currentUserId={currentUser?.id}
               memberData={memberData}
