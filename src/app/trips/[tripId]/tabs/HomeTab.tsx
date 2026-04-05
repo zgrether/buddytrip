@@ -1124,12 +1124,14 @@ function RsvpDraftPanel({
   isOwner,
   isOpen,
   onToggle,
+  onDraftChange,
 }: {
   tripId: string;
   aboutMessage?: string | null;
   isOwner: boolean;
   isOpen: boolean;
   onToggle: () => void;
+  onDraftChange?: (val: string) => void;
 }) {
   const utils = trpc.useUtils();
   const [draft, setDraft] = useState(aboutMessage ?? "");
@@ -1145,7 +1147,7 @@ function RsvpDraftPanel({
     },
   });
 
-  const hasDraft = !!(aboutMessage?.trim());
+  const hasDraft = !!(draft.trim());
   const state: ArcCardState = hasDraft ? "inProgress" : "none";
   const note = hasDraft ? "Draft saved" : "Not written yet";
   const noteWarn = hasDraft;
@@ -1174,7 +1176,7 @@ function RsvpDraftPanel({
         </p>
         <textarea
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); onDraftChange?.(e.target.value); }}
           onBlur={handleBlur}
           placeholder="Hey crew, here's the plan..."
           rows={4}
@@ -1222,6 +1224,7 @@ function PlanningSection({
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [showSetDest, setShowSetDest] = useState(false);
   const [showChangeDest, setShowChangeDest] = useState(false);
+  const [localMessage, setLocalMessage] = useState(trip.about_message ?? "");
   const stage = trip.stage ?? "idea";
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
@@ -1504,6 +1507,7 @@ function PlanningSection({
           isOwner={isOwner}
           isOpen={openRow === "rsvp"}
           onToggle={() => toggle("rsvp")}
+          onDraftChange={setLocalMessage}
         />
       )}
 
@@ -1511,7 +1515,7 @@ function PlanningSection({
       {stage === "planning" && (() => {
         const destinationLocked = !!trip.locked_destination_title;
         const dateLocked = datesLocked;
-        const messageReady = !!(trip.about_message?.trim());
+        const messageReady = !!(localMessage.trim());
         if (!destinationLocked || !dateLocked || !messageReady) return null;
         return (
           <button
