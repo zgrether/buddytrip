@@ -67,6 +67,16 @@ or missing `image_url`. Fix with a SQL UPDATE before next demo.
 
 ---
 
+### Date polling scope selection
+
+The dates panel currently polls all crew members indiscriminately.
+Owners should be able to select a subset of crew for date polling
+(e.g. only the key people whose schedules constrain the decision)
+rather than sending to everyone. Requires a crew selector UI on
+the date poll setup flow and a filtered query for poll responses.
+
+---
+
 ## Before BBMI 2026 (September Target)
 
 Scoring features needed for the actual event.
@@ -307,3 +317,25 @@ Tracked in `STYLE_GUIDE.md` Section 7. Summary:
 
 Fix incrementally in follow-up PRs. Full line-by-line locations in
 STYLE_GUIDE.md Section 7.
+
+
+---
+
+### Logistics panel
+
+The Logistics planning row is a placeholder with no clear scope.
+Remove it entirely or replace with a defined feature — likely a
+checklist of pre-trip tasks (book accommodation, arrange transport, etc.)
+distinct from the Schedule tab reservations.
+
+---
+
+### Tentative reservations in Schedule tab
+
+Reservations added during PLANNING stage should be marked tentative
+by default. During READY stage, the owner explicitly confirms each
+reservation. Confirmed reservations display differently from tentative
+ones (e.g. solid vs dashed border, lock icon on confirmed).
+
+**Schema:** add `confirmed boolean` and `confirmed_at timestamptz` to
+the reservations/bookings table.

@@ -205,11 +205,7 @@ export default function TripDetailPage() {
             });
           }}
           onDatesTap={() => setActiveTab("schedule")}
-          onStepClick={(stepKey) => {
-            if (stepKey === "going" && isOwner && stage === "planning") {
-              setShowAdvanceSheet("going");
-            }
-          }}
+          onStepClick={undefined}
         />
 
         {/* ── Tab bar (hidden in IDEA stage) ──────────────────────────── */}
@@ -262,6 +258,7 @@ export default function TripDetailPage() {
             onTabChange={(tab) => setActiveTab(tab as TabId)}
             onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
             onOpenChat={() => setShowChatDrawer(true)}
+            onMakeOfficial={isOwner ? () => setShowAdvanceSheet("going") : undefined}
           />
         )}
         {activeTab === "schedule" && (
@@ -299,6 +296,7 @@ export default function TripDetailPage() {
           tripId={tripId}
           destination={trip.locked_destination_title ?? ""}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
+          initialMessage={trip.about_message ?? ""}
           onClose={() => setShowAdvanceSheet(null)}
           onAdvanced={(ghosts) => {
             if (ghosts.length > 0) {
@@ -352,16 +350,18 @@ function AdvanceToGoingSheet({
   tripId,
   destination,
   dateRange,
+  initialMessage,
   onClose,
   onAdvanced,
 }: {
   tripId: string;
   destination: string;
   dateRange: string;
+  initialMessage?: string;
   onClose: () => void;
   onAdvanced: (ghostsWithoutEmail: string[]) => void;
 }) {
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialMessage ?? "");
   const utils = trpc.useUtils();
 
   // Check if a date is locked
@@ -421,7 +421,7 @@ function AdvanceToGoingSheet({
               }}
             />
             <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              This becomes your trip&apos;s About section — share the details, get people excited.
+              This goes out by email to your crew. You can still edit it before sending.
             </p>
 
             <button
