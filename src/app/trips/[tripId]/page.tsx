@@ -18,7 +18,7 @@ import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
-import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
+import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
 // ── EditTripDetailsModal ──────────────────────────────────────────────────
@@ -114,7 +114,7 @@ export default function TripDetailPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showEditDetails, setShowEditDetails] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
-  const [showAdvanceSheet, setShowAdvanceSheet] = useState<"planning" | "going" | null>(null);
+  const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -180,19 +180,6 @@ export default function TripDetailPage() {
       utils.trips.list.invalidate();
     },
   });
-
-  // Redirect non-owners to Idea Zone when trip is in exploration mode (comparison_mode: true, no destination set)
-  useEffect(() => {
-    if (
-      trip &&
-      !trip.locked_destination_title &&
-      trip.comparison_mode &&
-      role &&
-      role !== "Owner"
-    ) {
-      router.replace(`/trips/${tripId}/compare`);
-    }
-  }, [trip, role, tripId, router]);
 
   // ── Toast auto-dismiss ────────────────────────────────────────────────────
   useEffect(() => {
@@ -278,6 +265,8 @@ export default function TripDetailPage() {
         <TripHeader
           tripName={trip.title}
           status={status}
+          stage={(trip as { stage?: string }).stage ?? "idea"}
+          countdownText={countdownLabel(trip)}
           location={destLocation}
           lockedTitle={trip.locked_destination_title}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
@@ -294,29 +283,6 @@ export default function TripDetailPage() {
           }}
           onDatesTap={() => setActiveTab("schedule")}
         />
-
-        {/* ── Stage advancement link (owner only) ──────────────────────── */}
-        {isOwner && (trip as { stage?: string }).stage === "idea" && (
-          <button
-            onClick={() => {
-              // Open advancement sheet — handled via state
-              setShowAdvanceSheet("planning");
-            }}
-            className="mt-2 text-xs font-medium hover:underline"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            Ready to start planning →
-          </button>
-        )}
-        {isOwner && (trip as { stage?: string }).stage === "planning" && (
-          <button
-            onClick={() => setShowAdvanceSheet("going")}
-            className="mt-2 text-xs font-medium hover:underline"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            Make it official →
-          </button>
-        )}
 
         {/* ── Tab bar ───────────────────────────────────────────────────── */}
         <div className="mt-4">
@@ -385,13 +351,6 @@ export default function TripDetailPage() {
       )}
 
       {/* ── Stage advancement sheets ─────────────────────────────────────── */}
-      {showAdvanceSheet === "planning" && (
-        <AdvanceToPlanningSheet
-          tripId={tripId}
-          hasLockedDestination={!!trip.locked_destination_title}
-          onClose={() => setShowAdvanceSheet(null)}
-        />
-      )}
       {showAdvanceSheet === "going" && (
         <AdvanceToGoingSheet
           tripId={tripId}
@@ -427,79 +386,6 @@ export default function TripDetailPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── AdvanceToPlanningSheet ───────────────────────────────────────────────
-
-function AdvanceToPlanningSheet({
-  tripId,
-  hasLockedDestination,
-  onClose,
-}: {
-  tripId: string;
-  hasLockedDestination: boolean;
-  onClose: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const advance = trpc.trips.advanceToPlanning.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-      onClose();
-    },
-  });
-  useModalBackButton(onClose);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-t-2xl p-6 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Start planning
-        </h2>
-        {hasLockedDestination ? (
-          <>
-            <p className="mt-2 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              You&apos;ve picked a destination. Time to figure out the when — add your crew
-              and start narrowing down dates.
-            </p>
-            <button
-              onClick={() => advance.mutate({ tripId })}
-              disabled={advance.isPending}
-              className="mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              {advance.isPending ? "Advancing..." : "Let's plan it"}
-            </button>
-            <button
-              onClick={onClose}
-              className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Not yet
-            </button>
-          </>
-        ) : (
-          <div
-            className="mt-4 flex items-start gap-3 rounded-xl px-4 py-3"
-            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
-          >
-            <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
-            <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
-              Lock a destination first before moving to planning.
-            </p>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

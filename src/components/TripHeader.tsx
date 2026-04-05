@@ -3,14 +3,17 @@
 import { useState, useRef, useEffect, type FC } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Calendar } from "lucide-react";
-import { StatusBadge, type TripStatus } from "@/components/StatusBadge";
+import { ProgressStepper } from "@/components/ProgressStepper";
 import { RoleBadge } from "@/components/RoleBadge";
+import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
 import type { TripRole } from "@/server/middleware";
 
 interface TripHeaderProps {
   tripName: string;
-  status: TripStatus;
+  status: TripDisplayStatus;
+  stage: string;
+  countdownText?: string | null;
   location?: string | null;
   lockedTitle?: string | null;
   dateRange?: string;
@@ -113,6 +116,8 @@ function InlineEdit({
 const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   tripName,
   status,
+  stage,
+  countdownText,
   location,
   dateRange,
   settingsSlot,
@@ -131,7 +136,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
     }}
     data-testid="trip-header-plain"
   >
-    {/* Row 1: trip name + settings + badge */}
+    {/* Row 1: trip name + settings + role */}
     <div className="flex items-start justify-between">
       <h1
         data-testid="trip-title"
@@ -141,7 +146,6 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         {tripName}
       </h1>
       <div className="flex items-center gap-2">
-        <StatusBadge status={status} />
         {myRole && <RoleBadge role={myRole} />}
         {settingsSlot}
       </div>
@@ -166,6 +170,9 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         <span>{dateRange}</span>
       </div>
     )}
+
+    {/* Progress stepper */}
+    <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} />
   </div>
 );
 
@@ -174,13 +181,15 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
 const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   tripName,
   status,
+  stage,
+  countdownText,
   location,
   lockedTitle,
   dateRange,
-  canEdit,
+  canEdit: _canEdit,
   settingsSlot,
-  onDestinationChange,
-  onDatesTap,
+  onDestinationChange: _onDestinationChange,
+  onDatesTap: _onDatesTap,
   tripStartDate,
   myRole,
 }) => {
@@ -208,7 +217,6 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
           {tripName}
         </h1>
         <div className="flex items-center gap-2">
-          <StatusBadge status={status} />
           {myRole && <RoleBadge role={myRole} />}
           {settingsSlot && (
             <span style={{ color: subColor }}>
@@ -233,6 +241,9 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
           <span>{dateRange}</span>
         </div>
       )}
+
+      {/* Progress stepper */}
+      <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} />
     </LocationHero>
   );
 };
