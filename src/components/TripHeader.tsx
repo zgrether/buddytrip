@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useRef, useEffect, type FC } from "react";
+import type { FC } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Calendar } from "lucide-react";
-import { StatusBadge, type TripStatus } from "@/components/StatusBadge";
+import { ProgressStepper } from "@/components/ProgressStepper";
 import { RoleBadge } from "@/components/RoleBadge";
+import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
 import type { TripRole } from "@/server/middleware";
 
 interface TripHeaderProps {
   tripName: string;
-  status: TripStatus;
+  status: TripDisplayStatus;
+  stage: string;
+  countdownText?: string | null;
   location?: string | null;
   lockedTitle?: string | null;
   dateRange?: string;
@@ -27,85 +30,8 @@ interface TripHeaderProps {
   tripStartDate?: string | null;
   /** Current user's role in this trip */
   myRole?: TripRole | null;
-}
-
-// ── Inline editable text ─────────────────────────────────────────────────
-
-function InlineEdit({
-  value,
-  onSave,
-  placeholder,
-  className,
-  style,
-}: {
-  value: string;
-  onSave: (val: string) => void;
-  placeholder?: string;
-  className?: string;
-  style?: React.CSSProperties;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [editing]);
-
-  const save = () => {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== value) {
-      onSave(trimmed);
-    } else {
-      setDraft(value);
-    }
-    setEditing(false);
-  };
-
-  const cancel = () => {
-    setDraft(value);
-    setEditing(false);
-  };
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => setEditing(true)}
-        className={`cursor-pointer text-left underline decoration-dotted underline-offset-2 transition-opacity hover:opacity-80 ${className ?? ""}`}
-        style={style}
-        data-testid="inline-edit-trigger"
-      >
-        {value}
-      </button>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1">
-      <input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") save();
-          if (e.key === "Escape") cancel();
-        }}
-        placeholder={placeholder}
-        className="rounded border px-1.5 py-0.5 text-sm outline-none"
-        style={{
-          background: "rgba(255,255,255,0.15)",
-          borderColor: "rgba(255,255,255,0.3)",
-          color: "inherit",
-          minWidth: "8rem",
-        }}
-        data-testid="inline-edit-input"
-      />
-    </span>
-  );
+  /** Called when a future stepper step is tapped */
+  onStepClick?: (stepKey: string) => void;
 }
 
 // ── Plain card (no locked destination) ───────────────────────────────────
@@ -113,10 +39,13 @@ function InlineEdit({
 const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   tripName,
   status,
+  stage,
+  countdownText,
   location,
   dateRange,
   settingsSlot,
   myRole,
+  onStepClick,
 }) => (
   <div
     className="rounded-2xl border p-5"
@@ -131,7 +60,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
     }}
     data-testid="trip-header-plain"
   >
-    {/* Row 1: trip name + settings + badge */}
+    {/* Row 1: trip name + settings + role */}
     <div className="flex items-start justify-between">
       <h1
         data-testid="trip-title"
@@ -141,7 +70,6 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         {tripName}
       </h1>
       <div className="flex items-center gap-2">
-        <StatusBadge status={status} />
         {myRole && <RoleBadge role={myRole} />}
         {settingsSlot}
       </div>
@@ -166,6 +94,9 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         <span>{dateRange}</span>
       </div>
     )}
+
+    {/* Progress stepper */}
+    <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />
   </div>
 );
 
@@ -174,15 +105,18 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
 const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   tripName,
   status,
+  stage,
+  countdownText,
   location,
   lockedTitle,
   dateRange,
-  canEdit,
+  canEdit: _canEdit,
   settingsSlot,
-  onDestinationChange,
-  onDatesTap,
+  onDestinationChange: _onDestinationChange,
+  onDatesTap: _onDatesTap,
   tripStartDate,
   myRole,
+  onStepClick,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -208,7 +142,6 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
           {tripName}
         </h1>
         <div className="flex items-center gap-2">
-          <StatusBadge status={status} />
           {myRole && <RoleBadge role={myRole} />}
           {settingsSlot && (
             <span style={{ color: subColor }}>
@@ -233,6 +166,9 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
           <span>{dateRange}</span>
         </div>
       )}
+
+      {/* Progress stepper */}
+      <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />
     </LocationHero>
   );
 };

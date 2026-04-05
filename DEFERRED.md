@@ -158,6 +158,27 @@ What changes when the trip is actively happening:
 
 ---
 
+### Save idea for future trip
+
+Allow users to save/bookmark individual destination ideas for reuse in
+future trips. Currently ideas are tied to a single trip and can only be
+deleted — no save/archive mechanism exists.
+
+**When:** after core idea zone is stable and has real usage.
+
+---
+
+### Remove ideaComments tRPC router (dead code)
+
+The `ideaComments` router (`src/server/routers/ideaComments.ts`) and `idea_comments`
+table are dead code after the idea zone integration removed per-idea chat threads
+in favour of the trip-level crew chat. The router, its test file, and the table can
+be deleted once confirmed no other feature depends on them.
+
+**When:** next cleanup pass.
+
+---
+
 ### Quick Score (no-auth scorecard)
 
 Standalone scorecard for any game, no account required. Homepage CTA:

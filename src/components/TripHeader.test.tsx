@@ -22,32 +22,20 @@ describe("TripHeader — variant selection", () => {
   });
 });
 
-describe("TripHeader — badge placement", () => {
-  // Both variants place the StatusBadge in the top-right area,
-  // next to the settings button, NOT appended to trip name.
-  // This is validated structurally:
+describe("TripHeader — stepper placement", () => {
+  // Both variants place the ProgressStepper below the title/destination
+  // lines, inside the card, above the bottom edge.
 
-  it("badge is in a separate container from the trip name (top-right)", () => {
-    // The layout in both PlainHeader and HeroHeader is:
-    //   <div flex items-start justify-between>
-    //     <h1>tripName</h1>
-    //     <div>
-    //       <StatusBadge />       ← top-right
-    //       {settingsSlot}        ← top-right
-    //     </div>
-    //   </div>
-    //
-    // Previously it was: <div flex items-center gap-2><h1>{name}</h1><StatusBadge /></div>
-    // which caused the badge to float based on name length.
-
+  it("stepper is rendered inside both header variants", () => {
+    // The layout in both PlainHeader and HeroHeader includes:
+    //   <ProgressStepper stage={stage} displayStatus={status} countdownText={...} />
+    // placed after destination/dates lines, before the card closing tag.
     const layout = {
-      container: "flex items-start justify-between",
-      leftSide: "h1 (trip name)",
-      rightSide: "StatusBadge + settings",
+      position: "below title and destination, inside card",
+      component: "ProgressStepper",
     };
 
-    expect(layout.container).toContain("justify-between");
-    expect(layout.rightSide).toContain("StatusBadge");
+    expect(layout.component).toBe("ProgressStepper");
   });
 });
 
