@@ -33,6 +33,7 @@ import { hashToHue } from "@/components/LocationHero";
 import { DatesSection } from "./DatesSection";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
+import { PlanningChatPanel } from "../components/PlanningChatPanel";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -1793,14 +1794,14 @@ export function HomeTab({
 
         {/* ── Right column: per-stage supplementary content ─────────── */}
         <div className="mt-4 space-y-4 lg:mt-0">
-          {/* IDEA stage: quick info */}
-          {stage === "idea" && (
-            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-          )}
-
-          {/* PLANNING stage: quick info */}
+          {/* PLANNING stage: crew chat (desktop) + logistics below */}
           {stage === "planning" && (
-            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+            <PlanningChatPanel
+              tripId={trip.id}
+              memberNames={Object.fromEntries(
+                members.map((m: { user_id?: string | null; memberId?: string; displayName: string }) => [m.user_id ?? m.memberId ?? "", m.displayName])
+              )}
+            />
           )}
 
           {/* GOING/NOW stage: quick info + confirmed dates */}
