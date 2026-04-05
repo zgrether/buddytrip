@@ -56,6 +56,7 @@ function CrewMemberRow({
   isExpanded,
   index,
   showRsvpStatus,
+  stage,
   onToggle,
   onUpdated,
 }: {
@@ -67,6 +68,7 @@ function CrewMemberRow({
   isExpanded: boolean;
   index: number;
   showRsvpStatus: boolean;
+  stage: string;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
@@ -201,7 +203,8 @@ function CrewMemberRow({
             )}
           </div>
 
-          {/* Col 2: vote chip (going stage) or invite status (earlier stages) */}
+          {/* Col 2: vote chip (going stage), invite status (planning), hidden (idea) */}
+          {stage !== "idea" && (
           <div className="flex w-[64px] flex-shrink-0 justify-center">
             {showRsvpStatus ? (() => {
               const rsvp = m.rsvp_status;
@@ -233,6 +236,7 @@ function CrewMemberRow({
               ) : null
             ) : null}
           </div>
+          )}
 
           {/* Col 3: delete */}
           <div className="flex w-7 flex-shrink-0 justify-center">
@@ -583,6 +587,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               index={i}
               isExpanded={expandedId === m.user_id}
               showRsvpStatus={showRsvpStatus}
+              stage={stage}
               onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
               onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
             />
