@@ -679,7 +679,7 @@ function DeleteConfirmModal({
 
 // ── VotingPanel ───────────────────────────────────────────────────────────
 
-function VotingPanel({
+function _VotingPanel({
   tripId,
   ideas,
   currentUserId,
@@ -1216,31 +1216,67 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
   useModalBackButton(onClose);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pt-16"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
+    <>
+      {/* Mobile — bottom sheet */}
       <div
-        className="w-full max-w-lg lg:max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
-        style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-        onClick={(e) => e.stopPropagation()}
+        className="fixed inset-0 z-50 flex items-end lg:hidden"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
       >
-        <div className="flex items-center justify-between px-5 pt-4 pb-0">
-          <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Add destination ideas
-          </p>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={16} />
-          </button>
+        <div
+          className="flex w-full max-h-[90vh] flex-col rounded-t-2xl overflow-hidden"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Drag handle */}
+          <div className="flex justify-center pt-3 pb-2 shrink-0">
+            <div className="h-1 w-8 rounded-full" style={{ background: "var(--color-bt-border)" }} />
+          </div>
+          <div className="flex items-center justify-between px-5 pb-0 shrink-0">
+            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Add destination ideas
+            </p>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="overflow-y-auto">
+            <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
+          </div>
         </div>
-        <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
       </div>
-    </div>
+
+      {/* Desktop — centered modal */}
+      <div
+        className="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto px-4 pt-16 lg:flex"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+      >
+        <div
+          className="w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-5 pt-4 pb-0">
+            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Add destination ideas
+            </p>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1679,7 +1715,7 @@ export default function IdeaZonePanel({
   trip,
   canEdit,
   isOwner,
-  onTabChange,
+  onTabChange: _onTabChange,
   onOpenChat,
 }: {
   trip: TripData;
@@ -1747,6 +1783,11 @@ export default function IdeaZonePanel({
 
   // All user IDs who have voted on any idea in this trip
   const allVoterIds = new Set(ideasTyped.flatMap((i) => i.votes.map((v) => v.user_id)));
+
+  // Number of planners/owners — used for co-planners dot indicator
+  const plannerCount = members.filter(
+    (m) => m.role === "owner" || m.role === "planner",
+  ).length;
 
   if (ideasTyped.length === 0) {
     return <ZeroIdeasFork tripId={tripId} canEdit={canEdit} />;
@@ -1853,37 +1894,61 @@ export default function IdeaZonePanel({
         />
       )}
 
-      {/* ── Mobile floating action buttons (IDEA stage) ─────────────── */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-3 lg:hidden">
-        {canEdit && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95"
-            style={{ background: "var(--color-bt-accent)" }}
-            aria-label="Add destination idea"
-          >
-            <Plus size={20} style={{ color: "var(--color-bt-base)" }} />
-          </button>
-        )}
+      {/* ── Mobile FAB unified pill (IDEA stage) ────────────────────── */}
+      <div
+        className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center lg:hidden"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          borderRadius: "1rem",
+          boxShadow: "var(--shadow-floating)",
+          width: "3rem",
+        }}
+      >
+        {canEdit ? (
+          <>
+            {/* Add idea — top */}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+              style={{ borderRadius: "1rem 1rem 0 0" }}
+              aria-label="Add destination idea"
+            >
+              <Plus size={20} style={{ color: "var(--color-bt-accent)" }} />
+            </button>
+
+            <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
+          </>
+        ) : null}
+
+        {/* Chat */}
+        <button
+          onClick={onOpenChat}
+          data-testid="floating-chat-btn"
+          className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+          style={{ borderRadius: canEdit ? "0" : "1rem 1rem 0 0" }}
+          aria-label="Open crew chat"
+        >
+          <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+        </button>
+
+        <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
+
+        {/* Crew / co-planners — bottom */}
         <button
           onClick={() => setShowMobileCoPlanners(true)}
-          className="flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+          className="relative flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+          style={{ borderRadius: "0 0 1rem 1rem" }}
           aria-label="View co-planners"
         >
-          <Users size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+          <Users size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+          {plannerCount > 1 && (
+            <span
+              className="absolute right-2 top-2 h-2 w-2 rounded-full"
+              style={{ background: "var(--color-bt-accent)" }}
+            />
+          )}
         </button>
-        {onOpenChat && (
-          <button
-            onClick={onOpenChat}
-            data-testid="floating-chat-btn"
-            className="flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95"
-            style={{ background: "var(--color-bt-accent)" }}
-            aria-label="Open crew chat"
-          >
-            <MessageCircle size={20} style={{ color: "var(--color-bt-base)" }} />
-          </button>
-        )}
       </div>
 
       {/* ── Mobile co-planners bottom sheet ──────────────────────────── */}

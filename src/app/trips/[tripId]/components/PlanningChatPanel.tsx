@@ -77,7 +77,7 @@ export function SidebarChatPanel({ tripId, memberNames }: SidebarChatPanelProps)
 
     setText("");
     sendMessage.mutate({ tripId, id, channel: "trip", text: trimmed });
-  }, [text, sendMessage, currentUser?.id, tripId]);
+  }, [text, sendMessage, currentUser, tripId]);
 
   return (
     <div
@@ -102,8 +102,16 @@ export function SidebarChatPanel({ tripId, memberNames }: SidebarChatPanelProps)
         </p>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2 min-h-0">
+      {/* Messages — relative so the top-fade overlay can be positioned inside */}
+      <div className="relative flex-1 min-h-0 overflow-y-auto">
+        {/* Top fade — hints at more messages above */}
+        <div
+          className="pointer-events-none sticky top-0 z-10 h-8 -mb-8"
+          style={{
+            background: "linear-gradient(to bottom, var(--color-bt-card), transparent)",
+          }}
+        />
+        <div className="space-y-1.5 px-3 py-2">
         {displayed.length === 0 && (
           <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
             No messages yet. Say something!
@@ -145,6 +153,7 @@ export function SidebarChatPanel({ tripId, memberNames }: SidebarChatPanelProps)
           );
         })}
         <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* Input */}

@@ -102,7 +102,7 @@ function ChatDrawerInner({
     setText("");
     if (textareaRef.current) textareaRef.current.value = "";
     sendMessage.mutate({ tripId, id, channel: "trip", text: trimmed });
-  }, [text, sendMessage, currentUser?.id, tripId]);
+  }, [text, sendMessage, currentUser, tripId]);
 
   return (
     <div
