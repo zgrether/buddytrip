@@ -60,6 +60,10 @@ function IdeaCard({
   isOwner,
   isLeading,
   tripStartDate,
+  currentUserId,
+  memberData,
+  onVote,
+  votePending,
   onSetDestination,
   onDelete,
 }: {
@@ -69,6 +73,10 @@ function IdeaCard({
   isOwner: boolean;
   isLeading?: boolean;
   tripStartDate?: string | null;
+  currentUserId?: string;
+  memberData: { memberId: string; displayName: string }[];
+  onVote: (ideaId: string) => void;
+  votePending: boolean;
   onSetDestination: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
@@ -163,6 +171,66 @@ function IdeaCard({
             }}
           />
         )}
+        {/* Vote button + voter avatars — top-left overlay */}
+        <div className="absolute left-3 top-3 z-10 flex flex-col items-start gap-1.5">
+          {(() => {
+            const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
+            return (
+              <button
+                data-testid={`vote-idea-${idea.id}`}
+                disabled={votePending}
+                onClick={(e) => { e.stopPropagation(); onVote(idea.id); }}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-40"
+                style={isVoted ? {
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-base)",
+                } : {
+                  background: "color-mix(in srgb, var(--color-bt-card) 80%, transparent)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                <ThumbsUp size={14} />
+                {isVoted ? "My vote" : "Vote"}
+              </button>
+            );
+          })()}
+          {idea.votes.length > 0 && (() => {
+            const voterIds = idea.votes.map((v) => v.user_id);
+            const visible = voterIds.slice(0, 4);
+            const overflow = voterIds.length - visible.length;
+            return (
+              <div className="flex items-center">
+                {visible.map((voterId, idx) => {
+                  const member = memberData.find((m) => m.memberId === voterId);
+                  const name = member?.displayName ?? voterId.slice(0, 8);
+                  return (
+                    <div
+                      key={voterId}
+                      style={{ marginLeft: idx === 0 ? 0 : -6, zIndex: visible.length - idx }}
+                      className="relative"
+                    >
+                      <UserAvatar name={name} avatarUrl={null} sizePx={20} />
+                    </div>
+                  );
+                })}
+                {overflow > 0 && (
+                  <span
+                    className="flex h-5 items-center rounded-full px-1.5 text-[10px] font-semibold"
+                    style={{
+                      marginLeft: -6,
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    +{overflow}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
         {idea.cost_tier && (
           <div className="absolute right-3 top-3">
             <span
@@ -1717,11 +1785,41 @@ export default function IdeaZonePanel({
   const maxVotes = Math.max(...ideasTyped.map((i) => i.votes.length), 0);
   const isLeading = (idea: Idea) => maxVotes > 0 && idea.votes.length === maxVotes;
 
-  // Member data for VotingPanel voter avatars
+  // Member data for voter avatars
   const memberData = members.map((m) => ({
     memberId: m.user_id,
     displayName: m.displayName,
   }));
+
+  // Vote mutation (lifted from VotingPanel so IdeaCards can use it)
+  const utils = trpc.useUtils();
+  const [votePendingId, setVotePendingId] = useState<string | null>(null);
+  const voteMutation = trpc.ideas.vote.useMutation({
+    async onMutate({ ideaId }) {
+      setVotePendingId(ideaId);
+      await utils.ideas.list.cancel({ tripId });
+      const prev = utils.ideas.list.getData({ tripId });
+      utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
+        const clickingCurrentPick = i.id === ideaId && i.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
+        if (clickingCurrentPick) {
+          return { ...i, votes: i.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id) };
+        }
+        const withoutMe = i.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id);
+        if (i.id !== ideaId) return { ...i, votes: withoutMe };
+        return { ...i, votes: [...withoutMe, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }] };
+      }));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      setVotePendingId(null);
+      utils.ideas.list.invalidate({ tripId });
+    },
+  });
+
+  const handleVote = (ideaId: string) => voteMutation.mutate({ tripId, ideaId });
 
   if (ideasTyped.length === 0) {
     return <ZeroIdeasFork tripId={tripId} canEdit={canEdit} />;
@@ -1735,19 +1833,10 @@ export default function IdeaZonePanel({
     return b.votes.length - a.votes.length;
   });
 
-  const votingPanelIdeas = ideasTyped.slice().sort((a, b) => b.votes.length - a.votes.length);
-
   return (
     <div>
       {/* ── Mobile layout ─────────────────────────────────────────────── */}
       <div className="lg:hidden space-y-4 p-4">
-        <VotingPanel
-          tripId={tripId}
-          ideas={votingPanelIdeas}
-          currentUserId={currentUser?.id}
-          members={memberData}
-        />
-
         {sorted.map((idea) => (
           <IdeaCard
             key={idea.id}
@@ -1757,6 +1846,10 @@ export default function IdeaZonePanel({
             isOwner={isOwner}
             isLeading={isLeading(idea)}
             tripStartDate={trip.start_date}
+            currentUserId={currentUser?.id}
+            memberData={memberData}
+            onVote={handleVote}
+            votePending={votePendingId === idea.id}
             onSetDestination={setSetDestinationIdea}
             onDelete={setDeleteIdea}
           />
@@ -1792,6 +1885,10 @@ export default function IdeaZonePanel({
               isOwner={isOwner}
               isLeading={isLeading(idea)}
               tripStartDate={trip.start_date}
+              currentUserId={currentUser?.id}
+              memberData={memberData}
+              onVote={handleVote}
+              votePending={votePendingId === idea.id}
               onSetDestination={setSetDestinationIdea}
               onDelete={setDeleteIdea}
             />
@@ -1820,13 +1917,6 @@ export default function IdeaZonePanel({
             tripId={tripId}
             members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
             isOwner={isOwner}
-          />
-
-          <VotingPanel
-            tripId={tripId}
-            ideas={votingPanelIdeas}
-            currentUserId={currentUser?.id}
-            members={memberData}
           />
 
           <CrewChatWidget
