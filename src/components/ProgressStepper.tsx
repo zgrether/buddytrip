@@ -38,8 +38,8 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
 
   return (
     <div className="pt-3 pb-3">
-      {/* Stepper row */}
-      <div className="flex items-center">
+      {/* Stepper row — items-start so labels below circles don't shift the line */}
+      <div className="flex items-start">
         {STEPS.map((step, i) => {
           const state = getStepState(i, currentIndex);
           const isLast = i === STEPS.length - 1;
@@ -53,8 +53,8 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
               : { background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" };
 
           return (
-            <div key={step.key} className={`flex items-center ${isLast ? "" : "flex-1"}`}>
-              {/* Circle */}
+            <div key={step.key} className={`flex items-start ${isLast ? "" : "flex-1"}`}>
+              {/* Circle + label */}
               <div className="flex flex-col items-center">
                 <div
                   onClick={isTappable ? () => onStepClick(step.key) : undefined}
@@ -80,10 +80,10 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
                 </span>
               </div>
 
-              {/* Connecting line — always gray */}
+              {/* Connecting line — offset by half circle height to stay centered on circles */}
               {!isLast && (
                 <div
-                  className="mx-1 h-0.5 flex-1 rounded-full lg:mx-2"
+                  className="mt-3 mx-1 h-0.5 flex-1 rounded-full lg:mt-3.5 lg:mx-2"
                   style={{ background: "var(--color-bt-border)" }}
                 />
               )}
