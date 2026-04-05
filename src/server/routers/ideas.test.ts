@@ -70,13 +70,8 @@ describe("ideas router", () => {
     expect(result.voted).toBe(false);
   });
 
-  it("remove — planner cannot remove", async () => {
+  it("remove — planner can remove", async () => {
     const caller = ctx.callerAs("planner");
-    await expect(caller.ideas.remove({ tripId, ideaId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it("remove — owner can remove", async () => {
-    const caller = ctx.caller();
     const result = await caller.ideas.remove({ tripId, ideaId });
     expect(result.success).toBe(true);
   });

@@ -20,6 +20,8 @@ import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { FloatingChatButton } from "./components/FloatingChatButton";
+import { ChatDrawer } from "./components/ChatDrawer";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -31,6 +33,7 @@ export default function TripDetailPage() {
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -47,7 +50,7 @@ export default function TripDetailPage() {
   // states so the page waits for ALL data before rendering — no 2-phase pop-in.
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
   const { isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
-  const { isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
   const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
   const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
@@ -99,7 +102,7 @@ export default function TripDetailPage() {
   // ── Toast auto-dismiss ────────────────────────────────────────────────────
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 5000);
+    const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -138,6 +141,9 @@ export default function TripDetailPage() {
 
   const status = getTripStatus(trip);
   const tripIsReadOnly = checkReadOnly(trip);
+  const stage = (trip as { stage?: string }).stage ?? "idea";
+  // IDEA stage: IdeaZonePanel renders its own floating action buttons
+  const showFloatingChat = stage === "planning" && activeTab === "home";
   // When exploring (comparison_mode=true, no lock), don't fall back to
   // trip.location — lockDestination writes to that column and unlockDestination
   // doesn't clear it, so the old destination would bleed through to the header.
@@ -180,7 +186,7 @@ export default function TripDetailPage() {
         <TripHeader
           tripName={trip.title}
           status={status}
-          stage={(trip as { stage?: string }).stage ?? "idea"}
+          stage={stage}
           countdownText={countdownLabel(trip)}
           location={destLocation}
           lockedTitle={trip.locked_destination_title}
@@ -199,20 +205,34 @@ export default function TripDetailPage() {
           }}
           onDatesTap={() => setActiveTab("schedule")}
           onStepClick={(stepKey) => {
-            if (stepKey === "going" && isOwner && (trip as { stage?: string }).stage === "planning") {
+            if (stepKey === "going" && isOwner && stage === "planning") {
               setShowAdvanceSheet("going");
             }
           }}
         />
 
-        {/* ── Tab bar ───────────────────────────────────────────────────── */}
-        <div className="mt-4">
-          <TripTabBar activeTab={activeTab} onTabChange={setActiveTab} showComp={showComp} canEdit={canEdit} />
-        </div>
+        {/* ── Tab bar (hidden in IDEA stage) ──────────────────────────── */}
+        {stage !== "idea" && (
+          <div className="mt-4">
+            <TripTabBar
+              activeTab={activeTab}
+              onTabChange={(tab) => {
+                if (stage === "planning" && tab === "expenses") {
+                  setToast({ message: "Expenses are available once the trip moves to Ready.", variant: "warning" });
+                  return;
+                }
+                setActiveTab(tab);
+              }}
+              showComp={showComp}
+              canEdit={canEdit}
+              stage={stage}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-[1280px] pb-24 pt-4">
+      <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" || stage === "planning" ? "pb-6" : "pb-24"}`}>
         {/* Read-only banner */}
         {tripIsReadOnly && activeTab === "home" && (
           <div
@@ -233,6 +253,7 @@ export default function TripDetailPage() {
             isOwner={isOwner}
             onTabChange={(tab) => setActiveTab(tab as TabId)}
             onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+            onOpenChat={() => setShowChatDrawer(true)}
           />
         )}
         {activeTab === "schedule" && (
@@ -249,8 +270,10 @@ export default function TripDetailPage() {
         )}
       </main>
 
-      {/* ── Bottom navigation ─────────────────────────────────────────────── */}
-      <TripBottomNav tripId={tripId} eventId={trip.event_id} />
+      {/* ── Bottom navigation (READY+ stages only) ────────────────────────── */}
+      {stage !== "idea" && stage !== "planning" && (
+        <TripBottomNav tripId={tripId} eventId={trip.event_id} />
+      )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (
@@ -279,6 +302,19 @@ export default function TripDetailPage() {
           }}
         />
       )}
+
+      {/* ── Floating chat button + drawer (IDEA/PLANNING mobile) ──────── */}
+      {showFloatingChat && (
+        <FloatingChatButton onClick={() => setShowChatDrawer(true)} />
+      )}
+      <ChatDrawer
+        tripId={tripId}
+        isOpen={showChatDrawer}
+        onClose={() => setShowChatDrawer(false)}
+        memberNames={Object.fromEntries(
+          members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
+        )}
+      />
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
       {toast && (

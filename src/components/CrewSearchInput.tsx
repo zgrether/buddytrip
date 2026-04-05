@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Ghost, Link, Loader2, Plus, UserPlus } from "lucide-react";
+import { Check, Ghost, Link, Loader2, Plus, Search, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { UserAvatar } from "@/components/UserAvatar";
 
@@ -16,6 +16,8 @@ export interface CrewSearchInputProps {
   /** Show "Send invite" path when no account found */
   allowInvite?: boolean;
   placeholder?: string;
+  /** Show search icon in the input */
+  showSearchIcon?: boolean;
   onAdded?: () => void;
   frequentTripmates?: Array<{
     id: string;
@@ -38,6 +40,7 @@ export function CrewSearchInput({
   defaultStatus = "draft",
   allowGhost = false,
   allowInvite = true,
+  showSearchIcon = false,
   placeholder = "email@example.com",
   onAdded,
   frequentTripmates = [],
@@ -53,11 +56,25 @@ export function CrewSearchInput({
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
+  const updateRole = trpc.tripMembers.updateRole.useMutation({
+    onSuccess() {
+      resetAll();
+      utils.tripMembers.list.invalidate({ tripId });
+      onAdded?.();
+    },
+  });
+
   const addMember = trpc.tripMembers.add.useMutation({
     onSuccess() {
       resetAll();
       utils.tripMembers.list.invalidate({ tripId });
       onAdded?.();
+    },
+    onError(err) {
+      // Already on trip — promote to the desired role instead
+      if (err.data?.code === "CONFLICT" && search.kind === "found") {
+        updateRole.mutate({ tripId, userId: search.user.id, role: defaultRole });
+      }
     },
   });
 
@@ -190,25 +207,34 @@ export function CrewSearchInput({
 
       {/* Email input + Find button */}
       <div className="flex gap-1.5">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value);
-            setSearch({ kind: "idle" });
-            setInviteError(null);
-            setAlreadyMemberName(null);
-            setShowNameOnly(false);
-          }}
-          onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
-          placeholder={placeholder}
-          className="flex-1 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-          style={{
-            background: "var(--color-bt-base)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
+        <div className="relative flex-1">
+          {showSearchIcon && (
+            <Search
+              size={12}
+              className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            />
+          )}
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setSearch({ kind: "idle" });
+              setInviteError(null);
+              setAlreadyMemberName(null);
+              setShowNameOnly(false);
+            }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
+            placeholder={placeholder}
+            className={`w-full rounded-lg border py-1.5 text-xs outline-none ${showSearchIcon ? "pl-7 pr-2.5" : "px-2.5"}`}
+            style={{
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          />
+        </div>
         <button
           onClick={handleLookup}
           disabled={!email.includes("@")}

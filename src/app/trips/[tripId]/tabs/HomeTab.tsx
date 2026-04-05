@@ -33,6 +33,7 @@ import { hashToHue } from "@/components/LocationHero";
 import { DatesSection } from "./DatesSection";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
+import { SidebarChatPanel } from "../components/PlanningChatPanel";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -1603,7 +1604,8 @@ export function HomeTab({
   isOwner,
   onTabChange,
   onEnableComp,
-}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void }) {
+  onOpenChat,
+}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
@@ -1683,6 +1685,7 @@ export function HomeTab({
         canEdit={canEditProp}
         isOwner={!!isOwner}
         onTabChange={onTabChange}
+        onOpenChat={onOpenChat}
       />
     );
   }
@@ -1784,24 +1787,26 @@ export function HomeTab({
             />
           )}
 
-          {/* Competition panel */}
-          <CompetitionPanel
-            trip={trip}
-            canEdit={canEditProp}
-            onSetupComp={onEnableComp}
-          />
+          {/* Competition panel — only in READY stage and beyond */}
+          {stage !== "idea" && stage !== "planning" && (
+            <CompetitionPanel
+              trip={trip}
+              canEdit={canEditProp}
+              onSetupComp={onEnableComp}
+            />
+          )}
         </div>
 
         {/* ── Right column: per-stage supplementary content ─────────── */}
         <div className="mt-4 space-y-4 lg:mt-0">
-          {/* IDEA stage: quick info */}
-          {stage === "idea" && (
-            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-          )}
-
-          {/* PLANNING stage: quick info */}
+          {/* PLANNING stage: crew chat (desktop) + logistics below */}
           {stage === "planning" && (
-            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+            <SidebarChatPanel
+              tripId={trip.id}
+              memberNames={Object.fromEntries(
+                members.map((m: { user_id?: string | null; memberId?: string; displayName: string }) => [m.user_id ?? m.memberId ?? "", m.displayName])
+              )}
+            />
           )}
 
           {/* GOING/NOW stage: quick info + confirmed dates */}

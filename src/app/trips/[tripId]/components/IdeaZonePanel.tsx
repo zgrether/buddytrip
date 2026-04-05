@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
@@ -15,14 +15,16 @@ import {
   Trash2,
   Check,
   Plus,
-  Send,
+  MessageCircle,
+  Users,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
+import { CrewSearchInput } from "@/components/CrewSearchInput";
+import { SidebarChatPanel } from "./PlanningChatPanel";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -57,8 +59,11 @@ function IdeaCard({
   tripId,
   canEdit,
   isOwner,
-  isLeading,
   tripStartDate,
+  currentUserId,
+  memberData,
+  onVote,
+  votePending,
   onSetDestination,
   onDelete,
 }: {
@@ -66,8 +71,11 @@ function IdeaCard({
   tripId: string;
   canEdit: boolean;
   isOwner: boolean;
-  isLeading?: boolean;
   tripStartDate?: string | null;
+  currentUserId?: string;
+  memberData: { memberId: string; displayName: string }[];
+  onVote: (ideaId: string) => void;
+  votePending: boolean;
   onSetDestination: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
@@ -134,8 +142,7 @@ function IdeaCard({
       className="overflow-hidden rounded-2xl transition-shadow"
       style={{
         background: "var(--color-bt-card)",
-        border: `1px solid ${isLeading ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-        borderLeft: isLeading ? "4px solid var(--color-bt-accent)" : undefined,
+        border: "1px solid var(--color-bt-border)",
         boxShadow: "var(--shadow-card)",
       }}
     >
@@ -162,6 +169,66 @@ function IdeaCard({
             }}
           />
         )}
+        {/* Vote button + voter avatars — top-left overlay */}
+        <div className="absolute left-3 top-3 z-10 flex flex-col items-start gap-1.5">
+          {(() => {
+            const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
+            return (
+              <button
+                data-testid={`vote-idea-${idea.id}`}
+                disabled={votePending}
+                onClick={(e) => { e.stopPropagation(); onVote(idea.id); }}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-40"
+                style={isVoted ? {
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-base)",
+                } : {
+                  background: "color-mix(in srgb, var(--color-bt-card) 80%, transparent)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                <ThumbsUp size={14} />
+                {isVoted ? "My vote" : "Vote"}
+              </button>
+            );
+          })()}
+          {idea.votes.length > 0 && (() => {
+            const voterIds = idea.votes.map((v) => v.user_id);
+            const visible = voterIds.slice(0, 4);
+            const overflow = voterIds.length - visible.length;
+            return (
+              <div className="flex items-center">
+                {visible.map((voterId, idx) => {
+                  const member = memberData.find((m) => m.memberId === voterId);
+                  const name = member?.displayName ?? voterId.slice(0, 8);
+                  return (
+                    <div
+                      key={voterId}
+                      style={{ marginLeft: idx === 0 ? 0 : -6, zIndex: visible.length - idx }}
+                      className="relative"
+                    >
+                      <UserAvatar name={name} avatarUrl={null} sizePx={20} />
+                    </div>
+                  );
+                })}
+                {overflow > 0 && (
+                  <span
+                    className="flex h-5 items-center rounded-full px-1.5 text-[10px] font-semibold"
+                    style={{
+                      marginLeft: -6,
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    +{overflow}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
         {idea.cost_tier && (
           <div className="absolute right-3 top-3">
             <span
@@ -521,43 +588,22 @@ function IdeaCard({
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
             >
               {isOwner ? (
-                isLeading ? (
-                  <button
-                    data-testid={`set-destination-${idea.id}`}
-                    onClick={() => onSetDestination(idea)}
-                    className="flex-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
-                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                  >
-                    Set as destination and start planning
-                  </button>
-                ) : (
-                  <button
-                    data-testid={`set-destination-${idea.id}`}
-                    onClick={() => onSetDestination(idea)}
-                    className="text-sm font-medium transition-opacity hover:opacity-70"
-                    style={{ color: "var(--color-bt-accent)" }}
-                  >
-                    Set as destination
-                  </button>
-                )
+                <button
+                  data-testid={`set-destination-${idea.id}`}
+                  onClick={() => onSetDestination(idea)}
+                  className="text-sm font-medium transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  Set as destination
+                </button>
               ) : (
                 <span />
               )}
-              {canEdit && !isLeading && (
+              {canEdit && (
                 <button
                   data-testid={`remove-idea-${idea.id}`}
                   onClick={() => onDelete(idea)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-              {canEdit && isLeading && (
-                <button
-                  data-testid={`remove-idea-${idea.id}`}
-                  onClick={() => onDelete(idea)}
-                  className="ml-2 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <Trash2 size={14} />
@@ -606,7 +652,7 @@ function DeleteConfirmModal({
           Remove {idea.title}?
         </p>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          This will permanently delete this idea along with all its votes and comments. You can&apos;t recover any of that.
+          This will permanently delete this idea and all its votes.
         </p>
         <div className="flex gap-2">
           <button
@@ -626,150 +672,6 @@ function DeleteConfirmModal({
             {removeIdea.isPending ? "Removing..." : "Yes, remove it"}
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ── VotingPanel ───────────────────────────────────────────────────────────
-
-function VotingPanel({
-  tripId,
-  ideas,
-  currentUserId,
-  members,
-}: {
-  tripId: string;
-  ideas: Idea[];
-  currentUserId: string | undefined;
-  members: { memberId: string; displayName: string }[];
-}) {
-  const utils = trpc.useUtils();
-  const [pendingIdeaId, setPendingIdeaId] = useState<string | null>(null);
-  const { data: tripMembers = [] } = trpc.tripMembers.list.useQuery({ tripId });
-  const crewSize = Math.max(tripMembers.length, 1);
-
-  const vote = trpc.ideas.vote.useMutation({
-    async onMutate({ ideaId }) {
-      setPendingIdeaId(ideaId);
-      await utils.ideas.list.cancel({ tripId });
-      const prev = utils.ideas.list.getData({ tripId });
-      utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
-        const clickingCurrentPick = i.id === ideaId && i.votes.some((v: { user_id: string }) => v.user_id === currentUserId);
-        if (clickingCurrentPick) {
-          // Unvote
-          return { ...i, votes: i.votes.filter((v: { user_id: string }) => v.user_id !== currentUserId) };
-        }
-        // Remove my vote from every idea (single-pick), then add to target
-        const withoutMe = i.votes.filter((v: { user_id: string }) => v.user_id !== currentUserId);
-        if (i.id !== ideaId) return { ...i, votes: withoutMe };
-        return { ...i, votes: [...withoutMe, { idea_id: ideaId, user_id: currentUserId ?? "", created_at: new Date().toISOString() }] };
-      }));
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
-    },
-    onSettled() {
-      setPendingIdeaId(null);
-      utils.ideas.list.invalidate({ tripId });
-    },
-  });
-
-  return (
-    <div
-      className="mb-6 rounded-2xl border p-4"
-      style={{ background: "var(--color-bt-card-float)", borderColor: "var(--color-bt-border)", boxShadow: "var(--shadow-floating)" }}
-    >
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Crew votes
-      </p>
-      <p className="mb-3 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        {new Set(ideas.flatMap((i) => i.votes.map((v) => v.user_id))).size} of {crewSize} voted
-      </p>
-      <div className="space-y-2">
-        {ideas.map((idea) => {
-            const isVoted = idea.votes.some((v) => v.user_id === currentUserId);
-            const barWidth = `${Math.round((idea.votes.length / crewSize) * 100)}%`;
-
-            // Voter avatars
-            const voterIds = idea.votes.map((v) => v.user_id);
-            const visibleVoters = voterIds.slice(0, 5);
-            const overflowCount = voterIds.length - visibleVoters.length;
-
-            return (
-              <div key={idea.id}>
-                <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className="line-clamp-2 text-sm font-medium leading-tight"
-                      style={{ color: "var(--color-bt-text)" }}
-                    >
-                      {idea.title}
-                    </p>
-                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <button
-                    data-testid={`vote-idea-${idea.id}`}
-                    disabled={pendingIdeaId === idea.id}
-                    onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
-                    className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-40"
-                    style={{
-                      background: isVoted ? "var(--color-bt-accent)" : "var(--color-bt-base)",
-                      border: `1px solid ${isVoted ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-                      color: isVoted ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    <ThumbsUp size={12} />
-                    {isVoted ? "My vote" : "Vote"}
-                  </button>
-                </div>
-                <div
-                  className="mt-1 h-1 overflow-hidden rounded-full"
-                  style={{ background: "var(--color-bt-base)", width: "100%" }}
-                >
-                  <div
-                    className="h-full rounded-full transition-all duration-300"
-                    style={{
-                      width: barWidth,
-                      background: isVoted
-                        ? "var(--color-bt-accent)"
-                        : "var(--color-bt-border)",
-                    }}
-                  />
-                </div>
-                {/* Voter avatars */}
-                {visibleVoters.length > 0 && (
-                  <div className="mt-1.5 flex items-center">
-                    {visibleVoters.map((voterId, idx) => {
-                      const member = members.find((m) => m.memberId === voterId);
-                      const displayName = member?.displayName ?? voterId.slice(0, 8);
-                      return (
-                        <div
-                          key={voterId}
-                          style={{ marginLeft: idx === 0 ? 0 : -6, zIndex: visibleVoters.length - idx }}
-                          className="relative"
-                          title={displayName}
-                        >
-                          <UserAvatar name={displayName} avatarUrl={null} size="sm" />
-                        </div>
-                      );
-                    })}
-                    {overflowCount > 0 && (
-                      <span
-                        className="ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                        style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-                      >
-                        +{overflowCount}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
       </div>
     </div>
   );
@@ -1170,31 +1072,67 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
   useModalBackButton(onClose);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 pt-16"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
+    <>
+      {/* Mobile — bottom sheet */}
       <div
-        className="w-full max-w-lg lg:max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
-        style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-        onClick={(e) => e.stopPropagation()}
+        className="fixed inset-0 z-50 flex items-end lg:hidden"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
       >
-        <div className="flex items-center justify-between px-5 pt-4 pb-0">
-          <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Add ideas
-          </p>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={16} />
-          </button>
+        <div
+          className="flex w-full max-h-[90vh] flex-col rounded-t-2xl overflow-hidden"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Drag handle */}
+          <div className="flex justify-center pt-3 pb-2 shrink-0">
+            <div className="h-1 w-8 rounded-full" style={{ background: "var(--color-bt-border)" }} />
+          </div>
+          <div className="flex items-center justify-between px-5 pb-0 shrink-0">
+            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Add destination ideas
+            </p>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="overflow-y-auto">
+            <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
+          </div>
         </div>
-        <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
       </div>
-    </div>
+
+      {/* Desktop — centered modal */}
+      <div
+        className="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto px-4 pt-16 lg:flex"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+      >
+        <div
+          className="w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
+          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-5 pt-4 pb-0">
+            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Add destination ideas
+            </p>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1428,229 +1366,201 @@ function SetDestinationSheet({
   );
 }
 
-// ── CrewChatWidget (desktop only) ─────────────────────────────────────────
+// ── CoPlannerPanel (IDEA stage — enhanced co-planners mini panel) ─────────
 
-interface ChatMessage {
-  id: string;
-  trip_id: string;
-  user_id: string;
-  channel: string;
-  team_id: string | null;
-  text: string;
-  created_at: string;
-  _optimistic?: boolean;
-}
-
-function CrewChatWidget({
+function CoPlannerPanel({
   tripId,
-  memberNames,
+  members,
+  isOwner,
+  allVoterIds,
 }: {
   tripId: string;
-  memberNames: Record<string, string>;
+  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>;
+  isOwner: boolean;
+  /** Set of user IDs who have voted on any idea */
+  allVoterIds: Set<string>;
 }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [text, setText] = useState("");
-  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
+  const planners = members.filter((m) => m.role === "Owner" || m.role === "Planner");
 
-  useRealtimeChat(tripId, "trip");
-
-  const { data: messages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel: "trip", limit: 30 }
-  );
-
-  const realIds = new Set(messages.map((m) => m.id));
-  const pending = optimisticMessages.filter((m) => !realIds.has(m.id));
-  const displayed: ChatMessage[] = (messages as ChatMessage[])
-    .slice()
-    .reverse()
-    .concat(pending);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [displayed.length]);
-
-  const sendMessage = trpc.messages.send.useMutation({
-    onSuccess: async () => {
-      await utils.messages.list.invalidate({ tripId, channel: "trip" });
-    },
-    onError: (_, variables) => {
-      setOptimisticMessages((prev) => prev.filter((m) => m.id !== variables.id));
-    },
+  const demote = trpc.tripMembers.updateRole.useMutation({
+    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
   });
-
-  const handleSend = () => {
-    const trimmed = text.trim();
-    if (!trimmed || sendMessage.isPending || !currentUser?.id) return;
-
-    const id = crypto.randomUUID();
-    setOptimisticMessages((prev) => [
-      ...prev,
-      {
-        id,
-        trip_id: tripId,
-        user_id: currentUser.id,
-        channel: "trip",
-        team_id: null,
-        text: trimmed,
-        created_at: new Date().toISOString(),
-        _optimistic: true,
-      },
-    ]);
-
-    setText("");
-    sendMessage.mutate({ tripId, id, channel: "trip", text: trimmed });
-  };
 
   return (
     <div
-      className="hidden lg:flex mt-3 flex-col rounded-xl border"
-      style={{
-        background: "var(--color-bt-card)",
-        borderColor: "var(--color-bt-border)",
-        height: "300px",
-      }}
+      className="hidden lg:block rounded-xl border px-3 py-3"
+      style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
-      {/* Header */}
-      <div
-        className="flex-shrink-0 px-3 py-2"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <p
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Crew Chat
-        </p>
-      </div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        Co-planners
+      </p>
 
-      {/* Messages */}
-      <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-2 min-h-0">
-        {displayed.length === 0 && (
-          <p className="py-4 text-center text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-            No messages yet
-          </p>
-        )}
-        {displayed.map((msg) => {
-          const isMe = msg.user_id === currentUser?.id;
-          const name = memberNames[msg.user_id] ?? msg.user_id.slice(0, 6);
+      {/* Existing planners */}
+      <div className="space-y-1.5">
+        {planners.map((m) => {
+          const isSelf = m.user_id === currentUser?.id;
+          const canRemove = isOwner && !isSelf && m.role !== "Owner";
+          const hasVoted = allVoterIds.has(m.user_id);
           return (
-            <div key={msg.id} className="flex items-start gap-2">
-              <div className="mt-0.5 flex-shrink-0">
-                <UserAvatar name={name} avatarUrl={null} size="sm" />
-              </div>
+            <div key={m.user_id ?? m.memberId} className="flex items-center gap-2">
+              <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
               <div className="min-w-0 flex-1">
-                <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  <span className="font-semibold" style={{ color: isMe ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
-                    {isMe ? "You" : name}
-                  </span>
-                </p>
-                <p
-                  className="text-sm"
-                  style={{
-                    color: "var(--color-bt-text)",
-                    opacity: msg._optimistic ? 0.5 : 1,
-                  }}
-                >
-                  {msg.text}
+                <p className="truncate text-xs" style={{ color: "var(--color-bt-text)" }}>
+                  {m.displayName}
                 </p>
               </div>
+              <span className="text-xs flex-shrink-0" style={{ color: hasVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+                {hasVoted ? "Voted \u2713" : "Not voted"}
+              </span>
+              {canRemove && (
+                <button
+                  onClick={() => demote.mutate({ tripId, userId: m.user_id, role: "Member" })}
+                  className="flex h-5 w-5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                  aria-label={`Remove ${m.displayName} as planner`}
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           );
         })}
-        <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <div
-        className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
-      >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          placeholder="Say something..."
-          className="min-w-0 flex-1 rounded-full border px-3 py-1.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-base)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={sendMessage.isPending || !text.trim()}
-          className="flex h-7 w-7 items-center justify-center rounded-full disabled:opacity-30"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          <Send size={13} />
-        </button>
-      </div>
+      {/* Add planner — reuses CrewSearchInput with Planner default */}
+      {isOwner && (
+        <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+          <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+            Get some help
+          </p>
+          <CrewSearchInput
+            tripId={tripId}
+            defaultRole="Planner"
+            defaultStatus="draft"
+            allowGhost={false}
+            allowInvite
+            showSearchIcon
+            placeholder="Search by email..."
+            frequentTripmates={[]}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-// ── CoPlannerChip ─────────────────────────────────────────────────────────
+// ── MobileCoPlannerSheet ──────────────────────────────────────────────────
 
-function CoPlannerChip({
+function MobileCoPlannerSheet({
+  tripId,
   members,
-  onTabChange,
+  isOwner,
+  allVoterIds,
+  onClose,
 }: {
-  members: Array<{ user_id: string; role: string; status: string; displayName: string }>;
-  onTabChange?: (tab: string) => void;
+  tripId: string;
+  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>;
+  isOwner: boolean;
+  allVoterIds: Set<string>;
+  onClose: () => void;
 }) {
+  const currentUser = useCurrentUser();
+  const utils = trpc.useUtils();
+
   const planners = members.filter((m) => m.role === "Owner" || m.role === "Planner");
-  const visible = planners.slice(0, 4);
-  const overflow = planners.length - visible.length;
+
+  const demote = trpc.tripMembers.updateRole.useMutation({
+    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
+
+  useModalBackButton(onClose);
 
   return (
     <div
-      className="hidden lg:block mt-3 rounded-xl px-3 py-2"
-      style={{ background: "var(--color-bt-card-raised)" }}
+      className="fixed inset-0 z-50 flex items-end lg:hidden"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
     >
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Co-planners
-      </p>
-      <div className="space-y-1.5">
-        {visible.map((m) => {
-          const isPending = m.status === "invited";
-          const roleColor = m.role === "Owner" ? "var(--color-bt-owner)" : "var(--color-bt-planning)";
-          return (
-            <div key={m.user_id} className="flex items-center gap-2">
-              <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs" style={{ color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
-                  {m.displayName}
-                </p>
-              </div>
-              <span className="text-[10px] font-semibold flex-shrink-0" style={{ color: isPending ? "var(--color-bt-ready)" : roleColor }}>
-                {isPending ? "Invited" : m.role}
-              </span>
-            </div>
-          );
-        })}
-        {overflow > 0 && (
-          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            +{overflow} more
-          </p>
-        )}
-      </div>
-      {onTabChange && (
-        <button
-          onClick={() => onTabChange("crew")}
-          className="mt-2 text-xs font-medium transition-opacity hover:opacity-70"
-          style={{ color: "var(--color-bt-accent)" }}
+      <div
+        className="flex w-full max-h-[80vh] flex-col rounded-t-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="h-1 w-8 rounded-full" style={{ background: "var(--color-bt-border)" }} />
+        </div>
+
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 pb-2"
+          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
         >
-          Manage in Crew tab &rarr;
-        </button>
-      )}
+          <p className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            Co-planners
+          </p>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Planner list */}
+        <div className="overflow-y-auto px-4 py-3 space-y-2">
+          {planners.map((m) => {
+            const isSelf = m.user_id === currentUser?.id;
+            const canRemove = isOwner && !isSelf && m.role !== "Owner";
+            const hasVoted = allVoterIds.has(m.user_id);
+            return (
+              <div key={m.user_id ?? m.memberId} className="flex items-center gap-3">
+                <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    {m.displayName}
+                  </p>
+                </div>
+                <span className="text-xs flex-shrink-0" style={{ color: hasVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+                  {hasVoted ? "Voted \u2713" : "Not voted"}
+                </span>
+                {canRemove && (
+                  <button
+                    onClick={() => demote.mutate({ tripId, userId: m.user_id, role: "Member" })}
+                    className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add planner */}
+          {isOwner && (
+            <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+              <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                Get some help
+              </p>
+              <CrewSearchInput
+                tripId={tripId}
+                defaultRole="Planner"
+                defaultStatus="draft"
+                allowGhost={false}
+                allowInvite
+                showSearchIcon
+                placeholder="Search by email..."
+                frequentTripmates={[]}
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1661,12 +1571,15 @@ export default function IdeaZonePanel({
   trip,
   canEdit,
   isOwner,
-  onTabChange,
+  onTabChange: _onTabChange,
+  onOpenChat,
 }: {
   trip: TripData;
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
+  /** Opens the mobile ChatDrawer (managed in page.tsx) */
+  onOpenChat?: () => void;
 }) {
   const currentUser = useCurrentUser();
   const tripId = trip.id;
@@ -1674,6 +1587,7 @@ export default function IdeaZonePanel({
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [setDestinationIdea, setSetDestinationIdea] = useState<Idea | null>(null);
+  const [showMobileCoPlanners, setShowMobileCoPlanners] = useState(false);
 
   useEffect(() => {
     if (showAddModal) {
@@ -1687,41 +1601,61 @@ export default function IdeaZonePanel({
 
   const ideasTyped = ideas as Idea[];
 
-  // Compute leading
-  const maxVotes = Math.max(...ideasTyped.map((i) => i.votes.length), 0);
-  const isLeading = (idea: Idea) => maxVotes > 0 && idea.votes.length === maxVotes;
-
-  // Member data for VotingPanel voter avatars
+  // Member data for voter avatars
   const memberData = members.map((m) => ({
     memberId: m.user_id,
     displayName: m.displayName,
   }));
 
+  // Vote mutation (lifted from VotingPanel so IdeaCards can use it)
+  const utils = trpc.useUtils();
+  const [votePendingId, setVotePendingId] = useState<string | null>(null);
+  const voteMutation = trpc.ideas.vote.useMutation({
+    async onMutate({ ideaId }) {
+      setVotePendingId(ideaId);
+      await utils.ideas.list.cancel({ tripId });
+      const prev = utils.ideas.list.getData({ tripId });
+      utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
+        const clickingCurrentPick = i.id === ideaId && i.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
+        if (clickingCurrentPick) {
+          return { ...i, votes: i.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id) };
+        }
+        const withoutMe = i.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id);
+        if (i.id !== ideaId) return { ...i, votes: withoutMe };
+        return { ...i, votes: [...withoutMe, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }] };
+      }));
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      setVotePendingId(null);
+      utils.ideas.list.invalidate({ tripId });
+    },
+  });
+
+  const handleVote = (ideaId: string) => voteMutation.mutate({ tripId, ideaId });
+
+  // All user IDs who have voted on any idea in this trip
+  const allVoterIds = new Set(ideasTyped.flatMap((i) => i.votes.map((v) => v.user_id)));
+
+  // Number of planners/owners — used for co-planners dot indicator
+  const plannerCount = members.filter(
+    (m) => m.role === "owner" || m.role === "planner",
+  ).length;
+
   if (ideasTyped.length === 0) {
     return <ZeroIdeasFork tripId={tripId} canEdit={canEdit} />;
   }
 
-  // Sort: leading first, then by votes desc
-  const sorted = ideasTyped.slice().sort((a, b) => {
-    const aLeading = isLeading(a) ? 1 : 0;
-    const bLeading = isLeading(b) ? 1 : 0;
-    if (aLeading !== bLeading) return bLeading - aLeading;
-    return b.votes.length - a.votes.length;
-  });
-
-  const votingPanelIdeas = ideasTyped.slice().sort((a, b) => b.votes.length - a.votes.length);
+  // Preserve creation order — no reordering by votes (too jarring)
+  const sorted = ideasTyped;
 
   return (
     <div>
       {/* ── Mobile layout ─────────────────────────────────────────────── */}
       <div className="lg:hidden space-y-4 p-4">
-        <VotingPanel
-          tripId={tripId}
-          ideas={votingPanelIdeas}
-          currentUserId={currentUser?.id}
-          members={memberData}
-        />
-
         {sorted.map((idea) => (
           <IdeaCard
             key={idea.id}
@@ -1729,28 +1663,16 @@ export default function IdeaZonePanel({
             tripId={tripId}
             canEdit={canEdit}
             isOwner={isOwner}
-            isLeading={isLeading(idea)}
             tripStartDate={trip.start_date}
+            currentUserId={currentUser?.id}
+            memberData={memberData}
+            onVote={handleVote}
+            votePending={votePendingId === idea.id}
             onSetDestination={setSetDestinationIdea}
             onDelete={setDeleteIdea}
           />
         ))}
 
-        {canEdit && (
-          <button
-            data-testid="add-idea-btn"
-            onClick={() => setShowAddModal(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{
-              border: "1.5px dashed var(--color-bt-accent)",
-              color: "var(--color-bt-accent)",
-              background: "transparent",
-            }}
-          >
-            <Plus size={16} />
-            Add idea
-          </button>
-        )}
       </div>
 
       {/* ── Desktop layout ────────────────────────────────────────────── */}
@@ -1764,8 +1686,11 @@ export default function IdeaZonePanel({
               tripId={tripId}
               canEdit={canEdit}
               isOwner={isOwner}
-              isLeading={isLeading(idea)}
               tripStartDate={trip.start_date}
+              currentUserId={currentUser?.id}
+              memberData={memberData}
+              onVote={handleVote}
+              votePending={votePendingId === idea.id}
               onSetDestination={setSetDestinationIdea}
               onDelete={setDeleteIdea}
             />
@@ -1773,14 +1698,7 @@ export default function IdeaZonePanel({
         </div>
 
         {/* Right: sidebar */}
-        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start space-y-0">
-          <VotingPanel
-            tripId={tripId}
-            ideas={votingPanelIdeas}
-            currentUserId={currentUser?.id}
-            members={memberData}
-          />
-
+        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start space-y-3">
           {canEdit && (
             <button
               data-testid="add-idea-btn"
@@ -1793,20 +1711,22 @@ export default function IdeaZonePanel({
               }}
             >
               <Plus size={16} />
-              Add idea
+              Add destination idea
             </button>
           )}
 
-          <CrewChatWidget
+          <CoPlannerPanel
+            tripId={tripId}
+            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+            isOwner={isOwner}
+            allVoterIds={allVoterIds}
+          />
+
+          <SidebarChatPanel
             tripId={tripId}
             memberNames={Object.fromEntries(
               members.map((m) => [m.memberId, m.displayName])
             )}
-          />
-
-          <CoPlannerChip
-            members={members}
-            onTabChange={onTabChange}
           />
         </div>
       </div>
@@ -1827,6 +1747,74 @@ export default function IdeaZonePanel({
           tripId={tripId}
           idea={setDestinationIdea}
           onClose={() => setSetDestinationIdea(null)}
+        />
+      )}
+
+      {/* ── Mobile FAB unified pill (IDEA stage) ────────────────────── */}
+      <div
+        className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center lg:hidden"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          borderRadius: "1rem",
+          boxShadow: "var(--shadow-floating)",
+          width: "3rem",
+        }}
+      >
+        {canEdit ? (
+          <>
+            {/* Add idea — top */}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+              style={{ borderRadius: "1rem 1rem 0 0" }}
+              aria-label="Add destination idea"
+            >
+              <Plus size={20} style={{ color: "var(--color-bt-accent)" }} />
+            </button>
+
+            <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
+          </>
+        ) : null}
+
+        {/* Chat */}
+        <button
+          onClick={onOpenChat}
+          data-testid="floating-chat-btn"
+          className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+          style={{ borderRadius: canEdit ? "0" : "1rem 1rem 0 0" }}
+          aria-label="Open crew chat"
+        >
+          <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+        </button>
+
+        <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
+
+        {/* Crew / co-planners — bottom */}
+        <button
+          onClick={() => setShowMobileCoPlanners(true)}
+          className="relative flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+          style={{ borderRadius: "0 0 1rem 1rem" }}
+          aria-label="View co-planners"
+        >
+          <Users size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+          {plannerCount > 1 && (
+            <span
+              className="absolute right-2 top-2 h-2 w-2 rounded-full"
+              style={{ background: "var(--color-bt-accent)" }}
+            />
+          )}
+        </button>
+      </div>
+
+      {/* ── Mobile co-planners bottom sheet ──────────────────────────── */}
+      {showMobileCoPlanners && (
+        <MobileCoPlannerSheet
+          tripId={tripId}
+          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+          isOwner={isOwner}
+          allVoterIds={allVoterIds}
+          onClose={() => setShowMobileCoPlanners(false)}
         />
       )}
     </div>
