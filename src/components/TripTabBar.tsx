@@ -39,10 +39,11 @@ export const TripTabBar: FC<TripTabBarProps> = ({
 
   const tabs = ALL_TABS.filter((t) => {
     if (t.id === "comp") {
-      // In PLANNING stage, never show Competition tab
       if (stage === "planning") return false;
       return canEdit && showComp;
     }
+    // Hide Expenses in PLANNING stage
+    if (t.id === "expenses" && stage === "planning") return false;
     return true;
   });
 
@@ -65,24 +66,17 @@ export const TripTabBar: FC<TripTabBarProps> = ({
     >
       {tabs.map(({ id, label, Icon }) => {
         const active = activeTab === id;
-        const isDisabled = stage === "planning" && id === "expenses";
-        return (
+          return (
           <button
             key={id}
             data-testid={`tab-${id}`}
             onClick={() => onTabChange(id)}
             className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-medium transition-colors"
             style={{
-              color: isDisabled
-                ? "var(--color-bt-text-dim)"
-                : active
-                  ? "var(--color-bt-accent)"
-                  : "var(--color-bt-text-dim)",
+              color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
               borderBottom: active
                 ? "2px solid var(--color-bt-accent)"
                 : "2px solid transparent",
-              opacity: isDisabled ? 0.4 : 1,
-              cursor: isDisabled ? "not-allowed" : "pointer",
             }}
           >
             {iconMode ? (

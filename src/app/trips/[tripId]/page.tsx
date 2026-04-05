@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MoreHorizontal, Lock } from "lucide-react";
+import { MoreHorizontal, Lock, HelpCircle, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -22,7 +22,8 @@ import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { FloatingChatButton } from "./components/FloatingChatButton";
 import { ChatDrawer } from "./components/ChatDrawer";
-import { StageContextBar } from "./components/StageContextBar";
+import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
+import { SidebarChatPanel } from "./components/PlanningChatPanel";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -33,6 +34,8 @@ export default function TripDetailPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
+  const [pendingRsvpMessage, setPendingRsvpMessage] = useState<string>("");
+  const [showHelpSheet, setShowHelpSheet] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
 
@@ -168,6 +171,17 @@ export default function TripDetailPage() {
     </button>
   ) : null;
 
+  const helpButton = (stage === "idea" || stage === "planning") ? (
+    <button
+      onClick={() => setShowHelpSheet(true)}
+      className="lg:hidden flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+      style={{ color: "var(--color-bt-text-dim)" }}
+      aria-label="What to do here"
+    >
+      <HelpCircle size={18} />
+    </button>
+  ) : null;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div
@@ -179,7 +193,14 @@ export default function TripDetailPage() {
       <TripBreadcrumb
         tripId={tripId}
         tripTitle={trip.title}
-        rightSlot={settingsButton}
+        rightSlot={
+          (helpButton || settingsButton) ? (
+            <div className="flex items-center gap-1">
+              {helpButton}
+              {settingsButton}
+            </div>
+          ) : null
+        }
       />
 
       {/* ── Trip header card ──────────────────────────────────────────────── */}
@@ -205,78 +226,132 @@ export default function TripDetailPage() {
             });
           }}
           onDatesTap={() => setActiveTab("schedule")}
-          onStepClick={(stepKey) => {
-            if (stepKey === "going" && isOwner && stage === "planning") {
-              setShowAdvanceSheet("going");
-            }
-          }}
+          onStepClick={undefined}
         />
 
-        {/* ── Tab bar (hidden in IDEA stage) ──────────────────────────── */}
-        {stage !== "idea" && (
-          <div className="mt-4">
-            <TripTabBar
-              activeTab={activeTab}
-              onTabChange={(tab) => {
-                if (stage === "planning" && tab === "expenses") {
-                  setToast({ message: "Expenses are available once the trip moves to Ready.", variant: "warning" });
-                  return;
-                }
-                setActiveTab(tab);
-              }}
-              showComp={showComp}
-              canEdit={canEdit}
-              stage={stage}
-            />
-          </div>
-        )}
       </div>
 
-      {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" || stage === "planning" ? "pb-6" : "pb-24"}`}>
-        {/* Stage context bar */}
-        {activeTab === "home" && (
-          <div className="mb-3 px-4 lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
-            <StageContextBar tripId={trip.id} stage={stage} displayStatus={status} />
+      {/* ── Tab bar + content ────────────────────────────────────────────── */}
+      {stage === "planning" ? (
+        /* Planning: persistent two-column layout — tab bar, content, and
+           sidebar share the same grid so the sidebar aligns with the tab bar
+           top and persists across all tab switches. */
+        <div className="mx-auto max-w-[1280px] px-4 mt-4">
+          <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+            {/* Left: tab bar + all tab content */}
+            <div>
+              <TripTabBar
+                activeTab={activeTab}
+                onTabChange={(tab) => setActiveTab(tab)}
+                showComp={showComp}
+                canEdit={canEdit}
+                stage={stage}
+              />
+              <div className="pt-4 pb-6">
+                {tripIsReadOnly && activeTab === "home" && (
+                  <div
+                    className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
+                    style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+                  >
+                    <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                    <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                      This trip is read-only
+                    </span>
+                  </div>
+                )}
+                {activeTab === "home" && (
+                  <HomeTab
+                    trip={trip}
+                    role={role}
+                    canEdit={effectiveCanEdit}
+                    isOwner={isOwner}
+                    displayStatus={status}
+                    onTabChange={(tab) => setActiveTab(tab as TabId)}
+                    onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                    onOpenChat={() => setShowChatDrawer(true)}
+                    onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
+                  />
+                )}
+                {activeTab === "schedule" && (
+                  <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+                {activeTab === "crew" && (
+                  <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+                {activeTab === "expenses" && (
+                  <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+                {activeTab === "comp" && (
+                  <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+              </div>
+            </div>
+            {/* Right: persistent sidebar — desktop only */}
+            <div className="hidden lg:flex lg:flex-col gap-4">
+              <StageContextBar tripId={tripId} stage={stage} displayStatus={status} />
+              <SidebarChatPanel
+                tripId={tripId}
+                memberNames={Object.fromEntries(
+                  members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
+                )}
+              />
+            </div>
           </div>
-        )}
-
-        {/* Read-only banner */}
-        {tripIsReadOnly && activeTab === "home" && (
-          <div
-            className="mx-4 mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
-            style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-            <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              This trip is read-only
-            </span>
-          </div>
-        )}
-        {activeTab === "home" && (
-          <HomeTab
-            trip={trip}
-            role={role}
-            canEdit={effectiveCanEdit}
-            isOwner={isOwner}
-            onTabChange={(tab) => setActiveTab(tab as TabId)}
-            onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-            onOpenChat={() => setShowChatDrawer(true)}
-          />
-        )}
-        {activeTab === "schedule" && (
-          <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-        {activeTab === "crew" && (
-          <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-        {activeTab === "expenses" && (
-          <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-        {activeTab === "comp" && (
-          <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-      </main>
+        </div>
+      ) : (
+        <>
+          {/* Non-planning: tab bar in its own row, hidden in IDEA stage */}
+          {stage !== "idea" && (
+            <div className="mx-auto max-w-[1280px] px-4 mt-4">
+              <TripTabBar
+                activeTab={activeTab}
+                onTabChange={(tab) => setActiveTab(tab)}
+                showComp={showComp}
+                canEdit={canEdit}
+                stage={stage}
+              />
+            </div>
+          )}
+          <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" ? "pb-6" : "pb-24"}`}>
+            {tripIsReadOnly && activeTab === "home" && (
+              <div
+                className="mx-4 mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
+                style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  This trip is read-only
+                </span>
+              </div>
+            )}
+            {activeTab === "home" && (
+              <HomeTab
+                trip={trip}
+                role={role}
+                canEdit={effectiveCanEdit}
+                isOwner={isOwner}
+                displayStatus={status}
+                onTabChange={(tab) => setActiveTab(tab as TabId)}
+                onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                onOpenChat={() => setShowChatDrawer(true)}
+                onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
+              />
+            )}
+            {activeTab === "schedule" && (
+              <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+            {activeTab === "crew" && (
+              <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+            {activeTab === "expenses" && (
+              <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+            {activeTab === "comp" && (
+              <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+          </main>
+        </>
+      )}
 
       {/* ── Bottom navigation (READY+ stages only) ────────────────────────── */}
       {stage !== "idea" && stage !== "planning" && (
@@ -299,6 +374,7 @@ export default function TripDetailPage() {
           tripId={tripId}
           destination={trip.locked_destination_title ?? ""}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
+          initialMessage={pendingRsvpMessage || trip.about_message || ""}
           onClose={() => setShowAdvanceSheet(null)}
           onAdvanced={(ghosts) => {
             if (ghosts.length > 0) {
@@ -310,6 +386,40 @@ export default function TripDetailPage() {
           }}
         />
       )}
+
+      {/* ── Mobile help sheet ─────────────────────────────────────────── */}
+      {showHelpSheet && (() => {
+        const content = STAGE_CONTENT[status] ?? STAGE_CONTENT[stage];
+        if (!content) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end lg:hidden"
+            style={{ background: "var(--color-bt-overlay)" }}
+            onClick={() => setShowHelpSheet(false)}
+          >
+            <div
+              className="w-full rounded-t-2xl px-5 py-6 space-y-3"
+              style={{ background: "var(--color-bt-card)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 mt-0.5">{content.icon}</span>
+                <p className="flex-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                  {content.text}
+                </p>
+                <button
+                  onClick={() => setShowHelpSheet(false)}
+                  className="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full"
+                  style={{ color: "var(--color-bt-text-dim)", background: "var(--color-bt-card-raised)" }}
+                  aria-label="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Floating chat button + drawer (IDEA/PLANNING mobile) ──────── */}
       {showFloatingChat && (
@@ -352,16 +462,18 @@ function AdvanceToGoingSheet({
   tripId,
   destination,
   dateRange,
+  initialMessage,
   onClose,
   onAdvanced,
 }: {
   tripId: string;
   destination: string;
   dateRange: string;
+  initialMessage?: string;
   onClose: () => void;
   onAdvanced: (ghostsWithoutEmail: string[]) => void;
 }) {
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialMessage ?? "");
   const utils = trpc.useUtils();
 
   // Check if a date is locked
@@ -421,7 +533,7 @@ function AdvanceToGoingSheet({
               }}
             />
             <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              This becomes your trip&apos;s About section — share the details, get people excited.
+              This goes out by email to your crew. You can still edit it before sending.
             </p>
 
             <button

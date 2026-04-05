@@ -25,6 +25,7 @@ import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { SidebarChatPanel } from "./PlanningChatPanel";
+import { StageContextBar } from "./StageContextBar";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1699,6 +1700,9 @@ export default function IdeaZonePanel({
 
         {/* Right: sidebar */}
         <div className="w-[320px] flex-shrink-0 sticky top-4 self-start space-y-3">
+          <div className="hidden lg:block">
+            <StageContextBar tripId={tripId} stage="idea" displayStatus="idea" />
+          </div>
           {canEdit && (
             <button
               data-testid="add-idea-btn"

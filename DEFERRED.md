@@ -1,7 +1,7 @@
 # BuddyTrip — Deferred Work
 
 *Only genuinely open items. Organized by when they need to happen.*
-*Last updated: 2026-04-03*
+*Last updated: 2026-04-05*
 
 ---
 
@@ -64,6 +64,16 @@ creation, backfill existing trips, accept both slug and UUID in route
 
 One of the 20 seeded catalog ideas ("Amelia Island Getaway") has a broken
 or missing `image_url`. Fix with a SQL UPDATE before next demo.
+
+---
+
+### Date polling scope selection
+
+The dates panel currently polls all crew members indiscriminately.
+Owners should be able to select a subset of crew for date polling
+(e.g. only the key people whose schedules constrain the decision)
+rather than sending to everyone. Requires a crew selector UI on
+the date poll setup flow and a filtered query for poll responses.
 
 ---
 
@@ -307,3 +317,51 @@ Tracked in `STYLE_GUIDE.md` Section 7. Summary:
 
 Fix incrementally in follow-up PRs. Full line-by-line locations in
 STYLE_GUIDE.md Section 7.
+
+
+---
+
+### RSVP Message — recipient selection
+
+Currently the RSVP message is sent to all crew members automatically
+when the owner advances to GOING. The panel shows green as soon as
+there is content.
+
+The intended flow adds an intermediate step: the owner explicitly
+selects which crew members to include in the blast. Until both the
+message is written AND recipients have been acknowledged, the panel
+should show amber (inProgress). Only when both are confirmed should
+it show teal/green (done).
+
+**What to build:**
+- Recipient selector UI inside RsvpDraftPanel (checklist or chip
+  multi-select, defaulting to all crew members)
+- `rsvp_recipients` persisted state (could be a JSONB array on the
+  trip or a separate table)
+- Panel state logic: amber when message exists but recipients not yet
+  confirmed, green when both message + recipients are set
+- Pass selected recipients through to the email blast in AdvanceToGoingSheet
+
+**Current behavior:** green as soon as message has content; all crew
+members receive the blast automatically.
+
+---
+
+### Logistics panel
+
+The Logistics planning row is a placeholder with no clear scope.
+Remove it entirely or replace with a defined feature — likely a
+checklist of pre-trip tasks (book accommodation, arrange transport, etc.)
+distinct from the Schedule tab reservations.
+
+---
+
+### Tentative reservations in Schedule tab
+
+Reservations added during PLANNING stage should be marked tentative
+by default. During READY stage, the owner explicitly confirms each
+reservation. Confirmed reservations display differently from tentative
+ones (e.g. solid vs dashed border, lock icon on confirmed).
+
+**Schema:** add `confirmed boolean` and `confirmed_at timestamptz` to
+the reservations/bookings table.

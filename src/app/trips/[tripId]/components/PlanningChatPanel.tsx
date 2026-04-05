@@ -19,11 +19,11 @@ interface ChatMessage {
 
 interface SidebarChatPanelProps {
   tripId: string;
-  memberNames: Record<string, string>;
+  memberNames?: Record<string, string>;
 }
 
 /** Shared desktop sidebar chat — used in both IDEA and PLANNING stages */
-export function SidebarChatPanel({ tripId, memberNames }: SidebarChatPanelProps) {
+export function SidebarChatPanel({ tripId, memberNames = {} }: SidebarChatPanelProps) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
