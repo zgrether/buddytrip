@@ -138,6 +138,7 @@ export default function TripDetailPage() {
 
   const status = getTripStatus(trip);
   const tripIsReadOnly = checkReadOnly(trip);
+  const stage = (trip as { stage?: string }).stage ?? "idea";
   // When exploring (comparison_mode=true, no lock), don't fall back to
   // trip.location — lockDestination writes to that column and unlockDestination
   // doesn't clear it, so the old destination would bleed through to the header.
@@ -180,7 +181,7 @@ export default function TripDetailPage() {
         <TripHeader
           tripName={trip.title}
           status={status}
-          stage={(trip as { stage?: string }).stage ?? "idea"}
+          stage={stage}
           countdownText={countdownLabel(trip)}
           location={destLocation}
           lockedTitle={trip.locked_destination_title}
@@ -199,7 +200,7 @@ export default function TripDetailPage() {
           }}
           onDatesTap={() => setActiveTab("schedule")}
           onStepClick={(stepKey) => {
-            if (stepKey === "going" && isOwner && (trip as { stage?: string }).stage === "planning") {
+            if (stepKey === "going" && isOwner && stage === "planning") {
               setShowAdvanceSheet("going");
             }
           }}
@@ -212,7 +213,7 @@ export default function TripDetailPage() {
       </div>
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main className="mx-auto max-w-[1280px] pb-24 pt-4">
+      <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" || stage === "planning" ? "pb-6" : "pb-24"}`}>
         {/* Read-only banner */}
         {tripIsReadOnly && activeTab === "home" && (
           <div
@@ -249,8 +250,10 @@ export default function TripDetailPage() {
         )}
       </main>
 
-      {/* ── Bottom navigation ─────────────────────────────────────────────── */}
-      <TripBottomNav tripId={tripId} eventId={trip.event_id} />
+      {/* ── Bottom navigation (READY+ stages only) ────────────────────────── */}
+      {stage !== "idea" && stage !== "planning" && (
+        <TripBottomNav tripId={tripId} eventId={trip.event_id} />
+      )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (
