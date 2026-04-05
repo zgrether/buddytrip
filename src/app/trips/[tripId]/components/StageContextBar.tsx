@@ -10,7 +10,7 @@ interface StageContextBarProps {
   displayStatus: TripDisplayStatus;
 }
 
-const STAGE_CONTENT: Record<
+export const STAGE_CONTENT: Record<
   string,
   { icon: React.ReactNode; text: string }
 > = {

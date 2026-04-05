@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MoreHorizontal, Lock } from "lucide-react";
+import { MoreHorizontal, Lock, HelpCircle, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -22,7 +22,7 @@ import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { FloatingChatButton } from "./components/FloatingChatButton";
 import { ChatDrawer } from "./components/ChatDrawer";
-import { StageContextBar } from "./components/StageContextBar";
+import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -34,6 +34,7 @@ export default function TripDetailPage() {
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
   const [pendingRsvpMessage, setPendingRsvpMessage] = useState<string>("");
+  const [showHelpSheet, setShowHelpSheet] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
 
@@ -169,6 +170,17 @@ export default function TripDetailPage() {
     </button>
   ) : null;
 
+  const helpButton = (stage === "idea" || stage === "planning") ? (
+    <button
+      onClick={() => setShowHelpSheet(true)}
+      className="lg:hidden flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+      style={{ color: "var(--color-bt-text-dim)" }}
+      aria-label="What to do here"
+    >
+      <HelpCircle size={18} />
+    </button>
+  ) : null;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div
@@ -180,7 +192,14 @@ export default function TripDetailPage() {
       <TripBreadcrumb
         tripId={tripId}
         tripTitle={trip.title}
-        rightSlot={settingsButton}
+        rightSlot={
+          (helpButton || settingsButton) ? (
+            <div className="flex items-center gap-1">
+              {helpButton}
+              {settingsButton}
+            </div>
+          ) : null
+        }
       />
 
       {/* ── Trip header card ──────────────────────────────────────────────── */}
@@ -211,16 +230,10 @@ export default function TripDetailPage() {
 
         {/* ── Tab bar (hidden in IDEA stage) ──────────────────────────── */}
         {stage !== "idea" && (
-          <div className="mt-4">
+          <div className={`mt-4${stage === "planning" ? " lg:grid lg:grid-cols-[1fr_320px] lg:gap-6" : ""}`}>
             <TripTabBar
               activeTab={activeTab}
-              onTabChange={(tab) => {
-                if (stage === "planning" && tab === "expenses") {
-                  setToast({ message: "Expenses are available once the trip moves to Ready.", variant: "warning" });
-                  return;
-                }
-                setActiveTab(tab);
-              }}
+              onTabChange={(tab) => setActiveTab(tab)}
               showComp={showComp}
               canEdit={canEdit}
               stage={stage}
@@ -231,13 +244,6 @@ export default function TripDetailPage() {
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
       <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" || stage === "planning" ? "pb-6" : "pb-24"}`}>
-        {/* Stage context bar */}
-        {activeTab === "home" && (
-          <div className="mb-3 px-4 lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
-            <StageContextBar tripId={trip.id} stage={stage} displayStatus={status} />
-          </div>
-        )}
-
         {/* Read-only banner */}
         {tripIsReadOnly && activeTab === "home" && (
           <div
@@ -256,6 +262,7 @@ export default function TripDetailPage() {
             role={role}
             canEdit={effectiveCanEdit}
             isOwner={isOwner}
+            displayStatus={status}
             onTabChange={(tab) => setActiveTab(tab as TabId)}
             onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
             onOpenChat={() => setShowChatDrawer(true)}
@@ -309,6 +316,40 @@ export default function TripDetailPage() {
           }}
         />
       )}
+
+      {/* ── Mobile help sheet ─────────────────────────────────────────── */}
+      {showHelpSheet && (() => {
+        const content = STAGE_CONTENT[status] ?? STAGE_CONTENT[stage];
+        if (!content) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end lg:hidden"
+            style={{ background: "var(--color-bt-overlay)" }}
+            onClick={() => setShowHelpSheet(false)}
+          >
+            <div
+              className="w-full rounded-t-2xl px-5 py-6 space-y-3"
+              style={{ background: "var(--color-bt-card)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 mt-0.5">{content.icon}</span>
+                <p className="flex-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
+                  {content.text}
+                </p>
+                <button
+                  onClick={() => setShowHelpSheet(false)}
+                  className="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full"
+                  style={{ color: "var(--color-bt-text-dim)", background: "var(--color-bt-card-raised)" }}
+                  aria-label="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Floating chat button + drawer (IDEA/PLANNING mobile) ──────── */}
       {showFloatingChat && (

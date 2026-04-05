@@ -36,6 +36,8 @@ import { DatesSection } from "./DatesSection";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { SidebarChatPanel } from "../components/PlanningChatPanel";
+import { StageContextBar } from "../components/StageContextBar";
+import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -1724,11 +1726,12 @@ export function HomeTab({
   trip,
   canEdit: canEditProp,
   isOwner,
+  displayStatus,
   onTabChange,
   onEnableComp,
   onOpenChat,
   onMakeOfficial,
-}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onMakeOfficial?: (message: string) => void }) {
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onMakeOfficial?: (message: string) => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
@@ -1923,7 +1926,12 @@ export function HomeTab({
 
         {/* ── Right column: per-stage supplementary content ─────────── */}
         <div className="mt-4 space-y-4 lg:mt-0">
-          {/* PLANNING stage: crew chat (desktop) + logistics below */}
+          {/* PLANNING stage: context bar (desktop only) + crew chat */}
+          {stage === "planning" && displayStatus && (
+            <div className="hidden lg:block">
+              <StageContextBar tripId={trip.id} stage={stage} displayStatus={displayStatus} />
+            </div>
+          )}
           {stage === "planning" && (
             <SidebarChatPanel
               tripId={trip.id}
