@@ -1425,12 +1425,14 @@ function PlanningSection({
 function AboutPanel({ tripId, aboutMessage, canEdit }: { tripId: string; aboutMessage?: string | null; canEdit: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(aboutMessage ?? "");
+  const [notify, setNotify] = useState(false);
   const utils = trpc.useUtils();
 
   const update = trpc.trips.updateAboutMessage.useMutation({
     onSuccess() {
       utils.trips.getById.invalidate({ tripId });
       setEditing(false);
+      setNotify(false);
     },
   });
 
@@ -1459,29 +1461,56 @@ function AboutPanel({ tripId, aboutMessage, canEdit }: { tripId: string; aboutMe
 
       {editing ? (
         <>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={4}
-            autoFocus
-            className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
+          <div className="relative">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={4}
+              autoFocus
+              className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+            {draft && (
+              <button
+                onClick={() => setDraft("")}
+                className="absolute right-2 top-2 rounded p-0.5 transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
+                aria-label="Clear"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Notify checkbox */}
+          <label className="mt-2 flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={notify}
+              onChange={(e) => setNotify(e.target.checked)}
+              className="h-4 w-4 rounded"
+              style={{ accentColor: "var(--color-bt-accent)" }}
+            />
+            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Send notification to everyone
+            </span>
+          </label>
+
           <div className="mt-2 flex gap-2">
             <button
-              onClick={() => update.mutate({ tripId, aboutMessage: draft.trim() })}
-              disabled={update.isPending || !draft.trim()}
+              onClick={() => update.mutate({ tripId, aboutMessage: draft.trim() || null, sendNotification: notify })}
+              disabled={update.isPending}
               className="rounded-lg px-4 py-1.5 text-sm font-semibold transition-opacity disabled:opacity-40"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               {update.isPending ? "Saving..." : "Save"}
             </button>
             <button
-              onClick={() => setEditing(false)}
+              onClick={() => { setEditing(false); setNotify(false); }}
               className="rounded-lg px-4 py-1.5 text-sm transition-opacity hover:opacity-70"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
@@ -1490,9 +1519,11 @@ function AboutPanel({ tripId, aboutMessage, canEdit }: { tripId: string; aboutMe
           </div>
         </>
       ) : (
-        <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-          {aboutMessage}
-        </p>
+        aboutMessage && (
+          <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+            {aboutMessage}
+          </p>
+        )
       )}
     </div>
   );

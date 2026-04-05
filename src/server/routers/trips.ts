@@ -693,14 +693,15 @@ export const tripsRouter = router({
     .input(
       z.object({
         tripId: z.string(),
-        aboutMessage: z.string().trim().min(1, "Message cannot be empty."),
+        aboutMessage: z.string().nullable(),
+        sendNotification: z.boolean().default(false),
       })
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
       const { data: trip, error: fetchErr } = await ctx.supabase
         .from("trips")
-        .select("stage")
+        .select("stage, title")
         .eq("id", ctx.tripId)
         .single();
 
@@ -715,15 +716,34 @@ export const tripsRouter = router({
         });
       }
 
+      const newMessage = input.aboutMessage?.trim() || null;
+
       const { data, error } = await ctx.supabase
         .from("trips")
-        .update({ about_message: input.aboutMessage.trim() })
+        .update({ about_message: newMessage })
         .eq("id", ctx.tripId)
         .select("id, about_message")
         .single();
 
       if (error || !data) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update about message" });
+      }
+
+      if (input.sendNotification) {
+        try {
+          const { createNotification } = await import("./notifications");
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            type: "about_message_updated",
+            payload: {
+              tripName: trip.title,
+              message: newMessage ?? "",
+            },
+          });
+        } catch {
+          // Notification failure shouldn't block the save
+        }
       }
 
       return data;
