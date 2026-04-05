@@ -15,6 +15,8 @@ import {
   Trash2,
   Check,
   Plus,
+  MessageCircle,
+  Users,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -1496,7 +1498,7 @@ function CoPlannerPanel({
 
   return (
     <div
-      className="rounded-xl border px-3 py-3"
+      className="hidden lg:block rounded-xl border px-3 py-3"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1557,6 +1559,120 @@ function CoPlannerPanel({
   );
 }
 
+// ── MobileCoPlannerSheet ──────────────────────────────────────────────────
+
+function MobileCoPlannerSheet({
+  tripId,
+  members,
+  isOwner,
+  allVoterIds,
+  onClose,
+}: {
+  tripId: string;
+  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>;
+  isOwner: boolean;
+  allVoterIds: Set<string>;
+  onClose: () => void;
+}) {
+  const currentUser = useCurrentUser();
+  const utils = trpc.useUtils();
+
+  const planners = members.filter((m) => m.role === "Owner" || m.role === "Planner");
+
+  const demote = trpc.tripMembers.updateRole.useMutation({
+    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
+
+  useModalBackButton(onClose);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end lg:hidden"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="flex w-full max-h-[80vh] flex-col rounded-t-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-2">
+          <div className="h-1 w-8 rounded-full" style={{ background: "var(--color-bt-border)" }} />
+        </div>
+
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 pb-2"
+          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+        >
+          <p className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            Co-planners
+          </p>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Planner list */}
+        <div className="overflow-y-auto px-4 py-3 space-y-2">
+          {planners.map((m) => {
+            const isSelf = m.user_id === currentUser?.id;
+            const canRemove = isOwner && !isSelf && m.role !== "Owner";
+            const hasVoted = allVoterIds.has(m.user_id);
+            return (
+              <div key={m.user_id ?? m.memberId} className="flex items-center gap-3">
+                <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    {m.displayName}
+                  </p>
+                </div>
+                <span className="text-xs flex-shrink-0" style={{ color: hasVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+                  {hasVoted ? "Voted \u2713" : "Not voted"}
+                </span>
+                {canRemove && (
+                  <button
+                    onClick={() => demote.mutate({ tripId, userId: m.user_id, role: "Member" })}
+                    className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add planner */}
+          {isOwner && (
+            <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+              <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                Get some help
+              </p>
+              <CrewSearchInput
+                tripId={tripId}
+                defaultRole="Planner"
+                defaultStatus="draft"
+                allowGhost={false}
+                allowInvite
+                showSearchIcon
+                placeholder="Search by email..."
+                frequentTripmates={[]}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── IdeaZonePanel ─────────────────────────────────────────────────────────
 
 export default function IdeaZonePanel({
@@ -1564,11 +1680,14 @@ export default function IdeaZonePanel({
   canEdit,
   isOwner,
   onTabChange,
+  onOpenChat,
 }: {
   trip: TripData;
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
+  /** Opens the mobile ChatDrawer (managed in page.tsx) */
+  onOpenChat?: () => void;
 }) {
   const currentUser = useCurrentUser();
   const tripId = trip.id;
@@ -1576,6 +1695,7 @@ export default function IdeaZonePanel({
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [setDestinationIdea, setSetDestinationIdea] = useState<Idea | null>(null);
+  const [showMobileCoPlanners, setShowMobileCoPlanners] = useState(false);
 
   useEffect(() => {
     if (showAddModal) {
@@ -1656,28 +1776,6 @@ export default function IdeaZonePanel({
           />
         ))}
 
-        {canEdit && (
-          <button
-            data-testid="add-idea-btn"
-            onClick={() => setShowAddModal(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{
-              border: "1.5px dashed var(--color-bt-accent)",
-              color: "var(--color-bt-accent)",
-              background: "transparent",
-            }}
-          >
-            <Plus size={16} />
-            Add destination idea
-          </button>
-        )}
-
-        <CoPlannerPanel
-          tripId={tripId}
-          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
-          isOwner={isOwner}
-          allVoterIds={allVoterIds}
-        />
       </div>
 
       {/* ── Desktop layout ────────────────────────────────────────────── */}
@@ -1752,6 +1850,50 @@ export default function IdeaZonePanel({
           tripId={tripId}
           idea={setDestinationIdea}
           onClose={() => setSetDestinationIdea(null)}
+        />
+      )}
+
+      {/* ── Mobile floating action buttons (IDEA stage) ─────────────── */}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-3 lg:hidden">
+        {canEdit && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95"
+            style={{ background: "var(--color-bt-accent)" }}
+            aria-label="Add destination idea"
+          >
+            <Plus size={20} style={{ color: "var(--color-bt-base)" }} />
+          </button>
+        )}
+        <button
+          onClick={() => setShowMobileCoPlanners(true)}
+          className="flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95"
+          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+          aria-label="View co-planners"
+        >
+          <Users size={20} style={{ color: "var(--color-bt-text-dim)" }} />
+        </button>
+        {onOpenChat && (
+          <button
+            onClick={onOpenChat}
+            data-testid="floating-chat-btn"
+            className="flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95"
+            style={{ background: "var(--color-bt-accent)" }}
+            aria-label="Open crew chat"
+          >
+            <MessageCircle size={20} style={{ color: "var(--color-bt-base)" }} />
+          </button>
+        )}
+      </div>
+
+      {/* ── Mobile co-planners bottom sheet ──────────────────────────── */}
+      {showMobileCoPlanners && (
+        <MobileCoPlannerSheet
+          tripId={tripId}
+          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+          isOwner={isOwner}
+          allVoterIds={allVoterIds}
+          onClose={() => setShowMobileCoPlanners(false)}
         />
       )}
     </div>
