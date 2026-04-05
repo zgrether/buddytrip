@@ -249,6 +249,15 @@ entry only.
 
 ---
 
+### RSVP status indicator on dashboard TripCard
+
+In GOING/NOW stage, show the current user's RSVP status on the TripCard
+on the dashboard — a small chip showing "In", "Maybe", "Out", or "Pending"
+next to the stage badge. Gives at-a-glance visibility without opening the trip.
+Requires joining trip_members.rsvp_status in the dashboard trips query.
+
+---
+
 ## UX Polish (Logged, Not Urgent)
 
 ### Field Mode (outdoor scoring)
