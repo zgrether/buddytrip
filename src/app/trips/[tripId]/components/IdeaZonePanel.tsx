@@ -675,7 +675,7 @@ function DeleteConfirmModal({
           Remove {idea.title}?
         </p>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          This will permanently delete this idea along with all its votes and comments. You can&apos;t recover any of that.
+          This will permanently delete this idea and all its votes. The crew chat stays intact.
         </p>
         <div className="flex gap-2">
           <button
