@@ -1785,12 +1785,14 @@ export function HomeTab({
             />
           )}
 
-          {/* Competition panel */}
-          <CompetitionPanel
-            trip={trip}
-            canEdit={canEditProp}
-            onSetupComp={onEnableComp}
-          />
+          {/* Competition panel — only in READY stage and beyond */}
+          {stage !== "idea" && stage !== "planning" && (
+            <CompetitionPanel
+              trip={trip}
+              canEdit={canEditProp}
+              onSetupComp={onEnableComp}
+            />
+          )}
         </div>
 
         {/* ── Right column: per-stage supplementary content ─────────── */}
