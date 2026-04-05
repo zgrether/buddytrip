@@ -1496,7 +1496,7 @@ function CoPlannerPanel({
 
   return (
     <div
-      className="hidden lg:block rounded-xl border px-3 py-3"
+      className="rounded-xl border px-3 py-3"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1671,6 +1671,13 @@ export default function IdeaZonePanel({
             Add destination idea
           </button>
         )}
+
+        <CoPlannerPanel
+          tripId={tripId}
+          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+          isOwner={isOwner}
+          allVoterIds={allVoterIds}
+        />
       </div>
 
       {/* ── Desktop layout ────────────────────────────────────────────── */}
