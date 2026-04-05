@@ -364,7 +364,7 @@ describe("trips router — stage model", () => {
   it("advanceToGoing — requires locked date", async () => {
     const caller = ctx.caller();
     await expect(
-      caller.trips.advanceToGoing({ tripId: stageTrip, rsvpMessage: "Let's go!" })
+      caller.trips.advanceToGoing({ tripId: stageTrip, aboutMessage: "Let's go!" })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 

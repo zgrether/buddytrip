@@ -20,7 +20,7 @@ export interface TripData {
   stage?: string | null;
   stage_advanced_to_planning_at?: string | null;
   stage_advanced_to_going_at?: string | null;
-  rsvp_message?: string | null;
+  about_message?: string | null;
   trip_status_override?: string | null;
   event_id?: string | null;
   series_id?: string | null;
