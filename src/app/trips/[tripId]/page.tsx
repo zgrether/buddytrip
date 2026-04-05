@@ -33,6 +33,7 @@ export default function TripDetailPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
+  const [pendingRsvpMessage, setPendingRsvpMessage] = useState<string>("");
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
 
@@ -258,7 +259,7 @@ export default function TripDetailPage() {
             onTabChange={(tab) => setActiveTab(tab as TabId)}
             onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
             onOpenChat={() => setShowChatDrawer(true)}
-            onMakeOfficial={isOwner ? () => setShowAdvanceSheet("going") : undefined}
+            onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
           />
         )}
         {activeTab === "schedule" && (
@@ -296,7 +297,7 @@ export default function TripDetailPage() {
           tripId={tripId}
           destination={trip.locked_destination_title ?? ""}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
-          initialMessage={trip.about_message ?? ""}
+          initialMessage={pendingRsvpMessage || trip.about_message || ""}
           onClose={() => setShowAdvanceSheet(null)}
           onAdvanced={(ghosts) => {
             if (ghosts.length > 0) {

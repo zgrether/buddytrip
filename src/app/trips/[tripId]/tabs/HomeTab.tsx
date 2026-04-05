@@ -1217,7 +1217,7 @@ function PlanningSection({
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
-  onMakeOfficial?: () => void;
+  onMakeOfficial?: (message: string) => void;
 }) {
   const utils = trpc.useUtils();
   const [openRow, setOpenRow] = useState<string | null>(null);
@@ -1518,7 +1518,7 @@ function PlanningSection({
         if (!destinationLocked || !dateLocked || !messageReady) return null;
         return (
           <button
-            onClick={onMakeOfficial}
+            onClick={() => onMakeOfficial?.(localMessage)}
             className="mt-2 flex w-full animate-fade-in items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-opacity hover:opacity-90"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
@@ -1728,7 +1728,7 @@ export function HomeTab({
   onEnableComp,
   onOpenChat,
   onMakeOfficial,
-}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onMakeOfficial?: () => void }) {
+}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onMakeOfficial?: (message: string) => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
