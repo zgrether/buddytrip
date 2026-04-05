@@ -597,7 +597,7 @@ function IdeaCard({
               ) : (
                 <span />
               )}
-              {isOwner && (
+              {canEdit && (
                 <button
                   data-testid={`remove-idea-${idea.id}`}
                   onClick={() => onDelete(idea)}
