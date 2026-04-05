@@ -1830,13 +1830,8 @@ export default function IdeaZonePanel({
     return <ZeroIdeasFork tripId={tripId} canEdit={canEdit} />;
   }
 
-  // Sort: leading first, then by votes desc
-  const sorted = ideasTyped.slice().sort((a, b) => {
-    const aLeading = isLeading(a) ? 1 : 0;
-    const bLeading = isLeading(b) ? 1 : 0;
-    if (aLeading !== bLeading) return bLeading - aLeading;
-    return b.votes.length - a.votes.length;
-  });
+  // Preserve creation order — no reordering by votes (too jarring)
+  const sorted = ideasTyped;
 
   return (
     <div>
