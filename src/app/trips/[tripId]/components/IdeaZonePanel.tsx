@@ -1672,10 +1672,13 @@ function CoPlannerPanel({
   tripId,
   members,
   isOwner,
+  allVoterIds,
 }: {
   tripId: string;
   members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>;
   isOwner: boolean;
+  /** Set of user IDs who have voted on any idea */
+  allVoterIds: Set<string>;
 }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
@@ -1697,20 +1700,19 @@ function CoPlannerPanel({
       {/* Existing planners */}
       <div className="space-y-1.5">
         {planners.map((m) => {
-          const isPending = m.status === "invited";
-          const roleColor = m.role === "Owner" ? "var(--color-bt-owner)" : "var(--color-bt-accent)";
           const isSelf = m.user_id === currentUser?.id;
           const canRemove = isOwner && !isSelf && m.role !== "Owner";
+          const hasVoted = allVoterIds.has(m.user_id);
           return (
             <div key={m.user_id ?? m.memberId} className="flex items-center gap-2">
               <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs" style={{ color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
+                <p className="truncate text-xs" style={{ color: "var(--color-bt-text)" }}>
                   {m.displayName}
                 </p>
               </div>
-              <span className="text-[10px] font-semibold flex-shrink-0" style={{ color: isPending ? "var(--color-bt-ready)" : roleColor }}>
-                {isPending ? "Invited" : m.role}
+              <span className="text-xs flex-shrink-0" style={{ color: hasVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+                {hasVoted ? "Voted \u2713" : "Not voted"}
               </span>
               {canRemove && (
                 <button
@@ -1821,6 +1823,9 @@ export default function IdeaZonePanel({
 
   const handleVote = (ideaId: string) => voteMutation.mutate({ tripId, ideaId });
 
+  // All user IDs who have voted on any idea in this trip
+  const allVoterIds = new Set(ideasTyped.flatMap((i) => i.votes.map((v) => v.user_id)));
+
   if (ideasTyped.length === 0) {
     return <ZeroIdeasFork tripId={tripId} canEdit={canEdit} />;
   }
@@ -1917,6 +1922,7 @@ export default function IdeaZonePanel({
             tripId={tripId}
             members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
             isOwner={isOwner}
+            allVoterIds={allVoterIds}
           />
 
           <CrewChatWidget
