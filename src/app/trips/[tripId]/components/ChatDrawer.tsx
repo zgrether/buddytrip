@@ -148,7 +148,7 @@ function ChatDrawerInner({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 min-h-0">
+        <div className="flex-1 space-y-2 overflow-y-auto px-4 py-3 min-h-0">
           {displayed.length === 0 && (
             <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
               No messages yet. Say something!
@@ -163,13 +163,18 @@ function ChatDrawerInner({
             return (
               <div
                 key={msg.id}
-                className={`flex flex-col gap-0.5 ${isMe ? "items-end" : "items-start"}`}
+                className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
               >
-                {!isMe && (
-                  <p className="px-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {memberNames[msg.user_id] ?? "Unknown"}
-                  </p>
-                )}
+                <div className="flex items-center gap-1.5 px-1 mb-0.5">
+                  <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {time}
+                  </span>
+                  {!isMe && (
+                    <span className="text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {memberNames[msg.user_id] ?? "Unknown"}
+                    </span>
+                  )}
+                </div>
                 <div
                   className="max-w-[80%] rounded-2xl px-4 py-2 text-sm"
                   style={{
@@ -181,9 +186,6 @@ function ChatDrawerInner({
                 >
                   {msg.text}
                 </div>
-                <p className="px-1 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {time}
-                </p>
               </div>
             );
           })}
