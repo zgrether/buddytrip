@@ -1449,7 +1449,7 @@ function AboutPanel({ tripId, aboutMessage, canEdit, isPast }: { tripId: string;
 
   if (!aboutMessage && !canEdit) return null;
 
-  const showNotifyButton = canEdit && !isPast && !editing;
+  const showNotifyButton = canEdit && !isPast && !editing && !!aboutMessage?.trim();
 
   return (
     <>
