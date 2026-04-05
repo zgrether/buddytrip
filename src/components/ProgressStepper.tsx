@@ -92,16 +92,6 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
         })}
       </div>
 
-      {/* Idea stage helper text */}
-      {stage === "idea" && (
-        <p
-          className="mt-2 text-center text-xs"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Pick a destination to move to Planning
-        </p>
-      )}
-
       {/* NOW countdown */}
       {countdownText && (
         <p
