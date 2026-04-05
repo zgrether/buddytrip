@@ -68,9 +68,9 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
                   )}
                 </div>
 
-                {/* Label — desktop only */}
+                {/* Label — always shown for current step, desktop-only for others */}
                 <span
-                  className="mt-1 hidden text-xs lg:block"
+                  className={`mt-1 text-xs${state === "current" ? " block" : " hidden lg:block"}`}
                   style={{
                     color: state === "current" ? step.color : "var(--color-bt-text-dim)",
                     fontWeight: state === "current" ? 500 : 400,
@@ -91,14 +91,6 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
           );
         })}
       </div>
-
-      {/* Mobile: active step label centered below */}
-      <p
-        className="mt-1.5 text-center text-xs font-medium lg:hidden"
-        style={{ color: STEPS[currentIndex].color }}
-      >
-        {STEPS[currentIndex].label}
-      </p>
 
       {/* NOW countdown */}
       {countdownText && (
