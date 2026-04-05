@@ -22,6 +22,7 @@ import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { FloatingChatButton } from "./components/FloatingChatButton";
 import { ChatDrawer } from "./components/ChatDrawer";
+import { StageContextBar } from "./components/StageContextBar";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -233,6 +234,13 @@ export default function TripDetailPage() {
 
       {/* ── Tab content ──────────────────────────────────────────────────── */}
       <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" || stage === "planning" ? "pb-6" : "pb-24"}`}>
+        {/* Stage context bar */}
+        {activeTab === "home" && (
+          <div className="mb-3 px-4 lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+            <StageContextBar tripId={trip.id} stage={stage} displayStatus={status} />
+          </div>
+        )}
+
         {/* Read-only banner */}
         {tripIsReadOnly && activeTab === "home" && (
           <div
