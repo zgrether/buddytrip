@@ -1,7 +1,7 @@
 # BuddyTrip — Deferred Work
 
 *Only genuinely open items. Organized by when they need to happen.*
-*Last updated: 2026-04-03*
+*Last updated: 2026-04-05*
 
 ---
 
@@ -318,6 +318,32 @@ Tracked in `STYLE_GUIDE.md` Section 7. Summary:
 Fix incrementally in follow-up PRs. Full line-by-line locations in
 STYLE_GUIDE.md Section 7.
 
+
+---
+
+### RSVP Message — recipient selection
+
+Currently the RSVP message is sent to all crew members automatically
+when the owner advances to GOING. The panel shows green as soon as
+there is content.
+
+The intended flow adds an intermediate step: the owner explicitly
+selects which crew members to include in the blast. Until both the
+message is written AND recipients have been acknowledged, the panel
+should show amber (inProgress). Only when both are confirmed should
+it show teal/green (done).
+
+**What to build:**
+- Recipient selector UI inside RsvpDraftPanel (checklist or chip
+  multi-select, defaulting to all crew members)
+- `rsvp_recipients` persisted state (could be a JSONB array on the
+  trip or a separate table)
+- Panel state logic: amber when message exists but recipients not yet
+  confirmed, green when both message + recipients are set
+- Pass selected recipients through to the email blast in AdvanceToGoingSheet
+
+**Current behavior:** green as soon as message has content; all crew
+members receive the blast automatically.
 
 ---
 
