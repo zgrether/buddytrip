@@ -638,8 +638,7 @@ function ChangeDestinationModal({
         >
           <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
           <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
-            This will update the destination for everyone. Date availability responses
-            will be reset since the dates may change too.
+            Changing the destination will reset any date poll responses.
           </p>
         </div>
 
