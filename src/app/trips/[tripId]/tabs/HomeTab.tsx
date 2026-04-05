@@ -1604,7 +1604,8 @@ export function HomeTab({
   isOwner,
   onTabChange,
   onEnableComp,
-}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void }) {
+  onOpenChat,
+}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
@@ -1684,6 +1685,7 @@ export function HomeTab({
         canEdit={canEditProp}
         isOwner={!!isOwner}
         onTabChange={onTabChange}
+        onOpenChat={onOpenChat}
       />
     );
   }

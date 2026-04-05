@@ -142,7 +142,8 @@ export default function TripDetailPage() {
   const status = getTripStatus(trip);
   const tripIsReadOnly = checkReadOnly(trip);
   const stage = (trip as { stage?: string }).stage ?? "idea";
-  const showFloatingChat = (stage === "idea" || stage === "planning") && activeTab === "home";
+  // IDEA stage: IdeaZonePanel renders its own floating action buttons
+  const showFloatingChat = stage === "planning" && activeTab === "home";
   // When exploring (comparison_mode=true, no lock), don't fall back to
   // trip.location — lockDestination writes to that column and unlockDestination
   // doesn't clear it, so the old destination would bleed through to the header.
@@ -252,6 +253,7 @@ export default function TripDetailPage() {
             isOwner={isOwner}
             onTabChange={(tab) => setActiveTab(tab as TabId)}
             onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+            onOpenChat={() => setShowChatDrawer(true)}
           />
         )}
         {activeTab === "schedule" && (
