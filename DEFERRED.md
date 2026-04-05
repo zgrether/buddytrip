@@ -18,6 +18,15 @@ once credentials are available — Supabase supports it natively.
 
 ---
 
+### About panel email blast
+
+When owner taps "Notify crew of update" on the About panel, currently
+only fires in-app notifications. Should also send an email via Resend
+to all crew members with the current about_message content.
+Depends on: domain purchase + Resend custom sender setup.
+
+---
+
 ### Swap Resend sender domain
 
 Currently using `onboarding@resend.dev` (Resend's default shared

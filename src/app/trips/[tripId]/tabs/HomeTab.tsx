@@ -21,6 +21,7 @@ import {
   Loader2,
   Minus,
   Edit2,
+  Bell,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -1422,17 +1423,27 @@ function PlanningSection({
 
 // ── About Panel (GOING / NOW / PAST) ────────────────────────────────────
 
-function AboutPanel({ tripId, aboutMessage, canEdit }: { tripId: string; aboutMessage?: string | null; canEdit: boolean }) {
+function AboutPanel({ tripId, aboutMessage, canEdit, isPast }: { tripId: string; aboutMessage?: string | null; canEdit: boolean; isPast: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(aboutMessage ?? "");
-  const [notify, setNotify] = useState(false);
+  const [notifyState, setNotifyState] = useState<"idle" | "sending" | "success" | "error">("idle");
   const utils = trpc.useUtils();
 
   const update = trpc.trips.updateAboutMessage.useMutation({
     onSuccess() {
       utils.trips.getById.invalidate({ tripId });
       setEditing(false);
-      setNotify(false);
+    },
+  });
+
+  const notifyCrew = trpc.tripMembers.notifyCrewAboutUpdate.useMutation({
+    onSuccess() {
+      setNotifyState("success");
+      setTimeout(() => setNotifyState("idle"), 2000);
+    },
+    onError() {
+      setNotifyState("error");
+      setTimeout(() => setNotifyState("idle"), 3000);
     },
   });
 
@@ -1485,24 +1496,9 @@ function AboutPanel({ tripId, aboutMessage, canEdit }: { tripId: string; aboutMe
               </button>
             )}
           </div>
-
-          {/* Notify checkbox */}
-          <label className="mt-2 flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={notify}
-              onChange={(e) => setNotify(e.target.checked)}
-              className="h-4 w-4 rounded"
-              style={{ accentColor: "var(--color-bt-accent)" }}
-            />
-            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Send notification to everyone
-            </span>
-          </label>
-
           <div className="mt-2 flex gap-2">
             <button
-              onClick={() => update.mutate({ tripId, aboutMessage: draft.trim() || null, sendNotification: notify })}
+              onClick={() => update.mutate({ tripId, aboutMessage: draft.trim() || null })}
               disabled={update.isPending}
               className="rounded-lg px-4 py-1.5 text-sm font-semibold transition-opacity disabled:opacity-40"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
@@ -1510,7 +1506,7 @@ function AboutPanel({ tripId, aboutMessage, canEdit }: { tripId: string; aboutMe
               {update.isPending ? "Saving..." : "Save"}
             </button>
             <button
-              onClick={() => { setEditing(false); setNotify(false); }}
+              onClick={() => setEditing(false)}
               className="rounded-lg px-4 py-1.5 text-sm transition-opacity hover:opacity-70"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
@@ -1519,11 +1515,36 @@ function AboutPanel({ tripId, aboutMessage, canEdit }: { tripId: string; aboutMe
           </div>
         </>
       ) : (
-        aboutMessage && (
-          <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-            {aboutMessage}
-          </p>
-        )
+        <>
+          {aboutMessage && (
+            <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+              {aboutMessage}
+            </p>
+          )}
+          {canEdit && !isPast && (
+            <div className="mt-3">
+              {notifyState === "success" ? (
+                <p className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
+                  Crew notified ✓
+                </p>
+              ) : notifyState === "error" ? (
+                <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
+                  Couldn&apos;t send notification — try again
+                </p>
+              ) : (
+                <button
+                  onClick={() => { setNotifyState("sending"); notifyCrew.mutate({ tripId }); }}
+                  disabled={notifyState === "sending"}
+                  className="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                >
+                  <Bell size={14} />
+                  Notify crew of update
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1682,7 +1703,7 @@ export function HomeTab({
         <div className="space-y-4">
           {/* ── GOING / NOW / PAST stage: About panel ──────────────── */}
           {(stage === "going" || status === "now" || status === "past") && (
-            <AboutPanel tripId={trip.id} aboutMessage={trip.about_message} canEdit={canEditProp} />
+            <AboutPanel tripId={trip.id} aboutMessage={trip.about_message} canEdit={canEditProp} isPast={status === "past"} />
           )}
 
           {/* ── GOING / NOW stage: RSVP panel ──────────────────────── */}
