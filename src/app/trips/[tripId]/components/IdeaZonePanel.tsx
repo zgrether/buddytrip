@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "next-themes";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
@@ -15,10 +15,12 @@ import {
   Trash2,
   Check,
   Plus,
+  Send,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
@@ -1410,6 +1412,175 @@ function SetDestinationSheet({
   );
 }
 
+// ── CrewChatWidget (desktop only) ─────────────────────────────────────────
+
+interface ChatMessage {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  channel: string;
+  team_id: string | null;
+  text: string;
+  created_at: string;
+  _optimistic?: boolean;
+}
+
+function CrewChatWidget({
+  tripId,
+  memberNames,
+}: {
+  tripId: string;
+  memberNames: Record<string, string>;
+}) {
+  const currentUser = useCurrentUser();
+  const utils = trpc.useUtils();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [text, setText] = useState("");
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
+
+  useRealtimeChat(tripId, "trip");
+
+  const { data: messages = [] } = trpc.messages.list.useQuery(
+    { tripId, channel: "trip", limit: 30 }
+  );
+
+  const realIds = new Set(messages.map((m) => m.id));
+  const pending = optimisticMessages.filter((m) => !realIds.has(m.id));
+  const displayed: ChatMessage[] = (messages as ChatMessage[])
+    .slice()
+    .reverse()
+    .concat(pending);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [displayed.length]);
+
+  const sendMessage = trpc.messages.send.useMutation({
+    onSuccess: async () => {
+      await utils.messages.list.invalidate({ tripId, channel: "trip" });
+    },
+    onError: (_, variables) => {
+      setOptimisticMessages((prev) => prev.filter((m) => m.id !== variables.id));
+    },
+  });
+
+  const handleSend = useCallback(() => {
+    const trimmed = text.trim();
+    if (!trimmed || sendMessage.isPending || !currentUser?.id) return;
+
+    const id = crypto.randomUUID();
+    setOptimisticMessages((prev) => [
+      ...prev,
+      {
+        id,
+        trip_id: tripId,
+        user_id: currentUser.id,
+        channel: "trip",
+        team_id: null,
+        text: trimmed,
+        created_at: new Date().toISOString(),
+        _optimistic: true,
+      },
+    ]);
+
+    setText("");
+    sendMessage.mutate({ tripId, id, channel: "trip", text: trimmed });
+  }, [text, tripId, currentUser?.id, sendMessage]);
+
+  return (
+    <div
+      className="hidden lg:flex mt-3 flex-col rounded-xl border"
+      style={{
+        background: "var(--color-bt-card)",
+        borderColor: "var(--color-bt-border)",
+        height: "300px",
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex-shrink-0 px-3 py-2"
+        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+      >
+        <p
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Crew Chat
+        </p>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-2 min-h-0">
+        {displayed.length === 0 && (
+          <p className="py-4 text-center text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+            No messages yet
+          </p>
+        )}
+        {displayed.map((msg) => {
+          const isMe = msg.user_id === currentUser?.id;
+          const name = memberNames[msg.user_id] ?? msg.user_id.slice(0, 6);
+          return (
+            <div key={msg.id} className="flex items-start gap-2">
+              <div className="mt-0.5 flex-shrink-0">
+                <UserAvatar name={name} avatarUrl={null} size="sm" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  <span className="font-semibold" style={{ color: isMe ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
+                    {isMe ? "You" : name}
+                  </span>
+                </p>
+                <p
+                  className="text-sm"
+                  style={{
+                    color: "var(--color-bt-text)",
+                    opacity: msg._optimistic ? 0.5 : 1,
+                  }}
+                >
+                  {msg.text}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div
+        className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
+        style={{ borderTop: "1px solid var(--color-bt-border)" }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="Say something..."
+          className="min-w-0 flex-1 rounded-full border px-3 py-1.5 text-sm outline-none"
+          style={{
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        />
+        <button
+          onClick={handleSend}
+          disabled={sendMessage.isPending || !text.trim()}
+          className="flex h-7 w-7 items-center justify-center rounded-full disabled:opacity-30"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          <Send size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── CoPlannerChip ─────────────────────────────────────────────────────────
 
 function CoPlannerChip({
@@ -1610,7 +1781,12 @@ export default function IdeaZonePanel({
             </button>
           )}
 
-          {/* CrewChatWidget placeholder — Task 5 will add this */}
+          <CrewChatWidget
+            tripId={tripId}
+            memberNames={Object.fromEntries(
+              members.map((m) => [m.memberId, m.displayName])
+            )}
+          />
 
           <CoPlannerChip
             members={members}
