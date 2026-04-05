@@ -182,11 +182,11 @@ export const ideasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner only (isOwner)
+  // remove — Owner or Planner (canEdit)
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), ideaId: z.string() }))
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
       // Delete votes first
       await ctx.supabase

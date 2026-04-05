@@ -52,7 +52,7 @@
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
 | Add idea / destination option | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab, IdeaComparison |
-| Remove idea | ✓ | — | — | `isOwner` | IdeaComparison |
+| Remove idea | ✓ | ✓ | — | `canEdit` | IdeaComparison |
 | Edit idea description | ✓ | ✓ | — | `canEdit` | IdeaComparison |
 | Edit idea pros / cons | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab, IdeaComparison |
 | Remove golf course from idea | ✓ | ✓ | — | `canEdit` | IdeaComparison |
