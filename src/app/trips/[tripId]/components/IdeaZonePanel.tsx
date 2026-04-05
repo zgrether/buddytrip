@@ -23,6 +23,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
+import { CrewSearchInput } from "@/components/CrewSearchInput";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1597,33 +1598,43 @@ function CrewChatWidget({
   );
 }
 
-// ── CoPlannerChip ─────────────────────────────────────────────────────────
+// ── CoPlannerPanel (IDEA stage — enhanced co-planners mini panel) ─────────
 
-function CoPlannerChip({
+function CoPlannerPanel({
+  tripId,
   members,
-  onTabChange,
+  isOwner,
 }: {
-  members: Array<{ user_id: string; role: string; status: string; displayName: string }>;
-  onTabChange?: (tab: string) => void;
+  tripId: string;
+  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>;
+  isOwner: boolean;
 }) {
+  const currentUser = useCurrentUser();
+  const utils = trpc.useUtils();
   const planners = members.filter((m) => m.role === "Owner" || m.role === "Planner");
-  const visible = planners.slice(0, 4);
-  const overflow = planners.length - visible.length;
+
+  const demote = trpc.tripMembers.updateRole.useMutation({
+    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
 
   return (
     <div
-      className="hidden lg:block mt-3 rounded-xl px-3 py-2"
-      style={{ background: "var(--color-bt-card-raised)" }}
+      className="hidden lg:block mt-3 rounded-xl border px-3 py-3"
+      style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
         Co-planners
       </p>
+
+      {/* Existing planners */}
       <div className="space-y-1.5">
-        {visible.map((m) => {
+        {planners.map((m) => {
           const isPending = m.status === "invited";
-          const roleColor = m.role === "Owner" ? "var(--color-bt-owner)" : "var(--color-bt-planning)";
+          const roleColor = m.role === "Owner" ? "var(--color-bt-owner)" : "var(--color-bt-accent)";
+          const isSelf = m.user_id === currentUser?.id;
+          const canRemove = isOwner && !isSelf && m.role !== "Owner";
           return (
-            <div key={m.user_id} className="flex items-center gap-2">
+            <div key={m.user_id ?? m.memberId} className="flex items-center gap-2">
               <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs" style={{ color: isPending ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
@@ -1633,23 +1644,34 @@ function CoPlannerChip({
               <span className="text-[10px] font-semibold flex-shrink-0" style={{ color: isPending ? "var(--color-bt-ready)" : roleColor }}>
                 {isPending ? "Invited" : m.role}
               </span>
+              {canRemove && (
+                <button
+                  onClick={() => demote.mutate({ tripId, userId: m.user_id, role: "Member" })}
+                  className="flex h-5 w-5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                  aria-label={`Remove ${m.displayName} as planner`}
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           );
         })}
-        {overflow > 0 && (
-          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            +{overflow} more
-          </p>
-        )}
       </div>
-      {onTabChange && (
-        <button
-          onClick={() => onTabChange("crew")}
-          className="mt-2 text-xs font-medium transition-opacity hover:opacity-70"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          Manage in Crew tab &rarr;
-        </button>
+
+      {/* Add planner — reuses CrewSearchInput with Planner default */}
+      {isOwner && (
+        <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+          <CrewSearchInput
+            tripId={tripId}
+            defaultRole="Planner"
+            defaultStatus="draft"
+            allowGhost
+            allowInvite
+            placeholder="Add a planner by email..."
+            frequentTripmates={[]}
+          />
+        </div>
       )}
     </div>
   );
@@ -1804,9 +1826,10 @@ export default function IdeaZonePanel({
             )}
           />
 
-          <CoPlannerChip
-            members={members}
-            onTabChange={onTabChange}
+          <CoPlannerPanel
+            tripId={tripId}
+            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+            isOwner={isOwner}
           />
         </div>
       </div>
