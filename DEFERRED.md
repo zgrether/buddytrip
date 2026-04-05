@@ -158,6 +158,16 @@ What changes when the trip is actively happening:
 
 ---
 
+### Save idea for future trip
+
+Allow users to save/bookmark individual destination ideas for reuse in
+future trips. Currently ideas are tied to a single trip and can only be
+deleted — no save/archive mechanism exists.
+
+**When:** after core idea zone is stable and has real usage.
+
+---
+
 ### Quick Score (no-auth scorecard)
 
 Standalone scorecard for any game, no account required. Homepage CTA:
