@@ -23,6 +23,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { FloatingChatButton } from "./components/FloatingChatButton";
 import { ChatDrawer } from "./components/ChatDrawer";
 import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
+import { SidebarChatPanel } from "./components/PlanningChatPanel";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -228,60 +229,129 @@ export default function TripDetailPage() {
           onStepClick={undefined}
         />
 
-        {/* ── Tab bar (hidden in IDEA stage) ──────────────────────────── */}
-        {stage !== "idea" && (
-          <div className={`mt-4${stage === "planning" ? " lg:grid lg:grid-cols-[1fr_320px] lg:gap-6" : ""}`}>
-            <TripTabBar
-              activeTab={activeTab}
-              onTabChange={(tab) => setActiveTab(tab)}
-              showComp={showComp}
-              canEdit={canEdit}
-              stage={stage}
-            />
-          </div>
-        )}
       </div>
 
-      {/* ── Tab content ──────────────────────────────────────────────────── */}
-      <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" || stage === "planning" ? "pb-6" : "pb-24"}`}>
-        {/* Read-only banner */}
-        {tripIsReadOnly && activeTab === "home" && (
-          <div
-            className="mx-4 mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
-            style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-            <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              This trip is read-only
-            </span>
+      {/* ── Tab bar + content ────────────────────────────────────────────── */}
+      {stage === "planning" ? (
+        /* Planning: persistent two-column layout — tab bar, content, and
+           sidebar share the same grid so the sidebar aligns with the tab bar
+           top and persists across all tab switches. */
+        <div className="mx-auto max-w-[1280px] px-4 mt-4">
+          <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+            {/* Left: tab bar + all tab content */}
+            <div>
+              <TripTabBar
+                activeTab={activeTab}
+                onTabChange={(tab) => setActiveTab(tab)}
+                showComp={showComp}
+                canEdit={canEdit}
+                stage={stage}
+              />
+              <div className="pt-4 pb-6">
+                {tripIsReadOnly && activeTab === "home" && (
+                  <div
+                    className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
+                    style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+                  >
+                    <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                    <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                      This trip is read-only
+                    </span>
+                  </div>
+                )}
+                {activeTab === "home" && (
+                  <HomeTab
+                    trip={trip}
+                    role={role}
+                    canEdit={effectiveCanEdit}
+                    isOwner={isOwner}
+                    displayStatus={status}
+                    onTabChange={(tab) => setActiveTab(tab as TabId)}
+                    onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                    onOpenChat={() => setShowChatDrawer(true)}
+                    onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
+                  />
+                )}
+                {activeTab === "schedule" && (
+                  <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+                {activeTab === "crew" && (
+                  <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+                {activeTab === "expenses" && (
+                  <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+                {activeTab === "comp" && (
+                  <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+              </div>
+            </div>
+            {/* Right: persistent sidebar — desktop only */}
+            <div className="hidden lg:flex lg:flex-col gap-4">
+              <StageContextBar tripId={tripId} stage={stage} displayStatus={status} />
+              <SidebarChatPanel
+                tripId={tripId}
+                memberNames={Object.fromEntries(
+                  members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
+                )}
+              />
+            </div>
           </div>
-        )}
-        {activeTab === "home" && (
-          <HomeTab
-            trip={trip}
-            role={role}
-            canEdit={effectiveCanEdit}
-            isOwner={isOwner}
-            displayStatus={status}
-            onTabChange={(tab) => setActiveTab(tab as TabId)}
-            onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-            onOpenChat={() => setShowChatDrawer(true)}
-            onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
-          />
-        )}
-        {activeTab === "schedule" && (
-          <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-        {activeTab === "crew" && (
-          <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-        {activeTab === "expenses" && (
-          <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-        {activeTab === "comp" && (
-          <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-        )}
-      </main>
+        </div>
+      ) : (
+        <>
+          {/* Non-planning: tab bar in its own row, hidden in IDEA stage */}
+          {stage !== "idea" && (
+            <div className="mx-auto max-w-[1280px] px-4 mt-4">
+              <TripTabBar
+                activeTab={activeTab}
+                onTabChange={(tab) => setActiveTab(tab)}
+                showComp={showComp}
+                canEdit={canEdit}
+                stage={stage}
+              />
+            </div>
+          )}
+          <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" ? "pb-6" : "pb-24"}`}>
+            {tripIsReadOnly && activeTab === "home" && (
+              <div
+                className="mx-4 mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
+                style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  This trip is read-only
+                </span>
+              </div>
+            )}
+            {activeTab === "home" && (
+              <HomeTab
+                trip={trip}
+                role={role}
+                canEdit={effectiveCanEdit}
+                isOwner={isOwner}
+                displayStatus={status}
+                onTabChange={(tab) => setActiveTab(tab as TabId)}
+                onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                onOpenChat={() => setShowChatDrawer(true)}
+                onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
+              />
+            )}
+            {activeTab === "schedule" && (
+              <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+            {activeTab === "crew" && (
+              <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+            {activeTab === "expenses" && (
+              <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+            {activeTab === "comp" && (
+              <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+            )}
+          </main>
+        </>
+      )}
 
       {/* ── Bottom navigation (READY+ stages only) ────────────────────────── */}
       {stage !== "idea" && stage !== "planning" && (

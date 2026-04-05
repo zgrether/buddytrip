@@ -35,8 +35,6 @@ import { hashToHue } from "@/components/LocationHero";
 import { DatesSection } from "./DatesSection";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
-import { SidebarChatPanel } from "../components/PlanningChatPanel";
-import { StageContextBar } from "../components/StageContextBar";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
@@ -1726,7 +1724,6 @@ export function HomeTab({
   trip,
   canEdit: canEditProp,
   isOwner,
-  displayStatus,
   onTabChange,
   onEnableComp,
   onOpenChat,
@@ -1871,8 +1868,8 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* ── Two-column desktop layout ─────────────────────────────────── */}
-      <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+      {/* ── Two-column desktop layout (going/now/past stages) ─────────── */}
+      <div className={(stage === "going" || status === "now" || status === "past") ? "lg:grid lg:grid-cols-[1fr_320px] lg:gap-6" : ""}>
         {/* ── Left column: primary planning content ─────────────────── */}
         <div className="space-y-4">
           {/* ── GOING / NOW / PAST stage: About panel ──────────────── */}
@@ -1924,43 +1921,25 @@ export function HomeTab({
           )}
         </div>
 
-        {/* ── Right column: per-stage supplementary content ─────────── */}
-        <div className="mt-4 space-y-4 lg:mt-0">
-          {/* PLANNING stage: context bar (desktop only) + crew chat */}
-          {stage === "planning" && displayStatus && (
-            <div className="hidden lg:block">
-              <StageContextBar tripId={trip.id} stage={stage} displayStatus={displayStatus} />
-            </div>
-          )}
-          {stage === "planning" && (
-            <SidebarChatPanel
-              tripId={trip.id}
-              memberNames={Object.fromEntries(
-                members.map((m: { user_id?: string | null; memberId?: string; displayName: string }) => [m.user_id ?? m.memberId ?? "", m.displayName])
-              )}
-            />
-          )}
-
-          {/* GOING/NOW stage: quick info + confirmed dates */}
-          {(stage === "going" || status === "now" || status === "past") && (
-            <>
-              <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-              {trip.start_date && trip.end_date && (
-                <div
-                  className="rounded-xl p-4"
-                  style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-                >
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                    Dates
-                  </p>
-                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                    {formatDateRange(trip.start_date, trip.end_date)}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        {/* ── Right column: going/now/past stages only ───────────────── */}
+        {(stage === "going" || status === "now" || status === "past") && (
+          <div className="mt-4 space-y-4 lg:mt-0">
+            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
+            {trip.start_date && trip.end_date && (
+              <div
+                className="rounded-xl p-4"
+                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+              >
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Dates
+                </p>
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  {formatDateRange(trip.start_date, trip.end_date)}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
     </div>
