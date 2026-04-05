@@ -32,6 +32,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
 import { DatesSection } from "./DatesSection";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
+import IdeaZonePanel from "../components/IdeaZonePanel";
 import type { TabProps, TripData } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -1490,129 +1491,6 @@ function AboutCard({ trip, onEdit }: { trip: TripData; onEdit?: () => void }) {
   );
 }
 
-// ── IdeaZonePreview ──────────────────────────────────────────────────────
-
-function IdeaZonePreview({ tripId }: { tripId: string }) {
-  const currentUser = useCurrentUser();
-  const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId });
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
-  const crewSize = Math.max(members.length, 1);
-
-  if (ideas.length === 0) {
-    return (
-      <div className="px-4 py-6 text-center">
-        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-          No ideas yet
-        </p>
-        <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          Head to the Idea Zone to browse destinations and get the crew voting
-        </p>
-      </div>
-    );
-  }
-
-  const sorted = ideas.slice().sort((a, b) => b.votes.length - a.votes.length);
-  const topIdeas = sorted.slice(0, 3);
-  const remainingCount = Math.max(0, ideas.length - 3);
-  const totalVoters = new Set(ideas.flatMap((i) => i.votes.map((v: { user_id: string }) => v.user_id))).size;
-
-  return (
-    <div>
-      {topIdeas.map((idea, i) => {
-        const isVotedByMe = idea.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
-        const barWidth = `${Math.round((idea.votes.length / crewSize) * 100)}%`;
-        const commentCount = idea.commentCount ?? 0;
-
-        return (
-          <div
-            key={idea.id}
-            style={{ borderTop: i > 0 ? "1px solid var(--color-bt-border)" : undefined }}
-          >
-            <div className="flex items-center gap-3 px-4 py-3">
-              {/* Thumbnail */}
-              {idea.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={idea.image_url}
-                  alt={idea.title}
-                  className="h-12 w-12 flex-shrink-0 rounded-xl object-cover"
-                />
-              ) : (
-                <div
-                  className="h-12 w-12 flex-shrink-0 rounded-xl"
-                  style={{ background: `hsl(${(idea.title.length * 37) % 360}, 40%, 25%)` }}
-                />
-              )}
-
-              {/* Content */}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                  {idea.title}
-                </p>
-
-                <p className="mt-0.5 truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {idea.location}
-                  {idea.cost_tier && (
-                    <span className="ml-1.5 font-medium" style={{ color: "var(--color-bt-accent)" }}>
-                      · {idea.cost_tier}
-                    </span>
-                  )}
-                  {idea.golf_courses && idea.golf_courses.length > 0 && (
-                    <span> · {idea.golf_courses.length} course{idea.golf_courses.length !== 1 ? "s" : ""}</span>
-                  )}
-                </p>
-
-                {/* Vote bar + counts */}
-                <div className="mt-1.5 flex items-center gap-2">
-                  <div
-                    className="h-1 flex-1 overflow-hidden rounded-full"
-                    style={{ background: "var(--color-bt-base)" }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: barWidth,
-                        background: isVotedByMe ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                        minWidth: idea.votes.length > 0 ? "4px" : "0",
-                      }}
-                    />
-                  </div>
-                  <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {idea.votes.length} vote{idea.votes.length !== 1 ? "s" : ""}
-                  </span>
-                  {commentCount > 0 && (
-                    <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      · {commentCount} comment{commentCount !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Footer */}
-      <div
-        className="flex items-center justify-between px-4 py-2.5"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
-      >
-        {remainingCount > 0 ? (
-          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            +{remainingCount} more idea{remainingCount !== 1 ? "s" : ""}
-          </span>
-        ) : (
-          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {totalVoters === 0
-              ? "No votes yet — be the first"
-              : `${totalVoters} of ${crewSize} voted`}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── HomeTab ──────────────────────────────────────────────────────────────
 
 export function HomeTab({
@@ -1694,41 +1572,15 @@ export function HomeTab({
   const ownerMember = members.find((m) => m.role === "Owner");
   const ownerFirstName = ownerMember?.displayName?.split(" ")[0] ?? "The organizer";
 
-  // Idea zone only shown in idea stage
-  if (isExploring && stage === "idea") {
+  // IDEA stage: render IdeaZonePanel only — no planning rows
+  if (stage === "idea") {
     return (
-      <div className="flex flex-col gap-4 px-4">
-        {/* Idea Zone summary panel */}
-        <Link
-          href={`/trips/${trip.id}/compare`}
-          className="block rounded-2xl border overflow-hidden transition-all hover:border-[var(--color-bt-accent)]"
-          style={{
-            background: "var(--color-bt-card)",
-            borderColor: "var(--color-bt-border)",
-          }}
-        >
-          {/* Header row */}
-          <div
-            className="flex items-center justify-between px-4 py-3 border-b"
-            style={{ borderColor: "var(--color-bt-border)" }}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className="h-2 w-2 rounded-full animate-pulse"
-                style={{ background: "var(--color-bt-accent)" }}
-              />
-              <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                Where are you headed?
-              </span>
-            </div>
-            <span className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
-              Go to Idea Zone →
-            </span>
-          </div>
-
-          <IdeaZonePreview tripId={trip.id} />
-        </Link>
-      </div>
+      <IdeaZonePanel
+        trip={trip}
+        canEdit={canEditProp}
+        isOwner={!!isOwner}
+        onTabChange={onTabChange}
+      />
     );
   }
 
