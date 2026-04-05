@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, type FC } from "react";
+import type { FC } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Calendar } from "lucide-react";
 import { ProgressStepper } from "@/components/ProgressStepper";
@@ -32,85 +32,6 @@ interface TripHeaderProps {
   myRole?: TripRole | null;
   /** Called when a future stepper step is tapped */
   onStepClick?: (stepKey: string) => void;
-}
-
-// ── Inline editable text ─────────────────────────────────────────────────
-
-function _InlineEdit({
-  value,
-  onSave,
-  placeholder,
-  className,
-  style,
-}: {
-  value: string;
-  onSave: (val: string) => void;
-  placeholder?: string;
-  className?: string;
-  style?: React.CSSProperties;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [editing]);
-
-  const save = () => {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== value) {
-      onSave(trimmed);
-    } else {
-      setDraft(value);
-    }
-    setEditing(false);
-  };
-
-  const cancel = () => {
-    setDraft(value);
-    setEditing(false);
-  };
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => setEditing(true)}
-        className={`cursor-pointer text-left underline decoration-dotted underline-offset-2 transition-opacity hover:opacity-80 ${className ?? ""}`}
-        style={style}
-        data-testid="inline-edit-trigger"
-      >
-        {value}
-      </button>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1">
-      <input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") save();
-          if (e.key === "Escape") cancel();
-        }}
-        placeholder={placeholder}
-        className="rounded border px-1.5 py-0.5 text-sm outline-none"
-        style={{
-          background: "rgba(255,255,255,0.15)",
-          borderColor: "rgba(255,255,255,0.3)",
-          color: "inherit",
-          minWidth: "8rem",
-        }}
-        data-testid="inline-edit-input"
-      />
-    </span>
-  );
 }
 
 // ── Plain card (no locked destination) ───────────────────────────────────
