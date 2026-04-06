@@ -1260,9 +1260,7 @@ function PlanningSection({
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
   const [showPollBuilder, setShowPollBuilder] = useState(false);
-  const [pollOptions, setPollOptions] = useState<{ id: string; start: string; end: string }[]>([
-    { id: crypto.randomUUID(), start: "", end: "" },
-  ]);
+  const [pollOptions, setPollOptions] = useState<{ id: string; start: string; end: string }[]>([]);
 
   const lockDates = trpc.trips.lockDates.useMutation({
     async onMutate({ startDate, endDate }) {
@@ -1602,7 +1600,7 @@ function PlanningSection({
                     setDirectEnd(trip.end_date);
                     unlockDates.mutate({ tripId: trip.id });
                   }
-                  setPollOptions([{ id: crypto.randomUUID(), start: "", end: "" }]);
+                  setPollOptions([]);
                   setShowPollBuilder(true);
                 }}
                 className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors"
@@ -1689,6 +1687,29 @@ function PlanningSection({
                   Add another option
                 </button>
 
+                {/* Crew who will be polled */}
+                <div
+                  className="rounded-xl p-3"
+                  style={{ background: "var(--color-bt-card-raised)" }}
+                >
+                  <p
+                    className="mb-2 text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Polling
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {tripMembers.map((m) => (
+                      <div key={m.user_id} className="flex items-center gap-1.5">
+                        <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                        <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
+                          {m.displayName}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Send poll to crew */}
                 {(() => {
                   // Option 1 = primary inputs (directStart/directEnd), rest = pollOptions
@@ -1713,7 +1734,7 @@ function PlanningSection({
                         setShowPollBuilder(false);
                         setDirectStart("");
                         setDirectEnd("");
-                        setPollOptions([{ id: crypto.randomUUID(), start: "", end: "" }]);
+                        setPollOptions([]);
                       }}
                       className="flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
                       style={{
