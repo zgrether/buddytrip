@@ -1137,147 +1137,6 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
   );
 }
 
-// ── ZeroIdeasFork ─────────────────────────────────────────────────────────
-
-function ZeroIdeasFork({ tripId, canEdit }: { tripId: string; canEdit: boolean }) {
-  const [mode, setMode] = useState<"known" | "exploring" | null>(null);
-  const [destInput, setDestInput] = useState("");
-  const utils = trpc.useUtils();
-
-  const lockDestination = trpc.trips.lockDestination.useMutation();
-  const advanceToPlanning = trpc.trips.advanceToPlanning.useMutation();
-  const unlockDestination = trpc.trips.unlockDestination.useMutation();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSetDestination = async () => {
-    const t = destInput.trim();
-    if (!t) return;
-    setIsSubmitting(true);
-    try {
-      await lockDestination.mutateAsync({ tripId, title: t, location: t });
-      try {
-        await advanceToPlanning.mutateAsync({ tripId });
-      } catch {
-        // Rollback the lock if advancing fails
-        await unlockDestination.mutateAsync({ tripId });
-        throw new Error("Failed to advance to planning. Destination lock rolled back.");
-      }
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-    } catch (err) {
-      console.error("Failed to set destination:", err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  if (!canEdit) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
-        <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-          No destination ideas yet
-        </p>
-        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          Waiting for a planner to add ideas.
-        </p>
-      </div>
-    );
-  }
-
-  if (mode === "exploring") {
-    return <EmptyStateOnboarding tripId={tripId} />;
-  }
-
-  return (
-    <div className="mx-auto max-w-md py-10 px-4">
-      <div
-        className="rounded-2xl border p-6 text-center"
-        style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-      >
-        <p className="mb-5 text-lg font-medium" style={{ color: "var(--color-bt-text)" }}>
-          Where are you headed?
-        </p>
-
-        {mode === null && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {/* Option A: I know */}
-            <button
-              onClick={() => setMode("known")}
-              className="rounded-xl border px-4 py-3 text-left transition-colors"
-              style={{
-                background: "var(--color-bt-card)",
-                borderColor: "var(--color-bt-border)",
-              }}
-            >
-              <MapPin size={20} className="mb-2" style={{ color: "var(--color-bt-accent)" }} />
-              <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                I know where I&apos;m going
-              </p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                Set a destination and start planning
-              </p>
-            </button>
-
-            {/* Option B: Help me decide */}
-            <button
-              onClick={() => setMode("exploring")}
-              className="rounded-xl border px-4 py-3 text-left transition-colors"
-              style={{
-                background: "var(--color-bt-card)",
-                borderColor: "var(--color-bt-border)",
-              }}
-            >
-              <Sparkles size={20} className="mb-2" style={{ color: "var(--color-bt-accent)" }} />
-              <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                Help me decide
-              </p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                Browse ideas and get the crew voting
-              </p>
-            </button>
-          </div>
-        )}
-
-        {mode === "known" && (
-          <div className="mt-2 space-y-3 text-left">
-            <input
-              autoFocus
-              value={destInput}
-              onChange={(e) => setDestInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSetDestination(); } }}
-              placeholder="e.g. Scottsdale, AZ"
-              className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
-              style={{
-                background: "var(--color-bt-base)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => setMode(null)}
-                className="flex-1 rounded-lg border py-2.5 text-sm"
-                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-              >
-                Back
-              </button>
-              <button
-                onClick={handleSetDestination}
-                disabled={!destInput.trim() || isSubmitting}
-                className="flex-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {isSubmitting ? "Setting..." : "Set destination"}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── SetDestinationSheet ───────────────────────────────────────────────────
 
 function SetDestinationSheet({
@@ -1647,7 +1506,20 @@ export default function IdeaZonePanel({
   ).length;
 
   if (ideasTyped.length === 0) {
-    return <ZeroIdeasFork tripId={tripId} canEdit={canEdit} />;
+    if (!canEdit) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+          <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
+          <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+            No destination ideas yet
+          </p>
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            Waiting for a planner to add ideas.
+          </p>
+        </div>
+      );
+    }
+    return <EmptyStateOnboarding tripId={tripId} />;
   }
 
   // Preserve creation order — no reordering by votes (too jarring)
