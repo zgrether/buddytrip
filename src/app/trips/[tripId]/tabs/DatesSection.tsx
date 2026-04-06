@@ -111,13 +111,11 @@ export function DatesSection({
   canEdit,
   isOwner,
   tripMembers,
-  onTabChange,
 }: {
   tripId: string;
   canEdit: boolean;
   isOwner: boolean;
   tripMembers: TripMember[];
-  onTabChange?: (tab: string) => void;
 }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
