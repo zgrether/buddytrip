@@ -462,6 +462,82 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // lockDates — Owner or Planner can set dates directly (no poll)
+  // -----------------------------------------------------------------------
+  lockDates: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        startDate: z.string().min(1),
+        endDate: z.string().min(1),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      if (input.startDate >= input.endDate) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Start date must be before end date",
+        });
+      }
+
+      // 1. Insert a date_window for this range
+      const windowId = crypto.randomUUID();
+      const { error: winErr } = await ctx.supabase
+        .from("date_windows")
+        .insert({
+          id: windowId,
+          trip_id: ctx.tripId,
+          start_date: input.startDate,
+          end_date: input.endDate,
+        });
+
+      if (winErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to create date window: ${winErr.message}`,
+        });
+      }
+
+      // 2. Lock the trip dates
+      const { error: tripErr } = await ctx.supabase
+        .from("trips")
+        .update({
+          start_date: input.startDate,
+          end_date: input.endDate,
+        })
+        .eq("id", ctx.tripId);
+
+      if (tripErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update trip dates: ${tripErr.message}`,
+        });
+      }
+
+      // 3. Upsert date_polls with locked_window_id
+      const { error: pollErr } = await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          {
+            trip_id: ctx.tripId,
+            open: false,
+            locked_window_id: windowId,
+          },
+          { onConflict: "trip_id" }
+        );
+
+      if (pollErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update date poll: ${pollErr.message}`,
+        });
+      }
+
+      return { windowId, startDate: input.startDate, endDate: input.endDate };
+    }),
+
+  // -----------------------------------------------------------------------
   // delete — Owner only
   // -----------------------------------------------------------------------
   delete: authedProcedure

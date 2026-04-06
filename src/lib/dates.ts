@@ -39,6 +39,31 @@ export function formatDate(
 }
 
 /**
+ * Compact date range for subtitles: "Jun 4–7" (same month) or "Jun 28 – Jul 2" (cross-month).
+ * Omits year for brevity.
+ */
+export function formatDateRangeCompact(
+  start?: string | null,
+  end?: string | null
+): string {
+  if (!start && !end) return "Dates TBD";
+  if (!start) return formatDate(end!, { month: "short", day: "numeric" });
+  if (!end) return formatDate(start, { month: "short", day: "numeric" });
+
+  const s = parseLocalDate(start);
+  const e = parseLocalDate(end);
+
+  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+    // Same month: "Jun 4–7"
+    const month = s.toLocaleDateString("en-US", { month: "short" });
+    return `${month} ${s.getDate()}–${e.getDate()}`;
+  }
+  // Cross-month: "Jun 28 – Jul 2"
+  const fmtOpts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  return `${formatDate(start, fmtOpts)} – ${formatDate(end, fmtOpts)}`;
+}
+
+/**
  * Format a date range for display (e.g. "Jun 15 – Jun 18, 2026").
  * Either end may be omitted.
  */
