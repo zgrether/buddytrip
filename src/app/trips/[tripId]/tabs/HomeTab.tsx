@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   Plus,
@@ -1225,6 +1225,14 @@ function PlanningSection({
   const [showChangeDest, setShowChangeDest] = useState(false);
   const [localMessage, setLocalMessage] = useState(trip.about_message ?? "");
   const stage = trip.stage ?? "idea";
+
+  // Edge case: PLANNING stage with no locked destination (old data / migration artifact)
+  // Auto-open the change-destination sheet so the owner can fix it immediately.
+  useEffect(() => {
+    if (stage === "planning" && !trip.locked_destination_title && canEdit) {
+      setShowChangeDest(true);
+    }
+  }, [stage, trip.locked_destination_title, canEdit]);
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
   const unlockDates = trpc.datePoll.unlock.useMutation({
