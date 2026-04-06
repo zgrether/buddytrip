@@ -1371,6 +1371,9 @@ function PlanningSection({
 
   const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ windowId: string; label: string } | null>(null);
+  const [addingDateOption, setAddingDateOption] = useState(false);
+  const [newOptionStart, setNewOptionStart] = useState("");
+  const [newOptionEnd, setNewOptionEnd] = useState("");
 
   const windows = (poll?.windows ?? []) as { id: string; start_date: string; end_date: string; votes: { window_id: string; user_id: string; answer: string }[] }[];
 
@@ -1601,6 +1604,23 @@ function PlanningSection({
           </div>
         ) : pollOpen ? (
           <div className="space-y-3">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <p
+                className="text-xs font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Polling
+              </p>
+              <button
+                onClick={() => onTabChange?.("crew")}
+                className="text-xs font-medium"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                Manage crew →
+              </button>
+            </div>
+
             {/* Date option cards with vote rows */}
             {windows.map((w) => {
               const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -1716,13 +1736,9 @@ function PlanningSection({
             })}
 
             {/* Add date option */}
-            {canEdit && (
+            {canEdit && !addingDateOption && (
               <button
-                onClick={() => {
-                  setShowPollBuilder(true);
-                  setPollOptions([]);
-                  setOpenRow("dates");
-                }}
+                onClick={() => setAddingDateOption(true)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors"
                 style={{
                   border: "1.5px dashed var(--color-bt-accent)",
@@ -1733,6 +1749,66 @@ function PlanningSection({
                 <Plus size={16} />
                 Add date option
               </button>
+            )}
+            {canEdit && addingDateOption && (
+              <div
+                className="rounded-xl p-3"
+                style={{ background: "var(--color-bt-card-raised)" }}
+              >
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                      From
+                    </label>
+                    <input
+                      type="date"
+                      value={newOptionStart}
+                      onChange={(e) => setNewOptionStart(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2.5 text-sm"
+                      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                    />
+                  </div>
+                  <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>→</span>
+                  <div className="flex-1">
+                    <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                      To
+                    </label>
+                    <input
+                      type="date"
+                      value={newOptionEnd}
+                      onChange={(e) => setNewOptionEnd(e.target.value)}
+                      className="w-full rounded-xl px-3 py-2.5 text-sm"
+                      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => { setAddingDateOption(false); setNewOptionStart(""); setNewOptionEnd(""); }}
+                    className="flex-1 rounded-xl py-2 text-sm font-medium"
+                    style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={!newOptionStart || !newOptionEnd}
+                    onClick={() => {
+                      addWindow.mutate({ tripId: trip.id, id: crypto.randomUUID(), startDate: newOptionStart, endDate: newOptionEnd });
+                      setAddingDateOption(false);
+                      setNewOptionStart("");
+                      setNewOptionEnd("");
+                    }}
+                    className="flex-1 rounded-xl py-2 text-sm font-semibold"
+                    style={{
+                      background: (!newOptionStart || !newOptionEnd) ? "var(--color-bt-card)" : "var(--color-bt-accent)",
+                      color: (!newOptionStart || !newOptionEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
+                      opacity: (!newOptionStart || !newOptionEnd) ? 0.6 : 1,
+                    }}
+                  >
+                    Add option
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Lock confirm dialog */}
@@ -2009,12 +2085,21 @@ function PlanningSection({
                   className="rounded-xl p-3"
                   style={{ background: "var(--color-bt-card-raised)" }}
                 >
-                  <p
-                    className="mb-2 text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    Polling
-                  </p>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p
+                      className="text-xs font-semibold uppercase tracking-wider"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      Polling
+                    </p>
+                    <button
+                      onClick={() => onTabChange?.("crew")}
+                      className="text-xs font-medium"
+                      style={{ color: "var(--color-bt-accent)" }}
+                    >
+                      Manage crew →
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {tripMembers.map((m) => (
                       <div key={m.user_id} className="flex items-center gap-1.5">
