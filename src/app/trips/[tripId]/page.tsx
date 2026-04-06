@@ -35,6 +35,7 @@ export default function TripDetailPage() {
   const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
   const [pendingRsvpMessage, setPendingRsvpMessage] = useState<string>("");
   const [showHelpSheet, setShowHelpSheet] = useState(false);
+  const [showAddDateModal, setShowAddDateModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
 
@@ -289,7 +290,7 @@ export default function TripDetailPage() {
               <StageContextBar tripId={tripId} stage={stage} displayStatus={status} />
               {effectiveCanEdit && (
                 <button
-                  onClick={() => setActiveTab("schedule")}
+                  onClick={() => setShowAddDateModal(true)}
                   className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
                   style={{
                     border: "1.5px dashed var(--color-bt-accent)",
@@ -377,6 +378,14 @@ export default function TripDetailPage() {
           tripName={trip.title}
           viewerRole={role}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {/* ── Add date modal (planning desktop) ───────────────────────────── */}
+      {showAddDateModal && (
+        <AddDateModal
+          tripId={tripId}
+          onClose={() => setShowAddDateModal(false)}
         />
       )}
 
@@ -607,6 +616,129 @@ function AdvanceToGoingSheet({
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── AddDateModal ────────────────────────────────────────────────────────
+
+function AddDateModal({
+  tripId,
+  onClose,
+}: {
+  tripId: string;
+  onClose: () => void;
+}) {
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const utils = trpc.useUtils();
+
+  const addWindow = trpc.datePoll.addWindow.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          windows: [
+            ...(old.windows ?? []),
+            {
+              id: vars.id,
+              trip_id: tripId,
+              start_date: vars.startDate,
+              end_date: vars.endDate,
+              created_at: new Date().toISOString(),
+              votes: [] as { window_id: string; user_id: string; answer: string; created_at: string }[],
+            },
+          ],
+        };
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId }, context.prev);
+    },
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
+    onSuccess() {
+      onClose();
+    },
+  });
+
+  useModalBackButton(onClose);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-lg rounded-t-2xl p-5 lg:rounded-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Mobile drag handle */}
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full lg:hidden" style={{ background: "var(--color-bt-border)" }} />
+        <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Add Date Option
+        </p>
+        <p className="mb-4 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          Propose a date range for the crew to vote on.
+        </p>
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+              From
+            </label>
+            <input
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+              To
+            </label>
+            <input
+              type="date"
+              value={end}
+              min={start}
+              onChange={(e) => setEnd(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              style={{
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
+        </div>
+        <button
+          disabled={!start || !end || addWindow.isPending}
+          onClick={() => addWindow.mutate({ tripId, id: crypto.randomUUID(), startDate: start, endDate: end })}
+          className="w-full rounded-xl py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {addWindow.isPending ? "Adding…" : "Add Option"}
+        </button>
+        <button
+          onClick={onClose}
+          className="mt-2 w-full rounded-xl py-2 text-sm transition-opacity hover:opacity-80"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
