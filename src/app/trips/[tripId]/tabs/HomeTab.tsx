@@ -24,6 +24,7 @@ import {
   Bell,
   Mail,
   Send,
+  Lock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -32,7 +33,6 @@ import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { hashToHue } from "@/components/LocationHero";
-import { DatesSection } from "./DatesSection";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
@@ -1286,6 +1286,114 @@ function PlanningSection({
     },
   });
 
+  const currentUser = useCurrentUser();
+
+  const voteMutation = trpc.datePoll.vote.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId: trip.id });
+      const prev = utils.datePoll.get.getData({ tripId: trip.id });
+      utils.datePoll.get.setData({ tripId: trip.id }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          windows: old.windows.map((w) => {
+            if (w.id !== vars.windowId) return w;
+            const existing = w.votes.find((v) => v.user_id === currentUser?.id);
+            if (existing?.answer === vars.answer) {
+              return { ...w, votes: w.votes.filter((v) => v.user_id !== currentUser?.id) };
+            }
+            if (existing) {
+              return { ...w, votes: w.votes.map((v) => v.user_id === currentUser?.id ? { ...v, answer: vars.answer } : v) };
+            }
+            return { ...w, votes: [...w.votes, { window_id: vars.windowId, user_id: currentUser?.id ?? "", answer: vars.answer, created_at: new Date().toISOString() }] };
+          }),
+        };
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId: trip.id }, context.prev);
+    },
+    onSettled() { utils.datePoll.get.invalidate({ tripId: trip.id }); },
+  });
+
+  const removeWindow = trpc.datePoll.removeWindow.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId: trip.id });
+      const prev = utils.datePoll.get.getData({ tripId: trip.id });
+      utils.datePoll.get.setData({ tripId: trip.id }, (old) => {
+        if (!old) return old;
+        return { ...old, windows: old.windows.filter((w) => w.id !== vars.windowId) };
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId: trip.id }, context.prev);
+    },
+    onSettled() { utils.datePoll.get.invalidate({ tripId: trip.id }); },
+  });
+
+  const lockWindow = trpc.datePoll.lockWindow.useMutation({
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId: trip.id });
+      utils.trips.getById.invalidate({ tripId: trip.id });
+    },
+  });
+
+  const voteOnBehalf = trpc.datePoll.voteOnBehalf.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId: trip.id });
+      const prev = utils.datePoll.get.getData({ tripId: trip.id });
+      utils.datePoll.get.setData({ tripId: trip.id }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          windows: old.windows.map((w) => {
+            const incoming = vars.votes.find((v) => v.windowId === w.id);
+            if (incoming) {
+              const existing = w.votes.find((v) => v.user_id === vars.userId);
+              if (existing) {
+                return { ...w, votes: w.votes.map((v) => v.user_id === vars.userId ? { ...v, answer: incoming.answer } : v) };
+              }
+              return { ...w, votes: [...w.votes, { window_id: w.id, user_id: vars.userId, answer: incoming.answer, created_at: new Date().toISOString() }] };
+            }
+            return { ...w, votes: w.votes.filter((v) => v.user_id !== vars.userId) };
+          }),
+        };
+      });
+      return { prev };
+    },
+    onError(_err, _vars, context) {
+      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId: trip.id }, context.prev);
+    },
+    onSettled() { utils.datePoll.get.invalidate({ tripId: trip.id }); },
+  });
+
+  const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ windowId: string; label: string } | null>(null);
+
+  const windows = (poll?.windows ?? []) as { id: string; start_date: string; end_date: string; votes: { window_id: string; user_id: string; answer: string }[] }[];
+
+  function handleGridVote(userId: string, windowId: string, answer: "yes" | "no" | "maybe" | null) {
+    if (userId === currentUser?.id) {
+      const existingAnswer = windows.find((w) => w.id === windowId)?.votes.find((v) => v.user_id === userId)?.answer as "yes" | "no" | "maybe" | undefined;
+      if (answer === null) {
+        if (existingAnswer) voteMutation.mutate({ tripId: trip.id, windowId, answer: existingAnswer });
+        return;
+      }
+      voteMutation.mutate({ tripId: trip.id, windowId, answer });
+    } else {
+      const updatedVotes = windows
+        .map((w) => {
+          const existing = w.votes.find((v) => v.user_id === userId)?.answer as "yes" | "no" | "maybe" | undefined;
+          const next = w.id === windowId ? answer : (existing ?? null);
+          return next !== null ? { windowId: w.id, answer: next } : null;
+        })
+        .filter((v): v is { windowId: string; answer: "yes" | "no" | "maybe" } => v !== null);
+      voteOnBehalf.mutate({ tripId: trip.id, userId, votes: updatedVotes });
+    }
+  }
+
   // ── Destination ──────────────────────────────────────────────────────
   const isLocked = !!trip.locked_destination_title;
   const isExploring = !!trip.comparison_mode && !isLocked;
@@ -1492,12 +1600,209 @@ function PlanningSection({
             )}
           </div>
         ) : pollOpen ? (
-          <DatesSection
-            tripId={trip.id}
-            canEdit={canEdit}
-            isOwner={isOwner}
-            tripMembers={tripMembers}
-          />
+          <div className="space-y-3">
+            {/* Date option cards with vote rows */}
+            {windows.map((w) => {
+              const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              const label = `${startFmt}–${endFmt}`;
+              const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
+              const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+
+              return (
+                <div
+                  key={w.id}
+                  className="rounded-xl"
+                  style={{ background: "var(--color-bt-card-raised)", overflow: "hidden" }}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-3 pt-3 pb-2">
+                    <div>
+                      <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                        {label}
+                      </span>
+                      <span className="ml-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {nights} night{nights !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {yesCount > 0 && (
+                        <span className="text-[11px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                          {yesCount} yes
+                        </span>
+                      )}
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={() => setLockConfirm({ windowId: w.id, label })}
+                            className="flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                            aria-label="Lock this date"
+                          >
+                            <Lock size={11} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ windowId: w.id, label })}
+                            className="flex items-center justify-center rounded-md p-1 transition-colors"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                            aria-label="Remove date option"
+                          >
+                            <X size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Crew vote rows */}
+                  <div className="px-3 pb-2">
+                    {tripMembers.map((m) => {
+                      const vote = w.votes.find((v) => v.user_id === m.user_id);
+                      const answer = (vote?.answer ?? null) as "yes" | "no" | "maybe" | null;
+                      const isInteractive = m.user_id === currentUser?.id || !!m.isGuest;
+                      const isMe = m.user_id === currentUser?.id;
+
+                      return (
+                        <div
+                          key={m.user_id}
+                          className="flex items-center justify-between py-1.5"
+                          style={{ borderTop: "1px solid var(--color-bt-border)" }}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                            <span className="truncate text-[13px]" style={{ color: "var(--color-bt-text)" }}>
+                              {m.displayName}
+                              {isMe && <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>}
+                            </span>
+                          </div>
+                          {/* Vote buttons */}
+                          <div className="flex items-center gap-1">
+                            {(["yes", "maybe", "no"] as const).map((type) => {
+                              const isActive = answer === type;
+                              const colors: Record<string, { bg: string }> = {
+                                yes: { bg: "var(--color-bt-vote-yes)" },
+                                maybe: { bg: "var(--color-bt-vote-maybe)" },
+                                no: { bg: "var(--color-bt-vote-no)" },
+                              };
+                              const labels: Record<string, string> = { yes: "✓", maybe: "~", no: "✗" };
+                              return (
+                                <button
+                                  key={type}
+                                  disabled={!isInteractive}
+                                  onClick={() => handleGridVote(m.user_id!, w.id, isActive ? null : type)}
+                                  className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
+                                  style={
+                                    isActive
+                                      ? { background: colors[type].bg, color: "var(--color-bt-vote-yes-text)" }
+                                      : {
+                                          background: "transparent",
+                                          color: "var(--color-bt-text-dim)",
+                                          border: "1px dashed var(--color-bt-border)",
+                                          cursor: isInteractive ? "pointer" : "default",
+                                        }
+                                  }
+                                >
+                                  {labels[type]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Add date option */}
+            {canEdit && (
+              <button
+                onClick={() => {
+                  setShowPollBuilder(true);
+                  setPollOptions([]);
+                  setOpenRow("dates");
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors"
+                style={{
+                  border: "1.5px dashed var(--color-bt-accent)",
+                  color: "var(--color-bt-accent)",
+                  background: "transparent",
+                }}
+              >
+                <Plus size={16} />
+                Add date option
+              </button>
+            )}
+
+            {/* Lock confirm dialog */}
+            {lockConfirm && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center px-6"
+                style={{ background: "var(--color-bt-overlay)" }}
+                onClick={(e) => e.target === e.currentTarget && setLockConfirm(null)}
+              >
+                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
+                  <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                    Lock in {lockConfirm.label}?
+                  </p>
+                  <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                    This will set the trip dates and close the poll.
+                  </p>
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={() => setLockConfirm(null)}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-medium"
+                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { lockWindow.mutate({ tripId: trip.id, windowId: lockConfirm.windowId }); setLockConfirm(null); }}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
+                      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                    >
+                      Lock dates
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Delete confirm dialog */}
+            {deleteConfirm && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center px-6"
+                style={{ background: "var(--color-bt-overlay)" }}
+                onClick={(e) => e.target === e.currentTarget && setDeleteConfirm(null)}
+              >
+                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
+                  <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                    Remove {deleteConfirm.label}?
+                  </p>
+                  <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                    All votes for this date option will be deleted.
+                  </p>
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-medium"
+                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { removeWindow.mutate({ tripId: trip.id, windowId: deleteConfirm.windowId }); setDeleteConfirm(null); }}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
+                      style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-0">
             {/* ── Simple date picker ── */}
