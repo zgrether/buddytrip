@@ -457,7 +457,7 @@ export default function TripDetailPage() {
           {effectiveCanEdit && (
             <>
               <button
-                onClick={() => setActiveTab("schedule")}
+                onClick={() => setShowAddDateModal(true)}
                 className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
                 style={{ borderRadius: "1rem 1rem 0 0" }}
                 aria-label="Add date"
