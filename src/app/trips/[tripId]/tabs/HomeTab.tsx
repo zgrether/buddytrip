@@ -1697,7 +1697,7 @@ function PlanningSection({
                     ...pollOptions,
                   ];
                   const validOptions = allOptions.filter((o) => o.start && o.end);
-                  const canSend = validOptions.length >= 2;
+                  const canSend = validOptions.length >= 1;
                   return (
                     <button
                       disabled={!canSend || addWindow.isPending}
