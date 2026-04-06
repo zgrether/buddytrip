@@ -1687,6 +1687,29 @@ function PlanningSection({
                   Add another option
                 </button>
 
+                {/* Crew who will be polled */}
+                <div
+                  className="rounded-xl p-3"
+                  style={{ background: "var(--color-bt-card-raised)" }}
+                >
+                  <p
+                    className="mb-2 text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Polling
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {tripMembers.map((m) => (
+                      <div key={m.user_id} className="flex items-center gap-1.5">
+                        <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                        <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
+                          {m.displayName}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Send poll to crew */}
                 {(() => {
                   // Option 1 = primary inputs (directStart/directEnd), rest = pollOptions
