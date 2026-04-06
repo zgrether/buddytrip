@@ -1575,7 +1575,7 @@ function PlanningSection({
       {/* ── Dates ── */}
       <PlanningRow
         icon={<Calendar size={16} />}
-        label={datesLocked ? "Dates Selected" : "Set Dates"}
+        label={datesLocked ? "Dates Selected" : pollOpen ? "Checking Availability" : "Set Dates"}
         note={datesNote}
         noteWarn={false}
         warnState={pollOpen}
