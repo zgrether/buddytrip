@@ -1875,6 +1875,15 @@ export function HomeTab({
             onTabChange={onTabChange}
           />
         )}
+
+        {/* ── Competition panel ─────────────────────────────────────── */}
+        {(stage === "going" || status === "now" || status === "past") && (
+          <CompetitionPanel
+            trip={trip}
+            canEdit={canEditProp}
+            onSetupComp={canEditProp ? onEnableComp : undefined}
+          />
+        )}
       </div>
 
     </div>

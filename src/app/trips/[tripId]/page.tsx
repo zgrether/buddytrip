@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MoreHorizontal, Lock, HelpCircle, X, Calendar, Plus, MessageCircle } from "lucide-react";
+import { MoreHorizontal, Lock, HelpCircle, X, Calendar, Plus, MessageCircle, Info } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -12,7 +12,7 @@ import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
 import { TripBreadcrumb } from "@/components/TripBreadcrumb";
-import { HomeTab, QuickInfoSection, CompetitionPanel } from "./tabs/HomeTab";
+import { HomeTab, QuickInfoSection } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
 import { CompTab } from "./tabs/CompTab";
@@ -38,6 +38,7 @@ export default function TripDetailPage() {
   const [showAddDateModal, setShowAddDateModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [showQuickInfoSheet, setShowQuickInfoSheet] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -364,14 +365,10 @@ export default function TripDetailPage() {
                 )}
               </div>
             </div>
-            {/* Right: persistent sidebar — Quick Info + Competition */}
+            {/* Right: persistent sidebar — helper tip + Quick Info */}
             <div className="hidden lg:flex lg:flex-col gap-4">
+              <StageContextBar tripId={tripId} stage={stage} displayStatus={status} />
               <QuickInfoSection tripId={tripId} isOwner={!!isOwner} />
-              <CompetitionPanel
-                trip={trip}
-                canEdit={effectiveCanEdit}
-                onSetupComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-              />
             </div>
           </div>
         </div>
@@ -468,6 +465,56 @@ export default function TripDetailPage() {
           </div>
         );
       })()}
+
+      {/* ── Going/Ready mobile pill FAB — Quick Info + Chat ─────────── */}
+      {stage !== "idea" && stage !== "planning" && (
+        <div
+          className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center lg:hidden"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+            borderRadius: "1rem",
+            boxShadow: "var(--shadow-floating)",
+            width: "3rem",
+          }}
+        >
+          <button
+            onClick={() => setShowQuickInfoSheet(true)}
+            className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+            style={{ borderRadius: "1rem 1rem 0 0" }}
+            aria-label="Quick info"
+          >
+            <Info size={18} style={{ color: "var(--color-bt-accent)" }} />
+          </button>
+          <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
+          <button
+            onClick={() => setShowChatDrawer(true)}
+            className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+            style={{ borderRadius: "0 0 1rem 1rem" }}
+            aria-label="Open crew chat"
+          >
+            <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Quick Info mobile bottom sheet ───────────────────────────── */}
+      {showQuickInfoSheet && (
+        <div
+          className="fixed inset-0 z-50 flex items-end lg:hidden"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setShowQuickInfoSheet(false)}
+        >
+          <div
+            className="w-full rounded-t-2xl p-5 max-h-[80vh] overflow-y-auto"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: "var(--color-bt-border)" }} />
+            <QuickInfoSection tripId={tripId} isOwner={!!isOwner} />
+          </div>
+        </div>
+      )}
 
       {/* ── Planning mobile pill FAB ──────────────────────────────────── */}
       {stage === "planning" && (
