@@ -1274,8 +1274,7 @@ function PlanningSection({
   const invitedCount = tripMembers.filter((m) => m.status === "invited").length;
   const draftCount = tripMembers.filter((m) => m.status === "draft").length;
   const hasAnyone = tripMembers.length > 1;
-  const isLowCrew = confirmed < 4;
-  const crewState: ArcCardState = confirmed >= 4 ? "done" : hasAnyone && confirmed < 4 ? "inProgress" : "none";
+  const crewState: ArcCardState = confirmed >= 1 ? "done" : hasAnyone ? "inProgress" : "none";
   const crewNote = `${confirmed} confirmed`;
 
   // ── Dates ─────────────────────────────────────────────────────────────
@@ -1285,11 +1284,9 @@ function PlanningSection({
   const datesNote = (() => {
     if (datesLocked) return formatDateRange(trip.start_date, trip.end_date);
     if (!pollOpen) return "Not set yet";
-    if (canEdit && isLowCrew) return "Add crew first";
     const winCount = poll!.windows.length;
     return `Poll active · ${winCount} option${winCount !== 1 ? "s" : ""}`;
   })();
-  const datesWarn = canEdit && isLowCrew && !datesLocked;
 
   // ── Logistics ─────────────────────────────────────────────────────────
   const bookingCount = reservations.length;
@@ -1442,7 +1439,7 @@ function PlanningSection({
         icon={<Calendar size={16} />}
         label="Dates"
         note={datesNote}
-        noteWarn={datesWarn}
+        noteWarn={false}
         warnState={pollOpen}
         state={datesState}
         isOpen={openRow === "dates"}

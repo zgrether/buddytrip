@@ -5,8 +5,6 @@ import { useTheme } from "next-themes";
 import {
   Check,
   Plus,
-  AlertCircle,
-  ChevronRight,
   Lock,
   X,
 } from "lucide-react";
@@ -283,7 +281,6 @@ export function DatesSection({
   const confirmedMembers = tripMembers.filter(
     (m) => m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
   );
-  const isLowCrew = confirmedMembers.length < 4;
   // Show all members in the date poll grid (matching the crew tab), not just RSVP'd ones
   const allMembers = tripMembers;
 
@@ -320,10 +317,7 @@ export function DatesSection({
         tripId={tripId}
         windows={windows}
         members={allMembers}
-        isLowCrew={isLowCrew}
-        confirmedCount={confirmedMembers.length}
         currentUserId={currentUser?.id ?? ""}
-        onTabChange={onTabChange}
         onAddWindow={(start, end) => {
           addWindow.mutate({ tripId, id: crypto.randomUUID(), startDate: start, endDate: end });
         }}
@@ -448,10 +442,7 @@ function OwnerView({
   tripId,
   windows,
   members,
-  isLowCrew,
-  confirmedCount,
   currentUserId,
-  onTabChange,
   onAddWindow,
   onRemoveWindow,
   onLock,
@@ -460,10 +451,7 @@ function OwnerView({
   tripId: string;
   windows: DateWindow[];
   members: TripMember[];
-  isLowCrew: boolean;
-  confirmedCount: number;
   currentUserId: string;
-  onTabChange?: (tab: string) => void;
   onAddWindow: (start: string, end: string) => void;
   onRemoveWindow: (windowId: string) => void;
   onLock: (windowId: string) => void;
@@ -475,30 +463,6 @@ function OwnerView({
 
   return (
     <div className="space-y-3">
-      {/* Low crew banner */}
-      {isLowCrew && (
-        <div
-          className="flex items-start gap-2.5 rounded-xl p-3"
-          style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)" }}
-        >
-          <AlertCircle size={18} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
-          <div className="flex-1">
-            <p className="text-[13px] leading-snug" style={{ color: "var(--color-bt-text)" }}>
-              Only <strong>{confirmedCount} crew added.</strong> Add at least{" "}
-              {4 - confirmedCount} more before polling so everyone&apos;s voice counts.
-            </p>
-            <button
-              onClick={() => onTabChange?.("crew")}
-              className="mt-1.5 flex items-center gap-0.5 text-xs font-semibold"
-              style={{ color: "var(--color-bt-warning)" }}
-            >
-              Go to Crew tab
-              <ChevronRight size={13} />
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Add date option button */}
       <button
         onClick={() => setShowAddSheet(true)}
