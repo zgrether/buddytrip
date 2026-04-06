@@ -1260,9 +1260,7 @@ function PlanningSection({
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
   const [showPollBuilder, setShowPollBuilder] = useState(false);
-  const [pollOptions, setPollOptions] = useState<{ id: string; start: string; end: string }[]>([
-    { id: crypto.randomUUID(), start: "", end: "" },
-  ]);
+  const [pollOptions, setPollOptions] = useState<{ id: string; start: string; end: string }[]>([]);
 
   const lockDates = trpc.trips.lockDates.useMutation({
     async onMutate({ startDate, endDate }) {
@@ -1602,7 +1600,7 @@ function PlanningSection({
                     setDirectEnd(trip.end_date);
                     unlockDates.mutate({ tripId: trip.id });
                   }
-                  setPollOptions([{ id: crypto.randomUUID(), start: "", end: "" }]);
+                  setPollOptions([]);
                   setShowPollBuilder(true);
                 }}
                 className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors"
@@ -1713,7 +1711,7 @@ function PlanningSection({
                         setShowPollBuilder(false);
                         setDirectStart("");
                         setDirectEnd("");
-                        setPollOptions([{ id: crypto.randomUUID(), start: "", end: "" }]);
+                        setPollOptions([]);
                       }}
                       className="flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
                       style={{
