@@ -1262,7 +1262,6 @@ function PlanningSection({
   const [showPollBuilder, setShowPollBuilder] = useState(false);
   const [pollOptions, setPollOptions] = useState<{ id: string; start: string; end: string }[]>([
     { id: crypto.randomUUID(), start: "", end: "" },
-    { id: crypto.randomUUID(), start: "", end: "" },
   ]);
 
   const lockDates = trpc.trips.lockDates.useMutation({
@@ -1557,51 +1556,53 @@ function PlanningSection({
               </div>
             </div>
 
-            {/* Set dates button */}
-            <button
-              disabled={!directStart || !directEnd || lockDates.isPending}
-              onClick={() => {
-                lockDates.mutate(
-                  { tripId: trip.id, startDate: directStart, endDate: directEnd },
-                  {
-                    onSuccess() {
-                      setDirectStart("");
-                      setDirectEnd("");
-                      setOpenRow(null);
-                    },
-                  }
-                );
-              }}
-              className="mt-3 flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
-              style={{
-                background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
-                color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
-                opacity: (!directStart || !directEnd) ? 0.6 : 1,
-                cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
-              }}
-            >
-              {lockDates.isPending ? "Setting dates…" : "Set dates"}
-            </button>
+            {/* Set dates button — hidden when poll builder is open */}
+            {!showPollBuilder && (
+              <button
+                disabled={!directStart || !directEnd || lockDates.isPending}
+                onClick={() => {
+                  lockDates.mutate(
+                    { tripId: trip.id, startDate: directStart, endDate: directEnd },
+                    {
+                      onSuccess() {
+                        setDirectStart("");
+                        setDirectEnd("");
+                        setOpenRow(null);
+                      },
+                    }
+                  );
+                }}
+                className="mt-3 flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
+                style={{
+                  background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+                  color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
+                  opacity: (!directStart || !directEnd) ? 0.6 : 1,
+                  cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
+                }}
+              >
+                {lockDates.isPending ? "Setting dates…" : "Set dates"}
+              </button>
+            )}
 
-            {/* Divider */}
-            <div
-              className="my-4"
-              style={{ height: "1px", background: "var(--color-bt-border)" }}
-            />
+            {/* Divider — hidden when poll builder is open */}
+            {!showPollBuilder && (
+              <div
+                className="my-4"
+                style={{ height: "1px", background: "var(--color-bt-border)" }}
+              />
+            )}
 
             {/* Poll the crew button / inline poll builder */}
             {!showPollBuilder ? (
               <button
                 onClick={() => {
-                  // If dates were previously locked, pre-fill Option 1
+                  // If dates were previously locked, pre-fill the primary inputs
                   if (trip.start_date && trip.end_date) {
-                    setPollOptions([
-                      { id: crypto.randomUUID(), start: trip.start_date, end: trip.end_date },
-                      { id: crypto.randomUUID(), start: "", end: "" },
-                    ]);
-                    // Unlock existing date
+                    setDirectStart(trip.start_date);
+                    setDirectEnd(trip.end_date);
                     unlockDates.mutate({ tripId: trip.id });
                   }
+                  setPollOptions([{ id: crypto.randomUUID(), start: "", end: "" }]);
                   setShowPollBuilder(true);
                 }}
                 className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors"
@@ -1615,28 +1616,15 @@ function PlanningSection({
                 Poll the crew for the best date
               </button>
             ) : (
-              <div className="space-y-3">
-                <p
-                  className="text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Date options
-                </p>
-
+              <div className="mt-3 space-y-3">
+                {/* Additional poll option rows (primary inputs above are Option 1) */}
                 {pollOptions.map((opt, i) => (
                   <div key={opt.id} className="flex items-end gap-2">
                     <div className="flex-1">
-                      {i === 0 && (
-                        <label
-                          className="mb-1 block text-xs font-medium"
-                          style={{ color: "var(--color-bt-text-dim)" }}
-                        >
-                          From
-                        </label>
-                      )}
                       <input
                         type="date"
                         value={opt.start}
+                        placeholder="From"
                         onChange={(e) => {
                           const updated = [...pollOptions];
                           updated[i] = { ...opt, start: e.target.value };
@@ -1650,18 +1638,17 @@ function PlanningSection({
                         }}
                       />
                     </div>
+                    <span
+                      className="mb-2.5 text-sm"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      →
+                    </span>
                     <div className="flex-1">
-                      {i === 0 && (
-                        <label
-                          className="mb-1 block text-xs font-medium"
-                          style={{ color: "var(--color-bt-text-dim)" }}
-                        >
-                          To
-                        </label>
-                      )}
                       <input
                         type="date"
                         value={opt.end}
+                        placeholder="To"
                         onChange={(e) => {
                           const updated = [...pollOptions];
                           updated[i] = { ...opt, end: e.target.value };
@@ -1675,16 +1662,14 @@ function PlanningSection({
                         }}
                       />
                     </div>
-                    {pollOptions.length > 1 && (
-                      <button
-                        onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))}
-                        className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                        aria-label="Remove option"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))}
+                      className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                      aria-label="Remove option"
+                    >
+                      <X size={16} />
+                    </button>
                   </div>
                 ))}
 
@@ -1706,8 +1691,13 @@ function PlanningSection({
 
                 {/* Send poll to crew */}
                 {(() => {
-                  const validOptions = pollOptions.filter((o) => o.start && o.end);
-                  const canSend = validOptions.length >= 2;
+                  // Option 1 = primary inputs (directStart/directEnd), rest = pollOptions
+                  const allOptions = [
+                    { start: directStart, end: directEnd },
+                    ...pollOptions,
+                  ];
+                  const validOptions = allOptions.filter((o) => o.start && o.end);
+                  const canSend = validOptions.length >= 1;
                   return (
                     <button
                       disabled={!canSend || addWindow.isPending}
@@ -1721,10 +1711,9 @@ function PlanningSection({
                           });
                         }
                         setShowPollBuilder(false);
-                        setPollOptions([
-                          { id: crypto.randomUUID(), start: "", end: "" },
-                          { id: crypto.randomUUID(), start: "", end: "" },
-                        ]);
+                        setDirectStart("");
+                        setDirectEnd("");
+                        setPollOptions([{ id: crypto.randomUUID(), start: "", end: "" }]);
                       }}
                       className="flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
                       style={{
