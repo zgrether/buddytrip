@@ -687,7 +687,7 @@ function ChangeDestinationModal({
 
 // ── Competition Panel ─────────────────────────────────────────────────────
 
-function CompetitionPanel({
+export function CompetitionPanel({
   trip,
   canEdit,
   onSetupComp,
@@ -809,7 +809,7 @@ function CompetitionPanel({
 
 // ── Quick Info Tiles Section ─────────────────────────────────────────────
 
-function QuickInfoSection({
+export function QuickInfoSection({
   tripId,
   isOwner,
 }: {
@@ -1203,7 +1203,6 @@ function PlanningSection({
   ideas,
   poll,
   tripMembers,
-  reservations,
   canEdit,
   isOwner,
   onTabChange,
@@ -1213,7 +1212,6 @@ function PlanningSection({
   ideas: IdeaWithVotes[];
   poll: { lockedWindowId: string | null; windows: { id: string; start_date: string; end_date: string; votes: { user_id: string; answer: string }[] }[] } | undefined;
   tripMembers: { user_id: string | null; status: string; displayName: string; isGuest?: boolean; role?: string }[];
-  reservations: unknown[];
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
@@ -1291,12 +1289,6 @@ function PlanningSection({
   })();
   const datesWarn = canEdit && isLowCrew && !datesLocked;
 
-  // ── Logistics ─────────────────────────────────────────────────────────
-  const bookingCount = reservations.length;
-  const scheduleState: ArcCardState = bookingCount > 0 ? "inProgress" : "none";
-  const scheduleNote = bookingCount > 0
-    ? `${bookingCount} booking${bookingCount !== 1 ? "s" : ""}`
-    : "Not booked yet";
 
   return (
     <section className="space-y-2">
@@ -1475,32 +1467,6 @@ function PlanningSection({
         )}
       </PlanningRow>
 
-      {/* ── Logistics — visible in IDEA stage only ── */}
-      {stage !== "planning" && (
-        <PlanningRow
-          icon={<Hotel size={16} />}
-          label="Logistics"
-          note={scheduleNote}
-          state={scheduleState}
-          isOpen={openRow === "logistics"}
-          onToggle={() => toggle("logistics")}
-        >
-          <div className="space-y-3">
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              {bookingCount > 0
-                ? `${bookingCount} booking${bookingCount !== 1 ? "s" : ""} on record`
-                : "No bookings added yet."}
-            </p>
-            <button
-              onClick={() => onTabChange?.("schedule")}
-              className="text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              {canEdit ? "Manage logistics →" : "View schedule →"}
-            </button>
-          </div>
-        </PlanningRow>
-      )}
 
       {/* ── RSVP Message — PLANNING stage only ── */}
       {stage === "planning" && (
@@ -1736,7 +1702,6 @@ export function HomeTab({
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
-  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const [interstitialDismissed, setInterstitialDismissed] = useState(false);
@@ -1872,77 +1837,43 @@ export function HomeTab({
         </PendingActionsCard>
       )}
 
-      {/* ── Two-column desktop layout (going/now/past stages) ─────────── */}
-      <div className={(stage === "going" || status === "now" || status === "past") ? "lg:grid lg:grid-cols-[1fr_320px] lg:gap-6" : ""}>
-        {/* ── Left column: primary planning content ─────────────────── */}
-        <div className="space-y-4">
-          {/* ── GOING / NOW / PAST stage: About panel ──────────────── */}
-          {(stage === "going" || status === "now" || status === "past") && (
-            <AboutPanel tripId={trip.id} aboutMessage={trip.about_message} canEdit={canEditProp} isPast={status === "past"} />
-          )}
-
-          {/* ── GOING / NOW stage: RSVP panel ──────────────────────── */}
-          {(stage === "going" || status === "now") && (
-            <RsvpPanel tripId={trip.id} members={members} currentUserId={currentUser?.id ?? null} />
-          )}
-
-          {/* ── Planning rows — gated by stage ────────────────────── */}
-          {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
-            <PlanningSection
-              trip={trip}
-              ideas={ideas as IdeaWithVotes[]}
-              poll={poll}
-              tripMembers={members}
-              reservations={reservations}
-              canEdit={canEditProp}
-              isOwner={!!isOwner}
-              onTabChange={onTabChange}
-              onMakeOfficial={onMakeOfficial}
-            />
-          )}
-
-          {/* ── GOING/NOW: planning rows in collapsed done state ──── */}
-          {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
-            <PlanningSection
-              trip={trip}
-              ideas={ideas as IdeaWithVotes[]}
-              poll={poll}
-              tripMembers={members}
-              reservations={reservations}
-              canEdit={false}
-              isOwner={false}
-              onTabChange={onTabChange}
-            />
-          )}
-
-          {/* Competition panel — only in READY stage and beyond */}
-          {stage !== "idea" && stage !== "planning" && (
-            <CompetitionPanel
-              trip={trip}
-              canEdit={canEditProp}
-              onSetupComp={onEnableComp}
-            />
-          )}
-        </div>
-
-        {/* ── Right column: going/now/past stages only ───────────────── */}
+      {/* ── Primary content — right column (QuickInfo + Competition) lives in page.tsx ── */}
+      <div className="space-y-4">
+        {/* ── GOING / NOW / PAST stage: About panel ──────────────── */}
         {(stage === "going" || status === "now" || status === "past") && (
-          <div className="mt-4 space-y-4 lg:mt-0">
-            <QuickInfoSection tripId={trip.id} isOwner={!!isOwner} />
-            {trip.start_date && trip.end_date && (
-              <div
-                className="rounded-xl p-4"
-                style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-              >
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Dates
-                </p>
-                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                  {formatDateRange(trip.start_date, trip.end_date)}
-                </p>
-              </div>
-            )}
-          </div>
+          <AboutPanel tripId={trip.id} aboutMessage={trip.about_message} canEdit={canEditProp} isPast={status === "past"} />
+        )}
+
+        {/* ── GOING / NOW stage: RSVP panel (crew only — owner manages via Crew tab) ── */}
+        {(stage === "going" || status === "now") && !isOwner && (
+          <RsvpPanel tripId={trip.id} members={members} currentUserId={currentUser?.id ?? null} />
+        )}
+
+        {/* ── Planning rows — gated by stage ────────────────────── */}
+        {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
+          <PlanningSection
+            trip={trip}
+            ideas={ideas as IdeaWithVotes[]}
+            poll={poll}
+            tripMembers={members}
+            canEdit={canEditProp}
+            isOwner={!!isOwner}
+            onTabChange={onTabChange}
+            onMakeOfficial={onMakeOfficial}
+          />
+        )}
+
+        {/* ── GOING/NOW/PAST: planning rows in collapsed done state ── */}
+        {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
+          <PlanningSection
+            trip={trip}
+            ideas={ideas as IdeaWithVotes[]}
+            poll={poll}
+            tripMembers={members}
+            canEdit={false}
+            isOwner={false}
+            onTabChange={onTabChange}
+          />
         )}
       </div>
 
