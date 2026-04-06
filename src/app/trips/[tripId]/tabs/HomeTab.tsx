@@ -1162,7 +1162,7 @@ function RsvpDraftPanel({
   return (
     <PlanningRow
       icon={<Mail size={16} />}
-      label="RSVP Message"
+      label={hasDraft ? "Invitation Written" : "Write Invitation"}
       note={note}
       noteWarn={noteWarn}
       state={state}
@@ -1575,7 +1575,7 @@ function PlanningSection({
       {/* ── Dates ── */}
       <PlanningRow
         icon={<Calendar size={16} />}
-        label="Dates"
+        label={datesLocked ? "Dates Selected" : "Set Dates"}
         note={datesNote}
         noteWarn={false}
         warnState={pollOpen}
@@ -1812,7 +1812,7 @@ function PlanningSection({
             >
               When are you going?
             </p>
-            <div className="flex items-end gap-3">
+            <div className="flex items-end gap-2">
               <div className="flex-1">
                 <label
                   className="mb-1 block text-xs font-medium"
@@ -1857,6 +1857,18 @@ function PlanningSection({
                   }}
                 />
               </div>
+              <button
+                disabled={!directStart && !directEnd}
+                onClick={() => { setDirectStart(""); setDirectEnd(""); }}
+                className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
+                style={{
+                  color: (!directStart && !directEnd) ? "var(--color-bt-border)" : "var(--color-bt-text-dim)",
+                  cursor: (!directStart && !directEnd) ? "not-allowed" : "pointer",
+                }}
+                aria-label="Clear dates"
+              >
+                <X size={16} />
+              </button>
             </div>
 
             {/* Set dates button — hidden when poll builder is open */}
@@ -2411,7 +2423,7 @@ export function HomeTab({
   }
 
   return (
-    <div className="space-y-4 px-4">
+    <div className="space-y-4">
       {/* 0. Pending-actions interstitial for members with open action items */}
       {showDateInterstitial && (
         <PendingActionsCard
