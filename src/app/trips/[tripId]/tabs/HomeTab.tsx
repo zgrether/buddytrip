@@ -2086,7 +2086,10 @@ function PlanningSection({
                     Manage crew →
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div
+                  className="rounded-xl p-3 flex flex-wrap gap-2"
+                  style={{ background: "var(--color-bt-card-raised)" }}
+                >
                   {tripMembers.map((m) => (
                     <div key={m.user_id} className="flex items-center gap-1.5">
                       <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
