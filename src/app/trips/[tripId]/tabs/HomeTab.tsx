@@ -1604,6 +1604,91 @@ function PlanningSection({
           </div>
         ) : pollOpen ? (
           <div className="space-y-3">
+            {/* Date pickers — always visible, same as simple picker */}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                  From
+                </label>
+                <input
+                  type="date"
+                  value={directStart}
+                  onChange={(e) => setDirectStart(e.target.value)}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm"
+                  style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                />
+              </div>
+              <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>→</span>
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                  To
+                </label>
+                <input
+                  type="date"
+                  value={directEnd}
+                  onChange={(e) => setDirectEnd(e.target.value)}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm"
+                  style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                />
+              </div>
+              <button
+                disabled={!directStart && !directEnd}
+                onClick={() => { setDirectStart(""); setDirectEnd(""); }}
+                className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
+                style={{
+                  color: (!directStart && !directEnd) ? "var(--color-bt-border)" : "var(--color-bt-text-dim)",
+                  cursor: (!directStart && !directEnd) ? "not-allowed" : "pointer",
+                }}
+                aria-label="Clear dates"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Set dates | Add option */}
+            {canEdit && (
+              <div className="flex gap-2">
+                <button
+                  disabled={!directStart || !directEnd || lockDates.isPending}
+                  onClick={() => {
+                    lockDates.mutate(
+                      { tripId: trip.id, startDate: directStart, endDate: directEnd },
+                      { onSuccess() { setDirectStart(""); setDirectEnd(""); setOpenRow(null); } }
+                    );
+                  }}
+                  className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
+                  style={{
+                    background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+                    color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
+                    opacity: (!directStart || !directEnd) ? 0.6 : 1,
+                    cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {lockDates.isPending ? "Setting…" : "Set dates"}
+                </button>
+                <button
+                  disabled={!directStart || !directEnd || addWindow.isPending}
+                  onClick={() => {
+                    addWindow.mutate(
+                      { tripId: trip.id, id: crypto.randomUUID(), startDate: directStart, endDate: directEnd },
+                      { onSuccess() { setDirectStart(""); setDirectEnd(""); } }
+                    );
+                  }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-opacity"
+                  style={{
+                    border: "1.5px dashed var(--color-bt-accent)",
+                    color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
+                    background: "transparent",
+                    opacity: (!directStart || !directEnd) ? 0.6 : 1,
+                    cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <Plus size={14} />
+                  Add option
+                </button>
+              </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center justify-between">
               <p
@@ -1741,81 +1826,6 @@ function PlanningSection({
               </div>
             </div>
 
-            {/* Add date option */}
-            {canEdit && !addingDateOption && (
-              <button
-                onClick={() => setAddingDateOption(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors"
-                style={{
-                  border: "1.5px dashed var(--color-bt-accent)",
-                  color: "var(--color-bt-accent)",
-                  background: "transparent",
-                }}
-              >
-                <Plus size={16} />
-                Add date option
-              </button>
-            )}
-            {canEdit && addingDateOption && (
-              <div
-                className="rounded-xl p-3"
-                style={{ background: "var(--color-bt-card-raised)" }}
-              >
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                      From
-                    </label>
-                    <input
-                      type="date"
-                      value={newOptionStart}
-                      onChange={(e) => setNewOptionStart(e.target.value)}
-                      className="w-full rounded-xl px-3 py-2.5 text-sm"
-                      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                    />
-                  </div>
-                  <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>→</span>
-                  <div className="flex-1">
-                    <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                      To
-                    </label>
-                    <input
-                      type="date"
-                      value={newOptionEnd}
-                      onChange={(e) => setNewOptionEnd(e.target.value)}
-                      className="w-full rounded-xl px-3 py-2.5 text-sm"
-                      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => { setAddingDateOption(false); setNewOptionStart(""); setNewOptionEnd(""); }}
-                    className="flex-1 rounded-xl py-2 text-sm font-medium"
-                    style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={!newOptionStart || !newOptionEnd}
-                    onClick={() => {
-                      addWindow.mutate({ tripId: trip.id, id: crypto.randomUUID(), startDate: newOptionStart, endDate: newOptionEnd });
-                      setAddingDateOption(false);
-                      setNewOptionStart("");
-                      setNewOptionEnd("");
-                    }}
-                    className="flex-1 rounded-xl py-2 text-sm font-semibold"
-                    style={{
-                      background: (!newOptionStart || !newOptionEnd) ? "var(--color-bt-card)" : "var(--color-bt-accent)",
-                      color: (!newOptionStart || !newOptionEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
-                      opacity: (!newOptionStart || !newOptionEnd) ? 0.6 : 1,
-                    }}
-                  >
-                    Add option
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Lock confirm dialog */}
             {lockConfirm && (
