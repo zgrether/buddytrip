@@ -1621,90 +1621,104 @@ function PlanningSection({
               </button>
             </div>
 
-            {/* Date option cards with vote rows */}
-            {windows.map((w) => {
-              const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              const label = `${startFmt}–${endFmt}`;
-              const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
-              const yesCount = w.votes.filter((v) => v.answer === "yes").length;
-
-              return (
+            {/* Single panel — date columns × member rows */}
+            <div
+              className="rounded-xl overflow-hidden overflow-x-auto"
+              style={{ background: "var(--color-bt-card-raised)" }}
+            >
+              <div style={{ minWidth: `${100 + windows.length * 96}px` }}>
+                {/* Column headers — one per date option */}
                 <div
-                  key={w.id}
-                  className="rounded-xl"
-                  style={{ background: "var(--color-bt-card-raised)", overflow: "hidden" }}
+                  className="grid"
+                  style={{ gridTemplateColumns: `auto repeat(${windows.length}, 1fr)` }}
                 >
-                  {/* Header */}
-                  <div className="flex items-center justify-between px-3 pt-3 pb-2">
-                    <div>
-                      <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                        {label}
-                      </span>
-                      <span className="ml-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {nights} night{nights !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {yesCount > 0 && (
-                        <span className="text-[11px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-                          {yesCount} yes
-                        </span>
-                      )}
-                      {canEdit && (
-                        <>
-                          <button
-                            onClick={() => setLockConfirm({ windowId: w.id, label })}
-                            className="flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors"
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                            aria-label="Lock this date"
-                          >
-                            <Lock size={11} />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm({ windowId: w.id, label })}
-                            className="flex items-center justify-center rounded-md p-1 transition-colors"
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                            aria-label="Remove date option"
-                          >
-                            <X size={13} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Crew vote rows */}
-                  <div className="px-3 pb-2">
-                    {tripMembers.map((m) => {
-                      const vote = w.votes.find((v) => v.user_id === m.user_id);
-                      const answer = (vote?.answer ?? null) as "yes" | "no" | "maybe" | null;
-                      const isInteractive = m.user_id === currentUser?.id || !!m.isGuest;
-                      const isMe = m.user_id === currentUser?.id;
-
-                      return (
-                        <div
-                          key={m.user_id}
-                          className="flex items-center justify-between py-1.5"
-                          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
-                            <span className="truncate text-[13px]" style={{ color: "var(--color-bt-text)" }}>
-                              {m.displayName}
-                              {isMe && <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>}
-                            </span>
+                  {/* Empty name-column cell */}
+                  <div />
+                  {windows.map((w) => {
+                    const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    const label = `${startFmt}–${endFmt}`;
+                    const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
+                    const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+                    return (
+                      <div
+                        key={w.id}
+                        className="px-2 pt-2.5 pb-2 text-center"
+                        style={{ borderLeft: "1px solid var(--color-bt-border)" }}
+                      >
+                        <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                          {label}
+                        </p>
+                        <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {nights}n
+                        </p>
+                        {yesCount > 0 && (
+                          <p className="text-[10px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                            {yesCount} ✓
+                          </p>
+                        )}
+                        {canEdit && (
+                          <div className="mt-1 flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => setLockConfirm({ windowId: w.id, label })}
+                              style={{ color: "var(--color-bt-text-dim)" }}
+                              aria-label="Lock this date"
+                            >
+                              <Lock size={10} />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm({ windowId: w.id, label })}
+                              style={{ color: "var(--color-bt-text-dim)" }}
+                              aria-label="Remove date option"
+                            >
+                              <X size={11} />
+                            </button>
                           </div>
-                          {/* Vote buttons */}
-                          <div className="flex items-center gap-1">
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Member rows */}
+                {tripMembers.map((m) => {
+                  const isMe = m.user_id === currentUser?.id;
+                  const isInteractive = m.user_id === currentUser?.id || !!m.isGuest;
+                  return (
+                    <div
+                      key={m.user_id}
+                      className="grid"
+                      style={{
+                        gridTemplateColumns: `auto repeat(${windows.length}, 1fr)`,
+                        borderTop: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      {/* Name */}
+                      <div className="flex items-center gap-2 px-3 py-2 min-w-0">
+                        <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                        <span className="truncate text-[13px]" style={{ color: "var(--color-bt-text)" }}>
+                          {m.displayName}
+                          {isMe && <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>}
+                        </span>
+                      </div>
+                      {/* Vote buttons — one cell per date */}
+                      {windows.map((w) => {
+                        const vote = w.votes.find((v) => v.user_id === m.user_id);
+                        const answer = (vote?.answer ?? null) as "yes" | "no" | "maybe" | null;
+                        const voteColors: Record<string, { bg: string }> = {
+                          yes: { bg: "var(--color-bt-vote-yes)" },
+                          maybe: { bg: "var(--color-bt-vote-maybe)" },
+                          no: { bg: "var(--color-bt-vote-no)" },
+                        };
+                        const voteLabels: Record<string, string> = { yes: "✓", maybe: "~", no: "✗" };
+                        return (
+                          <div
+                            key={w.id}
+                            className="flex items-center justify-center gap-0.5 px-1 py-2"
+                            style={{ borderLeft: "1px solid var(--color-bt-border)" }}
+                          >
                             {(["yes", "maybe", "no"] as const).map((type) => {
                               const isActive = answer === type;
-                              const colors: Record<string, { bg: string }> = {
-                                yes: { bg: "var(--color-bt-vote-yes)" },
-                                maybe: { bg: "var(--color-bt-vote-maybe)" },
-                                no: { bg: "var(--color-bt-vote-no)" },
-                              };
-                              const labels: Record<string, string> = { yes: "✓", maybe: "~", no: "✗" };
                               return (
                                 <button
                                   key={type}
@@ -1713,7 +1727,7 @@ function PlanningSection({
                                   className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
                                   style={
                                     isActive
-                                      ? { background: colors[type].bg, color: "var(--color-bt-vote-yes-text)" }
+                                      ? { background: voteColors[type].bg, color: "var(--color-bt-vote-yes-text)" }
                                       : {
                                           background: "transparent",
                                           color: "var(--color-bt-text-dim)",
@@ -1722,18 +1736,18 @@ function PlanningSection({
                                         }
                                   }
                                 >
-                                  {labels[type]}
+                                  {voteLabels[type]}
                                 </button>
                               );
                             })}
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Add date option */}
             {canEdit && !addingDateOption && (
