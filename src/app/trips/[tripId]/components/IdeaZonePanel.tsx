@@ -1587,6 +1587,7 @@ export default function IdeaZonePanel({
               }}
             >
               <Plus size={16} />
+              <MapPin size={15} />
               Add destination idea
             </button>
           )}
@@ -1642,11 +1643,12 @@ export default function IdeaZonePanel({
             {/* Add idea — top */}
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+              className="flex h-12 w-12 items-center justify-center gap-0.5 transition-colors active:scale-95"
               style={{ borderRadius: "1rem 1rem 0 0" }}
               aria-label="Add destination idea"
             >
-              <Plus size={20} style={{ color: "var(--color-bt-accent)" }} />
+              <Plus size={13} style={{ color: "var(--color-bt-accent)" }} />
+              <MapPin size={13} style={{ color: "var(--color-bt-accent)" }} />
             </button>
 
             <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
