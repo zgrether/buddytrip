@@ -1633,8 +1633,11 @@ function PlanningSection({
                   gridTemplateColumns: `auto repeat(${windows.length}, 1fr)`,
                 }}
               >
-                {/* Header row — empty name cell + one cell per date */}
-                <div className="px-3 pt-2.5 pb-2" />
+                {/* Header row — sticky, empty name cell + one cell per date */}
+                <div
+                  className="px-3 pt-2.5 pb-2 sticky top-0 z-10"
+                  style={{ background: "var(--color-bt-card-raised)" }}
+                />
                 {windows.map((w) => {
                   const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
                   const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -1642,7 +1645,11 @@ function PlanningSection({
                   const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
                   const yesCount = w.votes.filter((v) => v.answer === "yes").length;
                   return (
-                    <div key={w.id} className="px-2 pt-2.5 pb-2 text-center">
+                    <div
+                      key={w.id}
+                      className="px-2 pt-2.5 pb-2 text-center sticky top-0 z-10"
+                      style={{ background: "var(--color-bt-card-raised)" }}
+                    >
                       <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
                         {label}
                       </p>
@@ -1655,22 +1662,14 @@ function PlanningSection({
                         </p>
                       )}
                       {canEdit && (
-                        <div className="mt-1 flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => setLockConfirm({ windowId: w.id, label })}
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                            aria-label="Lock this date"
-                          >
-                            <Lock size={10} />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm({ windowId: w.id, label })}
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                            aria-label="Remove date option"
-                          >
-                            <X size={11} />
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => setDeleteConfirm({ windowId: w.id, label })}
+                          className="mt-1 flex items-center justify-center mx-auto"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                          aria-label="Remove date option"
+                        >
+                          <X size={12} />
+                        </button>
                       )}
                     </div>
                   );
