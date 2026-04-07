@@ -1963,7 +1963,50 @@ function PlanningSection({
               </button>
             </div>
 
-            {/* Dynamic action row — changes based on poll builder state */}
+            {/* Extra date option rows — grouped with Option 1 above, shown in poll builder mode */}
+            {showPollBuilder && pollOptions.map((opt, i) => (
+              <div key={opt.id} className="mt-3 flex items-end gap-2">
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={opt.start}
+                    placeholder="From"
+                    onChange={(e) => {
+                      const updated = [...pollOptions];
+                      updated[i] = { ...opt, start: e.target.value };
+                      setPollOptions(updated);
+                    }}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm"
+                    style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                  />
+                </div>
+                <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>→</span>
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={opt.end}
+                    placeholder="To"
+                    onChange={(e) => {
+                      const updated = [...pollOptions];
+                      updated[i] = { ...opt, end: e.target.value };
+                      setPollOptions(updated);
+                    }}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm"
+                    style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                  />
+                </div>
+                <button
+                  onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))}
+                  className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                  aria-label="Remove option"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+
+            {/* Dynamic action row — 2 buttons (state 1) or 3 buttons (state 2) */}
             <div className="mt-3 flex gap-2">
               {!showPollBuilder ? (
                 <>
@@ -2009,7 +2052,7 @@ function PlanningSection({
                 </>
               ) : (
                 <>
-                  {/* State 2: Start polling + Add date option */}
+                  {/* State 2: Start polling + Add date option + Never mind */}
                   {(() => {
                     const allOptions = [{ start: directStart, end: directEnd }, ...pollOptions];
                     const validOptions = allOptions.filter((o) => o.start && o.end);
@@ -2057,68 +2100,24 @@ function PlanningSection({
                     <Plus size={14} />
                     Add date option
                   </button>
+                  <button
+                    onClick={() => { setShowPollBuilder(false); setPollOptions([]); }}
+                    className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-medium transition-colors"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    Never mind
+                  </button>
                 </>
               )}
             </div>
 
-            {/* Never mind — exits poll builder mode */}
+            {/* Crew panel — shown in poll builder mode */}
             {showPollBuilder && (
-              <button
-                onClick={() => { setShowPollBuilder(false); setPollOptions([]); }}
-                className="mt-2 flex w-full items-center justify-center py-2 text-xs font-medium"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Never mind
-              </button>
-            )}
-
-            {/* Poll builder — extra date option rows + crew panel */}
-            {showPollBuilder && (
-              <div className="space-y-3">
-                {pollOptions.map((opt, i) => (
-                  <div key={opt.id} className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <input
-                        type="date"
-                        value={opt.start}
-                        placeholder="From"
-                        onChange={(e) => {
-                          const updated = [...pollOptions];
-                          updated[i] = { ...opt, start: e.target.value };
-                          setPollOptions(updated);
-                        }}
-                        className="w-full rounded-xl px-3 py-2.5 text-sm"
-                        style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                      />
-                    </div>
-                    <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>→</span>
-                    <div className="flex-1">
-                      <input
-                        type="date"
-                        value={opt.end}
-                        placeholder="To"
-                        onChange={(e) => {
-                          const updated = [...pollOptions];
-                          updated[i] = { ...opt, end: e.target.value };
-                          setPollOptions(updated);
-                        }}
-                        className="w-full rounded-xl px-3 py-2.5 text-sm"
-                        style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))}
-                      className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                      aria-label="Remove option"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ))}
-
-                {/* Crew who will be polled */}
-                <div className="flex items-center justify-between mt-2">
+              <div className="mt-3 space-y-3">
+                <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
                     Polling
                   </p>
