@@ -79,29 +79,114 @@ export function DatesPlanningRow({
   // ── Mutations ──────────────────────────────────────────────────────────
 
   const lockDates = trpc.trips.lockDates.useMutation({
+    async onMutate(vars) {
+      await utils.trips.getById.cancel({ tripId });
+      const prevTrip = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old
+          ? {
+              ...old,
+              start_date: vars.startDate,
+              end_date: vars.endDate,
+              date_set_method: vars.method,
+              date_poll_active: false,
+            }
+          : old
+      );
+      return { prevTrip };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prevTrip !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prevTrip);
+    },
     onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
       setDirectStart("");
       setDirectEnd("");
       setEditingLocked(false);
     },
-  });
-
-  const setPollActive = trpc.trips.setDatePollActive.useMutation({
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
       utils.datePoll.get.invalidate({ tripId });
     },
   });
 
+  const setPollActive = trpc.trips.setDatePollActive.useMutation({
+    async onMutate(vars) {
+      await utils.trips.getById.cancel({ tripId });
+      const prevTrip = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, date_poll_active: vars.active } : old
+      );
+      return { prevTrip };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prevTrip !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prevTrip);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+    },
+  });
+
   const addWindow = trpc.datePoll.addWindow.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) => {
+        if (!old) {
+          return {
+            lockedWindowId: null,
+            windows: [
+              {
+                id: vars.id,
+                trip_id: tripId,
+                start_date: vars.startDate,
+                end_date: vars.endDate,
+                created_at: new Date().toISOString(),
+                votes: [],
+              },
+            ],
+          };
+        }
+        return {
+          ...old,
+          windows: [
+            ...old.windows,
+            {
+              id: vars.id,
+              trip_id: tripId,
+              start_date: vars.startDate,
+              end_date: vars.endDate,
+              created_at: new Date().toISOString(),
+              votes: [],
+            },
+          ].sort((a, b) => a.start_date.localeCompare(b.start_date)),
+        };
+      });
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
   });
 
   const removeWindowM = trpc.datePoll.removeWindow.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) =>
+        old
+          ? { ...old, windows: old.windows.filter((w) => w.id !== vars.windowId) }
+          : old
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -199,6 +284,19 @@ export function DatesPlanningRow({
   });
 
   const resetVotes = trpc.datePoll.resetVotes.useMutation({
+    async onMutate() {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) =>
+        old
+          ? { ...old, windows: old.windows.map((w) => ({ ...w, votes: [] })) }
+          : old
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -267,99 +365,50 @@ export function DatesPlanningRow({
     );
   }
 
-  function renderPollBuilder() {
+  function renderAddOptionRow() {
     const validNew = pollStart && pollEnd && pollStart < pollEnd;
     return (
-      <div className="space-y-3">
-        <p
-          className="text-xs font-semibold uppercase tracking-wider"
+      <div className="flex items-end gap-2">
+        <DateField label="From" value={pollStart} onChange={setPollStart} />
+        <span
+          className="mb-2.5 text-sm"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Poll options
-        </p>
-        {windows.length > 0 && (
-          <div className="space-y-2">
-            {windows.map((w) => (
-              <div
-                key={w.id}
-                className="flex items-center justify-between rounded-xl px-3 py-2"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                <span className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                  {formatRangeWithNights(w.start_date, w.end_date)}
-                </span>
-                <button
-                  onClick={() =>
-                    removeWindowM.mutate({ tripId, windowId: w.id })
-                  }
-                  className="flex h-6 w-6 items-center justify-center rounded-md"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                  aria-label="Remove option"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="flex items-end gap-2">
-          <DateField label="From" value={pollStart} onChange={setPollStart} />
-          <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            →
-          </span>
-          <DateField label="To" value={pollEnd} onChange={setPollEnd} />
-          <button
-            disabled={!validNew || addWindow.isPending}
-            onClick={async () => {
-              await addWindow.mutateAsync({
-                tripId,
-                id: crypto.randomUUID(),
-                startDate: pollStart,
-                endDate: pollEnd,
-              });
-              setPollStart("");
-              setPollEnd("");
-            }}
-            className="mb-1 flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium"
-            style={{
-              background: validNew ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-              color: validNew ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-              opacity: validNew ? 1 : 0.6,
-              cursor: validNew ? "pointer" : "not-allowed",
-            }}
-          >
-            <Plus size={12} />
-            Add
-          </button>
-        </div>
-        <PrimaryButton
-          disabled={windows.length === 0 || setPollActive.isPending}
+          →
+        </span>
+        <DateField label="To" value={pollEnd} onChange={setPollEnd} />
+        <button
+          disabled={!validNew}
           onClick={() => {
-            setPollActive.mutate({ tripId, active: true });
-            setShowPollBuilder(false);
-          }}
-        >
-          {setPollActive.isPending ? "Starting…" : "Start polling"}
-        </PrimaryButton>
-        <GhostButton
-          onClick={() => {
-            setShowPollBuilder(false);
+            addWindow.mutate({
+              tripId,
+              id: crypto.randomUUID(),
+              startDate: pollStart,
+              endDate: pollEnd,
+            });
             setPollStart("");
             setPollEnd("");
           }}
+          className="mb-1 flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium"
+          style={{
+            background: validNew
+              ? "var(--color-bt-accent)"
+              : "var(--color-bt-card-raised)",
+            color: validNew ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+            opacity: validNew ? 1 : 0.6,
+            cursor: validNew ? "pointer" : "not-allowed",
+          }}
         >
-          Nevermind
-        </GhostButton>
+          <Plus size={12} />
+          Add
+        </button>
       </div>
     );
   }
 
-  function renderPollGrid() {
+  function renderCrewGrid() {
     return (
-      <div className="space-y-3">
+      <div>
         <div
           className="overflow-x-auto rounded-xl"
           style={{
@@ -477,31 +526,98 @@ export function DatesPlanningRow({
           </table>
         </div>
 
-        {isOwner && (
-          <div className="space-y-2">
-            <PrimaryButton
-              disabled={windows.length === 0}
-              onClick={() => {
-                if (windows.length === 1) setConfirmLock(windows[0]);
-                else setShowPickSheet(true);
-              }}
+      </div>
+    );
+  }
+
+  function renderPollWorkspace() {
+    return (
+      <div className="space-y-3">
+        {hasWindows && (
+          <>
+            <p
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
-              Pick a date
-            </PrimaryButton>
-            <GhostButton
-              onClick={() =>
-                setPollActive.mutate({ tripId, active: false })
-              }
-            >
-              Nevermind, set dates manually
-            </GhostButton>
-            <button
-              onClick={() => setConfirmReset(true)}
-              className="text-xs font-medium"
-              style={{ color: "var(--color-bt-danger)" }}
-            >
-              Reset poll
-            </button>
+              Poll options
+            </p>
+            {renderCrewGrid()}
+            {canEdit && (
+              <div className="flex flex-wrap items-center gap-2">
+                {windows.map((w) => (
+                  <button
+                    key={w.id}
+                    onClick={() =>
+                      removeWindowM.mutate({ tripId, windowId: w.id })
+                    }
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px]"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                    aria-label={`Remove ${formatDateRangeCompact(w.start_date, w.end_date)}`}
+                  >
+                    {formatDateRangeCompact(w.start_date, w.end_date)}
+                    <X size={11} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {canEdit && renderAddOptionRow()}
+        {canEdit && isOwner && (
+          <div className="space-y-2 pt-1">
+            {pollActive ? (
+              <>
+                <PrimaryButton
+                  disabled={windows.length === 0}
+                  onClick={() => {
+                    if (windows.length === 1) setConfirmLock(windows[0]);
+                    else setShowPickSheet(true);
+                  }}
+                >
+                  Pick a date
+                </PrimaryButton>
+                <GhostButton
+                  onClick={() =>
+                    setPollActive.mutate({ tripId, active: false })
+                  }
+                >
+                  Pause polling
+                </GhostButton>
+                <button
+                  onClick={() => setConfirmReset(true)}
+                  className="text-xs font-medium"
+                  style={{ color: "var(--color-bt-danger)" }}
+                >
+                  Reset poll
+                </button>
+              </>
+            ) : (
+              <>
+                <PrimaryButton
+                  disabled={windows.length === 0}
+                  onClick={() =>
+                    setPollActive.mutate({ tripId, active: true })
+                  }
+                >
+                  {hasWindows ? "Start polling" : "Add an option to start"}
+                </PrimaryButton>
+                {!hasWindows && (
+                  <GhostButton
+                    onClick={() => {
+                      setShowPollBuilder(false);
+                      setPollStart("");
+                      setPollEnd("");
+                    }}
+                  >
+                    Nevermind
+                  </GhostButton>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -591,20 +707,16 @@ export function DatesPlanningRow({
   function renderBody() {
     if (datesLocked) return renderLocked();
 
-    // Member view: poll grid only when active
+    // Member view: crew grid only when poll is active
     if (!canEdit) {
-      if (pollActive && hasWindows) return renderPollGrid();
+      if (pollActive && hasWindows) return renderCrewGrid();
       return null;
     }
 
-    // Owner/planner: empty / builder / paused / active
-    if (showPollBuilder || (hasWindows && !pollActive)) {
-      // Owner returning to a paused/in-progress poll: builder is the entry path.
-      // Allow add/remove until they hit Start Polling.
-      return renderPollBuilder();
+    // Owner/planner: unified workspace for builder + grid + paused states
+    if (showPollBuilder || hasWindows || pollActive) {
+      return renderPollWorkspace();
     }
-
-    if (pollActive && hasWindows) return renderPollGrid();
 
     // Empty state
     return (
