@@ -1371,6 +1371,7 @@ function PlanningSection({
 
   const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ windowId: string; label: string } | null>(null);
+  const [showSelectDateModal, setShowSelectDateModal] = useState(false);
   const [addingDateOption, setAddingDateOption] = useState(false);
   const [newOptionStart, setNewOptionStart] = useState("");
   const [newOptionEnd, setNewOptionEnd] = useState("");
@@ -1645,7 +1646,7 @@ function PlanningSection({
               </button>
             </div>
 
-            {/* Set dates | Add option */}
+            {/* Set dates | Select date */}
             {canEdit && (
               <div className="flex gap-2">
                 <button
@@ -1667,24 +1668,15 @@ function PlanningSection({
                   {lockDates.isPending ? "Setting…" : "Set dates"}
                 </button>
                 <button
-                  disabled={!directStart || !directEnd || addWindow.isPending}
-                  onClick={() => {
-                    addWindow.mutate(
-                      { tripId: trip.id, id: crypto.randomUUID(), startDate: directStart, endDate: directEnd },
-                      { onSuccess() { setDirectStart(""); setDirectEnd(""); } }
-                    );
-                  }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-opacity"
+                  onClick={() => setShowSelectDateModal(true)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-semibold transition-opacity"
                   style={{
-                    border: "1.5px dashed var(--color-bt-accent)",
-                    color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
+                    border: "1.5px solid var(--color-bt-accent)",
+                    color: "var(--color-bt-accent)",
                     background: "transparent",
-                    opacity: (!directStart || !directEnd) ? 0.6 : 1,
-                    cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
                   }}
                 >
-                  <Plus size={14} />
-                  Add option
+                  Select date
                 </button>
               </div>
             )}
@@ -1826,6 +1818,89 @@ function PlanningSection({
               </div>
             </div>
 
+
+            {/* Select date modal */}
+            {showSelectDateModal && (
+              <div
+                className="fixed inset-0 z-50 flex items-end justify-center sm:items-center px-4 pb-4 sm:pb-0"
+                style={{ background: "var(--color-bt-overlay)" }}
+                onClick={(e) => e.target === e.currentTarget && setShowSelectDateModal(false)}
+              >
+                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                      Pick a date
+                    </p>
+                    <button
+                      onClick={() => setShowSelectDateModal(false)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                      aria-label="Close"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {windows.map((w) => {
+                      const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                      const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
+                      const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+                      const maybeCount = w.votes.filter((v) => v.answer === "maybe").length;
+                      const noCount = w.votes.filter((v) => v.answer === "no").length;
+                      return (
+                        <div
+                          key={w.id}
+                          className="flex items-center justify-between rounded-xl px-4 py-3 gap-3"
+                          style={{ background: "var(--color-bt-card-raised)" }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                              {startFmt} – {endFmt}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: "var(--color-bt-text-dim)" }}>
+                              {nights} night{nights !== 1 ? "s" : ""}
+                            </p>
+                            {(yesCount + maybeCount + noCount) > 0 && (
+                              <div className="flex items-center gap-2 mt-1.5">
+                                {yesCount > 0 && (
+                                  <span className="text-[11px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--color-bt-vote-yes)", color: "var(--color-bt-vote-yes-text)" }}>
+                                    ✓ {yesCount}
+                                  </span>
+                                )}
+                                {maybeCount > 0 && (
+                                  <span className="text-[11px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--color-bt-vote-maybe)", color: "var(--color-bt-vote-yes-text)" }}>
+                                    ~ {maybeCount}
+                                  </span>
+                                )}
+                                {noCount > 0 && (
+                                  <span className="text-[11px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--color-bt-vote-no)", color: "var(--color-bt-vote-yes-text)" }}>
+                                    ✗ {noCount}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            disabled={lockWindow.isPending}
+                            onClick={() => {
+                              lockWindow.mutate(
+                                { tripId: trip.id, windowId: w.id },
+                                { onSuccess() { setShowSelectDateModal(false); } }
+                              );
+                            }}
+                            className="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-semibold"
+                            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                          >
+                            {lockWindow.isPending ? "…" : "Select"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Lock confirm dialog */}
             {lockConfirm && (
