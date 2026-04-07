@@ -319,6 +319,34 @@ export const datePollRouter = router({
     .input(z.object({ tripId: z.string() }))
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx }) => {
+      // Fetch the locked window ID before clearing it
+      const { data: pollData } = await ctx.supabase
+        .from("date_polls")
+        .select("locked_window_id")
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+
+      const lockedWindowId = pollData?.locked_window_id;
+
+      // If the locked window has zero votes it was set directly (not chosen from
+      // a live poll) — delete it so the UI returns to the simple date picker
+      // instead of the poll flow. Windows with votes came from a real poll and
+      // must be preserved so crew input isn't lost.
+      if (lockedWindowId) {
+        const { count } = await ctx.supabase
+          .from("date_poll_votes")
+          .select("window_id", { count: "exact", head: true })
+          .eq("window_id", lockedWindowId);
+
+        if ((count ?? 0) === 0) {
+          await ctx.supabase
+            .from("date_windows")
+            .delete()
+            .eq("id", lockedWindowId);
+        }
+      }
+
+      // Clear trip dates
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
