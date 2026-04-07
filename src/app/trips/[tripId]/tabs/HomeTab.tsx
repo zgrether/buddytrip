@@ -2134,7 +2134,7 @@ function PlanningSection({
                           cursor: canSend ? "pointer" : "not-allowed",
                         }}
                       >
-                        {addWindow.isPending ? "Sending…" : "Send poll"}
+                        {addWindow.isPending ? "Starting…" : "Start polling"}
                       </button>
                       <button
                         onClick={() => setShowPollBuilder(false)}
