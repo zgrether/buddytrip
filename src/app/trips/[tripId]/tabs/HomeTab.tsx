@@ -2070,8 +2070,6 @@ function PlanningSection({
                             });
                           }
                           setShowPollBuilder(false);
-                          setDirectStart("");
-                          setDirectEnd("");
                           setPollOptions([]);
                         }}
                         className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
