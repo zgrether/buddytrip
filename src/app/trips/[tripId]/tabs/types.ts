@@ -9,6 +9,8 @@ export interface TripData {
   image_url?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  date_set_method?: "direct" | "poll" | null;
+  date_poll_active?: boolean | null;
   accommodation?: string | null;
   notes?: string | null;
   activities?: string[] | null;
