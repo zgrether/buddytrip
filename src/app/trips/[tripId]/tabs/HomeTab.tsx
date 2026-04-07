@@ -1947,65 +1947,55 @@ function PlanningSection({
               </button>
             </div>
 
-            {/* Set dates button — hidden when poll builder is open */}
-            {!showPollBuilder && (
-              <button
-                disabled={!directStart || !directEnd || lockDates.isPending}
-                onClick={() => {
-                  lockDates.mutate(
-                    { tripId: trip.id, startDate: directStart, endDate: directEnd },
-                    {
-                      onSuccess() {
-                        setDirectStart("");
-                        setDirectEnd("");
-                        setOpenRow(null);
-                      },
-                    }
-                  );
-                }}
-                className="mt-3 flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
-                style={{
-                  background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
-                  color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
-                  opacity: (!directStart || !directEnd) ? 0.6 : 1,
-                  cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
-                }}
-              >
-                {lockDates.isPending ? "Setting dates…" : "Set dates"}
-              </button>
-            )}
-
-            {/* Divider — hidden when poll builder is open */}
-            {!showPollBuilder && (
-              <div
-                className="my-4"
-                style={{ height: "1px", background: "var(--color-bt-border)" }}
-              />
-            )}
-
-            {/* Poll the crew button / inline poll builder */}
+            {/* Set dates + Poll the crew — side by side, hidden when poll builder is open */}
             {!showPollBuilder ? (
-              <button
-                onClick={() => {
-                  // If dates were previously locked, pre-fill the primary inputs
-                  if (trip.start_date && trip.end_date) {
-                    setDirectStart(trip.start_date);
-                    setDirectEnd(trip.end_date);
-                    unlockDates.mutate({ tripId: trip.id });
-                  }
-                  setPollOptions([]);
-                  setShowPollBuilder(true);
-                }}
-                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors"
-                style={{
-                  border: "1.5px dashed var(--color-bt-accent)",
-                  color: "var(--color-bt-accent)",
-                  background: "transparent",
-                }}
-              >
-                <Plus size={16} />
-                Poll the crew for the best date
-              </button>
+              <div className="mt-3 flex gap-2">
+                <button
+                  disabled={!directStart || !directEnd || lockDates.isPending}
+                  onClick={() => {
+                    lockDates.mutate(
+                      { tripId: trip.id, startDate: directStart, endDate: directEnd },
+                      {
+                        onSuccess() {
+                          setDirectStart("");
+                          setDirectEnd("");
+                          setOpenRow(null);
+                        },
+                      }
+                    );
+                  }}
+                  className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
+                  style={{
+                    background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+                    color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
+                    opacity: (!directStart || !directEnd) ? 0.6 : 1,
+                    cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {lockDates.isPending ? "Setting…" : "Set dates"}
+                </button>
+                <button
+                  onClick={() => {
+                    // If dates were previously locked, pre-fill the primary inputs
+                    if (trip.start_date && trip.end_date) {
+                      setDirectStart(trip.start_date);
+                      setDirectEnd(trip.end_date);
+                      unlockDates.mutate({ tripId: trip.id });
+                    }
+                    setPollOptions([]);
+                    setShowPollBuilder(true);
+                  }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+                  style={{
+                    border: "1.5px dashed var(--color-bt-accent)",
+                    color: "var(--color-bt-accent)",
+                    background: "transparent",
+                  }}
+                >
+                  <Plus size={14} />
+                  Poll the crew
+                </button>
+              </div>
             ) : (
               <div className="mt-3 space-y-3">
                 {/* Additional poll option rows (primary inputs above are Option 1) */}
