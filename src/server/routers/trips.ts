@@ -470,6 +470,12 @@ export const tripsRouter = router({
         tripId: z.string(),
         startDate: z.string().min(1),
         endDate: z.string().min(1),
+        // Which flow chose the date — controls the "Change date" affordance
+        // in the locked view. "poll" implies an existing window was picked.
+        method: z.enum(["direct", "poll"]).optional(),
+        // When method === 'poll', the caller passes the chosen window id so
+        // we don't create a duplicate date_window row.
+        windowId: z.string().optional(),
       })
     )
     .use(requireTripRole("Planner"))
@@ -481,30 +487,40 @@ export const tripsRouter = router({
         });
       }
 
-      // 1. Insert a date_window for this range
-      const windowId = crypto.randomUUID();
-      const { error: winErr } = await ctx.supabase
-        .from("date_windows")
-        .insert({
-          id: windowId,
-          trip_id: ctx.tripId,
-          start_date: input.startDate,
-          end_date: input.endDate,
-        });
+      const method = input.method ?? "direct";
 
-      if (winErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to create date window: ${winErr.message}`,
-        });
+      // 1. For direct mode (or if no windowId was supplied) insert a new
+      //    date_window for this range. For poll mode we reuse the selected
+      //    window.
+      let windowId = input.windowId ?? null;
+      if (method === "direct" || !windowId) {
+        windowId = crypto.randomUUID();
+        const { error: winErr } = await ctx.supabase
+          .from("date_windows")
+          .insert({
+            id: windowId,
+            trip_id: ctx.tripId,
+            start_date: input.startDate,
+            end_date: input.endDate,
+          });
+
+        if (winErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to create date window: ${winErr.message}`,
+          });
+        }
       }
 
-      // 2. Lock the trip dates
+      // 2. Lock the trip dates + record which flow chose them. Locking
+      //    always closes any active poll.
       const { error: tripErr } = await ctx.supabase
         .from("trips")
         .update({
           start_date: input.startDate,
           end_date: input.endDate,
+          date_set_method: method,
+          date_poll_active: false,
         })
         .eq("id", ctx.tripId);
 
@@ -535,6 +551,28 @@ export const tripsRouter = router({
       }
 
       return { windowId, startDate: input.startDate, endDate: input.endDate };
+    }),
+
+  // -----------------------------------------------------------------------
+  // setDatePollActive — Owner toggles whether the crew sees the poll grid
+  // -----------------------------------------------------------------------
+  setDatePollActive: authedProcedure
+    .input(z.object({ tripId: z.string(), active: z.boolean() }))
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ date_poll_active: input.active })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update date poll state: ${error.message}`,
+        });
+      }
+
+      return { success: true };
     }),
 
   // -----------------------------------------------------------------------
