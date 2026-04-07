@@ -2071,7 +2071,7 @@ function PlanningSection({
                 </button>
 
                 {/* Crew who will be polled */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mt-2">
                   <p
                     className="text-xs font-semibold uppercase tracking-wider"
                     style={{ color: "var(--color-bt-text-dim)" }}
