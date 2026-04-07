@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   Plus,
@@ -1621,87 +1621,80 @@ function PlanningSection({
               </button>
             </div>
 
-            {/* Single panel — date columns × member rows */}
+            {/* Single-grid panel — date columns × member rows */}
             <div
               className="rounded-xl overflow-hidden overflow-x-auto"
               style={{ background: "var(--color-bt-card-raised)" }}
             >
-              <div style={{ minWidth: `${100 + windows.length * 96}px` }}>
-                {/* Column headers — one per date option */}
-                <div
-                  className="grid"
-                  style={{ gridTemplateColumns: `auto repeat(${windows.length}, 1fr)` }}
-                >
-                  {/* Empty name-column cell */}
-                  <div />
-                  {windows.map((w) => {
-                    const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                    const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                    const label = `${startFmt}–${endFmt}`;
-                    const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
-                    const yesCount = w.votes.filter((v) => v.answer === "yes").length;
-                    return (
-                      <div
-                        key={w.id}
-                        className="px-2 pt-2.5 pb-2 text-center"
-                        style={{ borderLeft: "1px solid var(--color-bt-border)" }}
-                      >
-                        <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                          {label}
+              <div
+                className="grid"
+                style={{
+                  minWidth: `${100 + windows.length * 96}px`,
+                  gridTemplateColumns: `auto repeat(${windows.length}, 1fr)`,
+                }}
+              >
+                {/* Header row — empty name cell + one cell per date */}
+                <div className="px-3 pt-2.5 pb-2" />
+                {windows.map((w) => {
+                  const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                  const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                  const label = `${startFmt}–${endFmt}`;
+                  const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
+                  const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+                  return (
+                    <div key={w.id} className="px-2 pt-2.5 pb-2 text-center">
+                      <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                        {label}
+                      </p>
+                      <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {nights}n
+                      </p>
+                      {yesCount > 0 && (
+                        <p className="text-[10px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                          {yesCount} ✓
                         </p>
-                        <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                          {nights}n
-                        </p>
-                        {yesCount > 0 && (
-                          <p className="text-[10px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-                            {yesCount} ✓
-                          </p>
-                        )}
-                        {canEdit && (
-                          <div className="mt-1 flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => setLockConfirm({ windowId: w.id, label })}
-                              style={{ color: "var(--color-bt-text-dim)" }}
-                              aria-label="Lock this date"
-                            >
-                              <Lock size={10} />
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm({ windowId: w.id, label })}
-                              style={{ color: "var(--color-bt-text-dim)" }}
-                              aria-label="Remove date option"
-                            >
-                              <X size={11} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                      )}
+                      {canEdit && (
+                        <div className="mt-1 flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => setLockConfirm({ windowId: w.id, label })}
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                            aria-label="Lock this date"
+                          >
+                            <Lock size={10} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ windowId: w.id, label })}
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                            aria-label="Remove date option"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
-                {/* Member rows */}
-                {tripMembers.map((m) => {
+                {/* Member rows — each member contributes N+1 cells to the shared grid */}
+                {tripMembers.map((m, rowIdx) => {
+                  const rowBg = rowIdx % 2 === 0 ? "var(--color-bt-state-fill)" : "transparent";
                   const isMe = m.user_id === currentUser?.id;
                   const isInteractive = m.user_id === currentUser?.id || !!m.isGuest;
                   return (
-                    <div
-                      key={m.user_id}
-                      className="grid"
-                      style={{
-                        gridTemplateColumns: `auto repeat(${windows.length}, 1fr)`,
-                        borderTop: "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      {/* Name */}
-                      <div className="flex items-center gap-2 px-3 py-2 min-w-0">
+                    <Fragment key={m.user_id}>
+                      {/* Name cell */}
+                      <div
+                        className="flex items-center gap-2 px-3 py-2 min-w-0"
+                        style={{ background: rowBg }}
+                      >
                         <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
                         <span className="truncate text-[13px]" style={{ color: "var(--color-bt-text)" }}>
                           {m.displayName}
                           {isMe && <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>}
                         </span>
                       </div>
-                      {/* Vote buttons — one cell per date */}
+                      {/* Vote cells — one per date column */}
                       {windows.map((w) => {
                         const vote = w.votes.find((v) => v.user_id === m.user_id);
                         const answer = (vote?.answer ?? null) as "yes" | "no" | "maybe" | null;
@@ -1715,7 +1708,7 @@ function PlanningSection({
                           <div
                             key={w.id}
                             className="flex items-center justify-center gap-0.5 px-1 py-2"
-                            style={{ borderLeft: "1px solid var(--color-bt-border)" }}
+                            style={{ background: rowBg }}
                           >
                             {(["yes", "maybe", "no"] as const).map((type) => {
                               const isActive = answer === type;
@@ -1743,7 +1736,7 @@ function PlanningSection({
                           </div>
                         );
                       })}
-                    </div>
+                    </Fragment>
                   );
                 })}
               </div>
