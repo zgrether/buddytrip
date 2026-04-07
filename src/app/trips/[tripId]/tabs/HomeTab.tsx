@@ -2100,9 +2100,8 @@ function PlanningSection({
                   ))}
                 </div>
 
-                {/* Send poll to crew */}
+                {/* Send poll + Never mind — side by side */}
                 {(() => {
-                  // Option 1 = primary inputs (directStart/directEnd), rest = pollOptions
                   const allOptions = [
                     { start: directStart, end: directEnd },
                     ...pollOptions,
@@ -2110,43 +2109,46 @@ function PlanningSection({
                   const validOptions = allOptions.filter((o) => o.start && o.end);
                   const canSend = validOptions.length >= 1;
                   return (
-                    <button
-                      disabled={!canSend || addWindow.isPending}
-                      onClick={async () => {
-                        for (const opt of validOptions) {
-                          await addWindow.mutateAsync({
-                            tripId: trip.id,
-                            id: crypto.randomUUID(),
-                            startDate: opt.start,
-                            endDate: opt.end,
-                          });
-                        }
-                        setShowPollBuilder(false);
-                        setDirectStart("");
-                        setDirectEnd("");
-                        setPollOptions([]);
-                      }}
-                      className="flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
-                      style={{
-                        background: canSend ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                        color: canSend ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                        opacity: canSend ? 1 : 0.6,
-                        cursor: canSend ? "pointer" : "not-allowed",
-                      }}
-                    >
-                      {addWindow.isPending ? "Sending…" : "Send poll to crew"}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={!canSend || addWindow.isPending}
+                        onClick={async () => {
+                          for (const opt of validOptions) {
+                            await addWindow.mutateAsync({
+                              tripId: trip.id,
+                              id: crypto.randomUUID(),
+                              startDate: opt.start,
+                              endDate: opt.end,
+                            });
+                          }
+                          setShowPollBuilder(false);
+                          setDirectStart("");
+                          setDirectEnd("");
+                          setPollOptions([]);
+                        }}
+                        className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
+                        style={{
+                          background: canSend ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+                          color: canSend ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                          opacity: canSend ? 1 : 0.6,
+                          cursor: canSend ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        {addWindow.isPending ? "Sending…" : "Send poll"}
+                      </button>
+                      <button
+                        onClick={() => setShowPollBuilder(false)}
+                        className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-medium transition-colors"
+                        style={{
+                          background: "var(--color-bt-card-raised)",
+                          color: "var(--color-bt-text-dim)",
+                        }}
+                      >
+                        Never mind
+                      </button>
+                    </div>
                   );
                 })()}
-
-                {/* Never mind */}
-                <button
-                  onClick={() => setShowPollBuilder(false)}
-                  className="flex w-full items-center justify-center py-2 text-xs font-medium"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Never mind
-                </button>
               </div>
             )}
           </div>
