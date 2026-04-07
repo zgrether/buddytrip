@@ -152,6 +152,29 @@ describe("datePoll router", () => {
     expect(win1?.votes.length).toBeGreaterThan(0);
   });
 
+  it("unlock — deletes direct-set window (no votes) so UI reverts to date picker", async () => {
+    // Create a fresh trip and lock dates directly (no poll, no votes)
+    const directTripId = await ctx.createTrip("Direct Lock Test");
+    const caller = ctx.caller();
+
+    await caller.trips.lockDates({
+      tripId: directTripId,
+      startDate: "2026-09-01",
+      endDate: "2026-09-05",
+    });
+
+    // Verify the window was created
+    let poll = await caller.datePoll.get({ tripId: directTripId });
+    expect(poll.windows.length).toBe(1);
+
+    // Unlock — window has no votes so it should be deleted
+    await caller.datePoll.unlock({ tripId: directTripId });
+
+    poll = await caller.datePoll.get({ tripId: directTripId });
+    expect(poll.windows.length).toBe(0);
+    expect(poll.lockedWindowId).toBeNull();
+  });
+
   it("unlock — member cannot unlock", async () => {
     const caller = ctx.callerAs("member");
     await expect(

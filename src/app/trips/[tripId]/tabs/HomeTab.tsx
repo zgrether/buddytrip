@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   Plus,
@@ -1259,7 +1259,7 @@ function PlanningSection({
   // ── Direct lock dates state ──────────────────────────────────────────
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
-  const [showPollBuilder, setShowPollBuilder] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
   const [pollOptions, setPollOptions] = useState<{ id: string; start: string; end: string }[]>([]);
 
   const lockDates = trpc.trips.lockDates.useMutation({
@@ -1371,6 +1371,7 @@ function PlanningSection({
 
   const [lockConfirm, setLockConfirm] = useState<{ windowId: string; label: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ windowId: string; label: string } | null>(null);
+  const [showSelectDateModal, setShowSelectDateModal] = useState(false);
   const [addingDateOption, setAddingDateOption] = useState(false);
   const [newOptionStart, setNewOptionStart] = useState("");
   const [newOptionEnd, setNewOptionEnd] = useState("");
@@ -1420,11 +1421,11 @@ function PlanningSection({
 
   // ── Dates ─────────────────────────────────────────────────────────────
   const datesLocked = !!(trip.start_date && trip.end_date);
-  const pollOpen = (poll?.windows.length ?? 0) > 0 && !datesLocked;
-  const datesState: ArcCardState = datesLocked ? "done" : pollOpen ? "inProgress" : "none";
+  const pollActive = (poll?.windows.length ?? 0) > 0 && !datesLocked;
+  const datesState: ArcCardState = datesLocked ? "done" : pollActive ? "inProgress" : "none";
   const datesNote = (() => {
     if (datesLocked) return formatDateRangeCompact(trip.start_date, trip.end_date);
-    if (!pollOpen) return "Not set yet";
+    if (!pollActive) return "Not set yet";
     const winCount = poll!.windows.length;
     return `Poll active · ${winCount} option${winCount !== 1 ? "s" : ""}`;
   })();
@@ -1578,10 +1579,10 @@ function PlanningSection({
       {/* ── Dates ── */}
       <PlanningRow
         icon={<Calendar size={16} />}
-        label={datesLocked ? "Dates Selected" : pollOpen ? "Checking Availability" : "Set Dates"}
+        label={datesLocked ? "Dates Selected" : pollActive ? "Checking Availability" : "Set Dates"}
         note={datesNote}
         noteWarn={false}
-        warnState={pollOpen}
+        warnState={pollActive}
         state={datesState}
         isOpen={openRow === "dates"}
         onToggle={() => toggle("dates")}
@@ -1600,283 +1601,6 @@ function PlanningSection({
               >
                 {unlockDates.isPending ? "Unlocking…" : "Change dates →"}
               </button>
-            )}
-          </div>
-        ) : pollOpen ? (
-          <div className="space-y-3">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <p
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Polling
-              </p>
-              <button
-                onClick={() => onTabChange?.("crew")}
-                className="text-xs font-medium"
-                style={{ color: "var(--color-bt-accent)" }}
-              >
-                Manage crew →
-              </button>
-            </div>
-
-            {/* Date option cards with vote rows */}
-            {windows.map((w) => {
-              const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              const label = `${startFmt}–${endFmt}`;
-              const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
-              const yesCount = w.votes.filter((v) => v.answer === "yes").length;
-
-              return (
-                <div
-                  key={w.id}
-                  className="rounded-xl"
-                  style={{ background: "var(--color-bt-card-raised)", overflow: "hidden" }}
-                >
-                  {/* Header */}
-                  <div className="flex items-center justify-between px-3 pt-3 pb-2">
-                    <div>
-                      <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                        {label}
-                      </span>
-                      <span className="ml-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {nights} night{nights !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {yesCount > 0 && (
-                        <span className="text-[11px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-                          {yesCount} yes
-                        </span>
-                      )}
-                      {canEdit && (
-                        <>
-                          <button
-                            onClick={() => setLockConfirm({ windowId: w.id, label })}
-                            className="flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors"
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                            aria-label="Lock this date"
-                          >
-                            <Lock size={11} />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm({ windowId: w.id, label })}
-                            className="flex items-center justify-center rounded-md p-1 transition-colors"
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                            aria-label="Remove date option"
-                          >
-                            <X size={13} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Crew vote rows */}
-                  <div className="px-3 pb-2">
-                    {tripMembers.map((m) => {
-                      const vote = w.votes.find((v) => v.user_id === m.user_id);
-                      const answer = (vote?.answer ?? null) as "yes" | "no" | "maybe" | null;
-                      const isInteractive = m.user_id === currentUser?.id || !!m.isGuest;
-                      const isMe = m.user_id === currentUser?.id;
-
-                      return (
-                        <div
-                          key={m.user_id}
-                          className="flex items-center justify-between py-1.5"
-                          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
-                            <span className="truncate text-[13px]" style={{ color: "var(--color-bt-text)" }}>
-                              {m.displayName}
-                              {isMe && <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>}
-                            </span>
-                          </div>
-                          {/* Vote buttons */}
-                          <div className="flex items-center gap-1">
-                            {(["yes", "maybe", "no"] as const).map((type) => {
-                              const isActive = answer === type;
-                              const colors: Record<string, { bg: string }> = {
-                                yes: { bg: "var(--color-bt-vote-yes)" },
-                                maybe: { bg: "var(--color-bt-vote-maybe)" },
-                                no: { bg: "var(--color-bt-vote-no)" },
-                              };
-                              const labels: Record<string, string> = { yes: "✓", maybe: "~", no: "✗" };
-                              return (
-                                <button
-                                  key={type}
-                                  disabled={!isInteractive}
-                                  onClick={() => handleGridVote(m.user_id!, w.id, isActive ? null : type)}
-                                  className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
-                                  style={
-                                    isActive
-                                      ? { background: colors[type].bg, color: "var(--color-bt-vote-yes-text)" }
-                                      : {
-                                          background: "transparent",
-                                          color: "var(--color-bt-text-dim)",
-                                          border: "1px dashed var(--color-bt-border)",
-                                          cursor: isInteractive ? "pointer" : "default",
-                                        }
-                                  }
-                                >
-                                  {labels[type]}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Add date option */}
-            {canEdit && !addingDateOption && (
-              <button
-                onClick={() => setAddingDateOption(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors"
-                style={{
-                  border: "1.5px dashed var(--color-bt-accent)",
-                  color: "var(--color-bt-accent)",
-                  background: "transparent",
-                }}
-              >
-                <Plus size={16} />
-                Add date option
-              </button>
-            )}
-            {canEdit && addingDateOption && (
-              <div
-                className="rounded-xl p-3"
-                style={{ background: "var(--color-bt-card-raised)" }}
-              >
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                      From
-                    </label>
-                    <input
-                      type="date"
-                      value={newOptionStart}
-                      onChange={(e) => setNewOptionStart(e.target.value)}
-                      className="w-full rounded-xl px-3 py-2.5 text-sm"
-                      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                    />
-                  </div>
-                  <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>→</span>
-                  <div className="flex-1">
-                    <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                      To
-                    </label>
-                    <input
-                      type="date"
-                      value={newOptionEnd}
-                      onChange={(e) => setNewOptionEnd(e.target.value)}
-                      className="w-full rounded-xl px-3 py-2.5 text-sm"
-                      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => { setAddingDateOption(false); setNewOptionStart(""); setNewOptionEnd(""); }}
-                    className="flex-1 rounded-xl py-2 text-sm font-medium"
-                    style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={!newOptionStart || !newOptionEnd}
-                    onClick={() => {
-                      addWindow.mutate({ tripId: trip.id, id: crypto.randomUUID(), startDate: newOptionStart, endDate: newOptionEnd });
-                      setAddingDateOption(false);
-                      setNewOptionStart("");
-                      setNewOptionEnd("");
-                    }}
-                    className="flex-1 rounded-xl py-2 text-sm font-semibold"
-                    style={{
-                      background: (!newOptionStart || !newOptionEnd) ? "var(--color-bt-card)" : "var(--color-bt-accent)",
-                      color: (!newOptionStart || !newOptionEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
-                      opacity: (!newOptionStart || !newOptionEnd) ? 0.6 : 1,
-                    }}
-                  >
-                    Add option
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Lock confirm dialog */}
-            {lockConfirm && (
-              <div
-                className="fixed inset-0 z-50 flex items-center justify-center px-6"
-                style={{ background: "var(--color-bt-overlay)" }}
-                onClick={(e) => e.target === e.currentTarget && setLockConfirm(null)}
-              >
-                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
-                  <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                    Lock in {lockConfirm.label}?
-                  </p>
-                  <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                    This will set the trip dates and close the poll.
-                  </p>
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      onClick={() => setLockConfirm(null)}
-                      className="flex-1 rounded-xl py-2.5 text-sm font-medium"
-                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => { lockWindow.mutate({ tripId: trip.id, windowId: lockConfirm.windowId }); setLockConfirm(null); }}
-                      className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
-                      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                    >
-                      Lock dates
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Delete confirm dialog */}
-            {deleteConfirm && (
-              <div
-                className="fixed inset-0 z-50 flex items-center justify-center px-6"
-                style={{ background: "var(--color-bt-overlay)" }}
-                onClick={(e) => e.target === e.currentTarget && setDeleteConfirm(null)}
-              >
-                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
-                  <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                    Remove {deleteConfirm.label}?
-                  </p>
-                  <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                    All votes for this date option will be deleted.
-                  </p>
-                  <div className="mt-4 flex gap-3">
-                    <button
-                      onClick={() => setDeleteConfirm(null)}
-                      className="flex-1 rounded-xl py-2.5 text-sm font-medium"
-                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => { removeWindow.mutate({ tripId: trip.id, windowId: deleteConfirm.windowId }); setDeleteConfirm(null); }}
-                      className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
-                      style={{ background: "var(--color-bt-danger)", color: "#fff" }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              </div>
             )}
           </div>
         ) : (
@@ -1947,218 +1671,490 @@ function PlanningSection({
               </button>
             </div>
 
-            {/* Set dates button — hidden when poll builder is open */}
-            {!showPollBuilder && (
-              <button
-                disabled={!directStart || !directEnd || lockDates.isPending}
-                onClick={() => {
-                  lockDates.mutate(
-                    { tripId: trip.id, startDate: directStart, endDate: directEnd },
-                    {
-                      onSuccess() {
-                        setDirectStart("");
-                        setDirectEnd("");
-                        setOpenRow(null);
-                      },
+            {/* Extra date option rows — grouped with Option 1 above, shown in poll builder mode */}
+            {pollOpen && !pollActive && pollOptions.map((opt, i) => (
+              <div key={opt.id} className="mt-3 flex items-end gap-2">
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={opt.start}
+                    placeholder="From"
+                    onChange={(e) => {
+                      const updated = [...pollOptions];
+                      updated[i] = { ...opt, start: e.target.value };
+                      setPollOptions(updated);
+                    }}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm"
+                    style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                  />
+                </div>
+                <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>→</span>
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={opt.end}
+                    placeholder="To"
+                    onChange={(e) => {
+                      const updated = [...pollOptions];
+                      updated[i] = { ...opt, end: e.target.value };
+                      setPollOptions(updated);
+                    }}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm"
+                    style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                  />
+                </div>
+                <button
+                  onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))}
+                  className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                  aria-label="Remove option"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+
+            {/* Dynamic action row — 3 states */}
+            <div className="mt-3 flex gap-2">
+              {!pollOpen ? (
+                <>
+                  {/* State 1: Set dates + Poll the crew */}
+                  <button
+                    disabled={!directStart || !directEnd || lockDates.isPending}
+                    onClick={() => {
+                      lockDates.mutate(
+                        { tripId: trip.id, startDate: directStart, endDate: directEnd },
+                        { onSuccess() { setDirectStart(""); setDirectEnd(""); setOpenRow(null); } }
+                      );
+                    }}
+                    className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
+                    style={{
+                      background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+                      color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
+                      opacity: (!directStart || !directEnd) ? 0.6 : 1,
+                      cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {lockDates.isPending ? "Setting…" : "Set dates"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (trip.start_date && trip.end_date) {
+                        setDirectStart(trip.start_date);
+                        setDirectEnd(trip.end_date);
+                        unlockDates.mutate({ tripId: trip.id });
+                      }
+                      setPollOptions([]);
+                      setPollOpen(true);
+                    }}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+                    style={{
+                      border: "1.5px dashed var(--color-bt-accent)",
+                      color: "var(--color-bt-accent)",
+                      background: "transparent",
+                    }}
+                  >
+                    <Plus size={14} />
+                    Poll the crew
+                  </button>
+                </>
+              ) : pollOpen && !pollActive ? (
+                <>
+                  {/* State 2: Start polling + Add date option + Never mind */}
+                  {(() => {
+                    const allOptions = [{ start: directStart, end: directEnd }, ...pollOptions];
+                    const validOptions = allOptions.filter((o) => o.start && o.end);
+                    const canSend = validOptions.length >= 1;
+                    return (
+                      <button
+                        disabled={!canSend || addWindow.isPending}
+                        onClick={async () => {
+                          for (const opt of validOptions) {
+                            await addWindow.mutateAsync({
+                              tripId: trip.id,
+                              id: crypto.randomUUID(),
+                              startDate: opt.start,
+                              endDate: opt.end,
+                            });
+                          }
+                          setPollOpen(false);
+                          setPollOptions([]);
+                        }}
+                        className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
+                        style={{
+                          background: canSend ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+                          color: canSend ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                          opacity: canSend ? 1 : 0.6,
+                          cursor: canSend ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        {addWindow.isPending ? "Starting…" : "Start polling"}
+                      </button>
+                    );
+                  })()}
+                  <button
+                    onClick={() =>
+                      setPollOptions([...pollOptions, { id: crypto.randomUUID(), start: "", end: "" }])
                     }
-                  );
-                }}
-                className="mt-3 flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
-                style={{
-                  background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
-                  color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
-                  opacity: (!directStart || !directEnd) ? 0.6 : 1,
-                  cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
-                }}
-              >
-                {lockDates.isPending ? "Setting dates…" : "Set dates"}
-              </button>
-            )}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+                    style={{
+                      border: "1.5px dashed var(--color-bt-accent)",
+                      color: "var(--color-bt-accent)",
+                      background: "transparent",
+                    }}
+                  >
+                    <Plus size={14} />
+                    Add date option
+                  </button>
+                  <button
+                    onClick={() => { setPollOpen(false); setPollOptions([]); }}
+                    className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-medium transition-colors"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    Never mind
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* State 3: Set dates + Select date (polling mode buttons) */}
+                  <button
+                    disabled={!directStart || !directEnd || lockDates.isPending}
+                    onClick={() => {
+                      lockDates.mutate(
+                        { tripId: trip.id, startDate: directStart, endDate: directEnd },
+                        { onSuccess() { setDirectStart(""); setDirectEnd(""); setOpenRow(null); } }
+                      );
+                    }}
+                    className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
+                    style={{
+                      background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+                      color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
+                      opacity: (!directStart || !directEnd) ? 0.6 : 1,
+                      cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {lockDates.isPending ? "Setting…" : "Set dates"}
+                  </button>
+                  <button
+                    onClick={() => setShowSelectDateModal(true)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-semibold"
+                    style={{
+                      border: "1.5px solid var(--color-bt-accent)",
+                      color: "var(--color-bt-accent)",
+                      background: "transparent",
+                    }}
+                  >
+                    Select date
+                  </button>
+                </>
+              )}
+            </div>
 
-            {/* Divider — hidden when poll builder is open */}
-            {!showPollBuilder && (
-              <div
-                className="my-4"
-                style={{ height: "1px", background: "var(--color-bt-border)" }}
-              />
-            )}
-
-            {/* Poll the crew button / inline poll builder */}
-            {!showPollBuilder ? (
-              <button
-                onClick={() => {
-                  // If dates were previously locked, pre-fill the primary inputs
-                  if (trip.start_date && trip.end_date) {
-                    setDirectStart(trip.start_date);
-                    setDirectEnd(trip.end_date);
-                    unlockDates.mutate({ tripId: trip.id });
-                  }
-                  setPollOptions([]);
-                  setShowPollBuilder(true);
-                }}
-                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors"
-                style={{
-                  border: "1.5px dashed var(--color-bt-accent)",
-                  color: "var(--color-bt-accent)",
-                  background: "transparent",
-                }}
-              >
-                <Plus size={16} />
-                Poll the crew for the best date
-              </button>
-            ) : (
+            {/* Crew preview — shown when building poll (before it starts) */}
+            {pollOpen && !pollActive && (
               <div className="mt-3 space-y-3">
-                {/* Additional poll option rows (primary inputs above are Option 1) */}
-                {pollOptions.map((opt, i) => (
-                  <div key={opt.id} className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <input
-                        type="date"
-                        value={opt.start}
-                        placeholder="From"
-                        onChange={(e) => {
-                          const updated = [...pollOptions];
-                          updated[i] = { ...opt, start: e.target.value };
-                          setPollOptions(updated);
-                        }}
-                        className="w-full rounded-xl px-3 py-2.5 text-sm"
-                        style={{
-                          background: "var(--color-bt-card-raised)",
-                          border: "1px solid var(--color-bt-border)",
-                          color: "var(--color-bt-text)",
-                        }}
-                      />
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Polling
+                  </p>
+                  <button onClick={() => onTabChange?.("crew")} className="text-xs font-medium" style={{ color: "var(--color-bt-accent)" }}>
+                    Manage crew →
+                  </button>
+                </div>
+                <div className="rounded-xl p-3 flex flex-wrap gap-2" style={{ background: "var(--color-bt-card-raised)" }}>
+                  {tripMembers.map((m) => (
+                    <div key={m.user_id} className="flex items-center gap-1.5">
+                      <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                      <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>{m.displayName}</span>
                     </div>
-                    <span
-                      className="mb-2.5 text-sm"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      →
-                    </span>
-                    <div className="flex-1">
-                      <input
-                        type="date"
-                        value={opt.end}
-                        placeholder="To"
-                        onChange={(e) => {
-                          const updated = [...pollOptions];
-                          updated[i] = { ...opt, end: e.target.value };
-                          setPollOptions(updated);
-                        }}
-                        className="w-full rounded-xl px-3 py-2.5 text-sm"
-                        style={{
-                          background: "var(--color-bt-card-raised)",
-                          border: "1px solid var(--color-bt-border)",
-                          color: "var(--color-bt-text)",
-                        }}
-                      />
-                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Poll grid — shown when poll is active */}
+            {pollOpen && pollActive && (
+              <div className="mt-3 space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <p
+                    className="text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Polling
+                  </p>
+                  <button
+                    onClick={() => onTabChange?.("crew")}
+                    className="text-xs font-medium"
+                    style={{ color: "var(--color-bt-accent)" }}
+                  >
+                    Manage crew →
+                  </button>
+                </div>
+
+                {/* Single-grid panel — date columns × member rows */}
+                <div
+                  className="rounded-xl overflow-hidden overflow-x-auto"
+                  style={{ background: "var(--color-bt-card-raised)" }}
+                >
+                  <div
+                    className="grid"
+                    style={{
+                      minWidth: `${100 + windows.length * 96}px`,
+                      gridTemplateColumns: `auto repeat(${windows.length}, 1fr)`,
+                    }}
+                  >
+                    {/* Header row — sticky, empty name cell + one cell per date */}
+                    <div
+                      className="px-3 pt-2.5 pb-2 sticky top-0 z-10"
+                      style={{ background: "var(--color-bt-card-raised)" }}
+                    />
+                    {windows.map((w) => {
+                      const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      const label = `${startFmt}–${endFmt}`;
+                      const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
+                      const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+                      return (
+                        <div
+                          key={w.id}
+                          className="px-2 pt-2.5 pb-2 text-center sticky top-0 z-10"
+                          style={{ background: "var(--color-bt-card-raised)" }}
+                        >
+                          <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                            {label}
+                          </p>
+                          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {nights}n
+                          </p>
+                          {yesCount > 0 && (
+                            <p className="text-[10px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
+                              {yesCount} ✓
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Member rows — each member contributes N+1 cells to the shared grid */}
+                    {tripMembers.map((m, rowIdx) => {
+                      const rowBg = rowIdx % 2 === 0 ? "var(--color-bt-state-fill)" : "transparent";
+                      const isMe = m.user_id === currentUser?.id;
+                      const isInteractive = m.user_id === currentUser?.id || !!m.isGuest;
+                      return (
+                        <Fragment key={m.user_id}>
+                          {/* Name cell */}
+                          <div
+                            className="flex items-center gap-2 px-3 py-2 min-w-0"
+                            style={{ background: rowBg }}
+                          >
+                            <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                            <span className="truncate text-[13px]" style={{ color: "var(--color-bt-text)" }}>
+                              {m.displayName}
+                              {isMe && <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}> (you)</span>}
+                            </span>
+                          </div>
+                          {/* Vote cells — one per date column */}
+                          {windows.map((w) => {
+                            const vote = w.votes.find((v) => v.user_id === m.user_id);
+                            const answer = (vote?.answer ?? null) as "yes" | "no" | "maybe" | null;
+                            const voteColors: Record<string, { bg: string }> = {
+                              yes: { bg: "var(--color-bt-vote-yes)" },
+                              maybe: { bg: "var(--color-bt-vote-maybe)" },
+                              no: { bg: "var(--color-bt-vote-no)" },
+                            };
+                            const voteLabels: Record<string, string> = { yes: "✓", maybe: "~", no: "✗" };
+                            return (
+                              <div
+                                key={w.id}
+                                className="flex items-center justify-center gap-0.5 px-1 py-2"
+                                style={{ background: rowBg }}
+                              >
+                                {(["yes", "maybe", "no"] as const).map((type) => {
+                                  const isActive = answer === type;
+                                  return (
+                                    <button
+                                      key={type}
+                                      disabled={!isInteractive}
+                                      onClick={() => handleGridVote(m.user_id!, w.id, isActive ? null : type)}
+                                      className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
+                                      style={
+                                        isActive
+                                          ? { background: voteColors[type].bg, color: "var(--color-bt-vote-yes-text)" }
+                                          : {
+                                              background: "transparent",
+                                              color: "var(--color-bt-text-dim)",
+                                              border: "1px dashed var(--color-bt-border)",
+                                              cursor: isInteractive ? "pointer" : "default",
+                                            }
+                                      }
+                                    >
+                                      {voteLabels[type]}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Select date modal */}
+            {showSelectDateModal && (
+              <div
+                className="fixed inset-0 z-50 flex items-end justify-center sm:items-center px-4 pb-4 sm:pb-0"
+                style={{ background: "var(--color-bt-overlay)" }}
+                onClick={(e) => e.target === e.currentTarget && setShowSelectDateModal(false)}
+              >
+                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                      Pick a date
+                    </p>
                     <button
-                      onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))}
-                      className="mb-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
+                      onClick={() => setShowSelectDateModal(false)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg"
                       style={{ color: "var(--color-bt-text-dim)" }}
-                      aria-label="Remove option"
+                      aria-label="Close"
                     >
                       <X size={16} />
                     </button>
                   </div>
-                ))}
-
-                {/* Add another option */}
-                <button
-                  onClick={() =>
-                    setPollOptions([...pollOptions, { id: crypto.randomUUID(), start: "", end: "" }])
-                  }
-                  className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors"
-                  style={{
-                    border: "1.5px dashed var(--color-bt-accent)",
-                    color: "var(--color-bt-accent)",
-                    background: "transparent",
-                  }}
-                >
-                  <Plus size={16} />
-                  Add another option
-                </button>
-
-                {/* Crew who will be polled */}
-                <div
-                  className="rounded-xl p-3"
-                  style={{ background: "var(--color-bt-card-raised)" }}
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <p
-                      className="text-xs font-semibold uppercase tracking-wider"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      Polling
-                    </p>
-                    <button
-                      onClick={() => onTabChange?.("crew")}
-                      className="text-xs font-medium"
-                      style={{ color: "var(--color-bt-accent)" }}
-                    >
-                      Manage crew →
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {tripMembers.map((m) => (
-                      <div key={m.user_id} className="flex items-center gap-1.5">
-                        <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
-                        <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
-                          {m.displayName}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="space-y-2">
+                    {windows.map((w) => {
+                      const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                      const nights = Math.max(1, Math.round((parseLocalDate(w.end_date).getTime() - parseLocalDate(w.start_date).getTime()) / 86400000));
+                      const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+                      const maybeCount = w.votes.filter((v) => v.answer === "maybe").length;
+                      const noCount = w.votes.filter((v) => v.answer === "no").length;
+                      return (
+                        <div
+                          key={w.id}
+                          className="flex items-center justify-between rounded-xl px-4 py-3 gap-3"
+                          style={{ background: "var(--color-bt-card-raised)" }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                              {startFmt} – {endFmt}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: "var(--color-bt-text-dim)" }}>
+                              {nights} night{nights !== 1 ? "s" : ""}
+                            </p>
+                            {(yesCount + maybeCount + noCount) > 0 && (
+                              <div className="flex items-center gap-2 mt-1.5">
+                                {yesCount > 0 && (
+                                  <span className="text-[11px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--color-bt-vote-yes)", color: "var(--color-bt-vote-yes-text)" }}>
+                                    ✓ {yesCount}
+                                  </span>
+                                )}
+                                {maybeCount > 0 && (
+                                  <span className="text-[11px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--color-bt-vote-maybe)", color: "var(--color-bt-vote-yes-text)" }}>
+                                    ~ {maybeCount}
+                                  </span>
+                                )}
+                                {noCount > 0 && (
+                                  <span className="text-[11px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "var(--color-bt-vote-no)", color: "var(--color-bt-vote-yes-text)" }}>
+                                    ✗ {noCount}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            disabled={lockWindow.isPending}
+                            onClick={() => {
+                              lockWindow.mutate(
+                                { tripId: trip.id, windowId: w.id },
+                                { onSuccess() { setShowSelectDateModal(false); } }
+                              );
+                            }}
+                            className="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-semibold"
+                            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                          >
+                            {lockWindow.isPending ? "…" : "Select"}
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
+              </div>
+            )}
 
-                {/* Send poll to crew */}
-                {(() => {
-                  // Option 1 = primary inputs (directStart/directEnd), rest = pollOptions
-                  const allOptions = [
-                    { start: directStart, end: directEnd },
-                    ...pollOptions,
-                  ];
-                  const validOptions = allOptions.filter((o) => o.start && o.end);
-                  const canSend = validOptions.length >= 1;
-                  return (
+            {/* Lock confirm dialog */}
+            {lockConfirm && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center px-6"
+                style={{ background: "var(--color-bt-overlay)" }}
+                onClick={(e) => e.target === e.currentTarget && setLockConfirm(null)}
+              >
+                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
+                  <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                    Lock in {lockConfirm.label}?
+                  </p>
+                  <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                    This will set the trip dates and close the poll.
+                  </p>
+                  <div className="mt-4 flex gap-3">
                     <button
-                      disabled={!canSend || addWindow.isPending}
-                      onClick={async () => {
-                        for (const opt of validOptions) {
-                          await addWindow.mutateAsync({
-                            tripId: trip.id,
-                            id: crypto.randomUUID(),
-                            startDate: opt.start,
-                            endDate: opt.end,
-                          });
-                        }
-                        setShowPollBuilder(false);
-                        setDirectStart("");
-                        setDirectEnd("");
-                        setPollOptions([]);
-                      }}
-                      className="flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
-                      style={{
-                        background: canSend ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                        color: canSend ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                        opacity: canSend ? 1 : 0.6,
-                        cursor: canSend ? "pointer" : "not-allowed",
-                      }}
+                      onClick={() => setLockConfirm(null)}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-medium"
+                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
                     >
-                      {addWindow.isPending ? "Sending…" : "Send poll to crew"}
+                      Cancel
                     </button>
-                  );
-                })()}
+                    <button
+                      onClick={() => { lockWindow.mutate({ tripId: trip.id, windowId: lockConfirm.windowId }); setLockConfirm(null); }}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
+                      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                    >
+                      Lock dates
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                {/* Never mind */}
-                <button
-                  onClick={() => setShowPollBuilder(false)}
-                  className="flex w-full items-center justify-center py-2 text-xs font-medium"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Never mind
-                </button>
+            {/* Delete confirm dialog */}
+            {deleteConfirm && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center px-6"
+                style={{ background: "var(--color-bt-overlay)" }}
+                onClick={(e) => e.target === e.currentTarget && setDeleteConfirm(null)}
+              >
+                <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: "var(--color-bt-card)" }}>
+                  <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                    Remove {deleteConfirm.label}?
+                  </p>
+                  <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                    All votes for this date option will be deleted.
+                  </p>
+                  <div className="mt-4 flex gap-3">
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-medium"
+                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { removeWindow.mutate({ tripId: trip.id, windowId: deleteConfirm.windowId }); setDeleteConfirm(null); }}
+                      className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
+                      style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
