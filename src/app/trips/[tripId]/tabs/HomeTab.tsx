@@ -1819,49 +1819,35 @@ function PlanningSection({
                 </>
               ) : (
                 <>
-                  {/* State 3: Set dates + Select date + Never mind (poll active) */}
-                  {canEdit && (
-                    <>
-                      <button
-                        disabled={!directStart || !directEnd || lockDates.isPending}
-                        onClick={() => {
-                          lockDates.mutate(
-                            { tripId: trip.id, startDate: directStart, endDate: directEnd },
-                            { onSuccess() { setDirectStart(""); setDirectEnd(""); setOpenRow(null); } }
-                          );
-                        }}
-                        className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
-                        style={{
-                          background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
-                          color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
-                          opacity: (!directStart || !directEnd) ? 0.6 : 1,
-                          cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {lockDates.isPending ? "Setting…" : "Set dates"}
-                      </button>
-                      <button
-                        onClick={() => setShowSelectDateModal(true)}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-semibold transition-opacity"
-                        style={{
-                          border: "1.5px solid var(--color-bt-accent)",
-                          color: "var(--color-bt-accent)",
-                          background: "transparent",
-                        }}
-                      >
-                        Select date
-                      </button>
-                    </>
-                  )}
+                  {/* State 3: Set dates + Select date (polling mode buttons) */}
                   <button
-                    onClick={() => { setPollOpen(false); setPollOptions([]); }}
-                    className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-medium transition-colors"
+                    disabled={!directStart || !directEnd || lockDates.isPending}
+                    onClick={() => {
+                      lockDates.mutate(
+                        { tripId: trip.id, startDate: directStart, endDate: directEnd },
+                        { onSuccess() { setDirectStart(""); setDirectEnd(""); setOpenRow(null); } }
+                      );
+                    }}
+                    className="flex flex-1 items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
                     style={{
-                      background: "var(--color-bt-card-raised)",
-                      color: "var(--color-bt-text-dim)",
+                      background: (!directStart || !directEnd) ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+                      color: (!directStart || !directEnd) ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
+                      opacity: (!directStart || !directEnd) ? 0.6 : 1,
+                      cursor: (!directStart || !directEnd) ? "not-allowed" : "pointer",
                     }}
                   >
-                    Never mind
+                    {lockDates.isPending ? "Setting…" : "Set dates"}
+                  </button>
+                  <button
+                    onClick={() => setShowSelectDateModal(true)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-semibold"
+                    style={{
+                      border: "1.5px solid var(--color-bt-accent)",
+                      color: "var(--color-bt-accent)",
+                      background: "transparent",
+                    }}
+                  >
+                    Select date
                   </button>
                 </>
               )}
@@ -1948,16 +1934,6 @@ function PlanningSection({
                             <p className="text-[10px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
                               {yesCount} ✓
                             </p>
-                          )}
-                          {canEdit && (
-                            <button
-                              onClick={() => setDeleteConfirm({ windowId: w.id, label })}
-                              className="mt-1 flex items-center justify-center mx-auto"
-                              style={{ color: "var(--color-bt-text-dim)" }}
-                              aria-label="Remove date option"
-                            >
-                              <X size={12} />
-                            </button>
                           )}
                         </div>
                       );
