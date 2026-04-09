@@ -438,12 +438,21 @@ export const datePollRouter = router({
         }
       }
 
-      // Clear trip dates
+      // Clear trip dates and re-enable poll if dates were set via poll
+      const { data: tripData } = await ctx.supabase
+        .from("trips")
+        .select("date_set_method")
+        .eq("id", ctx.tripId)
+        .single();
+
+      const wasFromPoll = tripData?.date_set_method === "poll";
+
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
           start_date: null,
           end_date: null,
+          date_poll_active: wasFromPoll,
         })
         .eq("id", ctx.tripId)
         .select()

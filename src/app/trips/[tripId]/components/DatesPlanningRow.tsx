@@ -18,6 +18,7 @@ interface DatesPlanningRowProps {
   isOwner: boolean;
   isOpen: boolean;
   onToggle: () => void;
+  onTabChange?: (tab: string) => void;
 }
 
 type Answer = "yes" | "no" | "maybe";
@@ -80,6 +81,7 @@ export function DatesPlanningRow({
   isOwner,
   isOpen,
   onToggle,
+  onTabChange,
 }: DatesPlanningRowProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
@@ -319,6 +321,32 @@ export function DatesPlanningRow({
     },
   });
 
+  const unlockDates = trpc.datePoll.unlock.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prevTrip = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old
+          ? {
+              ...old,
+              start_date: null,
+              end_date: null,
+              date_poll_active: old.date_set_method === "poll",
+            }
+          : old
+      );
+      return { prevTrip };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prevTrip !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prevTrip);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
   const resetVotes = trpc.datePoll.resetVotes.useMutation({
     async onMutate() {
       await utils.datePoll.get.cancel({ tripId });
@@ -361,8 +389,9 @@ export function DatesPlanningRow({
     return "Not set yet";
   }, [datesLocked, pollActive, windows.length, trip.start_date, trip.end_date]);
 
-  // Member view: panel only opens for crew when an active poll exists.
-  const canExpand = canEdit || (pollActive && hasWindows);
+  // Non-owners can expand when dates are locked (to see them) or when a
+  // poll is active (to vote). Owners can always expand.
+  const canExpand = isOwner || datesLocked || (pollActive && hasWindows);
   const effectiveOpen = isOpen && canExpand;
   const handleToggle = canExpand ? onToggle : () => {};
 
@@ -546,6 +575,13 @@ export function DatesPlanningRow({
                 Reset votes ↻
               </button>
             )}
+            <button
+              onClick={() => onTabChange?.("crew")}
+              className="text-xs font-medium"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Manage crew →
+            </button>
           </div>
         </div>
 
@@ -597,35 +633,23 @@ export function DatesPlanningRow({
                 </span>
               )}
             </div>
-            {windows.map((w) => {
-              const yesCount = w.votes.filter((v) => v.answer === "yes").length;
-              return (
-                <div
-                  key={w.id}
-                  className="sticky top-0 z-10 flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-center"
-                  style={{ background: "var(--color-bt-card-raised)" }}
+            {windows.map((w) => (
+              <div
+                key={w.id}
+                className="sticky top-0 z-10 flex items-center justify-center px-2 py-2 text-center"
+                style={{ background: "var(--color-bt-card-raised)" }}
+              >
+                <p
+                  className="text-[12px] font-semibold leading-none"
+                  style={{ color: "var(--color-bt-text)" }}
                 >
-                  <p
-                    className="text-[12px] font-semibold leading-none"
-                    style={{ color: "var(--color-bt-text)" }}
-                  >
-                    {formatGridLabel(w.start_date, w.end_date)}
-                  </p>
-                  {yesCount > 0 && (
-                    <p
-                      className="text-[10px] font-semibold leading-none"
-                      style={{ color: "var(--color-bt-accent)" }}
-                    >
-                      {yesCount} ✓
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+                  {formatGridLabel(w.start_date, w.end_date)}
+                </p>
+              </div>
+            ))}
 
-            {/* Member rows */}
-            {hasWindows &&
-              members.map((m, rowIdx) => {
+            {/* Member rows — always visible so the crew list appears immediately */}
+            {members.map((m, rowIdx) => {
                 const rowBg =
                   rowIdx % 2 === 0
                     ? "var(--color-bt-state-fill)"
@@ -728,6 +752,141 @@ export function DatesPlanningRow({
     );
   }
 
+  function renderMemberPollView() {
+    return (
+      <div className="space-y-4">
+        <p
+          className="text-[13px] leading-relaxed"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          The trip organizer is asking for everyone&apos;s input — please
+          mark your availability for the dates below.
+        </p>
+
+        <div
+          className="overflow-hidden overflow-x-auto rounded-xl"
+          style={{ background: "var(--color-bt-card-raised)" }}
+        >
+          <div
+            className="grid"
+            style={{
+              minWidth: `${100 + windows.length * 96}px`,
+              gridTemplateColumns: `auto repeat(${windows.length}, 1fr)`,
+            }}
+          >
+            {/* Header row */}
+            <div
+              className="sticky top-0 z-10 flex items-center justify-center px-2 py-2"
+              style={{ background: "var(--color-bt-card-raised)" }}
+            />
+            {windows.map((w) => (
+              <div
+                key={w.id}
+                className="sticky top-0 z-10 flex items-center justify-center px-2 py-2 text-center"
+                style={{ background: "var(--color-bt-card-raised)" }}
+              >
+                <p
+                  className="text-[12px] font-semibold leading-none"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {formatGridLabel(w.start_date, w.end_date)}
+                </p>
+              </div>
+            ))}
+
+            {/* Member rows — only the current user's votes are interactive */}
+            {members.map((m, rowIdx) => {
+              const rowBg =
+                rowIdx % 2 === 0
+                  ? "var(--color-bt-state-fill)"
+                  : "transparent";
+              const isMe = m.user_id === currentUser?.id;
+              const rowOpacity = isMe ? 1 : 0.25;
+              return (
+                <Fragment key={m.user_id ?? rowIdx}>
+                  <div
+                    className="flex min-w-0 items-center gap-2 px-3 py-2"
+                    style={{ background: rowBg, opacity: isMe ? 1 : rowOpacity }}
+                  >
+                    <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                    <span
+                      className="truncate text-[13px]"
+                      style={{ color: "var(--color-bt-text)" }}
+                    >
+                      {m.displayName}
+                      {isMe && (
+                        <span
+                          className="text-[11px]"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          {" "}
+                          (you)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {windows.map((w) => {
+                    const vote = w.votes.find((v) => v.user_id === m.user_id);
+                    const answer = (vote?.answer ?? null) as Answer | null;
+                    return (
+                      <div
+                        key={w.id}
+                        className="flex items-center justify-center gap-0.5 px-1 py-2"
+                        style={{ background: rowBg, opacity: isMe ? 1 : rowOpacity }}
+                      >
+                        {(["yes", "maybe", "no"] as const).map((type) => {
+                          const active = answer === type;
+                          const bg =
+                            type === "yes"
+                              ? "var(--color-bt-vote-yes)"
+                              : type === "maybe"
+                              ? "var(--color-bt-vote-maybe)"
+                              : "var(--color-bt-vote-no)";
+                          const labels = { yes: "✓", maybe: "~", no: "✗" };
+                          return (
+                            <button
+                              key={type}
+                              disabled={!isMe}
+                              onClick={() => {
+                                if (isMe && m.user_id) {
+                                  voteSelf.mutate({
+                                    tripId,
+                                    windowId: w.id,
+                                    answer: type,
+                                  });
+                                }
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
+                              style={
+                                active
+                                  ? {
+                                      background: bg,
+                                      color: "var(--color-bt-vote-yes-text)",
+                                    }
+                                  : {
+                                      background: "transparent",
+                                      color: "var(--color-bt-text-dim)",
+                                      border: "1px dashed var(--color-bt-border)",
+                                      cursor: isMe ? "pointer" : "default",
+                                    }
+                              }
+                            >
+                              {labels[type]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderBody() {
     // Locked view: show the range and a Change dates → button opening the modal
     if (datesLocked) {
@@ -743,26 +902,33 @@ export function DatesPlanningRow({
             {nightsBetween(trip.start_date!, trip.end_date!)} night
             {nightsBetween(trip.start_date!, trip.end_date!) !== 1 ? "s" : ""}
           </p>
-          {canEdit && (
+          {isOwner && (
             <button
-              onClick={() => setShowChangeDates(true)}
+              onClick={() => {
+                if (trip.date_set_method === "poll") {
+                  unlockDates.mutate({ tripId });
+                } else {
+                  setShowChangeDates(true);
+                }
+              }}
+              disabled={unlockDates.isPending}
               className="text-xs font-medium"
               style={{ color: "var(--color-bt-accent)" }}
             >
-              Change dates →
+              {unlockDates.isPending ? "Unlocking…" : "Change dates →"}
             </button>
           )}
         </div>
       );
     }
 
-    // Member view (not canEdit): only render the grid if the poll is active
-    if (!canEdit) {
-      if (pollActive && hasWindows) return renderPollGrid();
+    // Non-owner view: simplified poll-only panel (Planners and Members alike)
+    if (!isOwner) {
+      if (pollActive && hasWindows) return renderMemberPollView();
       return null;
     }
 
-    // Owner / planner view
+    // Owner view
     return (
       <div className="space-y-0">
         <p
@@ -989,12 +1155,12 @@ function SelectDateModal({
   useModalBackButton(onClose);
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-4 sm:items-center sm:pb-0"
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-sm rounded-2xl p-5"
+        className="w-full max-w-sm rounded-t-2xl p-5 lg:rounded-2xl"
         style={{ background: "var(--color-bt-card)" }}
       >
         <div className="mb-4 flex items-center justify-between">

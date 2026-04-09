@@ -1304,6 +1304,7 @@ function PlanningSection({
         isOwner={isOwner}
         isOpen={openRow === "dates"}
         onToggle={() => toggle("dates")}
+        onTabChange={onTabChange}
       />
       {/* ── Logistics — visible in IDEA stage only ── */}
       {stage !== "planning" && (
