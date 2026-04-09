@@ -67,6 +67,32 @@ or missing `image_url`. Fix with a SQL UPDATE before next demo.
 
 ---
 
+### Preserve polling data on Nevermind → Set dates
+
+When the owner clicks "Nevermind, Set Dates Manually" and then locks
+dates directly, the poll windows and votes silently linger in the DB.
+Add a confirmation step asking whether to preserve the polling data
+(so the owner can return to it later) or discard it (delete all
+windows and votes). Currently the windows are always preserved, which
+is safe but may confuse owners who expect a clean slate after
+Neverminding.
+
+---
+
+### Start/stop polling control
+
+Currently a poll becomes active the moment the owner enters polling
+mode and adds a date — crew members can see it and vote immediately.
+Add an explicit "Start polling" / "Stop polling" toggle so the owner
+can add all date options first, then flip the poll live when ready.
+This affects notifications: the crew should only be notified once
+the owner starts the poll, not on each individual date addition.
+The `date_poll_active` column already exists and could back this,
+but the client currently sets it to `true` as soon as "Poll the
+crew" is clicked rather than after a deliberate "Start" action.
+
+---
+
 ### Date polling scope selection
 
 The dates panel currently polls all crew members indiscriminately.
