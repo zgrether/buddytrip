@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Calendar, Plus, X, Check, Minus } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { Calendar, Plus, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { UserAvatar } from "@/components/UserAvatar";
 import { parseLocalDate, formatDateRangeCompact } from "@/lib/dates";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
@@ -39,8 +40,36 @@ function nightsBetween(start: string, end: string): number {
   );
 }
 
-function formatRangeWithNights(start: string, end: string): string {
-  return `${formatDateRangeCompact(start, end)} · ${nightsBetween(start, end)} night${nightsBetween(start, end) !== 1 ? "s" : ""}`;
+function formatLongDate(d: string): string {
+  return parseLocalDate(d).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatGridLabel(start: string, end: string): string {
+  const s = parseLocalDate(start).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  const e = parseLocalDate(end).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return `${s}–${e}`;
+}
+
+function sortWindows(ws: PollWindow[]): PollWindow[] {
+  return ws.slice().sort((a, b) => {
+    if (a.start_date !== b.start_date) return a.start_date < b.start_date ? -1 : 1;
+    const aDur =
+      parseLocalDate(a.end_date).getTime() - parseLocalDate(a.start_date).getTime();
+    const bDur =
+      parseLocalDate(b.end_date).getTime() - parseLocalDate(b.start_date).getTime();
+    return aDur - bDur;
+  });
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -59,24 +88,25 @@ export function DatesPlanningRow({
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  const windows = (poll?.windows ?? []) as PollWindow[];
+  const rawWindows = (poll?.windows ?? []) as PollWindow[];
+  const windows = useMemo(() => sortWindows(rawWindows), [rawWindows]);
+
   const datesLocked = !!(trip.start_date && trip.end_date);
   const pollActive = !!trip.date_poll_active;
   const hasWindows = windows.length > 0;
-  const setMethod = (trip.date_set_method ?? null) as "direct" | "poll" | null;
 
-  // Local builder state — only used in poll-builder mode
+  // Manual date picker state — shared between the empty/idle state and the
+  // "Change dates" modal. The poll-builder uses the same state so typing a
+  // range and hitting "Add to poll" bypasses any second input row.
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
-  const [showPollBuilder, setShowPollBuilder] = useState(false);
-  const [pollStart, setPollStart] = useState("");
-  const [pollEnd, setPollEnd] = useState("");
-  const [showPickSheet, setShowPickSheet] = useState(false);
-  const [confirmLock, setConfirmLock] = useState<PollWindow | null>(null);
-  const [confirmReset, setConfirmReset] = useState(false);
-  const [editingLocked, setEditingLocked] = useState(false);
 
-  // ── Mutations ──────────────────────────────────────────────────────────
+  // Modals and confirm dialogs
+  const [showChangeDates, setShowChangeDates] = useState(false);
+  const [showSelectDateModal, setShowSelectDateModal] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  // ── Mutations (optimistic updates from main's rewrite) ────────────────
 
   const lockDates = trpc.trips.lockDates.useMutation({
     async onMutate(vars) {
@@ -102,7 +132,6 @@ export function DatesPlanningRow({
     onSuccess() {
       setDirectStart("");
       setDirectEnd("");
-      setEditingLocked(false);
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
@@ -133,35 +162,30 @@ export function DatesPlanningRow({
       await utils.datePoll.get.cancel({ tripId });
       const prev = utils.datePoll.get.getData({ tripId });
       utils.datePoll.get.setData({ tripId }, (old) => {
-        if (!old) {
-          return {
-            lockedWindowId: null,
-            windows: [
-              {
-                id: vars.id,
-                trip_id: tripId,
-                start_date: vars.startDate,
-                end_date: vars.endDate,
-                created_at: new Date().toISOString(),
-                votes: [],
-              },
-            ],
-          };
-        }
-        return {
-          ...old,
-          windows: [
-            ...old.windows,
-            {
-              id: vars.id,
-              trip_id: tripId,
-              start_date: vars.startDate,
-              end_date: vars.endDate,
-              created_at: new Date().toISOString(),
-              votes: [],
-            },
-          ].sort((a, b) => a.start_date.localeCompare(b.start_date)),
+        const newWindow = {
+          id: vars.id,
+          trip_id: tripId,
+          start_date: vars.startDate,
+          end_date: vars.endDate,
+          created_at: new Date().toISOString(),
+          votes: [] as { window_id: string; user_id: string; answer: string; created_at: string }[],
         };
+        if (!old) {
+          return { lockedWindowId: null, windows: [newWindow] };
+        }
+        const merged = [...old.windows, newWindow];
+        merged.sort((a, b) => {
+          if (a.start_date !== b.start_date)
+            return a.start_date < b.start_date ? -1 : 1;
+          const aDur =
+            parseLocalDate(a.end_date).getTime() -
+            parseLocalDate(a.start_date).getTime();
+          const bDur =
+            parseLocalDate(b.end_date).getTime() -
+            parseLocalDate(b.start_date).getTime();
+          return aDur - bDur;
+        });
+        return { ...old, windows: merged };
       });
       return { prev };
     },
@@ -204,13 +228,18 @@ export function DatesPlanningRow({
             if (w.id !== vars.windowId) return w;
             const existing = w.votes.find((v) => v.user_id === currentUser?.id);
             if (existing?.answer === vars.answer) {
-              return { ...w, votes: w.votes.filter((v) => v.user_id !== currentUser?.id) };
+              return {
+                ...w,
+                votes: w.votes.filter((v) => v.user_id !== currentUser?.id),
+              };
             }
             if (existing) {
               return {
                 ...w,
                 votes: w.votes.map((v) =>
-                  v.user_id === currentUser?.id ? { ...v, answer: vars.answer } : v
+                  v.user_id === currentUser?.id
+                    ? { ...v, answer: vars.answer }
+                    : v
                 ),
               };
             }
@@ -231,8 +260,8 @@ export function DatesPlanningRow({
       });
       return { prev };
     },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId }, context.prev);
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -275,11 +304,18 @@ export function DatesPlanningRow({
       });
       return { prev };
     },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId }, context.prev);
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  const lockWindow = trpc.datePoll.lockWindow.useMutation({
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+      utils.trips.getById.invalidate({ tripId });
     },
   });
 
@@ -306,7 +342,7 @@ export function DatesPlanningRow({
 
   const state: ArcCardState = datesLocked
     ? "done"
-    : pollActive || hasWindows
+    : pollActive
     ? "inProgress"
     : "none";
 
@@ -314,390 +350,378 @@ export function DatesPlanningRow({
     ? "Dates Selected"
     : pollActive
     ? "Checking Availability"
-    : hasWindows
-    ? "Poll Paused"
     : "Set Dates";
 
   const headerNote = useMemo(() => {
     if (datesLocked) {
-      return `${formatDateRangeCompact(trip.start_date, trip.end_date)} · ${nightsBetween(trip.start_date!, trip.end_date!)} night${nightsBetween(trip.start_date!, trip.end_date!) !== 1 ? "s" : ""}`;
+      return formatDateRangeCompact(trip.start_date, trip.end_date);
     }
-    if (pollActive) return `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
-    if (hasWindows) return `Poll paused · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
+    if (pollActive)
+      return `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
     return "Not set yet";
-  }, [datesLocked, pollActive, hasWindows, windows.length, trip.start_date, trip.end_date]);
+  }, [datesLocked, pollActive, windows.length, trip.start_date, trip.end_date]);
 
   // Member view: panel only opens for crew when an active poll exists.
   const canExpand = canEdit || (pollActive && hasWindows);
   const effectiveOpen = isOpen && canExpand;
   const handleToggle = canExpand ? onToggle : () => {};
 
-  // ── Sub-renderers ──────────────────────────────────────────────────────
+  const anyVotes = useMemo(
+    () => windows.some((w) => w.votes.length > 0),
+    [windows]
+  );
 
-  function renderDirectInputs(opts: { primaryLabel: string; method: "direct" }) {
-    const valid = directStart && directEnd && directStart < directEnd;
-    return (
-      <div className="space-y-3">
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          When are you going?
-        </p>
-        <div className="flex items-end gap-2">
-          <DateField label="From" value={directStart} onChange={setDirectStart} />
-          <span className="mb-2.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            →
-          </span>
-          <DateField label="To" value={directEnd} onChange={setDirectEnd} />
-        </div>
-        <PrimaryButton
-          disabled={!valid || lockDates.isPending}
-          onClick={() =>
-            lockDates.mutate({
-              tripId,
-              startDate: directStart,
-              endDate: directEnd,
-              method: opts.method,
-            })
-          }
-        >
-          {lockDates.isPending ? "Saving…" : opts.primaryLabel}
-        </PrimaryButton>
-      </div>
+  // ── Actions ────────────────────────────────────────────────────────────
+
+  const handleSetDates = () => {
+    if (!directStart || !directEnd || directStart >= directEnd) return;
+    lockDates.mutate({
+      tripId,
+      startDate: directStart,
+      endDate: directEnd,
+      method: "direct",
+    });
+  };
+
+  const handleAddToPoll = () => {
+    if (!directStart || !directEnd || directStart >= directEnd) return;
+    addWindow.mutate(
+      {
+        tripId,
+        id: crypto.randomUUID(),
+        startDate: directStart,
+        endDate: directEnd,
+      },
+      {
+        onSuccess() {
+          setDirectStart("");
+          setDirectEnd("");
+        },
+      }
     );
-  }
+  };
 
-  function renderAddOptionRow() {
-    const validNew = pollStart && pollEnd && pollStart < pollEnd;
+  const handlePollTheCrew = () => {
+    setPollActive.mutate({ tripId, active: true });
+  };
+
+  const handleNevermind = () => {
+    // Pre-fill the manual pickers from the first poll window so the user has
+    // something to confirm. Poll windows are intentionally NOT removed — if
+    // the user toggles back to "Poll the crew" their work is intact.
+    const first = windows[0];
+    if (first) {
+      setDirectStart(first.start_date);
+      setDirectEnd(first.end_date);
+    }
+    setPollActive.mutate({ tripId, active: false });
+  };
+
+  // ── Body renderers ─────────────────────────────────────────────────────
+
+  function renderDatePickerRow(buttonMode: "set" | "poll") {
+    const valid = !!directStart && !!directEnd && directStart < directEnd;
+    const busy =
+      buttonMode === "set" ? lockDates.isPending : addWindow.isPending;
+    const label =
+      buttonMode === "set"
+        ? lockDates.isPending
+          ? "Setting…"
+          : "Set dates"
+        : addWindow.isPending
+        ? "Adding…"
+        : "Add to poll";
     return (
-      <div className="flex items-end gap-2">
-        <DateField label="From" value={pollStart} onChange={setPollStart} />
-        <span
-          className="mb-2.5 text-sm"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          →
-        </span>
-        <DateField label="To" value={pollEnd} onChange={setPollEnd} />
-        <button
-          disabled={!validNew}
-          onClick={() => {
-            addWindow.mutate({
-              tripId,
-              id: crypto.randomUUID(),
-              startDate: pollStart,
-              endDate: pollEnd,
-            });
-            setPollStart("");
-            setPollEnd("");
-          }}
-          className="mb-1 flex h-9 items-center gap-1 rounded-lg px-3 text-xs font-medium"
+      <div className="flex items-center gap-2">
+        <input
+          type="date"
+          value={directStart}
+          onChange={(e) => setDirectStart(e.target.value)}
+          className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
           style={{
-            background: validNew
-              ? "var(--color-bt-accent)"
-              : "var(--color-bt-card-raised)",
-            color: validNew ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-            opacity: validNew ? 1 : 0.6,
-            cursor: validNew ? "pointer" : "not-allowed",
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        />
+        <input
+          type="date"
+          value={directEnd}
+          onChange={(e) => setDirectEnd(e.target.value)}
+          className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        />
+        <button
+          disabled={!valid || busy}
+          onClick={buttonMode === "set" ? handleSetDates : handleAddToPoll}
+          className="flex-shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity"
+          style={{
+            background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+            color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+            opacity: valid ? 1 : 0.6,
+            cursor: valid ? "pointer" : "not-allowed",
           }}
         >
-          <Plus size={12} />
-          Add
+          {label}
         </button>
       </div>
     );
   }
 
-  function renderCrewGrid() {
+  function renderWindowTextRows() {
+    if (!hasWindows) return null;
     return (
-      <div>
-        <div
-          className="overflow-x-auto rounded-xl"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th
-                  className="sticky left-0 z-10 px-3 py-2 text-left text-[11px] font-medium"
+      <div className="mb-2 space-y-1.5">
+        {windows.map((w) => {
+          const nights = nightsBetween(w.start_date, w.end_date);
+          return (
+            <div key={w.id} className="flex items-center gap-2">
+              <div
+                className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              >
+                {formatLongDate(w.start_date)} – {formatLongDate(w.end_date)}
+                <span style={{ color: "var(--color-bt-text-dim)" }}>
+                  {" "}
+                  · {nights} night{nights !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {canEdit && (
+                <button
+                  onClick={() =>
+                    removeWindowM.mutate({ tripId, windowId: w.id })
+                  }
+                  disabled={removeWindowM.isPending}
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors"
                   style={{
                     background: "var(--color-bt-card-raised)",
                     color: "var(--color-bt-text-dim)",
-                    borderBottom: "1px solid var(--color-bt-border)",
-                    borderRight: "1px solid var(--color-bt-border)",
                   }}
+                  aria-label="Remove date from poll"
                 >
-                  Crew
-                </th>
-                {windows.map((w) => (
-                  <th
-                    key={w.id}
-                    className="px-3 py-2 text-center text-[11px] font-medium"
-                    style={{
-                      borderBottom: "1px solid var(--color-bt-border)",
-                      color: "var(--color-bt-text)",
-                      minWidth: 140,
-                    }}
-                  >
-                    <div>{formatDateRangeCompact(w.start_date, w.end_date)}</div>
-                    <div style={{ color: "var(--color-bt-text-dim)" }}>
-                      {nightsBetween(w.start_date, w.end_date)} night
-                      {nightsBetween(w.start_date, w.end_date) !== 1 ? "s" : ""}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((m, idx) => {
-                const isMe = m.user_id === currentUser?.id;
-                const canVoteRow = isOwner || isMe;
-                const rowBg =
-                  idx % 2 === 0 ? "transparent" : "var(--color-bt-state-fill)";
-                return (
-                  <tr key={m.user_id ?? idx}>
-                    <td
-                      className="sticky left-0 z-10 px-3 py-2"
-                      style={{
-                        background:
-                          idx % 2 === 0
-                            ? "var(--color-bt-card-raised)"
-                            : "var(--color-bt-card-raised)",
-                        borderRight: "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
-                        <span
-                          className="truncate text-[13px]"
-                          style={{ color: "var(--color-bt-text)" }}
-                        >
-                          {m.displayName}
-                          {isMe && (
-                            <span
-                              className="text-[11px]"
-                              style={{ color: "var(--color-bt-text-dim)" }}
-                            >
-                              {" "}
-                              (you)
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    </td>
-                    {windows.map((w) => {
-                      const myVote = w.votes.find((v) => v.user_id === m.user_id);
-                      const answer = (myVote?.answer ?? null) as Answer | null;
-                      return (
-                        <td
-                          key={w.id}
-                          className="px-2 py-2"
-                          style={{ background: rowBg }}
-                        >
-                          <VoteButtons
-                            answer={answer}
-                            disabled={!canVoteRow}
-                            onChange={(next) => {
-                              if (!m.user_id) return;
-                              if (isMe) {
-                                voteSelf.mutate({
-                                  tripId,
-                                  windowId: w.id,
-                                  answer: next,
-                                });
-                              } else if (isOwner) {
-                                voteForMember.mutate({
-                                  tripId,
-                                  windowId: w.id,
-                                  userId: m.user_id,
-                                  answer: next,
-                                });
-                              }
-                            }}
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }
 
-  function renderPollWorkspace() {
+  function handleGridVote(userId: string, windowId: string, next: Answer) {
+    if (!userId) return;
+    if (userId === currentUser?.id) {
+      voteSelf.mutate({ tripId, windowId, answer: next });
+    } else if (isOwner) {
+      voteForMember.mutate({ tripId, windowId, userId, answer: next });
+    }
+  }
+
+  function renderPollGrid() {
     return (
-      <div className="space-y-3">
-        {hasWindows && (
-          <>
-            <p
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Poll options
-            </p>
-            {renderCrewGrid()}
-            {canEdit && (
-              <div className="flex flex-wrap items-center gap-2">
-                {windows.map((w) => (
-                  <button
-                    key={w.id}
-                    onClick={() =>
-                      removeWindowM.mutate({ tripId, windowId: w.id })
-                    }
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px]"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      border: "1px solid var(--color-bt-border)",
-                      color: "var(--color-bt-text-dim)",
-                    }}
-                    aria-label={`Remove ${formatDateRangeCompact(w.start_date, w.end_date)}`}
-                  >
-                    {formatDateRangeCompact(w.start_date, w.end_date)}
-                    <X size={11} />
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {canEdit && renderAddOptionRow()}
-        {canEdit && isOwner && (
-          <div className="space-y-2 pt-1">
-            {pollActive ? (
-              <>
-                <PrimaryButton
-                  disabled={windows.length === 0}
-                  onClick={() => {
-                    if (windows.length === 1) setConfirmLock(windows[0]);
-                    else setShowPickSheet(true);
-                  }}
-                >
-                  Pick a date
-                </PrimaryButton>
-                <GhostButton
-                  onClick={() =>
-                    setPollActive.mutate({ tripId, active: false })
-                  }
-                >
-                  Pause polling
-                </GhostButton>
-                <button
-                  onClick={() => setConfirmReset(true)}
-                  className="text-xs font-medium"
-                  style={{ color: "var(--color-bt-danger)" }}
-                >
-                  Reset poll
-                </button>
-              </>
-            ) : (
-              <>
-                <PrimaryButton
-                  disabled={windows.length === 0}
-                  onClick={() =>
-                    setPollActive.mutate({ tripId, active: true })
-                  }
-                >
-                  {hasWindows ? "Start polling" : "Add an option to start"}
-                </PrimaryButton>
-                {!hasWindows && (
-                  <GhostButton
-                    onClick={() => {
-                      setShowPollBuilder(false);
-                      setPollStart("");
-                      setPollEnd("");
-                    }}
-                  >
-                    Nevermind
-                  </GhostButton>
-                )}
-              </>
+      <div className="mt-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <p
+            className="text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Polling
+          </p>
+          <div className="flex items-center gap-3">
+            {isOwner && anyVotes && (
+              <button
+                onClick={() => setConfirmReset(true)}
+                className="text-xs font-medium"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Reset votes ↻
+              </button>
             )}
           </div>
-        )}
-      </div>
-    );
-  }
-
-  function renderLocked() {
-    if (editingLocked) {
-      // Reuse the simple From/To input flow pre-filled
-      return (
-        <div className="space-y-3">
-          {renderDirectInputs({ primaryLabel: "Save dates", method: "direct" })}
-          <GhostButton onClick={() => setEditingLocked(false)}>Cancel</GhostButton>
         </div>
-      );
-    }
 
-    if (setMethod === "poll" && hasWindows) {
-      const lockedWin = windows.find(
-        (w) =>
-          w.start_date === trip.start_date && w.end_date === trip.end_date
-      );
-      return (
-        <div className="space-y-2">
-          {windows.map((w) => {
-            const isLocked = w.id === lockedWin?.id;
-            return (
-              <div
-                key={w.id}
-                className="rounded-xl px-4 py-3 text-sm font-medium"
-                style={
-                  isLocked
-                    ? {
-                        background: "var(--color-bt-accent)",
-                        color: "var(--color-bt-base)",
-                      }
-                    : {
-                        background: "var(--color-bt-card-raised)",
-                        color: "var(--color-bt-text-dim)",
-                        opacity: 0.5,
-                      }
-                }
-              >
-                {formatRangeWithNights(w.start_date, w.end_date)}
-              </div>
-            );
-          })}
-          {canEdit && (
-            <button
-              onClick={() => setShowPickSheet(true)}
-              className="text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
+        <div
+          className="overflow-hidden overflow-x-auto rounded-xl"
+          style={{ background: "var(--color-bt-card-raised)" }}
+        >
+          <div
+            className="grid"
+            style={{
+              minWidth: `${100 + windows.length * 96}px`,
+              gridTemplateColumns: hasWindows
+                ? `auto repeat(${windows.length}, 1fr)`
+                : "1fr",
+            }}
+          >
+            {/* Header row — Select date button (or empty message) + per-window date label */}
+            <div
+              className="sticky top-0 z-10 flex items-center justify-center px-2 py-2"
+              style={{ background: "var(--color-bt-card-raised)" }}
             >
-              Change date →
-            </button>
-          )}
-        </div>
-      );
-    }
+              {hasWindows ? (
+                canEdit && isOwner ? (
+                  <button
+                    onClick={() => setShowSelectDateModal(true)}
+                    className="w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-opacity"
+                    style={{
+                      border: "1.5px solid var(--color-bt-accent)",
+                      color: "var(--color-bt-accent)",
+                      background: "transparent",
+                    }}
+                  >
+                    Select date
+                  </button>
+                ) : (
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Crew
+                  </span>
+                )
+              ) : (
+                <span
+                  className="text-xs italic"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  No dates added yet
+                </span>
+              )}
+            </div>
+            {windows.map((w) => {
+              const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+              return (
+                <div
+                  key={w.id}
+                  className="sticky top-0 z-10 flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-center"
+                  style={{ background: "var(--color-bt-card-raised)" }}
+                >
+                  <p
+                    className="text-[12px] font-semibold leading-none"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {formatGridLabel(w.start_date, w.end_date)}
+                  </p>
+                  {yesCount > 0 && (
+                    <p
+                      className="text-[10px] font-semibold leading-none"
+                      style={{ color: "var(--color-bt-accent)" }}
+                    >
+                      {yesCount} ✓
+                    </p>
+                  )}
+                </div>
+              );
+            })}
 
-    return (
-      <div className="space-y-2">
-        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-          {formatDateRangeCompact(trip.start_date, trip.end_date)}
-        </p>
-        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          {nightsBetween(trip.start_date!, trip.end_date!)} night
-          {nightsBetween(trip.start_date!, trip.end_date!) !== 1 ? "s" : ""}
-        </p>
+            {/* Member rows */}
+            {hasWindows &&
+              members.map((m, rowIdx) => {
+                const rowBg =
+                  rowIdx % 2 === 0
+                    ? "var(--color-bt-state-fill)"
+                    : "transparent";
+                const isMe = m.user_id === currentUser?.id;
+                const isInteractive =
+                  !!m.user_id && (isMe || isOwner);
+                return (
+                  <Fragment key={m.user_id ?? rowIdx}>
+                    <div
+                      className="flex min-w-0 items-center gap-2 px-3 py-2"
+                      style={{ background: rowBg }}
+                    >
+                      <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                      <span
+                        className="truncate text-[13px]"
+                        style={{ color: "var(--color-bt-text)" }}
+                      >
+                        {m.displayName}
+                        {isMe && (
+                          <span
+                            className="text-[11px]"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          >
+                            {" "}
+                            (you)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {windows.map((w) => {
+                      const vote = w.votes.find((v) => v.user_id === m.user_id);
+                      const answer = (vote?.answer ?? null) as Answer | null;
+                      return (
+                        <div
+                          key={w.id}
+                          className="flex items-center justify-center gap-0.5 px-1 py-2"
+                          style={{ background: rowBg }}
+                        >
+                          {(["yes", "maybe", "no"] as const).map((type) => {
+                            const active = answer === type;
+                            const bg =
+                              type === "yes"
+                                ? "var(--color-bt-vote-yes)"
+                                : type === "maybe"
+                                ? "var(--color-bt-vote-maybe)"
+                                : "var(--color-bt-vote-no)";
+                            const labels = { yes: "✓", maybe: "~", no: "✗" };
+                            return (
+                              <button
+                                key={type}
+                                disabled={!isInteractive}
+                                onClick={() =>
+                                  handleGridVote(m.user_id!, w.id, type)
+                                }
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
+                                style={
+                                  active
+                                    ? {
+                                        background: bg,
+                                        color: "var(--color-bt-vote-yes-text)",
+                                      }
+                                    : {
+                                        background: "transparent",
+                                        color: "var(--color-bt-text-dim)",
+                                        border:
+                                          "1px dashed var(--color-bt-border)",
+                                        cursor: isInteractive
+                                          ? "pointer"
+                                          : "default",
+                                      }
+                                }
+                              >
+                                {labels[type]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+          </div>
+        </div>
+
         {canEdit && (
           <button
-            onClick={() => {
-              setDirectStart(trip.start_date ?? "");
-              setDirectEnd(trip.end_date ?? "");
-              setEditingLocked(true);
+            onClick={handleNevermind}
+            className="w-full rounded-xl py-3 text-sm font-medium transition-colors"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text-dim)",
             }}
-            className="text-xs font-medium"
-            style={{ color: "var(--color-bt-accent)" }}
           >
-            Change date →
+            Nevermind, Set Dates Manually
           </button>
         )}
       </div>
@@ -705,46 +729,75 @@ export function DatesPlanningRow({
   }
 
   function renderBody() {
-    if (datesLocked) return renderLocked();
+    // Locked view: show the range and a Change dates → button opening the modal
+    if (datesLocked) {
+      return (
+        <div className="space-y-2">
+          <p
+            className="text-sm font-medium"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {formatLongDate(trip.start_date!)} – {formatLongDate(trip.end_date!)}
+          </p>
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {nightsBetween(trip.start_date!, trip.end_date!)} night
+            {nightsBetween(trip.start_date!, trip.end_date!) !== 1 ? "s" : ""}
+          </p>
+          {canEdit && (
+            <button
+              onClick={() => setShowChangeDates(true)}
+              className="text-xs font-medium"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Change dates →
+            </button>
+          )}
+        </div>
+      );
+    }
 
-    // Member view: crew grid only when poll is active
+    // Member view (not canEdit): only render the grid if the poll is active
     if (!canEdit) {
-      if (pollActive && hasWindows) return renderCrewGrid();
+      if (pollActive && hasWindows) return renderPollGrid();
       return null;
     }
 
-    // Owner/planner: unified workspace for builder + grid + paused states
-    if (showPollBuilder || hasWindows || pollActive) {
-      return renderPollWorkspace();
-    }
-
-    // Empty state
+    // Owner / planner view
     return (
-      <div className="space-y-4">
-        {renderDirectInputs({ primaryLabel: "Set Dates", method: "direct" })}
-        <div
-          className="border-t pt-3"
-          style={{ borderColor: "var(--color-bt-border)" }}
+      <div className="space-y-0">
+        <p
+          className="mb-3 text-[13px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
-          <p
-            className="mb-2 text-[12px]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Need to coordinate schedules?
-          </p>
-          <button
-            onClick={() => setShowPollBuilder(true)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium"
-            style={{
-              border: "1.5px dashed var(--color-bt-accent)",
-              color: "var(--color-bt-accent)",
-              background: "transparent",
-            }}
-          >
-            <Plus size={14} />
-            Poll the Crew
-          </button>
-        </div>
+          When are you going?
+        </p>
+
+        {/* In poll mode, list existing windows as text rows above the inputs */}
+        {pollActive && renderWindowTextRows()}
+
+        {/* Dual-mode date pickers + primary button */}
+        {renderDatePickerRow(pollActive ? "poll" : "set")}
+
+        {/* Poll the crew toggle — only when not in poll mode */}
+        {!pollActive && (
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={handlePollTheCrew}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+              style={{
+                border: "1.5px dashed var(--color-bt-accent)",
+                color: "var(--color-bt-accent)",
+                background: "transparent",
+              }}
+            >
+              <Plus size={14} />
+              Poll the crew
+            </button>
+          </div>
+        )}
+
+        {/* Polling grid — visible whenever poll mode is active */}
+        {pollActive && renderPollGrid()}
       </div>
     );
   }
@@ -755,7 +808,7 @@ export function DatesPlanningRow({
         icon={<Calendar size={16} />}
         label={headerLabel}
         note={headerNote}
-        warnState={pollActive || (hasWindows && !pollActive)}
+        warnState={pollActive}
         state={state}
         isOpen={effectiveOpen}
         onToggle={handleToggle}
@@ -763,256 +816,177 @@ export function DatesPlanningRow({
         {renderBody()}
       </PlanningRow>
 
-      {/* Pick a date sheet */}
-      {showPickSheet && (
-        <Sheet onClose={() => setShowPickSheet(false)} title="Pick a date">
-          <div className="space-y-2">
-            {windows.map((w) => {
-              const yes = w.votes.filter((v) => v.answer === "yes").length;
-              const maybe = w.votes.filter((v) => v.answer === "maybe").length;
-              const no = w.votes.filter((v) => v.answer === "no").length;
-              return (
-                <div
-                  key={w.id}
-                  className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    border: "1px solid var(--color-bt-border)",
-                  }}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className="text-sm font-medium"
-                      style={{ color: "var(--color-bt-text)" }}
-                    >
-                      {formatRangeWithNights(w.start_date, w.end_date)}
-                    </p>
-                    <p
-                      className="mt-0.5 text-xs"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      {yes} works · {maybe} maybe · {no} can&apos;t
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowPickSheet(false);
-                      setConfirmLock(w);
-                    }}
-                    className="flex-shrink-0 rounded-xl px-4 py-2 text-xs font-semibold"
-                    style={{
-                      background: "var(--color-bt-accent)",
-                      color: "var(--color-bt-base)",
-                    }}
-                  >
-                    Select
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </Sheet>
+      {/* Change dates modal (opens from the locked-dates card) */}
+      {showChangeDates && (
+        <ChangeDatesModal
+          tripId={tripId}
+          initialStart={trip.start_date ?? ""}
+          initialEnd={trip.end_date ?? ""}
+          method={trip.date_set_method ?? "direct"}
+          onClose={() => setShowChangeDates(false)}
+          onSubmit={(startDate, endDate) => {
+            lockDates.mutate(
+              {
+                tripId,
+                startDate,
+                endDate,
+                method: trip.date_set_method ?? "direct",
+              },
+              {
+                onSuccess() {
+                  setShowChangeDates(false);
+                },
+              }
+            );
+          }}
+          isPending={lockDates.isPending}
+        />
       )}
 
-      {/* Confirm lock sheet */}
-      {confirmLock && (
-        <Sheet
-          onClose={() => setConfirmLock(null)}
-          title={`Lock in ${formatDateRangeCompact(confirmLock.start_date, confirmLock.end_date)}?`}
-        >
-          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            This locks the date for everyone. The poll closes and crew members will see
-            the confirmed date.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <GhostButton onClick={() => setConfirmLock(null)}>Go back</GhostButton>
-            <PrimaryButton
-              disabled={lockDates.isPending}
-              onClick={() => {
-                const w = confirmLock;
-                lockDates.mutate(
-                  {
-                    tripId,
-                    startDate: w.start_date,
-                    endDate: w.end_date,
-                    method: "poll",
-                    windowId: w.id,
-                  },
-                  {
-                    onSuccess() {
-                      setConfirmLock(null);
-                    },
-                  }
-                );
-              }}
-            >
-              {lockDates.isPending ? "Locking…" : "Lock it in"}
-            </PrimaryButton>
-          </div>
-        </Sheet>
+      {/* Select date modal — pick a winning window from the poll */}
+      {showSelectDateModal && (
+        <SelectDateModal
+          windows={windows}
+          pending={lockWindow.isPending}
+          onClose={() => setShowSelectDateModal(false)}
+          onSelect={(w) =>
+            lockWindow.mutate(
+              { tripId, windowId: w.id },
+              {
+                onSuccess() {
+                  setShowSelectDateModal(false);
+                },
+              }
+            )
+          }
+        />
       )}
 
-      {/* Confirm reset sheet */}
+      {/* Confirm reset votes dialog */}
       {confirmReset && (
-        <Sheet onClose={() => setConfirmReset(false)} title="Reset poll votes?">
-          <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            Date options will be kept but all votes will be cleared. The crew will need
-            to vote again.
-          </p>
-          <div className="mt-4 flex gap-2">
-            <GhostButton onClick={() => setConfirmReset(false)}>Cancel</GhostButton>
-            <button
-              disabled={resetVotes.isPending}
-              onClick={() => {
-                resetVotes.mutate(
-                  { tripId },
-                  { onSuccess: () => setConfirmReset(false) }
-                );
-              }}
-              className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
-              style={{ background: "var(--color-bt-danger)", color: "var(--color-bt-base)" }}
-            >
-              {resetVotes.isPending ? "Resetting…" : "Reset votes"}
-            </button>
-          </div>
-        </Sheet>
+        <ConfirmDialog
+          title="Reset poll votes?"
+          body="Date options will be kept but all votes will be cleared. The crew will need to vote again."
+          cancelLabel="Cancel"
+          confirmLabel={resetVotes.isPending ? "Resetting…" : "Reset votes"}
+          confirmDanger
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={() =>
+            resetVotes.mutate(
+              { tripId },
+              { onSuccess: () => setConfirmReset(false) }
+            )
+          }
+        />
       )}
     </>
   );
 }
 
-// ── Small primitives ─────────────────────────────────────────────────────
+// ── ChangeDatesModal ─────────────────────────────────────────────────────
 
-function DateField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex-1">
-      <label
-        className="mb-1 block text-xs font-medium"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        {label}
-      </label>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl px-3 py-2.5 text-sm"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: "1px solid var(--color-bt-border)",
-          color: "var(--color-bt-text)",
-        }}
-      />
-    </div>
-  );
-}
-
-function PrimaryButton({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      className="flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold transition-opacity"
-      style={{
-        background: disabled ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
-        color: disabled ? "var(--color-bt-text-dim)" : "var(--color-bt-base)",
-        opacity: disabled ? 0.6 : 1,
-        cursor: disabled ? "not-allowed" : "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function GhostButton({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center justify-center rounded-xl py-2.5 text-sm font-medium"
-      style={{
-        background: "transparent",
-        color: "var(--color-bt-text-dim)",
-        border: "0.5px solid var(--color-bt-border)",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function VoteButtons({
-  answer,
-  onChange,
-  disabled,
-}: {
-  answer: Answer | null;
-  onChange: (next: Answer) => void;
-  disabled?: boolean;
-}) {
-  const cells: { value: Answer; icon: React.ReactNode; bg: string }[] = [
-    { value: "yes", icon: <Check size={12} />, bg: "var(--color-bt-vote-yes)" },
-    { value: "maybe", icon: <Minus size={12} />, bg: "var(--color-bt-vote-maybe)" },
-    { value: "no", icon: <X size={12} />, bg: "var(--color-bt-vote-no)" },
-  ];
-  return (
-    <div className="flex items-center justify-center gap-1">
-      {cells.map((c) => {
-        const active = answer === c.value;
-        return (
-          <button
-            key={c.value}
-            disabled={disabled}
-            onClick={() => onChange(c.value)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{
-              background: active ? c.bg : "var(--color-bt-card-raised)",
-              color: active ? "var(--color-bt-vote-yes-text)" : "var(--color-bt-text-dim)",
-              border: active ? "none" : "1px solid var(--color-bt-border)",
-              opacity: disabled ? 0.5 : 1,
-              cursor: disabled ? "default" : "pointer",
-              pointerEvents: disabled ? "none" : "auto",
-            }}
-          >
-            {c.icon}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Sheet({
-  title,
-  children,
+function ChangeDatesModal({
+  tripId: _tripId,
+  initialStart,
+  initialEnd,
   onClose,
+  onSubmit,
+  isPending,
 }: {
-  title: string;
-  children: React.ReactNode;
+  tripId: string;
+  initialStart: string;
+  initialEnd: string;
+  method: "direct" | "poll";
   onClose: () => void;
+  onSubmit: (startDate: string, endDate: string) => void;
+  isPending: boolean;
 }) {
+  useModalBackButton(onClose);
+  const [startDate, setStartDate] = useState(initialStart);
+  const [endDate, setEndDate] = useState(initialEnd);
+  const canSubmit = !!startDate && !!endDate && startDate < endDate && !isPending;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[400px] rounded-t-2xl p-6 lg:rounded-2xl"
+        style={{ background: "var(--color-bt-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          className="text-lg font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          Change dates
+        </h2>
+
+        <div className="mt-4 flex items-center gap-2">
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          />
+        </div>
+
+        <button
+          onClick={() => onSubmit(startDate, endDate)}
+          disabled={!canSubmit}
+          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          style={{
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-base)",
+          }}
+        >
+          {isPending ? "Updating..." : "Update dates"}
+        </button>
+
+        <button
+          onClick={onClose}
+          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── SelectDateModal ──────────────────────────────────────────────────────
+
+function SelectDateModal({
+  windows,
+  pending,
+  onClose,
+  onSelect,
+}: {
+  windows: PollWindow[];
+  pending: boolean;
+  onClose: () => void;
+  onSelect: (w: PollWindow) => void;
+}) {
+  useModalBackButton(onClose);
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center px-4 pb-4 sm:items-center sm:pb-0"
@@ -1020,26 +994,171 @@ function Sheet({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-2xl p-5"
+        className="w-full max-w-sm rounded-2xl p-5"
         style={{ background: "var(--color-bt-card)" }}
       >
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between">
           <p
             className="text-base font-semibold"
             style={{ color: "var(--color-bt-text)" }}
           >
-            {title}
+            Pick a date
           </p>
           <button
             onClick={onClose}
-            aria-label="Close"
             className="flex h-7 w-7 items-center justify-center rounded-lg"
             style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Close"
           >
             <X size={16} />
           </button>
         </div>
-        {children}
+        <div className="space-y-2">
+          {windows.map((w) => {
+            const nights = nightsBetween(w.start_date, w.end_date);
+            const yesCount = w.votes.filter((v) => v.answer === "yes").length;
+            const maybeCount = w.votes.filter((v) => v.answer === "maybe").length;
+            const noCount = w.votes.filter((v) => v.answer === "no").length;
+            return (
+              <div
+                key={w.id}
+                className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+                style={{ background: "var(--color-bt-card-raised)" }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="text-sm font-semibold leading-tight"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {formatLongDate(w.start_date)} – {formatLongDate(w.end_date)}
+                  </p>
+                  <p
+                    className="mt-0.5 text-xs"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    {nights} night{nights !== 1 ? "s" : ""}
+                  </p>
+                  {yesCount + maybeCount + noCount > 0 && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      {yesCount > 0 && (
+                        <span
+                          className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
+                          style={{
+                            background: "var(--color-bt-vote-yes)",
+                            color: "var(--color-bt-vote-yes-text)",
+                          }}
+                        >
+                          ✓ {yesCount}
+                        </span>
+                      )}
+                      {maybeCount > 0 && (
+                        <span
+                          className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
+                          style={{
+                            background: "var(--color-bt-vote-maybe)",
+                            color: "var(--color-bt-vote-yes-text)",
+                          }}
+                        >
+                          ~ {maybeCount}
+                        </span>
+                      )}
+                      {noCount > 0 && (
+                        <span
+                          className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold"
+                          style={{
+                            background: "var(--color-bt-vote-no)",
+                            color: "var(--color-bt-vote-yes-text)",
+                          }}
+                        >
+                          ✗ {noCount}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button
+                  disabled={pending}
+                  onClick={() => onSelect(w)}
+                  className="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-semibold"
+                  style={{
+                    background: "var(--color-bt-accent)",
+                    color: "var(--color-bt-base)",
+                  }}
+                >
+                  {pending ? "…" : "Select"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ConfirmDialog ────────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  title,
+  body,
+  cancelLabel,
+  confirmLabel,
+  confirmDanger,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body: string;
+  cancelLabel: string;
+  confirmLabel: string;
+  confirmDanger?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useModalBackButton(onCancel);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl p-5"
+        style={{ background: "var(--color-bt-card)" }}
+      >
+        <p
+          className="text-base font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {title}
+        </p>
+        <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          {body}
+        </p>
+        <div className="mt-4 flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-xl py-2.5 text-sm font-medium"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text)",
+            }}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
+            style={{
+              background: confirmDanger
+                ? "var(--color-bt-danger)"
+                : "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
