@@ -21,6 +21,7 @@ export const notificationsRouter = router({
         .from("notification_events")
         .select("id, type, trip_id, actor_id, payload, created_at")
         .eq("trip_id", ctx.tripId)
+        .eq("recipient_id", ctx.user!.id)
         .order("created_at", { ascending: false })
         .limit(input.limit);
 
@@ -56,11 +57,12 @@ export const notificationsRouter = router({
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
     .mutation(async ({ ctx }) => {
-      // Get all unread notification IDs for this trip
+      // Get all notification IDs for this trip addressed to the current user
       const { data: notifications } = await ctx.supabase
         .from("notification_events")
         .select("id")
-        .eq("trip_id", ctx.tripId);
+        .eq("trip_id", ctx.tripId)
+        .eq("recipient_id", ctx.user!.id);
 
       if (!notifications || notifications.length === 0) {
         return { marked: 0 };
@@ -109,6 +111,7 @@ export async function createNotification(
   params: {
     tripId: string;
     actorId: string;
+    recipientId: string;
     type: string;
     payload: Record<string, unknown>;
   }
@@ -118,6 +121,7 @@ export async function createNotification(
     id,
     trip_id: params.tripId,
     actor_id: params.actorId,
+    recipient_id: params.recipientId,
     type: params.type,
     payload: params.payload,
   });

@@ -316,6 +316,7 @@ export const ideasRouter = router({
               await createNotification(ctx.supabase, {
                 tripId: ctx.tripId,
                 actorId: ctx.user!.id,
+                recipientId: ownerMember.user_id,
                 type: "idea_voted",
                 payload: {
                   voter_name: voterName,

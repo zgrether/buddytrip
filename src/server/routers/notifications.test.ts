@@ -17,6 +17,7 @@ describe("notifications router", () => {
       id: notifId,
       trip_id: tripId,
       actor_id: ctx.user.id,
+      recipient_id: ctx.user.id,
       type: "destination_locked",
       payload: { destination_name: "Scottsdale, AZ", trip_name: "Notif Test", trip_id: tripId },
     });

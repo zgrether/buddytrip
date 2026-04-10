@@ -214,6 +214,7 @@ export const datePollRouter = router({
             await createNotification(ctx.supabase, {
               tripId: ctx.tripId,
               actorId: ctx.user!.id,
+              recipientId: ownerMember.user_id,
               type: "date_poll_voted",
               payload: {
                 voter_name: voterName,

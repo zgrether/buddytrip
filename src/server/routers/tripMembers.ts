@@ -280,6 +280,7 @@ export const tripMembersRouter = router({
             await createNotification(ctx.supabase, {
               tripId: ctx.tripId,
               actorId: ctx.user!.id,
+              recipientId: ownerMember.user_id,
               type: "crew_added",
               payload: {
                 member_name: memberName,
@@ -294,6 +295,7 @@ export const tripMembersRouter = router({
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
+            recipientId: existing.id,
             type: "crew_added",
             payload: {
               adder_name: inviterName,
@@ -399,6 +401,7 @@ export const tripMembersRouter = router({
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
+            recipientId: ownerMember.user_id,
             type: "crew_added",
             payload: {
               member_name: email.split("@")[0],
@@ -508,6 +511,7 @@ export const tripMembersRouter = router({
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
+            recipientId: ownerMember.user_id,
             type: "rsvp_response",
             payload: {
               responder_name: currentUserData?.name ?? "Someone",
@@ -735,6 +739,7 @@ export const tripMembersRouter = router({
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
+            recipientId: member.user_id,
             type: "about_update",
             payload: {
               updater_name: updaterName,

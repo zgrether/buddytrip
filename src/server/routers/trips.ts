@@ -310,6 +310,7 @@ export const tripsRouter = router({
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
+            recipientId: member.user_id,
             type: "destination_locked",
             payload: {
               destination_name: input.title,
@@ -595,6 +596,7 @@ export const tripsRouter = router({
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
+            recipientId: member.user_id,
             type: "dates_locked",
             payload: {
               date_range: formatDateRange(input.startDate, input.endDate),
@@ -655,6 +657,7 @@ export const tripsRouter = router({
             await createNotification(ctx.supabase, {
               tripId: ctx.tripId,
               actorId: ctx.user!.id,
+              recipientId: member.user_id,
               type: "date_poll_started",
               payload: {
                 owner_name: ownerData?.nickname ?? ownerData?.name ?? "The organizer",
@@ -918,6 +921,7 @@ export const tripsRouter = router({
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
+            recipientId: member.user_id,
             type: "stage_advanced",
             payload: {
               trip_name: tripForNotif?.title ?? "the trip",
