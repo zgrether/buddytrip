@@ -95,8 +95,8 @@ export const TopNav: FC<TopNavProps> = ({
             aria-label="Notifications"
             data-testid="notification-bell"
             onClick={handleBellClick}
-            className="relative flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text)" }}
+            className="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             <Bell size={20} strokeWidth={1.5} />
             {unreadCount > 0 && (
