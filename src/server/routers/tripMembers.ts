@@ -443,6 +443,7 @@ export const tripMembersRouter = router({
               responder_name: currentUserData?.name ?? "Someone",
               rsvp_status: input.rsvpStatus,
               trip_name: trip.title,
+              trip_id: ctx.tripId,
             },
           });
         }
@@ -668,6 +669,7 @@ export const tripMembersRouter = router({
             payload: {
               updater_name: updaterName,
               trip_name: trip.title,
+              trip_id: ctx.tripId,
             },
           });
           notified++;
