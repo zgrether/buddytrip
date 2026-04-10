@@ -277,6 +277,17 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Read current destination before overwriting so we know if this is a change
+      const { data: current } = await ctx.supabase
+        .from("trips")
+        .select("locked_destination_title")
+        .eq("id", ctx.tripId)
+        .single();
+
+      const isChange =
+        !!current?.locked_destination_title &&
+        current.locked_destination_title !== input.title;
+
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
@@ -306,12 +317,13 @@ export const tripsRouter = router({
           .neq("user_id", ctx.user!.id);
 
         const { createNotification } = await import("./notifications");
+        const notifType = isChange ? "destination_changed" : "destination_locked";
         for (const member of members ?? []) {
           await createNotification(ctx.supabase, {
             tripId: ctx.tripId,
             actorId: ctx.user!.id,
             recipientId: member.user_id,
-            type: "destination_locked",
+            type: notifType,
             payload: {
               destination_name: input.title,
               trip_name: data.title,
@@ -1043,6 +1055,38 @@ export const tripsRouter = router({
           .from("date_poll_votes")
           .delete()
           .in("window_id", windowIds);
+      }
+
+      // Notify all trip members except the actor
+      try {
+        const { data: tripData } = await ctx.supabase
+          .from("trips")
+          .select("title")
+          .eq("id", ctx.tripId)
+          .single();
+
+        const { data: members } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .neq("user_id", ctx.user!.id);
+
+        const { createNotification } = await import("./notifications");
+        for (const member of members ?? []) {
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: member.user_id,
+            type: "destination_changed",
+            payload: {
+              destination_name: dest,
+              trip_name: tripData?.title ?? "the trip",
+              trip_id: ctx.tripId,
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the mutation
       }
 
       return data;

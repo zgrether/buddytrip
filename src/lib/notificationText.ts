@@ -19,6 +19,7 @@ export const NOTIFICATION_LABELS: Record<string, string> = {
   rsvp_response: "RSVP update",
   about_update: "Trip info updated",
   destination_locked: "Destination set",
+  destination_changed: "Destination changed",
   dates_locked: "Dates confirmed",
   date_poll_started: "Availability poll",
   crew_added: "Added to trip",
@@ -52,6 +53,8 @@ export function getNotificationText(notification: NotificationEvent): string {
       return `${p.updater_name} updated the trip info for ${p.trip_name}`;
     case "destination_locked":
       return `${p.trip_name} destination is set — ${p.destination_name}!`;
+    case "destination_changed":
+      return `${p.trip_name} destination changed to ${p.destination_name}`;
     case "dates_locked":
       return `${p.trip_name} dates are locked — ${p.date_range}. Time to book!`;
     case "date_poll_started":

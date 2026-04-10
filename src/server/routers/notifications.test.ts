@@ -110,6 +110,83 @@ describe("lockDestination creates destination_locked notifications", () => {
   });
 });
 
+// ── changeDestination notifications ─────────────────────────────────────
+
+describe("changeDestination creates destination_changed notifications", () => {
+  let ctxDest: TestContext;
+  let tripIdDest: string;
+
+  beforeAll(async () => {
+    ctxDest = await TestContext.create();
+    tripIdDest = await ctxDest.createTrip("Change Dest Test");
+    await ctxDest.addTripMember(tripIdDest, "member", "Member");
+
+    // Advance to planning stage (requires locking a destination first)
+    const ownerCaller = ctxDest.caller();
+    await ownerCaller.trips.lockDestination({
+      tripId: tripIdDest,
+      title: "Scottsdale",
+      location: "Scottsdale, AZ",
+    });
+    await ownerCaller.trips.advanceToPlanning({ tripId: tripIdDest });
+  });
+
+  afterAll(async () => {
+    await ctxDest.cleanup();
+  });
+
+  it("changeDestination creates destination_changed for all members except actor", async () => {
+    const ownerCaller = ctxDest.caller();
+    await ownerCaller.trips.changeDestination({
+      tripId: tripIdDest,
+      destination: "Bandon Dunes",
+    });
+
+    const { data: notifs } = await ctxDest.admin
+      .from("notification_events")
+      .select("*")
+      .eq("trip_id", tripIdDest)
+      .eq("type", "destination_changed");
+
+    expect(notifs).toBeDefined();
+    expect(notifs!.length).toBeGreaterThan(0);
+    expect(notifs![0].payload).toMatchObject({
+      destination_name: "Bandon Dunes",
+      trip_name: "Change Dest Test",
+    });
+    // Actor (owner) should not receive their own notification
+    for (const n of notifs!) {
+      expect(n.recipient_id).not.toBe(ctxDest.user.id);
+    }
+  });
+
+  it("lockDestination fires destination_changed when destination already set", async () => {
+    // Clear existing notifications
+    await ctxDest.admin
+      .from("notification_events")
+      .delete()
+      .eq("trip_id", tripIdDest)
+      .eq("type", "destination_changed");
+
+    const ownerCaller = ctxDest.caller();
+    await ownerCaller.trips.lockDestination({
+      tripId: tripIdDest,
+      title: "Pebble Beach",
+      location: "Pebble Beach, CA",
+    });
+
+    const { data: notifs } = await ctxDest.admin
+      .from("notification_events")
+      .select("*")
+      .eq("trip_id", tripIdDest)
+      .eq("type", "destination_changed");
+
+    expect(notifs).toBeDefined();
+    expect(notifs!.length).toBeGreaterThan(0);
+    expect(notifs![0].payload).toMatchObject({ destination_name: "Pebble Beach" });
+  });
+});
+
 // ── lockDates notifications ──────────────────────────────────────────────
 
 describe("lockDates creates dates_locked notifications", () => {

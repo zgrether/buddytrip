@@ -37,6 +37,7 @@ interface TopNavProps {
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
   rsvp_response: UserCheck,
   destination_locked: MapPin,
+  destination_changed: MapPin,
   dates_locked: CalendarCheck,
   date_poll_started: CalendarDays,
   crew_added: UserPlus,
