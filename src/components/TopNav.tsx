@@ -111,36 +111,47 @@ export const TopNav: FC<TopNavProps> = ({
           </button>
 
           {open && (
-            <div
-              data-testid="notification-dropdown"
-              className="absolute right-0 top-11 w-80 overflow-hidden rounded-xl shadow-2xl"
-              style={{
-                background: "var(--color-bt-card)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
+            <>
+              {/* Mobile overlay backdrop */}
               <div
-                className="flex items-center justify-between px-4 py-3"
-                style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+                className="fixed inset-0 z-40 sm:hidden"
+                onClick={() => setOpen(false)}
+              />
+              <div
+                data-testid="notification-dropdown"
+                className="overflow-hidden rounded-xl shadow-2xl z-50 fixed left-4 right-4 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-11"
+                style={{
+                  background: "var(--color-bt-card)",
+                  border: "1px solid var(--color-bt-border)",
+                  maxWidth: "min(380px, calc(100vw - 32px))",
+                  width: undefined,
+                }}
               >
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: "var(--color-bt-text)" }}
+                <div
+                  className="flex items-center justify-between px-4 py-3"
+                  style={{ borderBottom: "1px solid var(--color-bt-border)" }}
                 >
-                  Notifications
-                </span>
-                {onMarkAllRead && (
-                  <button
-                    onClick={() => onMarkAllRead()}
-                    className="text-xs transition-colors hover:opacity-80"
-                    style={{ color: "var(--color-bt-accent)" }}
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--color-bt-text)" }}
                   >
-                    Mark all read
-                  </button>
-                )}
-              </div>
+                    Notifications
+                  </span>
+                  {onMarkAllRead && (
+                    <button
+                      onClick={() => onMarkAllRead()}
+                      className="text-xs transition-colors hover:opacity-80"
+                      style={{ color: "var(--color-bt-accent)" }}
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
 
-              <div className="max-h-80 overflow-y-auto">
+                <div
+                  className="overflow-y-auto"
+                  style={{ maxHeight: "min(480px, calc(100vh - 80px))" }}
+                >
                 {notifications.length === 0 ? (
                   <div
                     className="px-4 py-8 text-center text-[13px]"
@@ -188,6 +199,7 @@ export const TopNav: FC<TopNavProps> = ({
                               WebkitLineClamp: 2,
                               WebkitBoxOrient: "vertical",
                               overflow: "hidden",
+                              wordBreak: "break-word",
                             }}
                           >
                             {getNotificationText(n)}
@@ -204,7 +216,8 @@ export const TopNav: FC<TopNavProps> = ({
                   })
                 )}
               </div>
-            </div>
+              </div>
+            </>
           )}
         </div>
 
