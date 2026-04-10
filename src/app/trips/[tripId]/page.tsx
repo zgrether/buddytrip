@@ -12,6 +12,7 @@ import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
 import { TripBreadcrumb } from "@/components/TripBreadcrumb";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
@@ -93,8 +94,24 @@ export default function TripDetailPage() {
   const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
     || reservationsLoading || tilesLoading || eventLoading || teamsLoading || scoresLoading;
 
+  // ── Notifications ─────────────────────────────────────────────────────────
+  useRealtimeNotifications([tripId]);
+
+  const { data: notifications = [] } = trpc.notifications.list.useQuery(
+    { tripId, limit: 20 },
+  );
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
   // All hooks must be called before any early returns
   const utils = trpc.useUtils();
+
+  const markAllRead = trpc.notifications.markAllRead.useMutation({
+    onSuccess: () => {
+      utils.notifications.list.invalidate({ tripId });
+    },
+  });
+
   const lockDestination = trpc.trips.lockDestination.useMutation({
     onSuccess: () => {
       utils.trips.getById.invalidate({ tripId });
@@ -187,7 +204,11 @@ export default function TripDetailPage() {
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       {/* ── Top nav + breadcrumb ──────────────────────────────────────────── */}
-      <TopNav />
+      <TopNav
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkAllRead={() => markAllRead.mutate({ tripId })}
+      />
       <TripBreadcrumb
         tripId={tripId}
         tripTitle={trip.title}

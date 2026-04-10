@@ -277,6 +277,17 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Read current destination before overwriting so we know if this is a change
+      const { data: current } = await ctx.supabase
+        .from("trips")
+        .select("locked_destination_title")
+        .eq("id", ctx.tripId)
+        .single();
+
+      const isChange =
+        !!current?.locked_destination_title &&
+        current.locked_destination_title !== input.title;
+
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
@@ -295,6 +306,33 @@ export const tripsRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to lock destination",
         });
+      }
+
+      // Notify all trip members except the actor
+      try {
+        const { data: members } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .neq("user_id", ctx.user!.id);
+
+        const { createNotification } = await import("./notifications");
+        const notifType = isChange ? "destination_changed" : "destination_locked";
+        for (const member of members ?? []) {
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: member.user_id,
+            type: notifType,
+            payload: {
+              destination_name: input.title,
+              trip_name: data.title,
+              trip_id: ctx.tripId,
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the mutation
       }
 
       return data;
@@ -550,6 +588,39 @@ export const tripsRouter = router({
         });
       }
 
+      // Notify all trip members except the actor
+      try {
+        const { data: tripData } = await ctx.supabase
+          .from("trips")
+          .select("title")
+          .eq("id", ctx.tripId)
+          .single();
+
+        const { data: members } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .neq("user_id", ctx.user!.id);
+
+        const { formatDateRange } = await import("@/lib/dates");
+        const { createNotification } = await import("./notifications");
+        for (const member of members ?? []) {
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: member.user_id,
+            type: "dates_locked",
+            payload: {
+              date_range: formatDateRange(input.startDate, input.endDate),
+              trip_name: tripData?.title ?? "the trip",
+              trip_id: ctx.tripId,
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the mutation
+      }
+
       return { windowId, startDate: input.startDate, endDate: input.endDate };
     }),
 
@@ -570,6 +641,46 @@ export const tripsRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to update date poll state: ${error.message}`,
         });
+      }
+
+      // Notify all trip members when poll becomes active
+      if (input.active) {
+        try {
+          const { data: tripData } = await ctx.supabase
+            .from("trips")
+            .select("title")
+            .eq("id", ctx.tripId)
+            .single();
+
+          const { data: ownerData } = await ctx.supabase
+            .from("users")
+            .select("name, nickname")
+            .eq("id", ctx.user!.id)
+            .single();
+
+          const { data: members } = await ctx.supabase
+            .from("trip_members")
+            .select("user_id")
+            .eq("trip_id", ctx.tripId)
+            .neq("user_id", ctx.user!.id);
+
+          const { createNotification } = await import("./notifications");
+          for (const member of members ?? []) {
+            await createNotification(ctx.supabase, {
+              tripId: ctx.tripId,
+              actorId: ctx.user!.id,
+              recipientId: member.user_id,
+              type: "date_poll_started",
+              payload: {
+                owner_name: ownerData?.nickname ?? ownerData?.name ?? "The organizer",
+                trip_name: tripData?.title ?? "the trip",
+                trip_id: ctx.tripId,
+              },
+            });
+          }
+        } catch {
+          // Notification failure shouldn't block the mutation
+        }
       }
 
       return { success: true };
@@ -797,6 +908,44 @@ export const tripsRouter = router({
         // Email blast failure shouldn't block the stage advancement
       }
 
+      // Notify all non-owner trip members about stage advancement
+      try {
+        const { data: stageMembers } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .neq("user_id", ctx.user!.id);
+
+        const { data: ownerData } = await ctx.supabase
+          .from("users")
+          .select("name, nickname")
+          .eq("id", ctx.user!.id)
+          .single();
+
+        const { data: tripForNotif } = await ctx.supabase
+          .from("trips")
+          .select("title")
+          .eq("id", ctx.tripId)
+          .single();
+
+        const { createNotification } = await import("./notifications");
+        for (const member of stageMembers ?? []) {
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: member.user_id,
+            type: "stage_advanced",
+            payload: {
+              trip_name: tripForNotif?.title ?? "the trip",
+              trip_id: ctx.tripId,
+              owner_name: ownerData?.nickname ?? ownerData?.name ?? "The organizer",
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the mutation
+      }
+
       return { ...data, ghostsWithoutEmail };
     }),
 
@@ -906,6 +1055,38 @@ export const tripsRouter = router({
           .from("date_poll_votes")
           .delete()
           .in("window_id", windowIds);
+      }
+
+      // Notify all trip members except the actor
+      try {
+        const { data: tripData } = await ctx.supabase
+          .from("trips")
+          .select("title")
+          .eq("id", ctx.tripId)
+          .single();
+
+        const { data: members } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .neq("user_id", ctx.user!.id);
+
+        const { createNotification } = await import("./notifications");
+        for (const member of members ?? []) {
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: member.user_id,
+            type: "destination_changed",
+            payload: {
+              destination_name: dest,
+              trip_name: tripData?.title ?? "the trip",
+              trip_id: ctx.tripId,
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the mutation
       }
 
       return data;

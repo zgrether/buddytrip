@@ -181,6 +181,42 @@ a link to the trip. Currently stubbed with console.log.
 Lower priority items. Build after core planning flows are stable and
 the app has real users.
 
+### Individual notification mark-as-read
+
+Currently notifications can only be bulk marked as read via
+"Mark all as read". Add per-notification mark-as-read so users
+can dismiss individual items without clearing everything.
+Requires: `trpc.notifications.markRead({ notificationId })` mutation
+and UI dismiss button on each notification row.
+
+---
+
+### Notification auto-cleanup
+
+Notifications older than 90 days accumulate indefinitely.
+Add a Supabase scheduled function or trigger to delete
+`notification_events` older than 90 days per user.
+
+---
+
+### Score submitted notifications
+
+When a round score is submitted, notify trip owner and crew.
+Deferred until competition/scoring spec is complete.
+`type: 'score_submitted'`
+`payload: { scorer_name, round_name, trip_name, trip_id }`
+
+---
+
+### Push notifications for action-driving events
+
+`destination_locked` and `dates_locked` warrant push notifications
+(not just in-app) since they signal crew members need to take
+action (book travel, confirm attendance).
+Depends on: PWA service worker or Capacitor native wrapper.
+
+---
+
 ### D-Day countdown nudges
 
 Automated check-ins at key milestones before the trip:

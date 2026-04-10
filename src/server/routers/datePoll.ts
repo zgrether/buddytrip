@@ -152,6 +152,82 @@ export const datePollRouter = router({
         });
       }
 
+      // Batched notification: owner only, deduplicate within 24h
+      try {
+        const { data: ownerMember } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .eq("role", "Owner")
+          .single();
+
+        // Don't notify the owner about their own votes
+        if (ownerMember && ownerMember.user_id !== ctx.user!.id) {
+          const { data: tripData } = await ctx.supabase
+            .from("trips")
+            .select("title")
+            .eq("id", ctx.tripId)
+            .single();
+
+          const { data: voterData } = await ctx.supabase
+            .from("users")
+            .select("name, nickname")
+            .eq("id", ctx.user!.id)
+            .single();
+
+          const voterName = voterData?.nickname ?? voterData?.name ?? "Someone";
+
+          // Check for existing date_poll_voted notification within 24h
+          const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { data: existingNotif } = await ctx.supabase
+            .from("notification_events")
+            .select("id, payload")
+            .eq("trip_id", ctx.tripId)
+            .eq("type", "date_poll_voted")
+            .gte("created_at", twentyFourHoursAgo)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existingNotif) {
+            // Update existing notification with latest voter name
+            await ctx.supabase
+              .from("notification_events")
+              .update({
+                payload: {
+                  ...(existingNotif.payload as Record<string, unknown>),
+                  voter_name: voterName,
+                  trip_name: tripData?.title ?? "the trip",
+                  trip_id: ctx.tripId,
+                },
+              })
+              .eq("id", existingNotif.id);
+
+            // Delete the read record so owner sees it again
+            await ctx.supabase
+              .from("notification_reads")
+              .delete()
+              .eq("notification_id", existingNotif.id)
+              .eq("user_id", ownerMember.user_id);
+          } else {
+            const { createNotification } = await import("./notifications");
+            await createNotification(ctx.supabase, {
+              tripId: ctx.tripId,
+              actorId: ctx.user!.id,
+              recipientId: ownerMember.user_id,
+              type: "date_poll_voted",
+              payload: {
+                voter_name: voterName,
+                trip_name: tripData?.title ?? "the trip",
+                trip_id: ctx.tripId,
+              },
+            });
+          }
+        }
+      } catch {
+        // Notification failure shouldn't block the mutation
+      }
+
       return data;
     }),
 
