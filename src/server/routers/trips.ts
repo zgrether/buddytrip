@@ -1012,10 +1012,10 @@ export const tripsRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
       }
 
-      if (trip.stage !== "going") {
+      if (!["planning", "going"].includes(trip.stage ?? "")) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "About message can only be updated once the trip is in the going stage.",
+          message: "About message can only be updated in the planning or going stage.",
         });
       }
 

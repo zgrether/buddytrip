@@ -1131,7 +1131,6 @@ function PlanningSection({
   const [showChangeDest, setShowChangeDest] = useState(
     (trip.stage ?? "idea") === "planning" && !trip.locked_destination_title && canEdit
   );
-  const [localMessage, setLocalMessage] = useState(trip.about_message ?? "");
   const stage = trip.stage ?? "idea";
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
@@ -1324,17 +1323,6 @@ function PlanningSection({
         onToggle={() => toggle("logistics")}
       />
 
-      {/* ── RSVP Message — PLANNING stage, owner only ── */}
-      {stage === "planning" && isOwner && (
-        <RsvpDraftPanel
-          tripId={trip.id}
-          aboutMessage={trip.about_message}
-          isOwner={isOwner}
-          isOpen={openRow === "rsvp"}
-          onToggle={() => toggle("rsvp")}
-          onDraftChange={setLocalMessage}
-        />
-      )}
 
       {/* Modals rendered outside PlanningRows so they aren't gated by isOpen */}
       {showSetDest && (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { MapPin, CalendarDays, Users, Mail, Send } from "lucide-react";
+import { MapPin, CalendarDays, Users, Send } from "lucide-react";
 import type { TripData } from "../tabs/types";
 
 interface NextStepsPanelProps {
@@ -41,20 +41,12 @@ export function NextStepsPanel({
       });
     }
 
-    if (!trip.about_message?.trim()) {
-      items.push({
-        icon: Mail,
-        text: "Write your invitation message on the Crew tab",
-      });
-    }
-
     return items;
   }, [
     trip.locked_destination_title,
     trip.start_date,
     trip.end_date,
     crewCount,
-    trip.about_message,
   ]);
 
   const allGreen = steps.length === 0;
