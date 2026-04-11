@@ -393,7 +393,7 @@ export function DatesPlanningRow({
     }
     if (pollActive)
       return `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
-    return "Not set yet";
+    return "Dates TBD";
   }, [datesLocked, pollActive, windows.length, trip.start_date, trip.end_date]);
 
   // Non-owners can expand when dates are locked (to see them) or when a
