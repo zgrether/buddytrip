@@ -134,7 +134,6 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
 }) {
-  // All items can reorder within their day; only unconfirmed can move across days
   const movable = canEdit;
 
   return (
@@ -495,9 +494,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
       return;
     }
 
-    // Cross-group — blocked for confirmed items
-    if (draggedItem.is_confirmed) return;
-
+    // Cross-group — move item to new day
     updateItem.mutate({
       tripId,
       itemId: draggedItem.id,
@@ -641,40 +638,76 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                     {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
                   </p>
                 ) : (
-                  group.items.map((item, idx) => (
-                    <ScheduleItemRow
-                      key={item.id}
-                      item={item}
-                      canEdit={canEdit}
-                      onConfirmToggle={() => handleConfirmToggle(item)}
-                      onEdit={() => setEditItem(item)}
-                      onRemove={() => setConfirmDelete(item)}
-                      onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
-                      onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
-                      isFirst={idx === 0}
-                      isLast={idx === group.items.length - 1}
-                      isDragging={
-                        !!dragState.current &&
-                        dragState.current.groupDate === group.date &&
-                        dragState.current.idx === idx
-                      }
-                      showDropIndicator={
-                        !!dragOverIdx &&
-                        dragOverIdx.groupDate === group.date &&
-                        dragOverIdx.idx === idx &&
-                        dragState.current?.idx !== idx
-                      }
-                      onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragOverIdx({ groupDate: group.date, idx });
-                      }}
-                      onDrop={() => {
-                        setDragOverIdx(null);
-                        handleDragDrop(group.date, group.items, idx);
-                      }}
-                    />
-                  ))
+                  <>
+                    {group.items.map((item, idx) => (
+                      <ScheduleItemRow
+                        key={item.id}
+                        item={item}
+                        canEdit={canEdit}
+                        onConfirmToggle={() => handleConfirmToggle(item)}
+                        onEdit={() => setEditItem(item)}
+                        onRemove={() => setConfirmDelete(item)}
+                        onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
+                        onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
+                        isFirst={idx === 0}
+                        isLast={idx === group.items.length - 1}
+                        isDragging={
+                          !!dragState.current &&
+                          dragState.current.groupDate === group.date &&
+                          dragState.current.idx === idx
+                        }
+                        showDropIndicator={
+                          !!dragOverIdx &&
+                          dragOverIdx.groupDate === group.date &&
+                          dragOverIdx.idx === idx &&
+                          dragState.current?.idx !== idx
+                        }
+                        onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverIdx({ groupDate: group.date, idx });
+                        }}
+                        onDrop={() => {
+                          setDragOverIdx(null);
+                          handleDragDrop(group.date, group.items, idx);
+                        }}
+                      />
+                    ))}
+                    {/* Bottom drop zone — append to end of day */}
+                    {canEdit && (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverIdx({ groupDate: group.date, idx: group.items.length });
+                        }}
+                        onDrop={(e) => {
+                          e.stopPropagation();
+                          setDragOverIdx(null);
+                          handleDragDrop(group.date, group.items, group.items.length);
+                        }}
+                        className="h-3 rounded-md transition-colors"
+                        style={{
+                          background:
+                            dragOverIdx?.groupDate === group.date &&
+                            dragOverIdx?.idx === group.items.length &&
+                            dragState.current?.idx !== group.items.length
+                              ? "var(--color-bt-accent)"
+                              : "transparent",
+                          height:
+                            dragOverIdx?.groupDate === group.date &&
+                            dragOverIdx?.idx === group.items.length
+                              ? "6px"
+                              : "12px",
+                          opacity:
+                            dragOverIdx?.groupDate === group.date &&
+                            dragOverIdx?.idx === group.items.length
+                              ? 1
+                              : 0,
+                        }}
+                      />
+                    )}
+                  </>
                 )}
               </div>
             ))}
