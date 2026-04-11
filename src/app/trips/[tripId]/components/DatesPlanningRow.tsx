@@ -827,9 +827,9 @@ export function DatesPlanningRow({
                     onClick: () => setPollActive.mutate({ tripId, state: "closed" }),
                   },
                   {
-                    label: "Restart Poll",
+                    label: "Reset Poll",
                     enabled: pollState === "closed",
-                    onClick: () => setPollActive.mutate({ tripId, state: "active" }),
+                    onClick: () => setPollActive.mutate({ tripId, state: "draft" }),
                   },
                 ] as const
               ).map(({ label, enabled, onClick }) => (
