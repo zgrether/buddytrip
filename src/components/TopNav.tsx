@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -67,6 +67,27 @@ export const TopNav: FC<TopNavProps> = ({
     if (open) document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  // Collapse duplicate notifications (same type + trip) into a single row.
+  // Notifications arrive newest-first, so the first occurrence of each key
+  // is always the most recent one to display.
+  const groupedNotifications = useMemo(() => {
+    const seen = new Map<string, { latest: Notification; count: number; hasUnread: boolean }>();
+    for (const n of notifications) {
+      const key = `${n.type}__${n.trip_id}`;
+      const existing = seen.get(key);
+      if (!existing) {
+        seen.set(key, { latest: n, count: 1, hasUnread: !n.read });
+      } else {
+        seen.set(key, {
+          latest: existing.latest,
+          count: existing.count + 1,
+          hasUnread: existing.hasUnread || !n.read,
+        });
+      }
+    }
+    return Array.from(seen.values());
+  }, [notifications]);
 
   const handleBellClick = () => {
     setOpen((prev) => !prev);
@@ -152,7 +173,7 @@ export const TopNav: FC<TopNavProps> = ({
                   className="overflow-y-auto"
                   style={{ maxHeight: "min(480px, calc(100vh - 80px))" }}
                 >
-                {notifications.length === 0 ? (
+                {groupedNotifications.length === 0 ? (
                   <div
                     className="px-4 py-8 text-center text-[13px]"
                     style={{ color: "var(--color-bt-text-dim)" }}
@@ -160,7 +181,7 @@ export const TopNav: FC<TopNavProps> = ({
                     No notifications yet
                   </div>
                 ) : (
-                  notifications.slice(0, 20).map((n, idx) => {
+                  groupedNotifications.slice(0, 20).map(({ latest: n, count, hasUnread }, idx) => {
                     const Icon = NOTIFICATION_ICONS[n.type] ?? Bell;
                     return (
                       <button
@@ -171,13 +192,13 @@ export const TopNav: FC<TopNavProps> = ({
                         }}
                         className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
                         style={{
-                          background: n.read ? "transparent" : "var(--color-bt-card-raised)",
-                          borderBottom: idx < Math.min(notifications.length, 20) - 1
+                          background: hasUnread ? "var(--color-bt-card-raised)" : "transparent",
+                          borderBottom: idx < Math.min(groupedNotifications.length, 20) - 1
                             ? "0.5px solid var(--color-bt-border)"
                             : undefined,
                         }}
                       >
-                        {!n.read ? (
+                        {hasUnread ? (
                           <span
                             className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full"
                             style={{ background: "var(--color-bt-accent)" }}
@@ -194,7 +215,7 @@ export const TopNav: FC<TopNavProps> = ({
                           <p
                             className="text-[13px] leading-snug"
                             style={{
-                              color: n.read ? "var(--color-bt-text-dim)" : "var(--color-bt-text)",
+                              color: hasUnread ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
                               display: "-webkit-box",
                               WebkitLineClamp: 2,
                               WebkitBoxOrient: "vertical",
@@ -205,12 +226,26 @@ export const TopNav: FC<TopNavProps> = ({
                             {getNotificationText(n)}
                           </p>
                         </div>
-                        <span
-                          className="mt-0.5 flex-shrink-0 text-[11px] whitespace-nowrap"
-                          style={{ color: "var(--color-bt-text-dim)" }}
-                        >
-                          {relativeTime(n.created_at)}
-                        </span>
+                        <div className="ml-1 flex flex-shrink-0 flex-col items-end gap-1">
+                          <span
+                            className="text-[11px] whitespace-nowrap"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          >
+                            {relativeTime(n.created_at)}
+                          </span>
+                          {count > 1 && (
+                            <span
+                              className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none"
+                              style={{
+                                background: "var(--color-bt-card-raised)",
+                                color: "var(--color-bt-text-dim)",
+                                border: "1px solid var(--color-bt-border)",
+                              }}
+                            >
+                              ×{count}
+                            </span>
+                          )}
+                        </div>
                       </button>
                     );
                   })
