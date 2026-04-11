@@ -141,11 +141,10 @@ export const TopNav: FC<TopNavProps> = ({
               />
               <div
                 data-testid="notification-dropdown"
-                className="overflow-hidden rounded-xl shadow-2xl z-50 fixed left-4 right-4 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-[380px]"
+                className="overflow-hidden rounded-xl shadow-2xl z-50 fixed right-4 top-14 w-[calc(100vw-32px)] max-w-[380px] sm:absolute sm:right-0 sm:top-11 sm:w-[380px]"
                 style={{
                   background: "var(--color-bt-card)",
                   border: "1px solid var(--color-bt-border)",
-                  maxWidth: "calc(100vw - 32px)",
                 }}
               >
                 <div
