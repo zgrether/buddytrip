@@ -87,7 +87,15 @@ export function DatesPlanningRow({
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
 
-  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
+  // Refresh votes every 30 s while the owner has the panel open and the poll
+  // is active — lets them watch responses come in without a manual reload.
+  const liveVotePolling =
+    isOwner && isOpen && trip.date_poll_state === "active" && !trip.start_date;
+
+  const { data: poll } = trpc.datePoll.get.useQuery(
+    { tripId },
+    { refetchInterval: liveVotePolling ? 30_000 : false }
+  );
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
   const rawWindows = (poll?.windows ?? []) as PollWindow[];
