@@ -374,11 +374,18 @@ export function DatesPlanningRow({
     ? "inProgress"
     : "none";
 
+  const ownerDisplayName = useMemo(() => {
+    const owner = members.find((m) => m.role === "Owner");
+    return owner?.displayName ?? "Your organizer";
+  }, [members]);
+
   const headerLabel = datesLocked
     ? "Dates Selected"
     : pollActive
     ? "Checking Availability"
-    : "Set Dates";
+    : isOwner
+    ? "Set Dates"
+    : `${ownerDisplayName} is working on dates`;
 
   const headerNote = useMemo(() => {
     if (datesLocked) {
@@ -978,6 +985,7 @@ export function DatesPlanningRow({
         state={state}
         isOpen={effectiveOpen}
         onToggle={handleToggle}
+        noExpand={!canExpand}
       >
         {renderBody()}
       </PlanningRow>
