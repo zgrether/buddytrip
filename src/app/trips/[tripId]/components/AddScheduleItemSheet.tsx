@@ -5,26 +5,43 @@ import { Plus, X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { trpc } from "@/lib/trpc-client";
 
+interface ScheduleItemData {
+  id: string;
+  item_type: "general" | "golf";
+  title: string;
+  detail?: string | null;
+  scheduled_date?: string | null;
+  scheduled_time?: string | null;
+  is_confirmed: boolean;
+  course_name?: string | null;
+  course_location?: string | null;
+  tee_times?: string[] | null;
+}
+
 interface AddScheduleItemSheetProps {
   tripId: string;
   itemType: "general" | "golf";
+  editItem?: ScheduleItemData | null;
   onClose: () => void;
 }
 
-export function AddScheduleItemSheet({ tripId, itemType, onClose }: AddScheduleItemSheetProps) {
+export function AddScheduleItemSheet({ tripId, itemType, editItem, onClose }: AddScheduleItemSheetProps) {
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
+  const isEditing = !!editItem;
 
-  const [title, setTitle] = useState("");
-  const [detail, setDetail] = useState("");
-  const [scheduledDate, setScheduledDate] = useState("");
-  const [scheduledTime, setScheduledTime] = useState("");
-  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [title, setTitle] = useState(editItem?.title ?? "");
+  const [detail, setDetail] = useState(editItem?.detail ?? "");
+  const [scheduledDate, setScheduledDate] = useState(editItem?.scheduled_date ?? "");
+  const [scheduledTime, setScheduledTime] = useState(editItem?.scheduled_time ?? "");
+  const [isConfirmed, setIsConfirmed] = useState(editItem?.is_confirmed ?? false);
 
   // Golf fields
-  const [courseName, setCourseName] = useState("");
-  const [courseLocation, setCourseLocation] = useState("");
-  const [teeTimes, setTeeTimes] = useState<string[]>([""]);
+  const [courseName, setCourseName] = useState(editItem?.course_name ?? "");
+  const [courseLocation, setCourseLocation] = useState(editItem?.course_location ?? "");
+  const [teeTimes, setTeeTimes] = useState<string[]>(
+    editItem?.tee_times?.length ? editItem.tee_times : [""]
+  );
 
   const create = trpc.schedule.create.useMutation({
     onSuccess: () => {
@@ -33,24 +50,46 @@ export function AddScheduleItemSheet({ tripId, itemType, onClose }: AddScheduleI
     },
   });
 
+  const update = trpc.schedule.update.useMutation({
+    onSuccess: () => {
+      utils.schedule.list.invalidate({ tripId });
+      onClose();
+    },
+  });
+
+  const isPending = create.isPending || update.isPending;
+
   const handleSubmit = () => {
     if (!title.trim()) return;
 
     const filteredTeeTimes = teeTimes.filter((t) => t.trim());
 
-    create.mutate({
-      tripId,
-      itemType,
-      title: title.trim(),
-      detail: detail.trim() || undefined,
-      scheduledDate: scheduledDate || undefined,
-      scheduledTime: itemType === "general" && scheduledTime ? scheduledTime : undefined,
-      isConfirmed: scheduledDate ? isConfirmed : false,
-      // Golf
-      courseName: itemType === "golf" && courseName.trim() ? courseName.trim() : undefined,
-      courseLocation: itemType === "golf" && courseLocation.trim() ? courseLocation.trim() : undefined,
-      teeTimes: itemType === "golf" && filteredTeeTimes.length > 0 ? filteredTeeTimes : undefined,
-    });
+    if (isEditing) {
+      update.mutate({
+        tripId,
+        itemId: editItem!.id,
+        title: title.trim(),
+        detail: detail.trim() || null,
+        scheduledDate: scheduledDate || null,
+        scheduledTime: itemType === "general" && scheduledTime ? scheduledTime : null,
+        courseName: itemType === "golf" && courseName.trim() ? courseName.trim() : null,
+        courseLocation: itemType === "golf" && courseLocation.trim() ? courseLocation.trim() : null,
+        teeTimes: itemType === "golf" && filteredTeeTimes.length > 0 ? filteredTeeTimes : null,
+      });
+    } else {
+      create.mutate({
+        tripId,
+        itemType,
+        title: title.trim(),
+        detail: detail.trim() || undefined,
+        scheduledDate: scheduledDate || undefined,
+        scheduledTime: itemType === "general" && scheduledTime ? scheduledTime : undefined,
+        isConfirmed: scheduledDate ? isConfirmed : false,
+        courseName: itemType === "golf" && courseName.trim() ? courseName.trim() : undefined,
+        courseLocation: itemType === "golf" && courseLocation.trim() ? courseLocation.trim() : undefined,
+        teeTimes: itemType === "golf" && filteredTeeTimes.length > 0 ? filteredTeeTimes : undefined,
+      });
+    }
   };
 
   const addTeeTime = () => setTeeTimes((prev) => [...prev, ""]);
@@ -82,7 +121,9 @@ export function AddScheduleItemSheet({ tripId, itemType, onClose }: AddScheduleI
           className="text-lg font-semibold"
           style={{ color: "var(--color-bt-text)" }}
         >
-          {isGolf ? "Add Golf Round" : "Add Schedule Item"}
+          {isEditing
+            ? isGolf ? "Edit Golf Round" : "Edit Schedule Item"
+            : isGolf ? "Add Golf Round" : "Add Schedule Item"}
         </h2>
 
         {/* Title */}
@@ -188,8 +229,8 @@ export function AddScheduleItemSheet({ tripId, itemType, onClose }: AddScheduleI
           )}
         </div>
 
-        {/* Confirmed checkbox — only when date is set */}
-        {scheduledDate && (
+        {/* Confirmed checkbox — only when date is set, only on create */}
+        {!isEditing && scheduledDate && (
           <label className="mt-3 flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
@@ -206,14 +247,18 @@ export function AddScheduleItemSheet({ tripId, itemType, onClose }: AddScheduleI
         {/* Actions */}
         <button
           onClick={handleSubmit}
-          disabled={create.isPending || !title.trim()}
+          disabled={isPending || !title.trim()}
           className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
           style={{
             background: "var(--color-bt-accent)",
             color: "var(--color-bt-base)",
           }}
         >
-          {create.isPending ? "Adding..." : isGolf ? "Add golf round" : "Add item"}
+          {isPending
+            ? isEditing ? "Saving..." : "Adding..."
+            : isEditing
+            ? "Save changes"
+            : isGolf ? "Add golf round" : "Add item"}
         </button>
         <button
           onClick={onClose}

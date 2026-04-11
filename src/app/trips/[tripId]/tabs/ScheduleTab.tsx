@@ -14,6 +14,7 @@ import {
   ChevronUp,
   ChevronDown,
   AlertTriangle,
+  Pencil,
   Trash2,
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
@@ -88,6 +89,7 @@ function ScheduleItemRow({
   item,
   canEdit,
   onConfirmToggle,
+  onEdit,
   onRemove,
   onMoveUp,
   onMoveDown,
@@ -100,6 +102,7 @@ function ScheduleItemRow({
   item: ScheduleItem;
   canEdit: boolean;
   onConfirmToggle: () => void;
+  onEdit: () => void;
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -232,6 +235,17 @@ function ScheduleItemRow({
           </div>
         )}
 
+        {canEdit && (
+          <button
+            onClick={onEdit}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Edit item"
+          >
+            <Pencil size={12} />
+          </button>
+        )}
+
         {canEdit && !item.is_confirmed && (
           <button
             onClick={onRemove}
@@ -256,6 +270,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   const stage = trip.stage ?? "idea";
   const utils = trpc.useUtils();
   const [addMode, setAddMode] = useState<AddMode>(null);
+  const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
@@ -554,6 +569,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                       item={item}
                       canEdit={canEdit}
                       onConfirmToggle={() => handleConfirmToggle(item)}
+                      onEdit={() => setEditItem(item)}
                       onRemove={() => setConfirmDelete(item)}
                       onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
                       onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
@@ -576,6 +592,16 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
       )}
       {addMode === "golf" && (
         <AddScheduleItemSheet tripId={tripId} itemType="golf" onClose={() => setAddMode(null)} />
+      )}
+
+      {/* Edit sheet */}
+      {editItem && (
+        <AddScheduleItemSheet
+          tripId={tripId}
+          itemType={editItem.item_type ?? "general"}
+          editItem={editItem}
+          onClose={() => setEditItem(null)}
+        />
       )}
 
       {/* Delete confirmation dialog */}
