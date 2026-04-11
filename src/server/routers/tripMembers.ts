@@ -561,6 +561,52 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // updateTravel — member updates their own travel info
+  // -----------------------------------------------------------------------
+  updateTravel: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        travelMode: z.enum(["driving", "flying", "other"]).nullable(),
+        travelDetail: z.string().max(500).nullable().optional(),
+        flightAirline: z.string().max(100).nullable().optional(),
+        flightNumber: z.string().max(50).nullable().optional(),
+        flightArrivalTime: z.string().nullable().optional(),
+        flightAirport: z.string().max(100).nullable().optional(),
+        travelShared: z.boolean().default(true),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      const update: Record<string, unknown> = {
+        travel_mode: input.travelMode,
+        travel_shared: input.travelShared,
+      };
+      if (input.travelDetail !== undefined) update.travel_detail = input.travelDetail;
+      if (input.flightAirline !== undefined) update.flight_airline = input.flightAirline;
+      if (input.flightNumber !== undefined) update.flight_number = input.flightNumber;
+      if (input.flightArrivalTime !== undefined) update.flight_arrival_time = input.flightArrivalTime;
+      if (input.flightAirport !== undefined) update.flight_airport = input.flightAirport;
+
+      const { data, error } = await ctx.supabase
+        .from("trip_members")
+        .update(update)
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", ctx.user!.id)
+        .select("user_id, trip_id, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update travel info",
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
   // nudgeCrewMember — resend RSVP email to a specific crew member
   // -----------------------------------------------------------------------
   nudgeCrewMember: authedProcedure

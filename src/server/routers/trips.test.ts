@@ -467,3 +467,47 @@ describe("trips router — setDatePollActive state machine", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
+
+// ── setOwnerAlert ──────────────────────────────────────────────────────
+
+describe("trips router — setOwnerAlert", () => {
+  let ctx: TestContext;
+  let alertTripId: string;
+
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+    alertTripId = await ctx.createTrip("Alert Test");
+    await ctx.addTripMember(alertTripId, "planner", "Planner");
+  });
+
+  afterAll(async () => {
+    await ctx.cleanup();
+  });
+
+  it("setOwnerAlert — owner can set alert", async () => {
+    const caller = ctx.caller();
+    const result = await caller.trips.setOwnerAlert({
+      tripId: alertTripId,
+      alert: "Flight delayed — meet at bar instead",
+    });
+    expect(result.owner_alert).toBe("Flight delayed — meet at bar instead");
+    expect(result.owner_alert_set_at).toBeTruthy();
+  });
+
+  it("setOwnerAlert — owner can clear alert", async () => {
+    const caller = ctx.caller();
+    const result = await caller.trips.setOwnerAlert({
+      tripId: alertTripId,
+      alert: null,
+    });
+    expect(result.owner_alert).toBeNull();
+    expect(result.owner_alert_set_at).toBeNull();
+  });
+
+  it("setOwnerAlert — planner cannot set alert", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.trips.setOwnerAlert({ tripId: alertTripId, alert: "Nope" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
