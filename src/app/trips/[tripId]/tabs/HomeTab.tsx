@@ -35,6 +35,7 @@ import IdeaZonePanel from "../components/IdeaZonePanel";
 import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
 import { LogisticsPanel } from "../components/LogisticsPanel";
+import { TravelEntryForm } from "../components/TravelEntryForm";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
@@ -595,9 +596,19 @@ function RsvpPanel({
       <p className="mt-3 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
         {inCount} in · {maybeCount} maybe · {outCount} out · {pendingCount} pending
       </p>
+
+      {/* Travel entry — only when RSVP is "in" */}
+      {myRsvp === "in" && (
+        <TravelEntryForm
+          tripId={tripId}
+          currentTravel={myMember as TravelEntryFormProps["currentTravel"]}
+        />
+      )}
     </div>
   );
 }
+
+type TravelEntryFormProps = Parameters<typeof TravelEntryForm>[0];
 
 // ── ChangeDestinationModal ────────────────────────────────────────────────
 
