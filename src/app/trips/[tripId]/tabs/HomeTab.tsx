@@ -1704,15 +1704,15 @@ export function HomeTab({
             />
           )}
 
-          {/* ── GOING/NOW: planning rows in collapsed done state ──── */}
+          {/* ── GOING/NOW: planning rows — logistics stays editable ── */}
           {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
             <PlanningSection
               trip={trip}
               ideas={ideas as IdeaWithVotes[]}
               tripMembers={members}
               reservations={reservations}
-              canEdit={false}
-              isOwner={false}
+              canEdit={canEditProp}
+              isOwner={!!isOwner}
               onTabChange={onTabChange}
             />
           )}
