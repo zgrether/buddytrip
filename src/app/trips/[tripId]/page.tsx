@@ -24,6 +24,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ChatDrawer } from "./components/ChatDrawer";
 import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
 import { NextStepsPanel } from "./components/NextStepsPanel";
+import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
 import { SidebarChatPanel } from "./components/PlanningChatPanel";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
@@ -325,6 +326,13 @@ export default function TripDetailPage() {
         </div>
       ) : (
         <>
+          {/* Owner alert — above tab bar in GOING/NOW */}
+          {(stage === "going") && (
+            <div className="mx-auto max-w-[1280px] px-4 mt-4">
+              <OwnerAlertPanel trip={trip} canEdit={effectiveCanEdit} />
+            </div>
+          )}
+
           {/* Non-planning: tab bar in its own row, hidden in IDEA stage */}
           {stage !== "idea" && (
             <div className="mx-auto max-w-[1280px] px-4 mt-4">
