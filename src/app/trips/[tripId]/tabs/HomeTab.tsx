@@ -21,7 +21,6 @@ import {
   Edit2,
   Bell,
   Mail,
-  Send,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -1021,86 +1020,6 @@ function MiniIdeaHero({
   );
 }
 
-// ── RsvpDraftPanel ───────────────────────────────────────────────────────
-
-function RsvpDraftPanel({
-  tripId,
-  aboutMessage,
-  isOwner,
-  isOpen,
-  onToggle,
-  onDraftChange,
-}: {
-  tripId: string;
-  aboutMessage?: string | null;
-  isOwner: boolean;
-  isOpen: boolean;
-  onToggle: () => void;
-  onDraftChange?: (val: string) => void;
-}) {
-  const utils = trpc.useUtils();
-  const [draft, setDraft] = useState(aboutMessage ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const updateMessage = trpc.trips.updateAboutMessage.useMutation({
-    onSuccess() {
-      setSaving(false);
-      utils.trips.getById.invalidate({ tripId });
-    },
-    onError() {
-      setSaving(false);
-    },
-  });
-
-  const hasDraft = !!(draft.trim());
-  const state: ArcCardState = hasDraft ? "done" : "none";
-  const note = hasDraft ? "Draft saved" : "Not written yet";
-  const noteWarn = false;
-
-  const handleBlur = () => {
-    const trimmed = draft.trim();
-    if (trimmed === (aboutMessage?.trim() ?? "")) return;
-    setSaving(true);
-    updateMessage.mutate({ tripId, aboutMessage: trimmed });
-  };
-
-  return (
-    <PlanningRow
-      icon={<Mail size={16} />}
-      label={hasDraft ? "Invitation Written" : "Write Invitation"}
-      note={note}
-      noteWarn={noteWarn}
-      state={state}
-      isOpen={isOpen && isOwner}
-      onToggle={isOwner ? onToggle : () => {}}
-    >
-      <div className="space-y-2">
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Write a message to your crew — this goes out by email when you make the trip official.
-        </p>
-        <textarea
-          value={draft}
-          onChange={(e) => { setDraft(e.target.value); onDraftChange?.(e.target.value); }}
-          onBlur={handleBlur}
-          placeholder="Hey crew, here's the plan..."
-          rows={4}
-          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        {saving && (
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Saving…
-          </p>
-        )}
-      </div>
-    </PlanningRow>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 
 function PlanningSection({
@@ -1111,7 +1030,6 @@ function PlanningSection({
   canEdit,
   isOwner,
   onTabChange,
-  onMakeOfficial,
 }: {
   trip: TripData;
   ideas: IdeaWithVotes[];
@@ -1120,7 +1038,6 @@ function PlanningSection({
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
-  onMakeOfficial?: (message: string) => void;
 }) {
   const [openRow, setOpenRow] = useState<string | null>(
     trip.date_poll_active ? "dates" : null
@@ -1154,11 +1071,6 @@ function PlanningSection({
   const hasAnyone = tripMembers.length > 1;
   const crewState: ArcCardState = confirmed >= 1 ? "done" : hasAnyone ? "inProgress" : "none";
   const crewNote = `${confirmed} confirmed`;
-
-  // ── Dates ─────────────────────────────────────────────────────────────
-  // DatesPlanningRow is self-contained and reads its own data / state.
-  // Only the "all three green" footer needs to know whether dates are locked.
-  const datesLocked = !!(trip.start_date && trip.end_date);
 
   // ── Logistics ─────────────────────────────────────────────────────────
   const _bookingCount = reservations.length;
@@ -1688,7 +1600,6 @@ export function HomeTab({
               canEdit={canEditProp}
               isOwner={!!isOwner}
               onTabChange={onTabChange}
-              onMakeOfficial={onMakeOfficial}
             />
           )}
 

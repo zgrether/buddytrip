@@ -44,6 +44,7 @@ export function TravelEntryForm({ tripId, currentTravel }: TravelEntryFormProps)
   // Sync when travel data changes externally
   useEffect(() => {
     if (currentTravel?.travel_mode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode(currentTravel.travel_mode as TravelMode);
       setDetail(currentTravel.travel_detail ?? "");
       setAirline(currentTravel.flight_airline ?? "");

@@ -5,6 +5,8 @@ import { Plus, X, Search, MapPin } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { trpc } from "@/lib/trpc-client";
 
+const GOLF_TYPES = ["golf_course"];
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 interface ScheduleItemData {
@@ -135,8 +137,7 @@ export function AddScheduleItemSheet({
   );
   const [showSearch, setShowSearch] = useState(!selectedCourse && isGolf);
 
-  const golfTypes = useRef(["golf_course"]);
-  const placesSearch = usePlacesSearch(isGolf ? golfTypes.current : undefined);
+  const placesSearch = usePlacesSearch(isGolf ? GOLF_TYPES : undefined);
 
   // General item: optional location
   const [selectedLocation, setSelectedLocation] = useState<{

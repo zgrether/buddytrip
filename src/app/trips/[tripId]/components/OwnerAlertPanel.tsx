@@ -22,12 +22,14 @@ export function OwnerAlertPanel({ trip, isOwner }: OwnerAlertPanelProps) {
 
   // Sync draft when trip alert changes externally
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(trip.owner_alert ?? "");
   }, [trip.owner_alert]);
 
   // Check localStorage on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDismissed(localStorage.getItem(storageKey) === "true");
     }
   }, [storageKey]);

@@ -604,6 +604,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
           />
         ) : (
           <div className="space-y-5">
+            {/* eslint-disable react-hooks/refs */}
             {dayGroups.map((group) => (
               <div
                 key={group.date ?? "__unscheduled"}
@@ -740,6 +741,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                 )}
               </div>
             ))}
+            {/* eslint-enable react-hooks/refs */}
           </div>
         )}
       </section>
