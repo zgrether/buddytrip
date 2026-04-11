@@ -954,8 +954,11 @@ export function DatesPlanningRow({
   }
 
   function renderBody() {
-    // Locked view: show the range and a Change dates → button opening the modal
+    // Locked view: show the range and a Change dates → button.
+    // For poll-set dates: go straight back to poll draft state (no modal needed).
+    // For direct-set dates: open the change-dates modal.
     if (datesLocked) {
+      const fromPoll = trip.date_set_method === "poll";
       return (
         <div className="space-y-2">
           <p
@@ -970,11 +973,16 @@ export function DatesPlanningRow({
           </p>
           {isOwner && (
             <button
-              onClick={() => setShowChangeDates(true)}
-              className="text-xs font-medium"
+              onClick={
+                fromPoll
+                  ? () => unlockDates.mutate({ tripId })
+                  : () => setShowChangeDates(true)
+              }
+              disabled={fromPoll && unlockDates.isPending}
+              className="text-xs font-medium transition-opacity disabled:opacity-50"
               style={{ color: "var(--color-bt-accent)" }}
             >
-              Change dates →
+              {fromPoll && unlockDates.isPending ? "Going back…" : "Change dates →"}
             </button>
           )}
         </div>
