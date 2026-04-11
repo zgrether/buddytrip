@@ -232,7 +232,7 @@ function ScheduleItemRow({
           </div>
         )}
 
-        {canEdit && (
+        {canEdit && !item.is_confirmed && (
           <button
             onClick={onRemove}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
@@ -256,6 +256,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   const stage = trip.stage ?? "idea";
   const utils = trpc.useUtils();
   const [addMode, setAddMode] = useState<AddMode>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
 
@@ -553,7 +554,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                       item={item}
                       canEdit={canEdit}
                       onConfirmToggle={() => handleConfirmToggle(item)}
-                      onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
+                      onRemove={() => setConfirmDelete(item)}
                       onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
                       onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
                       isFirst={idx === 0}
@@ -575,6 +576,57 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
       )}
       {addMode === "golf" && (
         <AddScheduleItemSheet tripId={tripId} itemType="golf" onClose={() => setAddMode(null)} />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-5"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p
+              className="text-base font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Delete schedule item?
+            </p>
+            <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              &ldquo;{confirmDelete.title}&rdquo; will be permanently removed from the schedule.
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-xl py-2.5 text-sm font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  removeItem.mutate({ tripId, itemId: confirmDelete.id });
+                  setConfirmDelete(null);
+                }}
+                disabled={removeItem.isPending}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-danger)",
+                  color: "#fff",
+                }}
+              >
+                {removeItem.isPending ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
