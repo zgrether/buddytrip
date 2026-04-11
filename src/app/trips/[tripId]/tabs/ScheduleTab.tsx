@@ -368,7 +368,25 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   });
 
   const reorder = trpc.schedule.reorder.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      // Assign sort_order based on position in the new itemIds array
+      const orderMap = new Map(vars.itemIds.map((id, i) => [id, i]));
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old
+          ?.map((item) => {
+            const newOrder = orderMap.get(item.id);
+            return newOrder !== undefined ? { ...item, sort_order: newOrder } : item;
+          })
+          .sort((a, b) => a.sort_order - b.sort_order)
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
   const updateItem = trpc.schedule.update.useMutation({
