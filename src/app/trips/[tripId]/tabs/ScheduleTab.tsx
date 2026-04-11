@@ -596,9 +596,11 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                     setDragOverIdx(null);
                   }
                 } : undefined}
-                onDrop={canEdit ? () => {
+                onDrop={canEdit ? (e) => {
+                  e.preventDefault();
                   setDragOverGroup(false);
-                  if (dragState.current && dragState.current.groupDate !== group.date) {
+                  setDragOverIdx(null);
+                  if (dragState.current) {
                     handleDragDrop(group.date, group.items, group.items.length);
                   }
                 } : undefined}
