@@ -4,13 +4,17 @@ import { useMemo, useRef, useState } from "react";
 import {
   Calendar,
   CalendarDays,
+  ClipboardList,
   Clock,
+  Flag,
+  MapPin,
   Plus,
   X,
   GripVertical,
   ChevronUp,
   ChevronDown,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
@@ -22,12 +26,17 @@ import type { TabProps } from "./types";
 
 interface ScheduleItem {
   id: string;
+  item_type: "general" | "golf";
   title: string;
   detail?: string | null;
   scheduled_date?: string | null;
   scheduled_time?: string | null;
   is_confirmed: boolean;
   sort_order: number;
+  // Golf fields
+  course_name?: string | null;
+  course_location?: string | null;
+  tee_times?: string[] | null;
 }
 
 interface DayGroup {
@@ -122,6 +131,11 @@ function ScheduleItemRow({
         />
       )}
 
+      {/* Type icon */}
+      {item.item_type === "golf" && (
+        <Flag size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+      )}
+
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
           {item.title}
@@ -131,7 +145,44 @@ function ScheduleItemRow({
             {item.detail}
           </p>
         )}
-        {item.scheduled_time && (
+        {/* Golf: course + tee times */}
+        {item.item_type === "golf" && item.course_name && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <span className="font-medium">{item.course_name}</span>
+            {item.course_location && (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course_location)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-0.5"
+                style={{ color: "var(--color-bt-accent)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MapPin size={10} />
+                Map
+              </a>
+            )}
+          </div>
+        )}
+        {item.item_type === "golf" && item.tee_times && item.tee_times.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {item.tee_times.map((t, i) => (
+              <span
+                key={i}
+                className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        {/* General: time */}
+        {item.item_type !== "golf" && item.scheduled_time && (
           <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             <Clock size={10} />
             {item.scheduled_time}
@@ -140,7 +191,8 @@ function ScheduleItemRow({
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-1">
-        {canEdit && (
+        {/* Confirm toggle: only when item has a date */}
+        {canEdit && item.scheduled_date && (
           <button
             onClick={onConfirmToggle}
             className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
@@ -197,10 +249,13 @@ function ScheduleItemRow({
 
 // ── ScheduleTab ─────────────────────────────────────────────────────────
 
+type AddMode = "general" | "golf" | null;
+
 export function ScheduleTab({ trip, canEdit }: TabProps) {
   const tripId = trip.id;
+  const stage = trip.stage ?? "idea";
   const utils = trpc.useUtils();
-  const [showAdd, setShowAdd] = useState(false);
+  const [addMode, setAddMode] = useState<AddMode>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
 
@@ -360,28 +415,52 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   return (
     <div className="px-4">
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Schedule
-          </h2>
-          {canEdit && (
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Schedule
+        </h2>
+
+        {/* Guidance text — stage-aware */}
+        <p
+          className="mb-3 text-[13px] leading-relaxed"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {stage === "planning"
+            ? "Start adding items to your schedule — you can edit and reorganize at any time. All confirmed items will appear on the official schedule for the crew once the trip has been officially kicked off."
+            : "Keep your schedule up to date — any confirmed items will be shown on the crew's official schedule."}
+        </p>
+
+        {/* Type selector — add buttons */}
+        {canEdit && (
+          <div className="mb-4 flex gap-2">
             <button
-              onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors hover:opacity-80"
+              onClick={() => setAddMode("general")}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
               style={{
-                border: "1.5px dashed var(--color-bt-accent)",
-                color: "var(--color-bt-accent)",
-                background: "transparent",
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
               }}
             >
-              <Plus size={14} />
-              Add item
+              <ClipboardList size={15} />
+              <Plus size={12} /> Item
             </button>
-          )}
-        </div>
+            <button
+              onClick={() => setAddMode("golf")}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Flag size={15} />
+              <Plus size={12} /> Golf
+            </button>
+          </div>
+        )}
 
         {/* Unconfirmed banner */}
         {canEdit && unconfirmedCount > 0 && (
@@ -491,8 +570,11 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
         )}
       </section>
 
-      {showAdd && (
-        <AddScheduleItemSheet tripId={tripId} onClose={() => setShowAdd(false)} />
+      {addMode === "general" && (
+        <AddScheduleItemSheet tripId={tripId} itemType="general" onClose={() => setAddMode(null)} />
+      )}
+      {addMode === "golf" && (
+        <AddScheduleItemSheet tripId={tripId} itemType="golf" onClose={() => setAddMode(null)} />
       )}
     </div>
   );

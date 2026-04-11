@@ -35,12 +35,17 @@ export const scheduleRouter = router({
     .input(
       z.object({
         tripId: z.string(),
+        itemType: z.enum(["general", "golf"]).default("general"),
         title: z.string().min(1).max(200),
         detail: z.string().max(1000).optional(),
         scheduledDate: z.string().optional(),
         scheduledTime: z.string().optional(),
         isConfirmed: z.boolean().default(false),
         sortOrder: z.number().int().default(0),
+        // Golf fields
+        courseName: z.string().max(200).optional(),
+        courseLocation: z.string().max(500).optional(),
+        teeTimes: z.array(z.string()).optional(),
       })
     )
     .use(requireTripRole("Planner"))
@@ -49,6 +54,7 @@ export const scheduleRouter = router({
         .from("schedule_items")
         .insert({
           trip_id: ctx.tripId,
+          item_type: input.itemType,
           title: input.title,
           detail: input.detail ?? null,
           scheduled_date: input.scheduledDate ?? null,
@@ -58,6 +64,9 @@ export const scheduleRouter = router({
           confirmed_by: input.isConfirmed ? ctx.user!.id : null,
           sort_order: input.sortOrder,
           created_by: ctx.user!.id,
+          course_name: input.courseName ?? null,
+          course_location: input.courseLocation ?? null,
+          tee_times: input.teeTimes ?? null,
         })
         .select()
         .single();
@@ -85,6 +94,9 @@ export const scheduleRouter = router({
         scheduledDate: z.string().nullable().optional(),
         scheduledTime: z.string().nullable().optional(),
         sortOrder: z.number().int().optional(),
+        courseName: z.string().max(200).nullable().optional(),
+        courseLocation: z.string().max(500).nullable().optional(),
+        teeTimes: z.array(z.string()).nullable().optional(),
       })
     )
     .use(requireTripRole("Planner"))
@@ -95,6 +107,9 @@ export const scheduleRouter = router({
       if (input.scheduledDate !== undefined) update.scheduled_date = input.scheduledDate;
       if (input.scheduledTime !== undefined) update.scheduled_time = input.scheduledTime;
       if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
+      if (input.courseName !== undefined) update.course_name = input.courseName;
+      if (input.courseLocation !== undefined) update.course_location = input.courseLocation;
+      if (input.teeTimes !== undefined) update.tee_times = input.teeTimes;
 
       if (Object.keys(update).length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });
