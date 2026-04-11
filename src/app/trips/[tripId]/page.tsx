@@ -23,6 +23,7 @@ import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ChatDrawer } from "./components/ChatDrawer";
 import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
+import { NextStepsPanel } from "./components/NextStepsPanel";
 import { SidebarChatPanel } from "./components/PlanningChatPanel";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
@@ -307,7 +308,12 @@ export default function TripDetailPage() {
             </div>
             {/* Right: persistent sidebar — desktop only */}
             <div className="hidden lg:flex lg:flex-col gap-4">
-              <StageContextBar tripId={tripId} stage={stage} displayStatus={status} isOwner={isOwner} />
+              <NextStepsPanel
+                trip={trip}
+                crewCount={members.length}
+                isOwner={isOwner}
+                onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
+              />
               <SidebarChatPanel
                 tripId={tripId}
                 memberNames={Object.fromEntries(
