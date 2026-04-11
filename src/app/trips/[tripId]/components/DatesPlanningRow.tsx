@@ -911,18 +911,11 @@ export function DatesPlanningRow({
           </p>
           {isOwner && (
             <button
-              onClick={() => {
-                if (trip.date_set_method === "poll") {
-                  unlockDates.mutate({ tripId });
-                } else {
-                  setShowChangeDates(true);
-                }
-              }}
-              disabled={unlockDates.isPending}
+              onClick={() => setShowChangeDates(true)}
               className="text-xs font-medium"
               style={{ color: "var(--color-bt-accent)" }}
             >
-              {unlockDates.isPending ? "Unlocking…" : "Change dates →"}
+              Change dates →
             </button>
           )}
         </div>
@@ -1014,6 +1007,10 @@ export function DatesPlanningRow({
             );
           }}
           isPending={lockDates.isPending}
+          onClear={() => {
+            unlockDates.mutate({ tripId }, { onSuccess() { setShowChangeDates(false); } });
+          }}
+          isClearPending={unlockDates.isPending}
         />
       )}
 
@@ -1066,6 +1063,8 @@ function ChangeDatesModal({
   onClose,
   onSubmit,
   isPending,
+  onClear,
+  isClearPending,
 }: {
   tripId: string;
   initialStart: string;
@@ -1074,6 +1073,8 @@ function ChangeDatesModal({
   onClose: () => void;
   onSubmit: (startDate: string, endDate: string) => void;
   isPending: boolean;
+  onClear: () => void;
+  isClearPending: boolean;
 }) {
   useModalBackButton(onClose);
   const [startDate, setStartDate] = useState(initialStart);
@@ -1133,6 +1134,18 @@ function ChangeDatesModal({
           }}
         >
           {isPending ? "Updating..." : "Update dates"}
+        </button>
+
+        <button
+          onClick={onClear}
+          disabled={isClearPending || isPending}
+          className="mt-2 w-full rounded-xl border py-2.5 text-sm font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
+          style={{
+            borderColor: "var(--color-bt-danger-border)",
+            color: "var(--color-bt-danger)",
+          }}
+        >
+          {isClearPending ? "Clearing..." : "Clear dates"}
         </button>
 
         <button
