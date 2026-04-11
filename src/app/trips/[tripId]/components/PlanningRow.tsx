@@ -15,6 +15,8 @@ export interface PlanningRowProps {
   state: ArcCardState;
   isOpen: boolean;
   onToggle: () => void;
+  /** Hide the expand chevron and make the row non-interactive (read-only status display) */
+  noExpand?: boolean;
   /** Optional element rendered right-aligned in the header, before the chevron */
   headerAction?: React.ReactNode;
   children?: React.ReactNode;
@@ -29,6 +31,7 @@ export function PlanningRow({
   state,
   isOpen,
   onToggle,
+  noExpand,
   headerAction,
   children,
 }: PlanningRowProps) {
@@ -57,11 +60,11 @@ export function PlanningRow({
       }}
     >
       <div
-        role="button"
-        tabIndex={0}
-        className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left"
-        onClick={onToggle}
-        onKeyDown={(e) => {
+        role={noExpand ? undefined : "button"}
+        tabIndex={noExpand ? undefined : 0}
+        className={`flex w-full items-center gap-3 px-4 py-3.5 text-left ${noExpand ? "cursor-default" : "cursor-pointer"}`}
+        onClick={noExpand ? undefined : onToggle}
+        onKeyDown={noExpand ? undefined : (e) => {
           if (e.key === "Enter" || e.key === " ") onToggle();
         }}
       >
@@ -90,14 +93,16 @@ export function PlanningRow({
             {headerAction}
           </div>
         )}
-        <ChevronDown
-          size={15}
-          className="flex-shrink-0 transition-transform duration-200"
-          style={{
-            color: "var(--color-bt-text-dim)",
-            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-          }}
-        />
+        {!noExpand && (
+          <ChevronDown
+            size={15}
+            className="flex-shrink-0 transition-transform duration-200"
+            style={{
+              color: "var(--color-bt-text-dim)",
+              transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            }}
+          />
+        )}
       </div>
 
       {isOpen && children && (
