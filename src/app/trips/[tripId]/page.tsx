@@ -329,7 +329,7 @@ export default function TripDetailPage() {
           {/* Owner alert — above tab bar in GOING/NOW */}
           {(stage === "going") && (
             <div className="mx-auto max-w-[1280px] px-4 mt-4">
-              <OwnerAlertPanel trip={trip} canEdit={effectiveCanEdit} />
+              <OwnerAlertPanel trip={trip} canEdit={effectiveCanEdit} isOwner={isOwner} />
             </div>
           )}
 

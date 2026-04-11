@@ -8,9 +8,10 @@ import type { TripData } from "../tabs/types";
 interface OwnerAlertPanelProps {
   trip: TripData;
   canEdit: boolean;
+  isOwner: boolean;
 }
 
-export function OwnerAlertPanel({ trip, canEdit }: OwnerAlertPanelProps) {
+export function OwnerAlertPanel({ trip, canEdit, isOwner }: OwnerAlertPanelProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
 
@@ -39,10 +40,17 @@ export function OwnerAlertPanel({ trip, canEdit }: OwnerAlertPanelProps) {
     },
   });
 
-  // Nothing to show
-  if (!trip.owner_alert || dismissed) {
-    // If canEdit and there's no alert, show a small "set alert" affordance
-    if (canEdit && !trip.owner_alert) {
+  const handleDismiss = () => {
+    localStorage.setItem(storageKey, "true");
+    setDismissed(true);
+  };
+
+  // ── Early returns (no alert exists or was dismissed) ──────────────────
+  // Must check AFTER editing state — clicking "Set an alert" sets editing=true
+  // and we need to fall through to the inline edit block below.
+  if (!editing && (!trip.owner_alert || dismissed)) {
+    // Owner-only affordance to create a new alert
+    if (isOwner && !trip.owner_alert) {
       return (
         <button
           onClick={() => {
@@ -63,11 +71,6 @@ export function OwnerAlertPanel({ trip, canEdit }: OwnerAlertPanelProps) {
     }
     return null;
   }
-
-  const handleDismiss = () => {
-    localStorage.setItem(storageKey, "true");
-    setDismissed(true);
-  };
 
   // Inline edit mode
   if (editing && canEdit) {
