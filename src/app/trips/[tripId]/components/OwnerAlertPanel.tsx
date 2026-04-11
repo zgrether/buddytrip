@@ -163,14 +163,14 @@ export function OwnerAlertPanel({ trip, isOwner }: OwnerAlertPanelProps) {
           <Pencil size={12} />
         </button>
       )}
-      <button
+      {!isOwner && <button
         onClick={handleDismiss}
         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
         style={{ color: "var(--color-bt-text-dim)" }}
         aria-label="Dismiss alert"
       >
         <X size={14} />
-      </button>
+      </button>}
     </div>
   );
 }
