@@ -50,8 +50,23 @@ export function AddScheduleItemSheet({ tripId, itemType, editItem, onClose }: Ad
     },
   });
 
+  const confirm = trpc.schedule.confirm.useMutation({
+    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+  });
+  const unconfirm = trpc.schedule.unconfirm.useMutation({
+    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
   const update = trpc.schedule.update.useMutation({
     onSuccess: () => {
+      // Handle confirm state change after update succeeds
+      if (editItem && scheduledDate) {
+        if (isConfirmed && !editItem.is_confirmed) {
+          confirm.mutate({ tripId, itemId: editItem.id });
+        } else if (!isConfirmed && editItem.is_confirmed) {
+          unconfirm.mutate({ tripId, itemId: editItem.id });
+        }
+      }
       utils.schedule.list.invalidate({ tripId });
       onClose();
     },
@@ -229,8 +244,8 @@ export function AddScheduleItemSheet({ tripId, itemType, editItem, onClose }: Ad
           )}
         </div>
 
-        {/* Confirmed checkbox — only when date is set, only on create */}
-        {!isEditing && scheduledDate && (
+        {/* Confirmed checkbox — only when date is set */}
+        {scheduledDate && (
           <label className="mt-3 flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
