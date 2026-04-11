@@ -124,7 +124,8 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
 }) {
-  const movable = canEdit && !item.is_confirmed;
+  // All items can reorder within their day; only unconfirmed can move across days
+  const movable = canEdit;
 
   return (
     <>
@@ -462,7 +463,9 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
       return;
     }
 
-    // Cross-group — update the item's date
+    // Cross-group — blocked for confirmed items
+    if (draggedItem.is_confirmed) return;
+
     updateItem.mutate({
       tripId,
       itemId: draggedItem.id,
