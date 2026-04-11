@@ -237,4 +237,46 @@ describe("tripMembers router — RSVP", () => {
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  // ── updateTravel ──────────────────────────────────────────────────────
+
+  it("updateTravel — member can update own travel (flying)", async () => {
+    const caller = ctx.callerAs("member");
+    const result = await caller.tripMembers.updateTravel({
+      tripId,
+      travelMode: "flying",
+      flightAirline: "Delta",
+      flightNumber: "DL1733",
+      flightArrivalTime: "2026-10-05T19:33:00Z",
+      flightAirport: "JAX",
+      travelShared: true,
+    });
+    expect(result.travel_mode).toBe("flying");
+    expect(result.flight_airline).toBe("Delta");
+    expect(result.flight_number).toBe("DL1733");
+    expect(result.travel_shared).toBe(true);
+  });
+
+  it("updateTravel — member can update own travel (driving)", async () => {
+    const caller = ctx.callerAs("member");
+    const result = await caller.tripMembers.updateTravel({
+      tripId,
+      travelMode: "driving",
+      travelDetail: "Renting a car from Enterprise",
+      travelShared: false,
+    });
+    expect(result.travel_mode).toBe("driving");
+    expect(result.travel_detail).toBe("Renting a car from Enterprise");
+    expect(result.travel_shared).toBe(false);
+  });
+
+  it("updateTravel — member can clear travel mode", async () => {
+    const caller = ctx.callerAs("member");
+    const result = await caller.tripMembers.updateTravel({
+      tripId,
+      travelMode: null,
+      travelShared: false,
+    });
+    expect(result.travel_mode).toBeNull();
+  });
 });

@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Ghost, Mail, Send, X } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
-import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RoleBadge } from "@/components/RoleBadge";
+import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import type { TabProps } from "./types";
 
 // ── RSVP helpers ──────────────────────────────────────────────────────────
@@ -410,6 +410,81 @@ function CrewMemberRow({
   );
 }
 
+// ── WriteInvitationPanel ─────────────────────────────────────────────────
+
+function WriteInvitationPanel({
+  tripId,
+  aboutMessage,
+  isOpen,
+  onToggle,
+}: {
+  tripId: string;
+  aboutMessage?: string | null;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [draft, setDraft] = useState(aboutMessage ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const updateMessage = trpc.trips.updateAboutMessage.useMutation({
+    onSuccess() {
+      setSaving(false);
+      utils.trips.getById.invalidate({ tripId });
+    },
+    onError() {
+      setSaving(false);
+    },
+  });
+
+  const hasDraft = !!(draft.trim());
+  const state: ArcCardState = "none";
+  const note = hasDraft ? "Draft saved" : "Not written yet";
+
+  const handleBlur = () => {
+    const trimmed = draft.trim();
+    if (trimmed === (aboutMessage?.trim() ?? "")) return;
+    setSaving(true);
+    updateMessage.mutate({ tripId, aboutMessage: trimmed });
+  };
+
+  return (
+    <PlanningRow
+      icon={<Mail size={16} />}
+      label="Write Invitation"
+      note={note}
+      noteWarn={hasDraft}
+      state={state}
+      isOpen={isOpen}
+      onToggle={onToggle}
+    >
+      <div className="space-y-2">
+        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Write a message to your crew — this goes out by email when you make the trip official.
+        </p>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={handleBlur}
+          placeholder="Hey crew, here's the plan..."
+          rows={4}
+          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        />
+        {saving && (
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            Saving…
+          </p>
+        )}
+      </div>
+    </PlanningRow>
+  );
+}
+
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
 export function CrewTab({ trip, canEdit }: TabProps) {
@@ -422,7 +497,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const [addEmail, setAddEmail] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showEmailPanel, setShowEmailPanel] = useState(false);
+  const [invitationOpen, setInvitationOpen] = useState(false);
 
   const createGhost = trpc.ghostCrew.create.useMutation();
   const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
@@ -478,13 +553,22 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         ? "Building your roster. Add everyone you're considering — you'll send the official RSVP when you're ready."
         : null;
   const showRsvpStatus = stage === "going";
-  const showSendEmail = stage !== "idea";
 
   return (
     <div className="space-y-4 px-4">
-      {/* Header row */}
-      <div className="flex items-center justify-center gap-2">
-        {canEdit && showRsvpStatus && pendingWithEmailCount > 0 && (
+      {/* ── Write Invitation — owner only ── */}
+      {isOwner && (
+        <WriteInvitationPanel
+          tripId={tripId}
+          aboutMessage={trip.about_message}
+          isOpen={invitationOpen}
+          onToggle={() => setInvitationOpen((v) => !v)}
+        />
+      )}
+
+      {/* Header row — nudge button (going stage only) */}
+      {canEdit && showRsvpStatus && pendingWithEmailCount > 0 && (
+        <div className="flex items-center justify-center">
           <button
             onClick={async () => {
               await nudgeAll.mutateAsync({ tripId });
@@ -498,18 +582,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
             <Send size={13} />
             {nudgeAllSent ? "Sent ✓" : `Nudge pending (${pendingWithEmailCount})`}
           </button>
-        )}
-        {canEdit && showSendEmail && (
-          <button
-            onClick={() => setShowEmailPanel(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-            style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-          >
-            <Mail size={13} />
-            Send email
-          </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Stage-aware helper text */}
       {helperText && (
@@ -601,35 +675,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         </p>
       )}
 
-      {/* Send email panel (stub) */}
-      {showEmailPanel && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center"
-          style={{ background: "var(--color-bt-overlay)" }}
-          onClick={() => setShowEmailPanel(false)}
-        >
-          <div
-            className="w-full max-w-lg rounded-t-2xl p-5"
-            style={{ background: "var(--color-bt-card)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="mb-2 text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Invite by email
-            </p>
-            <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Enter an email to send an invite. If they already have a BuddyTrip account, they&apos;ll be added directly.
-            </p>
-            <CrewSearchInput
-              tripId={tripId}
-              defaultRole="Member"
-              defaultStatus="invited"
-              allowGhost
-              allowInvite
-              onAdded={() => setShowEmailPanel(false)}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

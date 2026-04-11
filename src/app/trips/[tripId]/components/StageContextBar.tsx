@@ -21,7 +21,7 @@ export const STAGE_CONTENT: Record<
   },
   planning: {
     icon: <CalendarDays size={14} style={{ color: "var(--color-bt-accent)" }} />,
-    text: "Lock a date and build your crew — when you're ready, send the RSVP to make it official",
+    text: "Lock a date and build your crew — when you're ready, hit Let's Go! to send the RSVP",
   },
   going: {
     icon: <CheckCircle size={14} style={{ color: "var(--color-bt-accent)" }} />,

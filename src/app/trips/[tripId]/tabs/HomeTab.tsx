@@ -21,7 +21,6 @@ import {
   Edit2,
   Bell,
   Mail,
-  Send,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
@@ -34,6 +33,8 @@ import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
+import { LogisticsPanel } from "../components/LogisticsPanel";
+import { TravelEntryForm } from "../components/TravelEntryForm";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
@@ -594,9 +595,19 @@ function RsvpPanel({
       <p className="mt-3 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
         {inCount} in · {maybeCount} maybe · {outCount} out · {pendingCount} pending
       </p>
+
+      {/* Travel entry — only when RSVP is "in" */}
+      {myRsvp === "in" && (
+        <TravelEntryForm
+          tripId={tripId}
+          currentTravel={myMember as TravelEntryFormProps["currentTravel"]}
+        />
+      )}
     </div>
   );
 }
+
+type TravelEntryFormProps = Parameters<typeof TravelEntryForm>[0];
 
 // ── ChangeDestinationModal ────────────────────────────────────────────────
 
@@ -1009,86 +1020,6 @@ function MiniIdeaHero({
   );
 }
 
-// ── RsvpDraftPanel ───────────────────────────────────────────────────────
-
-function RsvpDraftPanel({
-  tripId,
-  aboutMessage,
-  isOwner,
-  isOpen,
-  onToggle,
-  onDraftChange,
-}: {
-  tripId: string;
-  aboutMessage?: string | null;
-  isOwner: boolean;
-  isOpen: boolean;
-  onToggle: () => void;
-  onDraftChange?: (val: string) => void;
-}) {
-  const utils = trpc.useUtils();
-  const [draft, setDraft] = useState(aboutMessage ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const updateMessage = trpc.trips.updateAboutMessage.useMutation({
-    onSuccess() {
-      setSaving(false);
-      utils.trips.getById.invalidate({ tripId });
-    },
-    onError() {
-      setSaving(false);
-    },
-  });
-
-  const hasDraft = !!(draft.trim());
-  const state: ArcCardState = hasDraft ? "done" : "none";
-  const note = hasDraft ? "Draft saved" : "Not written yet";
-  const noteWarn = false;
-
-  const handleBlur = () => {
-    const trimmed = draft.trim();
-    if (trimmed === (aboutMessage?.trim() ?? "")) return;
-    setSaving(true);
-    updateMessage.mutate({ tripId, aboutMessage: trimmed });
-  };
-
-  return (
-    <PlanningRow
-      icon={<Mail size={16} />}
-      label={hasDraft ? "Invitation Written" : "Write Invitation"}
-      note={note}
-      noteWarn={noteWarn}
-      state={state}
-      isOpen={isOpen && isOwner}
-      onToggle={isOwner ? onToggle : () => {}}
-    >
-      <div className="space-y-2">
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Write a message to your crew — this goes out by email when you make the trip official.
-        </p>
-        <textarea
-          value={draft}
-          onChange={(e) => { setDraft(e.target.value); onDraftChange?.(e.target.value); }}
-          onBlur={handleBlur}
-          placeholder="Hey crew, here's the plan..."
-          rows={4}
-          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        {saving && (
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Saving…
-          </p>
-        )}
-      </div>
-    </PlanningRow>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 
 function PlanningSection({
@@ -1099,7 +1030,6 @@ function PlanningSection({
   canEdit,
   isOwner,
   onTabChange,
-  onMakeOfficial,
 }: {
   trip: TripData;
   ideas: IdeaWithVotes[];
@@ -1108,7 +1038,6 @@ function PlanningSection({
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
-  onMakeOfficial?: (message: string) => void;
 }) {
   const [openRow, setOpenRow] = useState<string | null>(
     trip.date_poll_active ? "dates" : null
@@ -1119,7 +1048,6 @@ function PlanningSection({
   const [showChangeDest, setShowChangeDest] = useState(
     (trip.stage ?? "idea") === "planning" && !trip.locked_destination_title && canEdit
   );
-  const [localMessage, setLocalMessage] = useState(trip.about_message ?? "");
   const stage = trip.stage ?? "idea";
   const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
 
@@ -1144,16 +1072,10 @@ function PlanningSection({
   const crewState: ArcCardState = confirmed >= 1 ? "done" : hasAnyone ? "inProgress" : "none";
   const crewNote = `${confirmed} confirmed`;
 
-  // ── Dates ─────────────────────────────────────────────────────────────
-  // DatesPlanningRow is self-contained and reads its own data / state.
-  // Only the "all three green" footer needs to know whether dates are locked.
-  const datesLocked = !!(trip.start_date && trip.end_date);
-
   // ── Logistics ─────────────────────────────────────────────────────────
-  const bookingCount = reservations.length;
-  const scheduleState: ArcCardState = bookingCount > 0 ? "inProgress" : "none";
-  const scheduleNote = bookingCount > 0
-    ? `${bookingCount} booking${bookingCount !== 1 ? "s" : ""}`
+  const _bookingCount = reservations.length;
+  const _scheduleNote = _bookingCount > 0
+    ? `${_bookingCount} booking${_bookingCount !== 1 ? "s" : ""}`
     : "Not booked yet";
 
   return (
@@ -1304,62 +1226,15 @@ function PlanningSection({
         onToggle={() => toggle("dates")}
         onTabChange={onTabChange}
       />
-      {/* ── Logistics — visible in IDEA stage only ── */}
-      {stage !== "planning" && (
-        <PlanningRow
-          icon={<Hotel size={16} />}
-          label="Logistics"
-          note={scheduleNote}
-          state={scheduleState}
-          isOpen={openRow === "logistics"}
-          onToggle={() => toggle("logistics")}
-        >
-          <div className="space-y-3">
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              {bookingCount > 0
-                ? `${bookingCount} booking${bookingCount !== 1 ? "s" : ""} on record`
-                : "No bookings added yet."}
-            </p>
-            <button
-              onClick={() => onTabChange?.("schedule")}
-              className="text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              {canEdit ? "Manage logistics →" : "View schedule →"}
-            </button>
-          </div>
-        </PlanningRow>
-      )}
+      {/* ── Logistics ── */}
+      <LogisticsPanel
+        tripId={trip.id}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        isOpen={openRow === "logistics"}
+        onToggle={() => toggle("logistics")}
+      />
 
-      {/* ── RSVP Message — PLANNING stage, owner only ── */}
-      {stage === "planning" && isOwner && (
-        <RsvpDraftPanel
-          tripId={trip.id}
-          aboutMessage={trip.about_message}
-          isOwner={isOwner}
-          isOpen={openRow === "rsvp"}
-          onToggle={() => toggle("rsvp")}
-          onDraftChange={setLocalMessage}
-        />
-      )}
-
-      {/* ── "Let's make it official" — PLANNING stage, all three green ── */}
-      {stage === "planning" && (() => {
-        const destinationLocked = !!trip.locked_destination_title;
-        const dateLocked = datesLocked;
-        const messageReady = !!(localMessage.trim());
-        if (!destinationLocked || !dateLocked || !messageReady) return null;
-        return (
-          <button
-            onClick={() => onMakeOfficial?.(localMessage)}
-            className="mt-2 flex w-full animate-fade-in items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-opacity hover:opacity-90"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            <Send size={18} />
-            Let&apos;s make it official 🎉
-          </button>
-        );
-      })()}
 
       {/* Modals rendered outside PlanningRows so they aren't gated by isOpen */}
       {showSetDest && (
@@ -1725,19 +1600,18 @@ export function HomeTab({
               canEdit={canEditProp}
               isOwner={!!isOwner}
               onTabChange={onTabChange}
-              onMakeOfficial={onMakeOfficial}
             />
           )}
 
-          {/* ── GOING/NOW: planning rows in collapsed done state ──── */}
+          {/* ── GOING/NOW: planning rows — logistics stays editable ── */}
           {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
             <PlanningSection
               trip={trip}
               ideas={ideas as IdeaWithVotes[]}
               tripMembers={members}
               reservations={reservations}
-              canEdit={false}
-              isOwner={false}
+              canEdit={canEditProp}
+              isOwner={!!isOwner}
               onTabChange={onTabChange}
             />
           )}

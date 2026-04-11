@@ -24,6 +24,9 @@ export interface TripData {
   stage_advanced_to_planning_at?: string | null;
   stage_advanced_to_going_at?: string | null;
   about_message?: string | null;
+  owner_alert?: string | null;
+  owner_alert_set_at?: string | null;
+  owner_alert_set_by?: string | null;
   trip_status_override?: string | null;
   event_id?: string | null;
   series_id?: string | null;

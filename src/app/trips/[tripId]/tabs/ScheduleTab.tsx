@@ -1,51 +1,62 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Calendar,
   CalendarDays,
-  Hotel,
+  ClipboardList,
   Clock,
-  Utensils,
-  Car,
+  Flag,
+  MapPin,
   Plus,
   X,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  AlertTriangle,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate } from "@/lib/dates";
-import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
 import type { TabProps } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-type ReservationType = "accommodation" | "tee-time" | "restaurant" | "transport";
-
-interface Reservation {
+interface ScheduleItem {
   id: string;
-  type: ReservationType;
+  item_type: "general" | "golf";
   title: string;
-  date?: string | null;
-  start_time?: string | null;
-  confirmation_number?: string | null;
-  notes?: string | null;
+  detail?: string | null;
+  scheduled_date?: string | null;
+  scheduled_time?: string | null;
+  is_confirmed: boolean;
+  sort_order: number;
+  // Golf fields
+  course_id?: string | null;
+  course_name?: string | null;
+  course_location?: string | null;
+  tee_times?: string[] | null;
+  // Joined course data
+  course?: {
+    id: string;
+    place_id?: string | null;
+    name: string;
+    address?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+  } | null;
+}
+
+interface DayGroup {
+  date: string | null;
+  label: string;
+  items: ScheduleItem[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-const RES_ICON: Record<ReservationType, React.ReactNode> = {
-  accommodation: <Hotel size={16} />,
-  "tee-time": <Calendar size={16} />,
-  restaurant: <Utensils size={16} />,
-  transport: <Car size={16} />,
-};
-
-const RES_TYPES: { value: ReservationType; label: string }[] = [
-  { value: "accommodation", label: "Accommodation" },
-  { value: "tee-time", label: "Tee Time" },
-  { value: "restaurant", label: "Restaurant" },
-  { value: "transport", label: "Transport" },
-];
 
 function fmtDate(d: string) {
   return parseLocalDate(d).toLocaleDateString("en-US", {
@@ -55,273 +66,752 @@ function fmtDate(d: string) {
   });
 }
 
-// ── AddReservationModal ─────────────────────────────────────────────────
-
-function AddReservationModal({
-  tripId,
-  onClose,
-}: {
-  tripId: string;
-  onClose: () => void;
-}) {
-  useModalBackButton(onClose);
-  const utils = trpc.useUtils();
-  const [type, setType] = useState<ReservationType>("accommodation");
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [confirmationNumber, setConfirmationNumber] = useState("");
-  const [notes, setNotes] = useState("");
-
-  const create = trpc.reservations.create.useMutation({
-    onSuccess: () => {
-      utils.reservations.list.invalidate({ tripId });
-      onClose();
-    },
+function fmtDayHeader(d: string) {
+  return parseLocalDate(d).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
   });
-
-  const handleSubmit = () => {
-    if (!title.trim() || !date) return;
-    create.mutate({
-      tripId,
-      id: crypto.randomUUID(),
-      type,
-      title: title.trim(),
-      date,
-      startTime: startTime || undefined,
-      confirmationNumber: confirmationNumber || undefined,
-      notes: notes || undefined,
-    });
-  };
-
-  const inputStyle = {
-    background: "var(--color-bt-card-raised)",
-    borderColor: "var(--color-bt-border)",
-    color: "var(--color-bt-text)",
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[480px] rounded-t-2xl p-5 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Add Reservation
-        </h2>
-
-        {/* Type selector */}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {RES_TYPES.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setType(value)}
-              className="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{
-                background: type === value ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                color: type === value ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                border: type === value ? "none" : "1px solid var(--color-bt-border)",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Title */}
-        <input
-          type="text"
-          placeholder="Name (e.g. Hilton Downtown)"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="mt-3 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={inputStyle}
-        />
-
-        {/* Date + time row */}
-        <div className="mt-2 flex gap-2">
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-            style={inputStyle}
-          />
-          <input
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            className="w-32 rounded-xl border px-3 py-2.5 text-sm outline-none"
-            style={inputStyle}
-            placeholder="Time"
-          />
-        </div>
-
-        {/* Confirmation # */}
-        <input
-          type="text"
-          placeholder="Confirmation # (optional)"
-          value={confirmationNumber}
-          onChange={(e) => setConfirmationNumber(e.target.value)}
-          className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={inputStyle}
-        />
-
-        {/* Notes */}
-        <textarea
-          placeholder="Notes (optional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={2}
-          className="mt-2 w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={inputStyle}
-        />
-
-        {/* Actions */}
-        <button
-          onClick={handleSubmit}
-          disabled={create.isPending || !title.trim() || !date}
-          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {create.isPending ? "Adding..." : "Add Reservation"}
-        </button>
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
 }
 
-// ── Reservations section ─────────────────────────────────────────────────
-
-function ReservationsSection({
-  tripId,
-  canEdit,
-}: {
-  tripId: string;
-  canEdit: boolean;
-}) {
-  const utils = trpc.useUtils();
-  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
-
-  const removeRes = trpc.reservations.remove.useMutation({
-    onSuccess: () => utils.reservations.list.invalidate({ tripId }),
-  });
-
-  if (reservations.length === 0) {
-    return (
-      <EmptyState
-        icon={<CalendarDays className="h-10 w-10" />}
-        headline="No reservations yet"
-        subtext="Tee times, hotels, and more will appear here."
-      />
-    );
+function generateTripDays(start: string, end: string): string[] {
+  const days: string[] = [];
+  const s = parseLocalDate(start);
+  const e = parseLocalDate(end);
+  const cur = new Date(s);
+  while (cur <= e) {
+    days.push(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
   }
+  return days;
+}
+
+function fmtTime12(t: string): string {
+  const [hStr, mStr] = t.split(":");
+  const h = parseInt(hStr, 10);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${mStr} ${suffix}`;
+}
+
+function dayNumber(date: string, tripStart: string | null): number | null {
+  if (!tripStart) return null;
+  const s = parseLocalDate(tripStart).getTime();
+  const d = parseLocalDate(date).getTime();
+  return Math.floor((d - s) / 86400000) + 1;
+}
+
+// ── ScheduleItemRow ─────────────────────────────────────────────────────
+
+function ScheduleItemRow({
+  item,
+  canEdit,
+  onConfirmToggle,
+  onEdit,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  isDragging,
+  showDropIndicator,
+  onDragStart,
+  onDragOver,
+  onDrop,
+}: {
+  item: ScheduleItem;
+  canEdit: boolean;
+  onConfirmToggle: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+  isDragging: boolean;
+  showDropIndicator: boolean;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: () => void;
+}) {
+  const movable = canEdit;
 
   return (
-    <div className="space-y-2">
-      {(reservations as Reservation[]).map((res) => (
+    <>
+      {/* Drop insertion line */}
+      {showDropIndicator && (
         <div
-          key={res.id}
-          data-testid={`reservation-${res.id}`}
-          className="flex items-start gap-3 rounded-xl p-4"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <span style={{ color: "var(--color-bt-accent)" }}>{RES_ICON[res.type]}</span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {res.title}
-            </p>
-            <div
-              className="mt-1 flex flex-wrap gap-2 text-xs"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              {res.date && (
-                <span className="flex items-center gap-1">
-                  <Calendar size={10} />
-                  {fmtDate(res.date)}
-                </span>
-              )}
-              {res.start_time && (
-                <span className="flex items-center gap-1">
-                  <Clock size={10} />
-                  {res.start_time}
-                </span>
-              )}
-              {res.confirmation_number && (
-                <span>#{res.confirmation_number}</span>
-              )}
-            </div>
-            {res.notes && (
-              <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                {res.notes}
-              </p>
+          className="mb-1 h-0.5 rounded-full"
+          style={{ background: "var(--color-bt-accent)" }}
+        />
+      )}
+      <div
+        draggable={movable}
+        onDragStart={movable ? onDragStart : undefined}
+        onDragOver={canEdit ? onDragOver : undefined}
+        onDrop={canEdit ? onDrop : undefined}
+        className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
+        style={{
+          background: item.is_confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+          border: `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+          opacity: isDragging ? 0.4 : 1,
+        }}
+      >
+      {movable && (
+        <GripVertical
+          size={16}
+          className="mt-0.5 hidden flex-shrink-0 cursor-grab lg:block"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        />
+      )}
+
+      {/* Type icon */}
+      {item.item_type === "golf" && (
+        <Flag size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+          {item.title}
+        </p>
+        {item.detail && (
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {item.detail}
+          </p>
+        )}
+        {/* Golf: course + tee times */}
+        {item.item_type === "golf" && (item.course?.name || item.course_name) && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <span className="font-medium">{item.course?.name ?? item.course_name}</span>
+            {(item.course?.address || item.course_location) && (
+              <a
+                href={
+                  item.course?.lat && item.course?.lng
+                    ? `https://www.google.com/maps/search/?api=1&query=${item.course.lat},${item.course.lng}`
+                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course?.address ?? item.course_location ?? "")}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-0.5"
+                style={{ color: "var(--color-bt-accent)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MapPin size={10} />
+                Map
+              </a>
             )}
           </div>
-          {canEdit && (
+        )}
+        {item.item_type === "golf" && item.tee_times && item.tee_times.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {item.tee_times.map((t, i) => (
+              <span
+                key={i}
+                className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                {fmtTime12(t)}
+              </span>
+            ))}
+          </div>
+        )}
+        {/* General: location + time */}
+        {item.item_type !== "golf" && item.course_name && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <MapPin size={10} />
+            <span>{item.course_name}</span>
+            {item.course_location && (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course_location)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-0.5"
+                style={{ color: "var(--color-bt-accent)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                Map
+              </a>
+            )}
+          </div>
+        )}
+        {item.item_type !== "golf" && item.scheduled_time && (
+          <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <Clock size={10} />
+            {item.scheduled_time}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-shrink-0 items-center gap-1">
+        {/* Confirm toggle: only when item has a date */}
+        {canEdit && item.scheduled_date && (
+          <button
+            onClick={onConfirmToggle}
+            className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
+            style={{
+              color: item.is_confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+            }}
+          >
+            {item.is_confirmed ? "Confirmed 🔒" : "Confirm"}
+          </button>
+        )}
+        {!canEdit && item.is_confirmed && (
+          <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
+            Confirmed ✓
+          </span>
+        )}
+
+        {movable && (
+          <div className="flex flex-col lg:hidden">
             <button
-              onClick={() =>
-                removeRes.mutate({ tripId, reservationId: res.id })
-              }
-              className="flex h-6 w-6 items-center justify-center rounded-full"
+              onClick={onMoveUp}
+              disabled={isFirst}
+              className="flex h-5 w-5 items-center justify-center transition-opacity disabled:opacity-20"
               style={{ color: "var(--color-bt-text-dim)" }}
+              aria-label="Move up"
             >
-              <X size={14} />
+              <ChevronUp size={14} />
             </button>
-          )}
-        </div>
-      ))}
+            <button
+              onClick={onMoveDown}
+              disabled={isLast}
+              className="flex h-5 w-5 items-center justify-center transition-opacity disabled:opacity-20"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              aria-label="Move down"
+            >
+              <ChevronDown size={14} />
+            </button>
+          </div>
+        )}
+
+        {canEdit && (
+          <button
+            onClick={onEdit}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Edit item"
+          >
+            <Pencil size={12} />
+          </button>
+        )}
+
+        {canEdit && !item.is_confirmed && (
+          <button
+            onClick={onRemove}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Remove item"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
     </div>
+    </>
   );
 }
 
 // ── ScheduleTab ─────────────────────────────────────────────────────────
 
+type AddMode = "general" | "golf" | null;
+
 export function ScheduleTab({ trip, canEdit }: TabProps) {
-  const [showAdd, setShowAdd] = useState(false);
+  const tripId = trip.id;
+  const stage = trip.stage ?? "idea";
+  const utils = trpc.useUtils();
+  const [addMode, setAddMode] = useState<AddMode>(null);
+  const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
+  const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
+  const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
+  const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
+
+  const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
+  const allItems = scheduleItems as ScheduleItem[];
+
+  // Non-editors only see confirmed items
+  const visibleItems = canEdit ? allItems : allItems.filter((i) => i.is_confirmed);
+
+  // Build day groups
+  const dayGroups = useMemo<DayGroup[]>(() => {
+    const tripDays =
+      trip.start_date && trip.end_date
+        ? generateTripDays(trip.start_date, trip.end_date)
+        : [];
+
+    // Collect all dates from items (including outside trip range)
+    const itemDates = new Set<string>();
+    for (const item of visibleItems) {
+      if (item.scheduled_date) itemDates.add(item.scheduled_date);
+    }
+
+    const allDates = new Set([...tripDays, ...itemDates]);
+    const sortedDates = Array.from(allDates).sort();
+
+    // Group items by date
+    const dateMap = new Map<string | null, ScheduleItem[]>();
+    for (const item of visibleItems) {
+      const key = item.scheduled_date ?? null;
+      const arr = dateMap.get(key) ?? [];
+      arr.push(item);
+      dateMap.set(key, arr);
+    }
+
+    const sortWithinDay = (items: ScheduleItem[]) =>
+      items.slice().sort((a, b) => a.sort_order - b.sort_order);
+
+    const groups: DayGroup[] = [];
+
+    // Unscheduled at the top
+    const unscheduled = dateMap.get(null);
+    if (unscheduled && unscheduled.length > 0) {
+      groups.push({
+        date: null,
+        label: "Unscheduled",
+        items: sortWithinDay(unscheduled),
+      });
+    }
+
+    // Day groups
+    for (const date of sortedDates) {
+      const dayNum = dayNumber(date, trip.start_date ?? null);
+      groups.push({
+        date,
+        label: dayNum ? `Day ${dayNum} — ${fmtDayHeader(date)}` : fmtDayHeader(date),
+        items: sortWithinDay(dateMap.get(date) ?? []),
+      });
+    }
+
+    return groups;
+  }, [visibleItems, trip.start_date, trip.end_date]);
+
+  const unconfirmedCount = allItems.filter((i) => !i.is_confirmed).length;
+
+  const confirmItem = trpc.schedule.confirm.useMutation({
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId ? { ...item, is_confirmed: true } : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
+  const removeItem = trpc.schedule.remove.useMutation({
+    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
+  const reorder = trpc.schedule.reorder.useMutation({
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      // Assign sort_order based on position in the new itemIds array
+      const orderMap = new Map(vars.itemIds.map((id, i) => [id, i]));
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old
+          ?.map((item) => {
+            const newOrder = orderMap.get(item.id);
+            return newOrder !== undefined ? { ...item, sort_order: newOrder } : item;
+          })
+          .sort((a, b) => a.sort_order - b.sort_order)
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
+  const updateItem = trpc.schedule.update.useMutation({
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId
+            ? { ...item, scheduled_date: vars.scheduledDate ?? item.scheduled_date }
+            : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
+  const unconfirmItem = trpc.schedule.unconfirm.useMutation({
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId
+            ? { ...item, is_confirmed: false, confirmed_at: null, confirmed_by: null }
+            : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
+  const handleConfirmToggle = (item: ScheduleItem) => {
+    if (item.is_confirmed) {
+      unconfirmItem.mutate({ tripId, itemId: item.id });
+    } else {
+      confirmItem.mutate({ tripId, itemId: item.id });
+    }
+  };
+
+  // Reorder within a day group
+  const reorderInGroup = (groupDate: string | null, newGroupItems: ScheduleItem[]) => {
+    const newAll: ScheduleItem[] = [];
+    for (const g of dayGroups) {
+      if (g.date === groupDate) {
+        newAll.push(...newGroupItems);
+      } else {
+        newAll.push(...g.items);
+      }
+    }
+    const ids = newAll.map((i) => i.id);
+    if (ids.length > 0) {
+      reorder.mutate({ tripId, itemIds: ids });
+    }
+  };
+
+  const handleMove = (groupDate: string | null, items: ScheduleItem[], fromIdx: number, dir: "up" | "down") => {
+    const toIdx = dir === "up" ? fromIdx - 1 : fromIdx + 1;
+    if (toIdx < 0 || toIdx >= items.length) return;
+    const newItems = [...items];
+    const [moved] = newItems.splice(fromIdx, 1);
+    newItems.splice(toIdx, 0, moved);
+    reorderInGroup(groupDate, newItems);
+  };
+
+  const handleDragDrop = (targetGroupDate: string | null, targetItems: ScheduleItem[], toIdx: number) => {
+    if (!dragState.current) return;
+    const { groupDate: sourceDate, idx: fromIdx, item: draggedItem } = dragState.current;
+    dragState.current = null;
+    setDragOverGroup(false);
+    setDragOverIdx(null);
+
+    // Same group — simple reorder
+    if (sourceDate === targetGroupDate) {
+      if (fromIdx === toIdx) return;
+      const newItems = [...targetItems];
+      const [moved] = newItems.splice(fromIdx, 1);
+      newItems.splice(toIdx, 0, moved);
+      reorderInGroup(targetGroupDate, newItems);
+      return;
+    }
+
+    // Cross-group — move item to new day
+    updateItem.mutate({
+      tripId,
+      itemId: draggedItem.id,
+      scheduledDate: targetGroupDate,
+    });
+  };
 
   return (
     <div className="px-4">
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Reservations
-          </h2>
-          {canEdit && (
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Schedule
+        </h2>
+
+        {/* Guidance text — stage-aware */}
+        <p
+          className="mb-3 text-[13px] leading-relaxed"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {stage === "planning"
+            ? "Start adding items to your schedule — you can edit and reorganize at any time. All confirmed items will appear on the official schedule for the crew once the trip has been officially kicked off."
+            : "Keep your schedule up to date — any confirmed items will be shown on the crew's official schedule."}
+        </p>
+
+        {/* Type selector — add buttons */}
+        {canEdit && (
+          <div className="mb-4 flex gap-2">
             <button
-              data-testid="add-reservation-btn"
-              onClick={() => setShowAdd(true)}
-              className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors hover:opacity-80"
+              onClick={() => setAddMode("general")}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
               style={{
-                border: "1.5px dashed var(--color-bt-accent)",
-                color: "var(--color-bt-accent)",
-                background: "transparent",
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
               }}
             >
-              <Plus size={14} />
-              Add
+              <ClipboardList size={15} />
+              <Plus size={12} /> Item
             </button>
-          )}
-        </div>
-        <ReservationsSection tripId={trip.id} canEdit={canEdit} />
+            <button
+              onClick={() => setAddMode("golf")}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Flag size={15} />
+              <Plus size={12} /> Golf
+            </button>
+          </div>
+        )}
+
+        {/* Unconfirmed banner */}
+        {canEdit && unconfirmedCount > 0 && (
+          <div
+            className="mb-4 flex items-center gap-2 rounded-xl px-4 py-2.5"
+            style={{
+              background: "var(--color-bt-warning-faint)",
+              color: "var(--color-bt-warning)",
+            }}
+          >
+            <AlertTriangle size={14} />
+            <span className="text-[13px] font-medium">
+              {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
+            </span>
+          </div>
+        )}
+
+        {allItems.length === 0 ? (
+          <EmptyState
+            icon={<CalendarDays className="h-10 w-10" />}
+            headline="No schedule items yet"
+            subtext={canEdit ? "Add items to plan your trip's agenda." : "The organizer hasn't added any schedule items yet."}
+          />
+        ) : (
+          <div className="space-y-5">
+            {/* eslint-disable react-hooks/refs */}
+            {dayGroups.map((group) => (
+              <div
+                key={group.date ?? "__unscheduled"}
+                onDragOver={canEdit ? (e) => {
+                  e.preventDefault();
+                  if (dragState.current && dragState.current.groupDate !== group.date) {
+                    setDragOverGroup(group.date);
+                  }
+                } : undefined}
+                onDragEnter={canEdit ? () => {
+                  if (dragState.current && dragState.current.groupDate !== group.date) {
+                    setDragOverGroup(group.date);
+                  }
+                } : undefined}
+                onDragLeave={canEdit ? (e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDragOverGroup(false);
+                    setDragOverIdx(null);
+                  }
+                } : undefined}
+                onDrop={canEdit ? (e) => {
+                  e.preventDefault();
+                  setDragOverGroup(false);
+                  setDragOverIdx(null);
+                  if (dragState.current) {
+                    handleDragDrop(group.date, group.items, group.items.length);
+                  }
+                } : undefined}
+                className="rounded-xl px-3 py-2 -mx-3 transition-colors"
+                style={{
+                  background: dragOverGroup === group.date
+                    ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
+                    : "transparent",
+                  border: dragOverGroup === group.date
+                    ? "1.5px dashed var(--color-bt-accent-border)"
+                    : "1.5px dashed transparent",
+                }}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <CalendarDays
+                    size={14}
+                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                  />
+                  <p
+                    className="text-[13px] font-semibold"
+                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
+                  >
+                    {group.label}
+                    {dragOverGroup === group.date && (
+                      <span className="ml-2 text-[11px] font-normal" style={{ color: "var(--color-bt-accent)" }}>
+                        Drop here
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {group.items.length === 0 ? (
+                  <p
+                    className="ml-6 text-xs italic"
+                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                  >
+                    {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
+                  </p>
+                ) : (
+                  <>
+                    {group.items.map((item, idx) => (
+                      <ScheduleItemRow
+                        key={item.id}
+                        item={item}
+                        canEdit={canEdit}
+                        onConfirmToggle={() => handleConfirmToggle(item)}
+                        onEdit={() => setEditItem(item)}
+                        onRemove={() => setConfirmDelete(item)}
+                        onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
+                        onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
+                        isFirst={idx === 0}
+                        isLast={idx === group.items.length - 1}
+                        isDragging={
+                          !!dragState.current &&
+                          dragState.current.groupDate === group.date &&
+                          dragState.current.idx === idx
+                        }
+                        showDropIndicator={
+                          !!dragOverIdx &&
+                          dragOverIdx.groupDate === group.date &&
+                          dragOverIdx.idx === idx &&
+                          dragState.current?.idx !== idx
+                        }
+                        onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverIdx({ groupDate: group.date, idx });
+                        }}
+                        onDrop={() => {
+                          setDragOverIdx(null);
+                          handleDragDrop(group.date, group.items, idx);
+                        }}
+                      />
+                    ))}
+                    {/* Bottom drop zone — append to end of day */}
+                    {canEdit && dragState.current && (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverIdx({ groupDate: group.date, idx: group.items.length });
+                        }}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          setDragOverIdx({ groupDate: group.date, idx: group.items.length });
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverIdx(null);
+                          handleDragDrop(group.date, group.items, group.items.length);
+                        }}
+                        className="rounded-md transition-all"
+                        style={{
+                          height:
+                            dragOverIdx?.groupDate === group.date &&
+                            dragOverIdx?.idx === group.items.length
+                              ? "6px"
+                              : "24px",
+                          background:
+                            dragOverIdx?.groupDate === group.date &&
+                            dragOverIdx?.idx === group.items.length
+                              ? "var(--color-bt-accent)"
+                              : "transparent",
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+            {/* eslint-enable react-hooks/refs */}
+          </div>
+        )}
       </section>
 
-      {showAdd && (
-        <AddReservationModal tripId={trip.id} onClose={() => setShowAdd(false)} />
+      {addMode === "general" && (
+        <AddScheduleItemSheet tripId={tripId} itemType="general" onClose={() => setAddMode(null)} />
+      )}
+      {addMode === "golf" && (
+        <AddScheduleItemSheet tripId={tripId} itemType="golf" onClose={() => setAddMode(null)} />
+      )}
+
+      {/* Edit sheet */}
+      {editItem && (
+        <AddScheduleItemSheet
+          tripId={tripId}
+          itemType={editItem.item_type ?? "general"}
+          editItem={editItem}
+          onClose={() => setEditItem(null)}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-5"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p
+              className="text-base font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Delete schedule item?
+            </p>
+            <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              &ldquo;{confirmDelete.title}&rdquo; will be permanently removed from the schedule.
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-xl py-2.5 text-sm font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  removeItem.mutate({ tripId, itemId: confirmDelete.id });
+                  setConfirmDelete(null);
+                }}
+                disabled={removeItem.isPending}
+                className="flex-1 rounded-xl py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-danger)",
+                  color: "#fff",
+                }}
+              >
+                {removeItem.isPending ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

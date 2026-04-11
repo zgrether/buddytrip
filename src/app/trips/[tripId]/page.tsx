@@ -23,6 +23,8 @@ import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ChatDrawer } from "./components/ChatDrawer";
 import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
+import { NextStepsPanel } from "./components/NextStepsPanel";
+import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
 import { SidebarChatPanel } from "./components/PlanningChatPanel";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
@@ -307,7 +309,12 @@ export default function TripDetailPage() {
             </div>
             {/* Right: persistent sidebar — desktop only */}
             <div className="hidden lg:flex lg:flex-col gap-4">
-              <StageContextBar tripId={tripId} stage={stage} displayStatus={status} isOwner={isOwner} />
+              <NextStepsPanel
+                trip={trip}
+                crewCount={members.length}
+                isOwner={isOwner}
+                onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
+              />
               <SidebarChatPanel
                 tripId={tripId}
                 memberNames={Object.fromEntries(
@@ -319,6 +326,13 @@ export default function TripDetailPage() {
         </div>
       ) : (
         <>
+          {/* Owner alert — above tab bar in GOING/NOW */}
+          {(stage === "going") && (
+            <div className="mx-auto max-w-[1280px] px-4 mt-4">
+              <OwnerAlertPanel trip={trip} isOwner={isOwner} />
+            </div>
+          )}
+
           {/* Non-planning: tab bar in its own row, hidden in IDEA stage */}
           {stage !== "idea" && (
             <div className="mx-auto max-w-[1280px] px-4 mt-4">
@@ -534,7 +548,7 @@ function AdvanceToGoingSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Make it official
+          Let&apos;s Go! 🎉
         </h2>
         <p className="mt-2 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           Write a message to your crew — this will appear on the home tab for everyone

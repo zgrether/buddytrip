@@ -695,6 +695,39 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // setOwnerAlert — Owner sets or clears the banner alert for the crew
+  // -----------------------------------------------------------------------
+  setOwnerAlert: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        alert: z.string().max(500).nullable(),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({
+          owner_alert: input.alert,
+          owner_alert_set_at: input.alert ? new Date().toISOString() : null,
+          owner_alert_set_by: input.alert ? ctx.user!.id : null,
+        })
+        .eq("id", ctx.tripId)
+        .select()
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update owner alert",
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
   // delete — Owner only
   // -----------------------------------------------------------------------
   delete: authedProcedure
@@ -979,10 +1012,10 @@ export const tripsRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
       }
 
-      if (trip.stage !== "going") {
+      if (!["planning", "going"].includes(trip.stage ?? "")) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "About message can only be updated once the trip is in the going stage.",
+          message: "About message can only be updated in the planning or going stage.",
         });
       }
 

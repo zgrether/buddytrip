@@ -79,18 +79,6 @@ Neverminding.
 
 ---
 
-### Start/stop polling control
-
-Currently a poll becomes active the moment the owner enters polling
-mode and adds a date — crew members can see it and vote immediately.
-Add an explicit "Start polling" / "Stop polling" toggle so the owner
-can add all date options first, then flip the poll live when ready.
-This affects notifications: the crew should only be notified once
-the owner starts the poll, not on each individual date addition.
-The `date_poll_active` column already exists and could back this,
-but the client currently sets it to `true` as soon as "Poll the
-crew" is clicked rather than after a deliberate "Start" action.
-
 ---
 
 ### Date polling scope selection
@@ -188,6 +176,29 @@ Currently notifications can only be bulk marked as read via
 can dismiss individual items without clearing everything.
 Requires: `trpc.notifications.markRead({ notificationId })` mutation
 and UI dismiss button on each notification row.
+
+---
+
+### Schedule — day-by-day calendar view
+
+Current schedule is a flat drag-and-drop list with optional date fields.
+A proper calendar/day view would group items by trip day and show a
+timeline. Requires locked start/end dates and day derivation logic.
+
+---
+
+### Logistics — confirmed/tentative toggle
+
+Logistics items currently have no confirmed state. Add is_confirmed
+boolean matching schedule items pattern, with READY stage alert for
+unconfirmed logistics.
+
+---
+
+### Personal travel — flight lookup
+
+Allow users to enter a flight number and have airline/arrival details
+auto-populated via a flight status API. Nice-to-have, not essential.
 
 ---
 
@@ -409,21 +420,9 @@ members receive the blast automatically.
 
 ---
 
-### Logistics panel
+### Write Invitation panel move to Crew tab
 
-The Logistics planning row is a placeholder with no clear scope.
-Remove it entirely or replace with a defined feature — likely a
-checklist of pre-trip tasks (book accommodation, arrange transport, etc.)
-distinct from the Schedule tab reservations.
-
----
-
-### Tentative reservations in Schedule tab
-
-Reservations added during PLANNING stage should be marked tentative
-by default. During READY stage, the owner explicitly confirms each
-reservation. Confirmed reservations display differently from tentative
-ones (e.g. solid vs dashed border, lock icon on confirmed).
-
-**Schema:** add `confirmed boolean` and `confirmed_at timestamptz` to
-the reservations/bookings table.
+The invitation message draft panel was planned to move to the Crew tab
+so owners can see the full roster before sending. Currently still on
+Home tab. Requires updating NextStepsPanel condition check to look for
+invitation message on crew tab instead of home tab.
