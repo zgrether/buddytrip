@@ -35,9 +35,19 @@ interface ScheduleItem {
   is_confirmed: boolean;
   sort_order: number;
   // Golf fields
+  course_id?: string | null;
   course_name?: string | null;
   course_location?: string | null;
   tee_times?: string[] | null;
+  // Joined course data
+  course?: {
+    id: string;
+    place_id?: string | null;
+    name: string;
+    address?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+  } | null;
 }
 
 interface DayGroup {
@@ -171,12 +181,16 @@ function ScheduleItemRow({
           </p>
         )}
         {/* Golf: course + tee times */}
-        {item.item_type === "golf" && item.course_name && (
+        {item.item_type === "golf" && (item.course?.name || item.course_name) && (
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            <span className="font-medium">{item.course_name}</span>
-            {item.course_location && (
+            <span className="font-medium">{item.course?.name ?? item.course_name}</span>
+            {(item.course?.address || item.course_location) && (
               <a
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course_location)}`}
+                href={
+                  item.course?.lat && item.course?.lng
+                    ? `https://www.google.com/maps/search/?api=1&query=${item.course.lat},${item.course.lng}`
+                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course?.address ?? item.course_location ?? "")}`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-0.5"

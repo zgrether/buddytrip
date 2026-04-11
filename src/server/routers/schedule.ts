@@ -13,7 +13,7 @@ export const scheduleRouter = router({
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
         .from("schedule_items")
-        .select("*")
+        .select("*, course:golf_courses(*)")
         .eq("trip_id", ctx.tripId)
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true });
@@ -43,6 +43,7 @@ export const scheduleRouter = router({
         isConfirmed: z.boolean().default(false),
         sortOrder: z.number().int().default(0),
         // Golf fields
+        courseId: z.string().optional(),
         courseName: z.string().max(200).optional(),
         courseLocation: z.string().max(500).optional(),
         teeTimes: z.array(z.string()).optional(),
@@ -64,6 +65,7 @@ export const scheduleRouter = router({
           confirmed_by: input.isConfirmed ? ctx.user!.id : null,
           sort_order: input.sortOrder,
           created_by: ctx.user!.id,
+          course_id: input.courseId ?? null,
           course_name: input.courseName ?? null,
           course_location: input.courseLocation ?? null,
           tee_times: input.teeTimes ?? null,
