@@ -46,10 +46,15 @@ interface ScheduleItem {
   sort_order: number;
 }
 
-// Unified row — either a schedule item or a reservation
 type UnifiedRow =
   | { source: "schedule"; data: ScheduleItem }
   | { source: "reservation"; data: Reservation };
+
+interface DayGroup {
+  date: string | null;
+  label: string;
+  items: UnifiedRow[];
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -68,6 +73,14 @@ function fmtDate(d: string) {
   });
 }
 
+function fmtDayHeader(d: string) {
+  return parseLocalDate(d).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function rowDate(row: UnifiedRow): string | null {
   return row.source === "schedule"
     ? row.data.scheduled_date ?? null
@@ -78,6 +91,27 @@ function rowTime(row: UnifiedRow): string | null {
   return row.source === "schedule"
     ? row.data.scheduled_time ?? null
     : row.data.start_time ?? null;
+}
+
+/** Generate YYYY-MM-DD strings for each day from start to end (inclusive). */
+function generateTripDays(start: string, end: string): string[] {
+  const days: string[] = [];
+  const s = parseLocalDate(start);
+  const e = parseLocalDate(end);
+  const cur = new Date(s);
+  while (cur <= e) {
+    days.push(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+/** Compute "Day N" label from trip start date. */
+function dayNumber(date: string, tripStart: string | null): number | null {
+  if (!tripStart) return null;
+  const s = parseLocalDate(tripStart).getTime();
+  const d = parseLocalDate(date).getTime();
+  return Math.floor((d - s) / 86400000) + 1;
 }
 
 // ── Unified row component ───────────────────────────────────────────────
@@ -109,8 +143,7 @@ function UnifiedItemRow({
 }) {
   const isSchedule = row.source === "schedule";
   const isRes = row.source === "reservation";
-  const isConfirmed = isSchedule ? row.data.is_confirmed : true; // reservations are always "confirmed"
-  const date = rowDate(row);
+  const isConfirmed = isSchedule ? row.data.is_confirmed : true;
   const time = rowTime(row);
 
   return (
@@ -125,7 +158,6 @@ function UnifiedItemRow({
         border: `1px solid ${isConfirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
       }}
     >
-      {/* Drag handle — desktop only */}
       {canEdit && (
         <GripVertical
           size={16}
@@ -134,19 +166,16 @@ function UnifiedItemRow({
         />
       )}
 
-      {/* Type icon for reservations */}
       {isRes && (
         <span className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }}>
           {RES_ICON[row.data.type]}
         </span>
       )}
 
-      {/* Content */}
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
           {row.data.title}
         </p>
-        {/* Detail / notes */}
         {isSchedule && row.data.detail && (
           <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {row.data.detail}
@@ -157,14 +186,7 @@ function UnifiedItemRow({
             {row.data.notes}
           </p>
         )}
-        {/* Date/time + confirmation # */}
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          {date && (
-            <span className="flex items-center gap-1">
-              <Calendar size={10} />
-              {fmtDate(date)}
-            </span>
-          )}
           {time && (
             <span className="flex items-center gap-1">
               <Clock size={10} />
@@ -189,9 +211,7 @@ function UnifiedItemRow({
         </div>
       </div>
 
-      {/* Right side controls */}
       <div className="flex flex-shrink-0 items-center gap-1">
-        {/* Confirm toggle — schedule items only */}
         {isSchedule && canEdit && onConfirmToggle && (
           <button
             onClick={onConfirmToggle}
@@ -204,15 +224,11 @@ function UnifiedItemRow({
           </button>
         )}
         {isSchedule && !canEdit && isConfirmed && (
-          <span
-            className="text-[11px] font-medium"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
+          <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
             Confirmed ✓
           </span>
         )}
 
-        {/* Mobile reorder arrows */}
         {canEdit && (
           <div className="flex flex-col lg:hidden">
             <button
@@ -236,7 +252,6 @@ function UnifiedItemRow({
           </div>
         )}
 
-        {/* Delete */}
         {canEdit && (
           <button
             onClick={onRemove}
@@ -357,51 +372,110 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   const utils = trpc.useUtils();
   const [showAddSchedule, setShowAddSchedule] = useState(false);
   const [showAddReservation, setShowAddReservation] = useState(false);
-  const dragIdx = useRef<number | null>(null);
+  const dragState = useRef<{ groupDate: string | null; idx: number; row: UnifiedRow } | null>(null);
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
 
-  // Merge schedule items and reservations into one sortable list.
-  // Schedule items sort by sort_order; reservations interleave by date,
-  // appended after all schedule items if they have no date.
-  const unifiedList = useMemo<UnifiedRow[]>(() => {
-    const schedRows: UnifiedRow[] = (scheduleItems as ScheduleItem[]).map((s) => ({
+  const allSchedule = scheduleItems as ScheduleItem[];
+  const allReservations = reservations as Reservation[];
+
+  // Build day groups: trip days (if dates are set) + any extra dates from items
+  const dayGroups = useMemo<DayGroup[]>(() => {
+    // Collect all unified rows
+    const schedRows: UnifiedRow[] = allSchedule.map((s) => ({
       source: "schedule" as const,
       data: s,
     }));
-    const resRows: UnifiedRow[] = (reservations as Reservation[]).map((r) => ({
+    const resRows: UnifiedRow[] = allReservations.map((r) => ({
       source: "reservation" as const,
       data: r,
     }));
-    // Sort: schedule items by sort_order first, then reservations by date
-    const all = [...schedRows, ...resRows];
-    all.sort((a, b) => {
-      // Both schedule items: sort by sort_order
-      if (a.source === "schedule" && b.source === "schedule") {
-        return a.data.sort_order - b.data.sort_order;
-      }
-      // Schedule item before reservation (schedule items are owner-ordered)
-      if (a.source === "schedule" && b.source === "reservation") return -1;
-      if (a.source === "reservation" && b.source === "schedule") return 1;
-      // Both reservations: sort by date
-      const aDate = (a.data as Reservation).date ?? "9999";
-      const bDate = (b.data as Reservation).date ?? "9999";
-      return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
-    });
-    return all;
-  }, [scheduleItems, reservations]);
+    const allRows = [...schedRows, ...resRows];
 
-  // Non-editors only see confirmed schedule items + all reservations
-  const visibleList = canEdit
-    ? unifiedList
-    : unifiedList.filter(
-        (row) => row.source === "reservation" || row.data.is_confirmed
-      );
+    // Generate trip day slots
+    const tripDays =
+      trip.start_date && trip.end_date
+        ? generateTripDays(trip.start_date, trip.end_date)
+        : [];
 
-  const unconfirmedCount = (scheduleItems as ScheduleItem[]).filter(
-    (i) => !i.is_confirmed
-  ).length;
+    // Collect all dates present in items (including those outside trip range)
+    const itemDates = new Set<string>();
+    for (const row of allRows) {
+      const d = rowDate(row);
+      if (d) itemDates.add(d);
+    }
+
+    // Merge trip days + extra item dates, deduplicated and sorted
+    const allDates = new Set([...tripDays, ...itemDates]);
+    const sortedDates = Array.from(allDates).sort();
+
+    // Group items by date
+    const dateMap = new Map<string | null, UnifiedRow[]>();
+    for (const row of allRows) {
+      const d = rowDate(row);
+      const key = d ?? null;
+      const arr = dateMap.get(key) ?? [];
+      arr.push(row);
+      dateMap.set(key, arr);
+    }
+
+    // Sort items within each day: schedule items by sort_order, reservations by time
+    const sortWithinDay = (items: UnifiedRow[]) =>
+      items.slice().sort((a, b) => {
+        if (a.source === "schedule" && b.source === "schedule")
+          return a.data.sort_order - b.data.sort_order;
+        if (a.source === "schedule" && b.source === "reservation") return -1;
+        if (a.source === "reservation" && b.source === "schedule") return 1;
+        const aTime = (a.data as Reservation).start_time ?? "";
+        const bTime = (b.data as Reservation).start_time ?? "";
+        return aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
+      });
+
+    const groups: DayGroup[] = [];
+
+    for (const date of sortedDates) {
+      const dayNum = dayNumber(date, trip.start_date ?? null);
+      const items = sortWithinDay(dateMap.get(date) ?? []);
+      groups.push({
+        date,
+        label: dayNum ? `Day ${dayNum} — ${fmtDayHeader(date)}` : fmtDayHeader(date),
+        items,
+      });
+      dateMap.delete(date);
+    }
+
+    // Empty trip days (no items) still show as sections
+    // (already included above since tripDays are in sortedDates)
+
+    // Unscheduled items (null date) — at the TOP so they're visible
+    const unscheduled = dateMap.get(null);
+    if (unscheduled && unscheduled.length > 0) {
+      groups.unshift({
+        date: null,
+        label: "Unscheduled",
+        items: sortWithinDay(unscheduled),
+      });
+    }
+
+    return groups;
+  }, [allSchedule, allReservations, trip.start_date, trip.end_date]);
+
+  // Filter for non-editors: only confirmed schedule items + all reservations
+  const visibleGroups = useMemo<DayGroup[]>(() => {
+    if (canEdit) return dayGroups;
+    return dayGroups
+      .map((g) => ({
+        ...g,
+        items: g.items.filter(
+          (row) => row.source === "reservation" || (row.data as ScheduleItem).is_confirmed
+        ),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [dayGroups, canEdit]);
+
+  const unconfirmedCount = allSchedule.filter((i) => !i.is_confirmed).length;
+  const totalItems = allSchedule.length + allReservations.length;
 
   const confirmItem = trpc.schedule.confirm.useMutation({
     onSuccess: () => utils.schedule.list.invalidate({ tripId }),
@@ -419,6 +493,14 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
     onSuccess: () => utils.schedule.list.invalidate({ tripId }),
   });
 
+  const updateScheduleItem = trpc.schedule.update.useMutation({
+    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
+  const updateReservation = trpc.reservations.update.useMutation({
+    onSuccess: () => utils.reservations.list.invalidate({ tripId }),
+  });
+
   const handleConfirmToggle = (item: ScheduleItem) => {
     if (item.is_confirmed) return;
     confirmItem.mutate({ tripId, itemId: item.id });
@@ -432,9 +514,19 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
     }
   };
 
-  // Reorder only applies to schedule items — extract their IDs in current order
-  const reorderScheduleItems = (newVisibleList: UnifiedRow[]) => {
-    const schedIds = newVisibleList
+  // Reorder within a day group — rebuilds global schedule item order
+  const reorderInGroup = (groupDate: string | null, newGroupItems: UnifiedRow[]) => {
+    // Replace the items in the target group, keep all other groups intact
+    const newAllItems: UnifiedRow[] = [];
+    for (const g of dayGroups) {
+      if (g.date === groupDate) {
+        newAllItems.push(...newGroupItems);
+      } else {
+        newAllItems.push(...g.items);
+      }
+    }
+    // Extract schedule IDs in new global order
+    const schedIds = newAllItems
       .filter((r) => r.source === "schedule")
       .map((r) => r.data.id);
     if (schedIds.length > 0) {
@@ -442,22 +534,44 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
     }
   };
 
-  const handleMove = (fromIndex: number, direction: "up" | "down") => {
-    const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
-    if (toIndex < 0 || toIndex >= visibleList.length) return;
-    const newOrder = [...visibleList];
-    const [moved] = newOrder.splice(fromIndex, 1);
-    newOrder.splice(toIndex, 0, moved);
-    reorderScheduleItems(newOrder);
+  const handleMove = (groupDate: string | null, items: UnifiedRow[], fromIdx: number, dir: "up" | "down") => {
+    const toIdx = dir === "up" ? fromIdx - 1 : fromIdx + 1;
+    if (toIdx < 0 || toIdx >= items.length) return;
+    const newItems = [...items];
+    const [moved] = newItems.splice(fromIdx, 1);
+    newItems.splice(toIdx, 0, moved);
+    reorderInGroup(groupDate, newItems);
   };
 
-  const handleDragDrop = (toIndex: number) => {
-    if (dragIdx.current === null || dragIdx.current === toIndex) return;
-    const newOrder = [...visibleList];
-    const [moved] = newOrder.splice(dragIdx.current, 1);
-    newOrder.splice(toIndex, 0, moved);
-    dragIdx.current = null;
-    reorderScheduleItems(newOrder);
+  const handleDragDrop = (targetGroupDate: string | null, targetItems: UnifiedRow[], toIdx: number) => {
+    if (!dragState.current) return;
+    const { groupDate: sourceDate, idx: fromIdx, row: draggedRow } = dragState.current;
+    dragState.current = null;
+
+    // Same group — simple reorder
+    if (sourceDate === targetGroupDate) {
+      if (fromIdx === toIdx) return;
+      const newItems = [...targetItems];
+      const [moved] = newItems.splice(fromIdx, 1);
+      newItems.splice(toIdx, 0, moved);
+      reorderInGroup(targetGroupDate, newItems);
+      return;
+    }
+
+    // Cross-group — update the item's date, then reorder
+    if (draggedRow.source === "schedule") {
+      updateScheduleItem.mutate({
+        tripId,
+        itemId: draggedRow.data.id,
+        scheduledDate: targetGroupDate,
+      });
+    } else {
+      updateReservation.mutate({
+        tripId,
+        reservationId: draggedRow.data.id,
+        date: targetGroupDate ?? undefined,
+      });
+    }
   };
 
   return (
@@ -518,37 +632,73 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
           </div>
         )}
 
-        {visibleList.length === 0 ? (
+        {totalItems === 0 ? (
           <EmptyState
             icon={<CalendarDays className="h-10 w-10" />}
             headline="No schedule items yet"
             subtext={canEdit ? "Add items to plan your trip's agenda." : "The organizer hasn't added any schedule items yet."}
           />
         ) : (
-          visibleList.map((row, idx) => (
-            <UnifiedItemRow
-              key={`${row.source}-${row.data.id}`}
-              row={row}
-              canEdit={canEdit}
-              onConfirmToggle={
-                row.source === "schedule"
-                  ? () => handleConfirmToggle(row.data as ScheduleItem)
-                  : undefined
-              }
-              onRemove={() => handleRemove(row)}
-              onMoveUp={() => handleMove(idx, "up")}
-              onMoveDown={() => handleMove(idx, "down")}
-              isFirst={idx === 0}
-              isLast={idx === visibleList.length - 1}
-              onDragStart={() => { dragIdx.current = idx; }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handleDragDrop(idx)}
-            />
-          ))
+          <div className="space-y-5">
+            {visibleGroups.map((group) => (
+              <div
+                key={group.date ?? "__unscheduled"}
+                onDragOver={canEdit ? (e) => e.preventDefault() : undefined}
+                onDrop={canEdit ? () => {
+                  if (dragState.current && dragState.current.groupDate !== group.date) {
+                    handleDragDrop(group.date, group.items, group.items.length);
+                  }
+                } : undefined}
+              >
+                {/* Day header */}
+                <div className="mb-2 flex items-center gap-2">
+                  <CalendarDays
+                    size={14}
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  />
+                  <p
+                    className="text-[13px] font-semibold"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {group.label}
+                  </p>
+                </div>
+
+                {group.items.length === 0 ? (
+                  <p
+                    className="ml-6 text-xs italic"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Nothing scheduled
+                  </p>
+                ) : (
+                  group.items.map((row, idx) => (
+                    <UnifiedItemRow
+                      key={`${row.source}-${row.data.id}`}
+                      row={row}
+                      canEdit={canEdit}
+                      onConfirmToggle={
+                        row.source === "schedule"
+                          ? () => handleConfirmToggle(row.data as ScheduleItem)
+                          : undefined
+                      }
+                      onRemove={() => handleRemove(row)}
+                      onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
+                      onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
+                      isFirst={idx === 0}
+                      isLast={idx === group.items.length - 1}
+                      onDragStart={() => { dragState.current = { groupDate: group.date, idx, row }; }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleDragDrop(group.date, group.items, idx)}
+                    />
+                  ))
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
-      {/* Modals */}
       {showAddSchedule && (
         <AddScheduleItemSheet tripId={tripId} onClose={() => setShowAddSchedule(false)} />
       )}
