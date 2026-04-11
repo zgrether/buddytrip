@@ -34,6 +34,7 @@ import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
+import { LogisticsPanel } from "../components/LogisticsPanel";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
@@ -1150,10 +1151,9 @@ function PlanningSection({
   const datesLocked = !!(trip.start_date && trip.end_date);
 
   // ── Logistics ─────────────────────────────────────────────────────────
-  const bookingCount = reservations.length;
-  const scheduleState: ArcCardState = bookingCount > 0 ? "inProgress" : "none";
-  const scheduleNote = bookingCount > 0
-    ? `${bookingCount} booking${bookingCount !== 1 ? "s" : ""}`
+  const _bookingCount = reservations.length;
+  const _scheduleNote = _bookingCount > 0
+    ? `${_bookingCount} booking${_bookingCount !== 1 ? "s" : ""}`
     : "Not booked yet";
 
   return (
@@ -1304,32 +1304,14 @@ function PlanningSection({
         onToggle={() => toggle("dates")}
         onTabChange={onTabChange}
       />
-      {/* ── Logistics — visible in IDEA stage only ── */}
-      {stage !== "planning" && (
-        <PlanningRow
-          icon={<Hotel size={16} />}
-          label="Logistics"
-          note={scheduleNote}
-          state={scheduleState}
-          isOpen={openRow === "logistics"}
-          onToggle={() => toggle("logistics")}
-        >
-          <div className="space-y-3">
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              {bookingCount > 0
-                ? `${bookingCount} booking${bookingCount !== 1 ? "s" : ""} on record`
-                : "No bookings added yet."}
-            </p>
-            <button
-              onClick={() => onTabChange?.("schedule")}
-              className="text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              {canEdit ? "Manage logistics →" : "View schedule →"}
-            </button>
-          </div>
-        </PlanningRow>
-      )}
+      {/* ── Logistics ── */}
+      <LogisticsPanel
+        tripId={trip.id}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        isOpen={openRow === "logistics"}
+        onToggle={() => toggle("logistics")}
+      />
 
       {/* ── RSVP Message — PLANNING stage, owner only ── */}
       {stage === "planning" && isOwner && (
