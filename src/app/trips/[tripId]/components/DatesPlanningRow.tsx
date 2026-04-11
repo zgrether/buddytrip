@@ -663,26 +663,12 @@ export function DatesPlanningRow({
               style={{ background: "var(--color-bt-card-raised)" }}
             >
               {hasWindows ? (
-                canEdit && isOwner && pollState === "closed" ? (
-                  <button
-                    onClick={() => setShowSelectDateModal(true)}
-                    className="w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-opacity"
-                    style={{
-                      border: "1.5px solid var(--color-bt-accent)",
-                      color: "var(--color-bt-accent)",
-                      background: "transparent",
-                    }}
-                  >
-                    Select date
-                  </button>
-                ) : (
-                  <span
-                    className="text-[11px] font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    Crew
-                  </span>
-                )
+                <span
+                  className="text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Crew
+                </span>
               ) : (
                 <span
                   className="text-xs italic"
@@ -834,6 +820,21 @@ export function DatesPlanningRow({
                   {label}
                 </button>
               ))}
+
+              {/* Select date — always-on escape valve, far right */}
+              {hasWindows && (
+                <button
+                  onClick={() => setShowSelectDateModal(true)}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-medium transition-opacity"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-accent)",
+                    border: "1px solid var(--color-bt-accent-border)",
+                  }}
+                >
+                  Select date
+                </button>
+              )}
             </div>
 
             <button
