@@ -9,12 +9,10 @@ import {
   Flag,
   Zap,
   ChevronRight,
-  ChevronDown,
   Pencil,
   X,
   Trophy,
   Check,
-  Calendar,
   Users,
   MapPin,
   ThumbsUp,
@@ -24,11 +22,10 @@ import {
   Bell,
   Mail,
   Send,
-  Lock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
-import { formatDateRange, formatDateRangeCompact, parseLocalDate } from "@/lib/dates";
+import { formatDateRange, parseLocalDate } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -1113,7 +1110,6 @@ function PlanningSection({
   onTabChange?: (tab: string) => void;
   onMakeOfficial?: (message: string) => void;
 }) {
-  const utils = trpc.useUtils();
   const [openRow, setOpenRow] = useState<string | null>(
     trip.date_poll_active ? "dates" : null
   );

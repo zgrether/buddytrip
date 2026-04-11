@@ -98,8 +98,10 @@ export function DatesPlanningRow({
   );
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  const rawWindows = (poll?.windows ?? []) as PollWindow[];
-  const windows = useMemo(() => sortWindows(rawWindows), [rawWindows]);
+  const windows = useMemo(
+    () => sortWindows((poll?.windows ?? []) as PollWindow[]),
+    [poll?.windows]
+  );
 
   const datesLocked = !!(trip.start_date && trip.end_date);
   const pollState = trip.date_poll_state ?? null;

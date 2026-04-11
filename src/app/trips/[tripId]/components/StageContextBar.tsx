@@ -34,17 +34,15 @@ export const STAGE_CONTENT: Record<
 };
 
 export function StageContextBar({ tripId, stage, displayStatus, isOwner }: StageContextBarProps) {
-  if (!isOwner) return null;
-
-  const showBar = ["idea", "planning", "going", "now"].includes(displayStatus);
-
   const storageKey = `stage-bar-dismissed-${tripId}-${stage}`;
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(storageKey) === "true";
   });
 
-  if (!showBar || dismissed) return null;
+  const showBar = ["idea", "planning", "going", "now"].includes(displayStatus);
+
+  if (!isOwner || !showBar || dismissed) return null;
 
   const content = STAGE_CONTENT[displayStatus] ?? STAGE_CONTENT[stage];
   if (!content) return null;
