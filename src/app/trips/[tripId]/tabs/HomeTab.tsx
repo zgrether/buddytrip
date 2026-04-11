@@ -1336,24 +1336,6 @@ function PlanningSection({
         />
       )}
 
-      {/* ── "Let's make it official" — PLANNING stage, all three green ── */}
-      {stage === "planning" && (() => {
-        const destinationLocked = !!trip.locked_destination_title;
-        const dateLocked = datesLocked;
-        const messageReady = !!(localMessage.trim());
-        if (!destinationLocked || !dateLocked || !messageReady) return null;
-        return (
-          <button
-            onClick={() => onMakeOfficial?.(localMessage)}
-            className="mt-2 flex w-full animate-fade-in items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-opacity hover:opacity-90"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            <Send size={18} />
-            Let&apos;s make it official 🎉
-          </button>
-        );
-      })()}
-
       {/* Modals rendered outside PlanningRows so they aren't gated by isOpen */}
       {showSetDest && (
         <SetDestinationModal

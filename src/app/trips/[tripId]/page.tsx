@@ -548,7 +548,7 @@ function AdvanceToGoingSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Make it official
+          Let&apos;s Go! 🎉
         </h2>
         <p className="mt-2 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           Write a message to your crew — this will appear on the home tab for everyone
