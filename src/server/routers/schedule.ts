@@ -148,6 +148,35 @@ export const scheduleRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // unconfirm — Planner+ can unconfirm a confirmed schedule item
+  // -----------------------------------------------------------------------
+  unconfirm: authedProcedure
+    .input(z.object({ tripId: z.string(), itemId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("schedule_items")
+        .update({
+          is_confirmed: false,
+          confirmed_at: null,
+          confirmed_by: null,
+        })
+        .eq("id", input.itemId)
+        .eq("trip_id", ctx.tripId)
+        .select()
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to unconfirm schedule item",
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
   // reorder — Planner+ can reorder schedule items
   // -----------------------------------------------------------------------
   reorder: authedProcedure

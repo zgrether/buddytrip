@@ -100,10 +100,12 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
 }) {
+  const movable = canEdit && !item.is_confirmed;
+
   return (
     <div
-      draggable={canEdit}
-      onDragStart={canEdit ? onDragStart : undefined}
+      draggable={movable}
+      onDragStart={movable ? onDragStart : undefined}
       onDragOver={canEdit ? onDragOver : undefined}
       onDrop={canEdit ? onDrop : undefined}
       className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-colors"
@@ -112,7 +114,7 @@ function ScheduleItemRow({
         border: `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
       }}
     >
-      {canEdit && (
+      {movable && (
         <GripVertical
           size={16}
           className="mt-0.5 hidden flex-shrink-0 cursor-grab lg:block"
@@ -146,7 +148,7 @@ function ScheduleItemRow({
               color: item.is_confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
             }}
           >
-            {item.is_confirmed ? "Confirmed ✓" : "Confirm"}
+            {item.is_confirmed ? "Confirmed 🔒" : "Confirm"}
           </button>
         )}
         {!canEdit && item.is_confirmed && (
@@ -155,7 +157,7 @@ function ScheduleItemRow({
           </span>
         )}
 
-        {canEdit && (
+        {movable && (
           <div className="flex flex-col lg:hidden">
             <button
               onClick={onMoveUp}
@@ -294,9 +296,16 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
     onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
+  const unconfirmItem = trpc.schedule.unconfirm.useMutation({
+    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
   const handleConfirmToggle = (item: ScheduleItem) => {
-    if (item.is_confirmed) return;
-    confirmItem.mutate({ tripId, itemId: item.id });
+    if (item.is_confirmed) {
+      unconfirmItem.mutate({ tripId, itemId: item.id });
+    } else {
+      confirmItem.mutate({ tripId, itemId: item.id });
+    }
   };
 
   // Reorder within a day group
