@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { Calendar, X } from "lucide-react";
+import { Calendar, Plus, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -463,73 +463,18 @@ export function DatesPlanningRow({
     );
   };
 
+  const handlePollTheCrew = () => {
+    setPollActive.mutate({ tripId, state: "draft" });
+  };
+
   const handleNevermind = () => {
     setPollActive.mutate({ tripId, state: null });
   };
 
   // ── Body renderers ─────────────────────────────────────────────────────
 
-  function renderDatePickerRow(buttonMode: "set" | "poll" | "both") {
+  function renderDatePickerRow(buttonMode: "set" | "poll") {
     const valid = !!directStart && !!directEnd && directStart < directEnd;
-    if (buttonMode === "both") {
-      return (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={directStart}
-              onChange={(e) => setDirectStart(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <input
-              type="date"
-              value={directEnd}
-              onChange={(e) => setDirectEnd(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              disabled={!valid || lockDates.isPending}
-              onClick={handleSetDates}
-              className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity"
-              style={{
-                background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                opacity: valid ? 1 : 0.6,
-                cursor: valid ? "pointer" : "not-allowed",
-              }}
-            >
-              {lockDates.isPending ? "Setting…" : "Set dates"}
-            </button>
-            <button
-              disabled={!valid || addWindow.isPending}
-              onClick={handleAddToPoll}
-              className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: valid ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
-                border: `1px solid ${valid ? "var(--color-bt-border)" : "var(--color-bt-border)"}`,
-                opacity: valid ? 1 : 0.6,
-                cursor: valid ? "pointer" : "not-allowed",
-              }}
-            >
-              {addWindow.isPending ? "Adding…" : "Add to poll"}
-            </button>
-          </div>
-        </div>
-      );
-    }
     const busy =
       buttonMode === "set" ? lockDates.isPending : addWindow.isPending;
     const label =
@@ -1044,7 +989,6 @@ export function DatesPlanningRow({
 
     // Owner view
     const showInputRow = pollState !== "active" && pollState !== "closed";
-    const inputMode = pollState === "draft" ? "poll" : "both";
 
     return (
       <div className="space-y-0">
@@ -1060,8 +1004,26 @@ export function DatesPlanningRow({
             {/* In poll draft mode, list existing windows as text rows above the inputs */}
             {pollState === "draft" && renderWindowTextRows()}
 
-            {/* Date pickers + action button(s) */}
-            {renderDatePickerRow(inputMode)}
+            {/* Date pickers + action button */}
+            {renderDatePickerRow(pollState === "draft" ? "poll" : "set")}
+
+            {/* Poll the crew — only in null (direct) mode */}
+            {pollState === null && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={handlePollTheCrew}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+                  style={{
+                    border: "1.5px dashed var(--color-bt-accent)",
+                    color: "var(--color-bt-accent)",
+                    background: "transparent",
+                  }}
+                >
+                  <Plus size={14} />
+                  Poll the crew
+                </button>
+              </div>
+            )}
           </>
         )}
 
