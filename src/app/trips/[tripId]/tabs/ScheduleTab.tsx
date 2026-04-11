@@ -392,7 +392,20 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   const unconfirmedCount = allItems.filter((i) => !i.is_confirmed).length;
 
   const confirmItem = trpc.schedule.confirm.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId ? { ...item, is_confirmed: true } : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
   const removeItem = trpc.schedule.remove.useMutation({
@@ -441,7 +454,22 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   });
 
   const unconfirmItem = trpc.schedule.unconfirm.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId
+            ? { ...item, is_confirmed: false, confirmed_at: null, confirmed_by: null }
+            : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
   const handleConfirmToggle = (item: ScheduleItem) => {
