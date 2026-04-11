@@ -47,7 +47,11 @@ export function OwnerAlertPanel({ trip, isOwner }: OwnerAlertPanelProps) {
   // ── Early returns (no alert exists or was dismissed) ──────────────────
   // Must check AFTER editing state — clicking "Set an alert" sets editing=true
   // and we need to fall through to the inline edit block below.
-  if (!editing && (!trip.owner_alert || dismissed)) {
+  // Owners are never affected by dismiss — they always see the alert (or the
+  // "set alert" affordance). Crew members can dismiss per-alert.
+  const effectivelyDismissed = !isOwner && dismissed;
+
+  if (!editing && (!trip.owner_alert || effectivelyDismissed)) {
     // Owner-only affordance to create a new alert
     if (isOwner && !trip.owner_alert) {
       return (
