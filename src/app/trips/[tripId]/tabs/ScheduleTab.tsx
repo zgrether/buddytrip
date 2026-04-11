@@ -103,6 +103,8 @@ function ScheduleItemRow({
   onMoveDown,
   isFirst,
   isLast,
+  isDragging,
+  showDropIndicator,
   onDragStart,
   onDragOver,
   onDrop,
@@ -116,6 +118,8 @@ function ScheduleItemRow({
   onMoveDown: () => void;
   isFirst: boolean;
   isLast: boolean;
+  isDragging: boolean;
+  showDropIndicator: boolean;
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
@@ -123,17 +127,26 @@ function ScheduleItemRow({
   const movable = canEdit && !item.is_confirmed;
 
   return (
-    <div
-      draggable={movable}
-      onDragStart={movable ? onDragStart : undefined}
-      onDragOver={canEdit ? onDragOver : undefined}
-      onDrop={canEdit ? onDrop : undefined}
-      className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-colors"
-      style={{
-        background: item.is_confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-        border: `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-      }}
-    >
+    <>
+      {/* Drop insertion line */}
+      {showDropIndicator && (
+        <div
+          className="mb-1 h-0.5 rounded-full"
+          style={{ background: "var(--color-bt-accent)" }}
+        />
+      )}
+      <div
+        draggable={movable}
+        onDragStart={movable ? onDragStart : undefined}
+        onDragOver={canEdit ? onDragOver : undefined}
+        onDrop={canEdit ? onDrop : undefined}
+        className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
+        style={{
+          background: item.is_confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+          border: `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+          opacity: isDragging ? 0.4 : 1,
+        }}
+      >
       {movable && (
         <GripVertical
           size={16}
@@ -266,6 +279,7 @@ function ScheduleItemRow({
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -282,6 +296,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
+  const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const allItems = scheduleItems as ScheduleItem[];
@@ -417,6 +432,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
     const { groupDate: sourceDate, idx: fromIdx, item: draggedItem } = dragState.current;
     dragState.current = null;
     setDragOverGroup(false);
+    setDragOverIdx(null);
 
     // Same group — simple reorder
     if (sourceDate === targetGroupDate) {
@@ -527,6 +543,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                 onDragLeave={canEdit ? (e) => {
                   if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                     setDragOverGroup(false);
+                    setDragOverIdx(null);
                   }
                 } : undefined}
                 onDrop={canEdit ? () => {
@@ -583,9 +600,26 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                       onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
                       isFirst={idx === 0}
                       isLast={idx === group.items.length - 1}
+                      isDragging={
+                        !!dragState.current &&
+                        dragState.current.groupDate === group.date &&
+                        dragState.current.idx === idx
+                      }
+                      showDropIndicator={
+                        !!dragOverIdx &&
+                        dragOverIdx.groupDate === group.date &&
+                        dragOverIdx.idx === idx &&
+                        dragState.current?.idx !== idx
+                      }
                       onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => handleDragDrop(group.date, group.items, idx)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverIdx({ groupDate: group.date, idx });
+                      }}
+                      onDrop={() => {
+                        setDragOverIdx(null);
+                        handleDragDrop(group.date, group.items, idx);
+                      }}
                     />
                   ))
                 )}
