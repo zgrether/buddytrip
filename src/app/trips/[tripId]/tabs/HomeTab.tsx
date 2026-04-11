@@ -1114,7 +1114,9 @@ function PlanningSection({
   onMakeOfficial?: (message: string) => void;
 }) {
   const utils = trpc.useUtils();
-  const [openRow, setOpenRow] = useState<string | null>(null);
+  const [openRow, setOpenRow] = useState<string | null>(
+    trip.date_poll_active ? "dates" : null
+  );
   const [showSetDest, setShowSetDest] = useState(false);
   // Edge case: PLANNING stage with no locked destination (old data / migration artifact).
   // Initialize open so the owner is prompted to fix it immediately on mount.

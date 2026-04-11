@@ -394,18 +394,24 @@ export function DatesPlanningRow({
     : pollState === "draft"
     ? isOwner
       ? "Building Poll"
-      : `Dates TBD: ${ownerDisplayName} is working on it.`
+      : `Dates TBD: ${ownerDisplayName} is working on it`
     : pollState === "closed"
     ? isOwner
       ? "Poll Closed"
-      : `Dates TBD: ${ownerDisplayName} is working on it.`
+      : `Dates TBD: ${ownerDisplayName} is working on it`
     : isOwner
     ? "Set Dates"
-    : `Dates TBD: ${ownerDisplayName} is working on it.`;
+    : `Dates TBD: ${ownerDisplayName} is working on it`;
 
   const headerNote = useMemo(() => {
     if (datesLocked) {
       return formatDateRangeCompact(trip.start_date, trip.end_date);
+    }
+    // Non-owners only see the note when poll is active (so they know to vote)
+    if (!isOwner) {
+      return pollState === "active"
+        ? `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`
+        : "";
     }
     if (pollState === "active")
       return `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
@@ -414,7 +420,7 @@ export function DatesPlanningRow({
     if (pollState === "closed")
       return `Poll closed · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
     return "";
-  }, [datesLocked, pollState, windows.length, trip.start_date, trip.end_date]);
+  }, [datesLocked, isOwner, pollState, windows.length, trip.start_date, trip.end_date]);
 
   // Non-owners can expand when dates are locked (to see them) or when a
   // poll is active (to vote). Owners can always expand.
@@ -874,7 +880,7 @@ export function DatesPlanningRow({
           className="text-[13px] leading-relaxed"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          The trip organizer is asking for everyone&apos;s input — please
+          {ownerDisplayName} is asking for everyone&apos;s input — please
           mark your availability for the dates below.
         </p>
 
