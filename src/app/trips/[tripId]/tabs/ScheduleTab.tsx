@@ -373,6 +373,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   const [showAddSchedule, setShowAddSchedule] = useState(false);
   const [showAddReservation, setShowAddReservation] = useState(false);
   const dragState = useRef<{ groupDate: string | null; idx: number; row: UnifiedRow } | null>(null);
+  const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false); // false = no drag
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
@@ -547,6 +548,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
     if (!dragState.current) return;
     const { groupDate: sourceDate, idx: fromIdx, row: draggedRow } = dragState.current;
     dragState.current = null;
+    setDragOverGroup(false);
 
     // Same group — simple reorder
     if (sourceDate === targetGroupDate) {
@@ -643,33 +645,64 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
             {visibleGroups.map((group) => (
               <div
                 key={group.date ?? "__unscheduled"}
-                onDragOver={canEdit ? (e) => e.preventDefault() : undefined}
+                onDragOver={canEdit ? (e) => {
+                  e.preventDefault();
+                  if (dragState.current && dragState.current.groupDate !== group.date) {
+                    setDragOverGroup(group.date);
+                  }
+                } : undefined}
+                onDragEnter={canEdit ? () => {
+                  if (dragState.current && dragState.current.groupDate !== group.date) {
+                    setDragOverGroup(group.date);
+                  }
+                } : undefined}
+                onDragLeave={canEdit ? (e) => {
+                  // Only clear if leaving the container entirely (not entering a child)
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDragOverGroup(false);
+                  }
+                } : undefined}
                 onDrop={canEdit ? () => {
+                  setDragOverGroup(false);
                   if (dragState.current && dragState.current.groupDate !== group.date) {
                     handleDragDrop(group.date, group.items, group.items.length);
                   }
                 } : undefined}
+                className="rounded-xl px-3 py-2 -mx-3 transition-colors"
+                style={{
+                  background: dragOverGroup === group.date
+                    ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
+                    : "transparent",
+                  border: dragOverGroup === group.date
+                    ? "1.5px dashed var(--color-bt-accent-border)"
+                    : "1.5px dashed transparent",
+                }}
               >
                 {/* Day header */}
                 <div className="mb-2 flex items-center gap-2">
                   <CalendarDays
                     size={14}
-                    style={{ color: "var(--color-bt-text-dim)" }}
+                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                   />
                   <p
                     className="text-[13px] font-semibold"
-                    style={{ color: "var(--color-bt-text)" }}
+                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
                   >
                     {group.label}
+                    {dragOverGroup === group.date && (
+                      <span className="ml-2 text-[11px] font-normal" style={{ color: "var(--color-bt-accent)" }}>
+                        Drop here
+                      </span>
+                    )}
                   </p>
                 </div>
 
                 {group.items.length === 0 ? (
                   <p
                     className="ml-6 text-xs italic"
-                    style={{ color: "var(--color-bt-text-dim)" }}
+                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                   >
-                    Nothing scheduled
+                    {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
                   </p>
                 ) : (
                   group.items.map((row, idx) => (
