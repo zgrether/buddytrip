@@ -224,8 +224,11 @@ export function AddScheduleItemSheet({ tripId, itemType, editItem, onClose }: Ad
           />
         )}
 
-        {/* Date + time */}
-        <div className="mt-2 flex gap-2">
+        {/* Date + time (optional) */}
+        <p className="mt-3 mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+          Date &amp; time <span className="font-normal">(optional)</span>
+        </p>
+        <div className="flex gap-2">
           <input
             type="date"
             value={scheduledDate}
