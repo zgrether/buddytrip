@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Calendar,
   CalendarDays,
@@ -46,6 +46,11 @@ interface ScheduleItem {
   sort_order: number;
 }
 
+// Unified row — either a schedule item or a reservation
+type UnifiedRow =
+  | { source: "schedule"; data: ScheduleItem }
+  | { source: "reservation"; data: Reservation };
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 const RES_ICON: Record<ReservationType, React.ReactNode> = {
@@ -63,10 +68,22 @@ function fmtDate(d: string) {
   });
 }
 
-// ── ScheduleItemRow ─────────────────────────────────────────────────────
+function rowDate(row: UnifiedRow): string | null {
+  return row.source === "schedule"
+    ? row.data.scheduled_date ?? null
+    : row.data.date ?? null;
+}
 
-function ScheduleItemRow({
-  item,
+function rowTime(row: UnifiedRow): string | null {
+  return row.source === "schedule"
+    ? row.data.scheduled_time ?? null
+    : row.data.start_time ?? null;
+}
+
+// ── Unified row component ───────────────────────────────────────────────
+
+function UnifiedItemRow({
+  row,
   canEdit,
   onConfirmToggle,
   onRemove,
@@ -78,9 +95,9 @@ function ScheduleItemRow({
   onDragOver,
   onDrop,
 }: {
-  item: ScheduleItem;
+  row: UnifiedRow;
   canEdit: boolean;
-  onConfirmToggle: () => void;
+  onConfirmToggle?: () => void;
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -90,6 +107,12 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
 }) {
+  const isSchedule = row.source === "schedule";
+  const isRes = row.source === "reservation";
+  const isConfirmed = isSchedule ? row.data.is_confirmed : true; // reservations are always "confirmed"
+  const date = rowDate(row);
+  const time = rowTime(row);
+
   return (
     <div
       draggable={canEdit}
@@ -98,8 +121,8 @@ function ScheduleItemRow({
       onDrop={canEdit ? onDrop : undefined}
       className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-colors"
       style={{
-        background: item.is_confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-        border: `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+        background: isConfirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+        border: `1px solid ${isConfirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
       }}
     >
       {/* Drag handle — desktop only */}
@@ -111,47 +134,76 @@ function ScheduleItemRow({
         />
       )}
 
+      {/* Type icon for reservations */}
+      {isRes && (
+        <span className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }}>
+          {RES_ICON[row.data.type]}
+        </span>
+      )}
+
       {/* Content */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            {item.title}
-          </p>
-        </div>
-        {item.detail && (
+        <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+          {row.data.title}
+        </p>
+        {/* Detail / notes */}
+        {isSchedule && row.data.detail && (
           <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {item.detail}
+            {row.data.detail}
           </p>
         )}
-        {item.scheduled_date && (
-          <p className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            <Calendar size={10} />
-            {fmtDate(item.scheduled_date)}
-            {item.scheduled_time && (
-              <>
-                <Clock size={10} className="ml-1" />
-                {item.scheduled_time}
-              </>
-            )}
+        {isRes && row.data.notes && (
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {row.data.notes}
           </p>
         )}
+        {/* Date/time + confirmation # */}
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          {date && (
+            <span className="flex items-center gap-1">
+              <Calendar size={10} />
+              {fmtDate(date)}
+            </span>
+          )}
+          {time && (
+            <span className="flex items-center gap-1">
+              <Clock size={10} />
+              {time}
+            </span>
+          )}
+          {isRes && row.data.confirmation_number && (
+            <span>#{row.data.confirmation_number}</span>
+          )}
+          {isRes && (
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text-dim)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              Reservation
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Right side controls */}
       <div className="flex flex-shrink-0 items-center gap-1">
-        {/* Confirm toggle */}
-        {canEdit && (
+        {/* Confirm toggle — schedule items only */}
+        {isSchedule && canEdit && onConfirmToggle && (
           <button
             onClick={onConfirmToggle}
             className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
             style={{
-              color: item.is_confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              color: isConfirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
             }}
           >
-            {item.is_confirmed ? "Confirmed ✓" : "Confirm"}
+            {isConfirmed ? "Confirmed ✓" : "Confirm"}
           </button>
         )}
-        {!canEdit && item.is_confirmed && (
+        {isSchedule && !canEdit && isConfirmed && (
           <span
             className="text-[11px] font-medium"
             style={{ color: "var(--color-bt-accent)" }}
@@ -200,88 +252,7 @@ function ScheduleItemRow({
   );
 }
 
-// ── Reservations section (kept from original) ───────────────────────────
-
-function ReservationsSection({
-  tripId,
-  canEdit,
-}: {
-  tripId: string;
-  canEdit: boolean;
-}) {
-  const utils = trpc.useUtils();
-  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
-
-  const removeRes = trpc.reservations.remove.useMutation({
-    onSuccess: () => utils.reservations.list.invalidate({ tripId }),
-  });
-
-  if (reservations.length === 0) return null;
-
-  return (
-    <section className="mt-6">
-      <h2
-        className="mb-3 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Reservations
-      </h2>
-      <div className="space-y-2">
-        {(reservations as Reservation[]).map((res) => (
-          <div
-            key={res.id}
-            data-testid={`reservation-${res.id}`}
-            className="flex items-start gap-3 rounded-xl p-4"
-            style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-          >
-            <span style={{ color: "var(--color-bt-accent)" }}>{RES_ICON[res.type]}</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                {res.title}
-              </p>
-              <div
-                className="mt-1 flex flex-wrap gap-2 text-xs"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {res.date && (
-                  <span className="flex items-center gap-1">
-                    <Calendar size={10} />
-                    {fmtDate(res.date)}
-                  </span>
-                )}
-                {res.start_time && (
-                  <span className="flex items-center gap-1">
-                    <Clock size={10} />
-                    {res.start_time}
-                  </span>
-                )}
-                {res.confirmation_number && (
-                  <span>#{res.confirmation_number}</span>
-                )}
-              </div>
-              {res.notes && (
-                <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {res.notes}
-                </p>
-              )}
-            </div>
-            {canEdit && (
-              <button
-                onClick={() => removeRes.mutate({ tripId, reservationId: res.id })}
-                className="flex h-6 w-6 items-center justify-center rounded-full"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ── AddReservationModal (kept from original) ────────────────────────────
+// ── AddReservationModal ─────────────────────────────────────────────────
 
 const RES_TYPES: { value: ReservationType; label: string }[] = [
   { value: "accommodation", label: "Accommodation" },
@@ -389,18 +360,59 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   const dragIdx = useRef<number | null>(null);
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
+  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
 
-  const allItems = scheduleItems as ScheduleItem[];
-  // Non-editors only see confirmed items
-  const visibleItems = canEdit ? allItems : allItems.filter((i) => i.is_confirmed);
-  const unconfirmedCount = allItems.filter((i) => !i.is_confirmed).length;
+  // Merge schedule items and reservations into one sortable list.
+  // Schedule items sort by sort_order; reservations interleave by date,
+  // appended after all schedule items if they have no date.
+  const unifiedList = useMemo<UnifiedRow[]>(() => {
+    const schedRows: UnifiedRow[] = (scheduleItems as ScheduleItem[]).map((s) => ({
+      source: "schedule" as const,
+      data: s,
+    }));
+    const resRows: UnifiedRow[] = (reservations as Reservation[]).map((r) => ({
+      source: "reservation" as const,
+      data: r,
+    }));
+    // Sort: schedule items by sort_order first, then reservations by date
+    const all = [...schedRows, ...resRows];
+    all.sort((a, b) => {
+      // Both schedule items: sort by sort_order
+      if (a.source === "schedule" && b.source === "schedule") {
+        return a.data.sort_order - b.data.sort_order;
+      }
+      // Schedule item before reservation (schedule items are owner-ordered)
+      if (a.source === "schedule" && b.source === "reservation") return -1;
+      if (a.source === "reservation" && b.source === "schedule") return 1;
+      // Both reservations: sort by date
+      const aDate = (a.data as Reservation).date ?? "9999";
+      const bDate = (b.data as Reservation).date ?? "9999";
+      return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
+    });
+    return all;
+  }, [scheduleItems, reservations]);
+
+  // Non-editors only see confirmed schedule items + all reservations
+  const visibleList = canEdit
+    ? unifiedList
+    : unifiedList.filter(
+        (row) => row.source === "reservation" || row.data.is_confirmed
+      );
+
+  const unconfirmedCount = (scheduleItems as ScheduleItem[]).filter(
+    (i) => !i.is_confirmed
+  ).length;
 
   const confirmItem = trpc.schedule.confirm.useMutation({
     onSuccess: () => utils.schedule.list.invalidate({ tripId }),
   });
 
-  const removeItem = trpc.schedule.remove.useMutation({
+  const removeScheduleItem = trpc.schedule.remove.useMutation({
     onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+  });
+
+  const removeReservation = trpc.reservations.remove.useMutation({
+    onSuccess: () => utils.reservations.list.invalidate({ tripId }),
   });
 
   const reorder = trpc.schedule.reorder.useMutation({
@@ -408,35 +420,48 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   });
 
   const handleConfirmToggle = (item: ScheduleItem) => {
-    if (item.is_confirmed) {
-      // Unconfirm via update (set is_confirmed = false)
-      // For now, confirm is one-way. Can be extended.
-      return;
-    }
+    if (item.is_confirmed) return;
     confirmItem.mutate({ tripId, itemId: item.id });
+  };
+
+  const handleRemove = (row: UnifiedRow) => {
+    if (row.source === "schedule") {
+      removeScheduleItem.mutate({ tripId, itemId: row.data.id });
+    } else {
+      removeReservation.mutate({ tripId, reservationId: row.data.id });
+    }
+  };
+
+  // Reorder only applies to schedule items — extract their IDs in current order
+  const reorderScheduleItems = (newVisibleList: UnifiedRow[]) => {
+    const schedIds = newVisibleList
+      .filter((r) => r.source === "schedule")
+      .map((r) => r.data.id);
+    if (schedIds.length > 0) {
+      reorder.mutate({ tripId, itemIds: schedIds });
+    }
   };
 
   const handleMove = (fromIndex: number, direction: "up" | "down") => {
     const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
-    if (toIndex < 0 || toIndex >= visibleItems.length) return;
-    const newOrder = [...visibleItems];
+    if (toIndex < 0 || toIndex >= visibleList.length) return;
+    const newOrder = [...visibleList];
     const [moved] = newOrder.splice(fromIndex, 1);
     newOrder.splice(toIndex, 0, moved);
-    reorder.mutate({ tripId, itemIds: newOrder.map((i) => i.id) });
+    reorderScheduleItems(newOrder);
   };
 
   const handleDragDrop = (toIndex: number) => {
     if (dragIdx.current === null || dragIdx.current === toIndex) return;
-    const newOrder = [...visibleItems];
+    const newOrder = [...visibleList];
     const [moved] = newOrder.splice(dragIdx.current, 1);
     newOrder.splice(toIndex, 0, moved);
     dragIdx.current = null;
-    reorder.mutate({ tripId, itemIds: newOrder.map((i) => i.id) });
+    reorderScheduleItems(newOrder);
   };
 
   return (
     <div className="px-4">
-      {/* Schedule section */}
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2
@@ -477,7 +502,7 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
           </div>
         </div>
 
-        {/* READY stage unconfirmed banner */}
+        {/* Unconfirmed banner */}
         {canEdit && unconfirmedCount > 0 && (
           <div
             className="mb-4 flex items-center gap-2 rounded-xl px-4 py-2.5"
@@ -493,24 +518,28 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
           </div>
         )}
 
-        {visibleItems.length === 0 ? (
+        {visibleList.length === 0 ? (
           <EmptyState
             icon={<CalendarDays className="h-10 w-10" />}
             headline="No schedule items yet"
             subtext={canEdit ? "Add items to plan your trip's agenda." : "The organizer hasn't added any schedule items yet."}
           />
         ) : (
-          visibleItems.map((item, idx) => (
-            <ScheduleItemRow
-              key={item.id}
-              item={item}
+          visibleList.map((row, idx) => (
+            <UnifiedItemRow
+              key={`${row.source}-${row.data.id}`}
+              row={row}
               canEdit={canEdit}
-              onConfirmToggle={() => handleConfirmToggle(item)}
-              onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
+              onConfirmToggle={
+                row.source === "schedule"
+                  ? () => handleConfirmToggle(row.data as ScheduleItem)
+                  : undefined
+              }
+              onRemove={() => handleRemove(row)}
               onMoveUp={() => handleMove(idx, "up")}
               onMoveDown={() => handleMove(idx, "down")}
               isFirst={idx === 0}
-              isLast={idx === visibleItems.length - 1}
+              isLast={idx === visibleList.length - 1}
               onDragStart={() => { dragIdx.current = idx; }}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => handleDragDrop(idx)}
@@ -518,9 +547,6 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
           ))
         )}
       </section>
-
-      {/* Reservations — kept at the bottom */}
-      <ReservationsSection tripId={tripId} canEdit={canEdit} />
 
       {/* Modals */}
       {showAddSchedule && (
