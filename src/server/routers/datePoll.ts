@@ -447,12 +447,15 @@ export const datePollRouter = router({
         });
       }
 
-      // Update the trip's start/end dates
+      // Update the trip's start/end dates and mark as poll-sourced
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
           start_date: window.start_date,
           end_date: window.end_date,
+          date_set_method: "poll",
+          date_poll_active: false,
+          date_poll_state: null,
         })
         .eq("id", ctx.tripId)
         .select()

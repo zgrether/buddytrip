@@ -322,6 +322,32 @@ export function DatesPlanningRow({
   });
 
   const lockWindow = trpc.datePoll.lockWindow.useMutation({
+    async onMutate(vars) {
+      await utils.trips.getById.cancel({ tripId });
+      const prevTrip = utils.trips.getById.getData({ tripId });
+      // Find the window dates from the local poll cache
+      const pollData = utils.datePoll.get.getData({ tripId });
+      const win = pollData?.windows.find((w) => w.id === vars.windowId);
+      if (win) {
+        utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+          old
+            ? {
+                ...old,
+                start_date: win.start_date,
+                end_date: win.end_date,
+                date_set_method: "poll" as const,
+                date_poll_active: false,
+                date_poll_state: null,
+              }
+            : old
+        );
+      }
+      return { prevTrip };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prevTrip !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prevTrip);
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
       utils.trips.getById.invalidate({ tripId });
