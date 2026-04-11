@@ -21,6 +21,7 @@ import { sideEventsRouter } from "./routers/sideEvents";
 import { seriesRouter } from "./routers/series";
 import { scoreboardSharesRouter } from "./routers/scoreboardShares";
 import { logisticsRouter } from "./routers/logistics";
+import { scheduleRouter } from "./routers/schedule";
 
 export const appRouter = router({
   health: publicProcedure.query(() => {
@@ -48,6 +49,7 @@ export const appRouter = router({
   series: seriesRouter,
   scoreboardShares: scoreboardSharesRouter,
   logistics: logisticsRouter,
+  schedule: scheduleRouter,
 });
 
 export type AppRouter = typeof appRouter;
