@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { Calendar, Plus, X } from "lucide-react";
+import { Calendar, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -94,7 +94,7 @@ export function DatesPlanningRow({
   const windows = useMemo(() => sortWindows(rawWindows), [rawWindows]);
 
   const datesLocked = !!(trip.start_date && trip.end_date);
-  const pollActive = !!trip.date_poll_active;
+  const pollState = trip.date_poll_state ?? null;
   const hasWindows = windows.length > 0;
 
   // Manual date picker state — shared between the empty/idle state and the
@@ -122,6 +122,7 @@ export function DatesPlanningRow({
               end_date: vars.endDate,
               date_set_method: vars.method,
               date_poll_active: false,
+              date_poll_state: null,
             }
           : old
       );
@@ -146,7 +147,13 @@ export function DatesPlanningRow({
       await utils.trips.getById.cancel({ tripId });
       const prevTrip = utils.trips.getById.getData({ tripId });
       utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
-        old ? { ...old, date_poll_active: vars.active } : old
+        old
+          ? {
+              ...old,
+              date_poll_state: vars.state,
+              date_poll_active: vars.state === "active",
+            }
+          : old
       );
       return { prevTrip };
     },
@@ -332,6 +339,7 @@ export function DatesPlanningRow({
               start_date: null,
               end_date: null,
               date_poll_active: old.date_set_method === "poll",
+              date_poll_state: old.date_set_method === "poll" ? "draft" : null,
             }
           : old
       );
@@ -370,7 +378,7 @@ export function DatesPlanningRow({
 
   const state: ArcCardState = datesLocked
     ? "done"
-    : pollActive
+    : pollState !== null
     ? "inProgress"
     : "none";
 
@@ -381,8 +389,16 @@ export function DatesPlanningRow({
 
   const headerLabel = datesLocked
     ? "Dates Selected"
-    : pollActive
+    : pollState === "active"
     ? "Checking Availability"
+    : pollState === "draft"
+    ? isOwner
+      ? "Building Poll"
+      : `Dates TBD: ${ownerDisplayName} is working on it.`
+    : pollState === "closed"
+    ? isOwner
+      ? "Poll Closed"
+      : `Dates TBD: ${ownerDisplayName} is working on it.`
     : isOwner
     ? "Set Dates"
     : `Dates TBD: ${ownerDisplayName} is working on it.`;
@@ -391,14 +407,18 @@ export function DatesPlanningRow({
     if (datesLocked) {
       return formatDateRangeCompact(trip.start_date, trip.end_date);
     }
-    if (pollActive)
+    if (pollState === "active")
       return `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
+    if (pollState === "draft")
+      return `Building · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
+    if (pollState === "closed")
+      return `Poll closed · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
     return "";
-  }, [datesLocked, pollActive, windows.length, trip.start_date, trip.end_date]);
+  }, [datesLocked, pollState, windows.length, trip.start_date, trip.end_date]);
 
   // Non-owners can expand when dates are locked (to see them) or when a
   // poll is active (to vote). Owners can always expand.
-  const canExpand = isOwner || datesLocked || (pollActive && hasWindows);
+  const canExpand = isOwner || datesLocked || (pollState === "active" && hasWindows);
   const effectiveOpen = isOpen && canExpand;
   const handleToggle = canExpand ? onToggle : () => {};
 
@@ -437,26 +457,73 @@ export function DatesPlanningRow({
     );
   };
 
-  const handlePollTheCrew = () => {
-    setPollActive.mutate({ tripId, active: true });
-  };
-
   const handleNevermind = () => {
-    // Pre-fill the manual pickers from the first poll window so the user has
-    // something to confirm. Poll windows are intentionally NOT removed — if
-    // the user toggles back to "Poll the crew" their work is intact.
-    const first = windows[0];
-    if (first) {
-      setDirectStart(first.start_date);
-      setDirectEnd(first.end_date);
-    }
-    setPollActive.mutate({ tripId, active: false });
+    setPollActive.mutate({ tripId, state: null });
   };
 
   // ── Body renderers ─────────────────────────────────────────────────────
 
-  function renderDatePickerRow(buttonMode: "set" | "poll") {
+  function renderDatePickerRow(buttonMode: "set" | "poll" | "both") {
     const valid = !!directStart && !!directEnd && directStart < directEnd;
+    if (buttonMode === "both") {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={directStart}
+              onChange={(e) => setDirectStart(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+            <input
+              type="date"
+              value={directEnd}
+              onChange={(e) => setDirectEnd(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              disabled={!valid || lockDates.isPending}
+              onClick={handleSetDates}
+              className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity"
+              style={{
+                background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+                color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                opacity: valid ? 1 : 0.6,
+                cursor: valid ? "pointer" : "not-allowed",
+              }}
+            >
+              {lockDates.isPending ? "Setting…" : "Set dates"}
+            </button>
+            <button
+              disabled={!valid || addWindow.isPending}
+              onClick={handleAddToPoll}
+              className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: valid ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                border: `1px solid ${valid ? "var(--color-bt-border)" : "var(--color-bt-border)"}`,
+                opacity: valid ? 1 : 0.6,
+                cursor: valid ? "pointer" : "not-allowed",
+              }}
+            >
+              {addWindow.isPending ? "Adding…" : "Add to poll"}
+            </button>
+          </div>
+        </div>
+      );
+    }
     const busy =
       buttonMode === "set" ? lockDates.isPending : addWindow.isPending;
     const label =
@@ -530,7 +597,7 @@ export function DatesPlanningRow({
                   · {nights} night{nights !== 1 ? "s" : ""}
                 </span>
               </div>
-              {canEdit && (
+              {canEdit && pollState !== "active" && (
                 <button
                   onClick={() =>
                     removeWindowM.mutate({ tripId, windowId: w.id })
@@ -611,7 +678,7 @@ export function DatesPlanningRow({
               style={{ background: "var(--color-bt-card-raised)" }}
             >
               {hasWindows ? (
-                canEdit && isOwner ? (
+                canEdit && isOwner && pollState === "closed" ? (
                   <button
                     onClick={() => setShowSelectDateModal(true)}
                     className="w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-opacity"
@@ -744,16 +811,57 @@ export function DatesPlanningRow({
         </div>
 
         {canEdit && (
-          <button
-            onClick={handleNevermind}
-            className="w-full rounded-xl py-3 text-sm font-medium transition-colors"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            Nevermind, Set Dates Manually
-          </button>
+          <>
+            {/* Lifecycle buttons — always visible, each enabled only in the right state */}
+            <div className="flex gap-2">
+              {(
+                [
+                  {
+                    label: "Start Poll",
+                    enabled: pollState === "draft" && hasWindows,
+                    onClick: () => setPollActive.mutate({ tripId, state: "active" }),
+                  },
+                  {
+                    label: "Stop Poll",
+                    enabled: pollState === "active",
+                    onClick: () => setPollActive.mutate({ tripId, state: "closed" }),
+                  },
+                  {
+                    label: "Restart Poll",
+                    enabled: pollState === "closed",
+                    onClick: () => setPollActive.mutate({ tripId, state: "active" }),
+                  },
+                ] as const
+              ).map(({ label, enabled, onClick }) => (
+                <button
+                  key={label}
+                  onClick={enabled ? onClick : undefined}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-medium transition-opacity"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text)",
+                    border: "1px solid var(--color-bt-border)",
+                    opacity: enabled ? 1 : 0.35,
+                    cursor: enabled ? "pointer" : "not-allowed",
+                    pointerEvents: enabled ? undefined : "none",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={handleNevermind}
+              className="w-full rounded-xl py-3 text-sm font-medium transition-colors"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              Nevermind, Set Dates Manually
+            </button>
+          </>
         )}
       </div>
     );
@@ -924,46 +1032,35 @@ export function DatesPlanningRow({
 
     // Non-owner view: simplified poll-only panel (Planners and Members alike)
     if (!isOwner) {
-      if (pollActive && hasWindows) return renderMemberPollView();
+      if (pollState === "active" && hasWindows) return renderMemberPollView();
       return null;
     }
 
     // Owner view
+    const showInputRow = pollState !== "active" && pollState !== "closed";
+    const inputMode = pollState === "draft" ? "poll" : "both";
+
     return (
       <div className="space-y-0">
-        <p
-          className="mb-3 text-[13px]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          When are you going?
-        </p>
-
-        {/* In poll mode, list existing windows as text rows above the inputs */}
-        {pollActive && renderWindowTextRows()}
-
-        {/* Dual-mode date pickers + primary button */}
-        {renderDatePickerRow(pollActive ? "poll" : "set")}
-
-        {/* Poll the crew toggle — only when not in poll mode */}
-        {!pollActive && (
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={handlePollTheCrew}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
-              style={{
-                border: "1.5px dashed var(--color-bt-accent)",
-                color: "var(--color-bt-accent)",
-                background: "transparent",
-              }}
+        {showInputRow && (
+          <>
+            <p
+              className="mb-3 text-[13px]"
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
-              <Plus size={14} />
-              Poll the crew
-            </button>
-          </div>
+              When are you going?
+            </p>
+
+            {/* In poll draft mode, list existing windows as text rows above the inputs */}
+            {pollState === "draft" && renderWindowTextRows()}
+
+            {/* Date pickers + action button(s) */}
+            {renderDatePickerRow(inputMode)}
+          </>
         )}
 
-        {/* Polling grid — visible whenever poll mode is active */}
-        {pollActive && renderPollGrid()}
+        {/* Polling grid — visible whenever poll mode is engaged (draft/active/closed) */}
+        {pollState !== null && renderPollGrid()}
       </div>
     );
   }
@@ -974,7 +1071,7 @@ export function DatesPlanningRow({
         icon={<Calendar size={16} />}
         label={headerLabel}
         note={headerNote}
-        warnState={pollActive}
+        warnState={pollState !== null}
         state={state}
         isOpen={effectiveOpen}
         onToggle={handleToggle}
