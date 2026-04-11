@@ -1573,7 +1573,7 @@ export default function IdeaZonePanel({
         {/* Right: sidebar */}
         <div className="w-[320px] flex-shrink-0 sticky top-4 self-start space-y-3">
           <div className="hidden lg:block">
-            <StageContextBar tripId={tripId} stage="idea" displayStatus="idea" />
+            <StageContextBar tripId={tripId} stage="idea" displayStatus="idea" isOwner={isOwner} />
           </div>
           {canEdit && (
             <button

@@ -8,6 +8,7 @@ interface StageContextBarProps {
   tripId: string;
   stage: string;
   displayStatus: TripDisplayStatus;
+  isOwner: boolean;
 }
 
 export const STAGE_CONTENT: Record<
@@ -32,7 +33,9 @@ export const STAGE_CONTENT: Record<
   },
 };
 
-export function StageContextBar({ tripId, stage, displayStatus }: StageContextBarProps) {
+export function StageContextBar({ tripId, stage, displayStatus, isOwner }: StageContextBarProps) {
+  if (!isOwner) return null;
+
   const showBar = ["idea", "planning", "going", "now"].includes(displayStatus);
 
   const storageKey = `stage-bar-dismissed-${tripId}-${stage}`;

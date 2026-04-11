@@ -10,7 +10,7 @@ export interface PlanningRowProps {
   label: string;
   note: string;
   noteWarn?: boolean;
-  /** Use warning color for icon/title/border when state === "inProgress" */
+  /** Use planning (blue) color for icon/title/border when state === "inProgress" */
   warnState?: boolean;
   state: ArcCardState;
   isOpen: boolean;
@@ -34,8 +34,8 @@ export function PlanningRow({
 }: PlanningRowProps) {
   const isDone = state === "done";
   const isInProgress = state === "inProgress";
-  const inProgressColor = warnState ? "var(--color-bt-warning)" : "var(--color-bt-accent)";
-  const inProgressBorder = warnState ? "var(--color-bt-warning)" : "var(--color-bt-accent-border)";
+  const inProgressColor = warnState ? "var(--color-bt-planning)" : "var(--color-bt-accent)";
+  const inProgressBorder = warnState ? "var(--color-bt-planning-border)" : "var(--color-bt-accent-border)";
   const labelColor = isDone
     ? "var(--color-bt-accent)"
     : isInProgress

@@ -307,7 +307,7 @@ export default function TripDetailPage() {
             </div>
             {/* Right: persistent sidebar — desktop only */}
             <div className="hidden lg:flex lg:flex-col gap-4">
-              <StageContextBar tripId={tripId} stage={stage} displayStatus={status} />
+              <StageContextBar tripId={tripId} stage={stage} displayStatus={status} isOwner={isOwner} />
               <SidebarChatPanel
                 tripId={tripId}
                 memberNames={Object.fromEntries(

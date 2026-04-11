@@ -1333,8 +1333,8 @@ function PlanningSection({
         </PlanningRow>
       )}
 
-      {/* ── RSVP Message — PLANNING stage only ── */}
-      {stage === "planning" && (
+      {/* ── RSVP Message — PLANNING stage, owner only ── */}
+      {stage === "planning" && isOwner && (
         <RsvpDraftPanel
           tripId={trip.id}
           aboutMessage={trip.about_message}
