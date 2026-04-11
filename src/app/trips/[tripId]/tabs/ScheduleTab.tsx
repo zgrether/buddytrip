@@ -495,11 +495,41 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   });
 
   const updateScheduleItem = trpc.schedule.update.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.schedule.list.cancel({ tripId });
+      const prev = utils.schedule.list.getData({ tripId });
+      utils.schedule.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId
+            ? { ...item, scheduled_date: vars.scheduledDate ?? item.scheduled_date }
+            : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
   const updateReservation = trpc.reservations.update.useMutation({
-    onSuccess: () => utils.reservations.list.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.reservations.list.cancel({ tripId });
+      const prev = utils.reservations.list.getData({ tripId });
+      utils.reservations.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.reservationId
+            ? { ...item, date: vars.date ?? item.date }
+            : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.reservations.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.reservations.list.invalidate({ tripId }),
   });
 
   const handleConfirmToggle = (item: ScheduleItem) => {
