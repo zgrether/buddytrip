@@ -17,9 +17,10 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { query, locationBias } = body as {
+  const { query, locationBias, types } = body as {
     query: string;
     locationBias?: { lat: number; lng: number; radius?: number };
+    types?: string[]; // e.g. ["golf_course"] or ["restaurant", "establishment"]
   };
 
   if (!query || query.length < 2) {
@@ -29,9 +30,13 @@ export async function POST(req: NextRequest) {
   // Use the new Places API (v1) autocomplete endpoint
   const requestBody: Record<string, unknown> = {
     input: query,
-    includedPrimaryTypes: ["golf_course"],
     languageCode: "en",
   };
+
+  // Filter to specific place types if provided
+  if (types && types.length > 0) {
+    requestBody.includedPrimaryTypes = types;
+  }
 
   // Bias results toward the trip's destination if provided
   if (locationBias) {

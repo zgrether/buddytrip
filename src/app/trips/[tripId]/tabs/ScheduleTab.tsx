@@ -220,7 +220,25 @@ function ScheduleItemRow({
             ))}
           </div>
         )}
-        {/* General: time */}
+        {/* General: location + time */}
+        {item.item_type !== "golf" && item.course_name && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <MapPin size={10} />
+            <span>{item.course_name}</span>
+            {item.course_location && (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course_location)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-0.5"
+                style={{ color: "var(--color-bt-accent)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                Map
+              </a>
+            )}
+          </div>
+        )}
         {item.item_type !== "golf" && item.scheduled_time && (
           <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             <Clock size={10} />

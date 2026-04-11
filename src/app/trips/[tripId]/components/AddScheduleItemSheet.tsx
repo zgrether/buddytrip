@@ -43,9 +43,9 @@ interface AddScheduleItemSheetProps {
   onClose: () => void;
 }
 
-// ── Golf Course Autocomplete Hook ────────────────────────────────────────
+// ── Places Autocomplete Hook ─────────────────────────────────────────────
 
-function useGolfCourseSearch() {
+function usePlacesSearch(types?: string[]) {
   const [query, setQuery] = useState("");
   const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +64,7 @@ function useGolfCourseSearch() {
         const res = await fetch("/api/places", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: q, types }),
         });
         const data = await res.json();
         setPredictions(data.predictions ?? []);
@@ -74,7 +74,7 @@ function useGolfCourseSearch() {
         setLoading(false);
       }
     }, 300);
-  }, []);
+  }, [types]);
 
   const clear = useCallback(() => {
     setQuery("");
@@ -135,7 +135,23 @@ export function AddScheduleItemSheet({
   );
   const [showSearch, setShowSearch] = useState(!selectedCourse && isGolf);
 
-  const courseSearch = useGolfCourseSearch();
+  const golfTypes = useRef(["golf_course"]);
+  const placesSearch = usePlacesSearch(isGolf ? golfTypes.current : undefined);
+
+  // General item: optional location
+  const [selectedLocation, setSelectedLocation] = useState<{
+    placeId: string;
+    name: string;
+    address: string;
+    lat?: number | null;
+    lng?: number | null;
+  } | null>(
+    !isGolf && editItem?.course_name
+      ? { placeId: "", name: editItem.course_name, address: editItem.course_location ?? "" }
+      : null
+  );
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
+  const locationSearch = usePlacesSearch();
 
   // Mutations
   const create = trpc.schedule.create.useMutation({
@@ -172,7 +188,7 @@ export function AddScheduleItemSheet({
 
   // Select a course from autocomplete
   const handleSelectCourse = async (prediction: PlacePrediction) => {
-    courseSearch.clear();
+    placesSearch.clear();
     setShowSearch(false);
 
     // Fetch place details for address/GPS
@@ -188,6 +204,29 @@ export function AddScheduleItemSheet({
       });
     } catch {
       setSelectedCourse({
+        placeId: prediction.placeId,
+        name: prediction.name,
+        address: prediction.description,
+      });
+    }
+  };
+
+  // Select a location for general items
+  const handleSelectLocation = async (prediction: PlacePrediction) => {
+    locationSearch.clear();
+    setShowLocationSearch(false);
+    try {
+      const res = await fetch(`/api/places?placeId=${prediction.placeId}`);
+      const details = await res.json();
+      setSelectedLocation({
+        placeId: prediction.placeId,
+        name: details.name || prediction.name,
+        address: details.address || prediction.description,
+        lat: details.lat,
+        lng: details.lng,
+      });
+    } catch {
+      setSelectedLocation({
         placeId: prediction.placeId,
         name: prediction.name,
         address: prediction.description,
@@ -244,6 +283,8 @@ export function AddScheduleItemSheet({
           detail: detail.trim() || null,
           scheduledDate: scheduledDate || null,
           scheduledTime: scheduledTime || null,
+          courseName: selectedLocation?.name || null,
+          courseLocation: selectedLocation?.address || null,
         });
       } else {
         create.mutate({
@@ -254,6 +295,8 @@ export function AddScheduleItemSheet({
           scheduledDate: scheduledDate || undefined,
           scheduledTime: scheduledTime || undefined,
           isConfirmed: scheduledDate ? isConfirmed : false,
+          courseName: selectedLocation?.name || undefined,
+          courseLocation: selectedLocation?.address || undefined,
         });
       }
     }
@@ -331,8 +374,8 @@ export function AddScheduleItemSheet({
                   <input
                     type="text"
                     placeholder="Search golf courses..."
-                    value={courseSearch.query}
-                    onChange={(e) => courseSearch.search(e.target.value)}
+                    value={placesSearch.query}
+                    onChange={(e) => placesSearch.search(e.target.value)}
                     className="w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm outline-none"
                     style={inputStyle}
                     autoFocus
@@ -340,12 +383,12 @@ export function AddScheduleItemSheet({
                 </div>
 
                 {/* Autocomplete dropdown */}
-                {courseSearch.predictions.length > 0 && (
+                {placesSearch.predictions.length > 0 && (
                   <div
                     className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-xl shadow-lg"
                     style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
                   >
-                    {courseSearch.predictions.map((p) => (
+                    {placesSearch.predictions.map((p) => (
                       <button
                         key={p.placeId}
                         onClick={() => handleSelectCourse(p)}
@@ -365,7 +408,7 @@ export function AddScheduleItemSheet({
                   </div>
                 )}
 
-                {courseSearch.loading && courseSearch.query.length >= 2 && (
+                {placesSearch.loading && placesSearch.query.length >= 2 && (
                   <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     Searching...
                   </p>
@@ -432,6 +475,83 @@ export function AddScheduleItemSheet({
               className="mt-2 w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
+
+            {/* Location search (optional) */}
+            <p className="mt-3 mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+              Location <span className="font-normal">(optional)</span>
+            </p>
+            {selectedLocation && !showLocationSearch ? (
+              <div
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-accent-border)" }}
+              >
+                <MapPin size={14} style={{ color: "var(--color-bt-accent)" }} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                    {selectedLocation.name}
+                  </p>
+                  {selectedLocation.address && (
+                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {selectedLocation.address}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setSelectedLocation(null); setShowLocationSearch(true); }}
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <div className="relative">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search for a venue..."
+                    value={locationSearch.query}
+                    onChange={(e) => locationSearch.search(e.target.value)}
+                    className="w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm outline-none"
+                    style={inputStyle}
+                  />
+                </div>
+                {locationSearch.predictions.length > 0 && (
+                  <div
+                    className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-xl shadow-lg"
+                    style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+                  >
+                    {locationSearch.predictions.map((p) => (
+                      <button
+                        key={p.placeId}
+                        onClick={() => handleSelectLocation(p)}
+                        className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                      >
+                        <MapPin size={13} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                            {p.name}
+                          </p>
+                          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {p.description}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {locationSearch.loading && locationSearch.query.length >= 2 && (
+                  <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Searching...
+                  </p>
+                )}
+              </div>
+            )}
           </>
         )}
 
