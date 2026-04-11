@@ -625,15 +625,23 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // setDatePollActive — Owner toggles whether the crew sees the poll grid
+  // setDatePollActive — Owner advances the poll through draft/active/closed
   // -----------------------------------------------------------------------
   setDatePollActive: authedProcedure
-    .input(z.object({ tripId: z.string(), active: z.boolean() }))
+    .input(
+      z.object({
+        tripId: z.string(),
+        state: z.enum(["draft", "active", "closed"]).nullable(),
+      })
+    )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
         .from("trips")
-        .update({ date_poll_active: input.active })
+        .update({
+          date_poll_state: input.state,
+          date_poll_active: input.state === "active",
+        })
         .eq("id", ctx.tripId);
 
       if (error) {
@@ -644,7 +652,7 @@ export const tripsRouter = router({
       }
 
       // Notify all trip members when poll becomes active
-      if (input.active) {
+      if (input.state === "active") {
         try {
           const { data: tripData } = await ctx.supabase
             .from("trips")

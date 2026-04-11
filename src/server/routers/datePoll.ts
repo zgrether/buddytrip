@@ -89,6 +89,13 @@ export const datePollRouter = router({
         });
       }
 
+      // Auto-advance to draft state when the first window is added
+      await ctx.supabase
+        .from("trips")
+        .update({ date_poll_state: "draft" })
+        .eq("id", ctx.tripId)
+        .is("date_poll_state", null);
+
       return data;
     }),
 
@@ -529,6 +536,7 @@ export const datePollRouter = router({
           start_date: null,
           end_date: null,
           date_poll_active: wasFromPoll,
+          date_poll_state: wasFromPoll ? "draft" : null,
         })
         .eq("id", ctx.tripId)
         .select()
