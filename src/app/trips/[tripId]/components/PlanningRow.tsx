@@ -78,15 +78,17 @@ export function PlanningRow({
           <p className="text-sm font-semibold leading-tight" style={{ color: labelColor }}>
             {label}
           </p>
-          <p
-            className="mt-0.5 text-xs"
-            style={{
-              color: noteWarn ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
-              fontWeight: noteWarn ? 500 : undefined,
-            }}
-          >
-            {note}
-          </p>
+          {note && (
+            <p
+              className="mt-0.5 text-xs"
+              style={{
+                color: noteWarn ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+                fontWeight: noteWarn ? 500 : undefined,
+              }}
+            >
+              {note}
+            </p>
+          )}
         </div>
         {headerAction && (
           <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">

@@ -385,7 +385,7 @@ export function DatesPlanningRow({
     ? "Checking Availability"
     : isOwner
     ? "Set Dates"
-    : `${ownerDisplayName} is working on dates`;
+    : `Dates TBD: ${ownerDisplayName} is working on it.`;
 
   const headerNote = useMemo(() => {
     if (datesLocked) {
@@ -393,7 +393,7 @@ export function DatesPlanningRow({
     }
     if (pollActive)
       return `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
-    return "Dates TBD";
+    return "";
   }, [datesLocked, pollActive, windows.length, trip.start_date, trip.end_date]);
 
   // Non-owners can expand when dates are locked (to see them) or when a
