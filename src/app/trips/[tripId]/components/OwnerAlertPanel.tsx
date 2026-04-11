@@ -7,11 +7,10 @@ import type { TripData } from "../tabs/types";
 
 interface OwnerAlertPanelProps {
   trip: TripData;
-  canEdit: boolean;
   isOwner: boolean;
 }
 
-export function OwnerAlertPanel({ trip, canEdit, isOwner }: OwnerAlertPanelProps) {
+export function OwnerAlertPanel({ trip, isOwner }: OwnerAlertPanelProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
 
@@ -72,8 +71,8 @@ export function OwnerAlertPanel({ trip, canEdit, isOwner }: OwnerAlertPanelProps
     return null;
   }
 
-  // Inline edit mode
-  if (editing && canEdit) {
+  // Inline edit mode — owner only
+  if (editing && isOwner) {
     return (
       <div
         className="mb-3 rounded-xl px-4 py-3"
@@ -154,7 +153,7 @@ export function OwnerAlertPanel({ trip, canEdit, isOwner }: OwnerAlertPanelProps
       >
         {trip.owner_alert}
       </p>
-      {canEdit && (
+      {isOwner && (
         <button
           onClick={() => setEditing(true)}
           className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
