@@ -76,6 +76,14 @@ function generateTripDays(start: string, end: string): string[] {
   return days;
 }
 
+function fmtTime12(t: string): string {
+  const [hStr, mStr] = t.split(":");
+  const h = parseInt(hStr, 10);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${mStr} ${suffix}`;
+}
+
 function dayNumber(date: string, tripStart: string | null): number | null {
   if (!tripStart) return null;
   const s = parseLocalDate(tripStart).getTime();
@@ -179,7 +187,7 @@ function ScheduleItemRow({
                   border: "1px solid var(--color-bt-border)",
                 }}
               >
-                {t}
+                {fmtTime12(t)}
               </span>
             ))}
           </div>
