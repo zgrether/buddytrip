@@ -674,36 +674,35 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
                       />
                     ))}
                     {/* Bottom drop zone — append to end of day */}
-                    {canEdit && (
+                    {canEdit && dragState.current && (
                       <div
                         onDragOver={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                           setDragOverIdx({ groupDate: group.date, idx: group.items.length });
                         }}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          setDragOverIdx({ groupDate: group.date, idx: group.items.length });
+                        }}
                         onDrop={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
                           setDragOverIdx(null);
                           handleDragDrop(group.date, group.items, group.items.length);
                         }}
-                        className="h-3 rounded-md transition-colors"
+                        className="rounded-md transition-all"
                         style={{
-                          background:
-                            dragOverIdx?.groupDate === group.date &&
-                            dragOverIdx?.idx === group.items.length &&
-                            dragState.current?.idx !== group.items.length
-                              ? "var(--color-bt-accent)"
-                              : "transparent",
                           height:
                             dragOverIdx?.groupDate === group.date &&
                             dragOverIdx?.idx === group.items.length
                               ? "6px"
-                              : "12px",
-                          opacity:
+                              : "24px",
+                          background:
                             dragOverIdx?.groupDate === group.date &&
                             dragOverIdx?.idx === group.items.length
-                              ? 1
-                              : 0,
+                              ? "var(--color-bt-accent)"
+                              : "transparent",
                         }}
                       />
                     )}
