@@ -276,4 +276,38 @@ describe("datePoll router", () => {
       caller.datePoll.removeWindow({ tripId, windowId: windowId })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  // ── resetVotes ──────────────────────────────────────────────────────────
+
+  it("resetVotes — owner can clear all votes including other members' votes", async () => {
+    const ownerCaller = ctx.caller();
+    const memberCaller = ctx.callerAs("member");
+    const memberUser = ctx.getUser("member");
+
+    // Member casts a vote
+    await memberCaller.datePoll.vote({ tripId, windowId, answer: "yes" });
+
+    // Owner casts a vote too
+    await ownerCaller.datePoll.vote({ tripId, windowId, answer: "maybe" });
+
+    // Confirm both votes exist
+    const before = await ownerCaller.datePoll.get({ tripId });
+    const win = before.windows.find((w) => w.id === windowId);
+    expect(win?.votes.some((v) => v.user_id === memberUser.id)).toBe(true);
+
+    // Owner resets
+    await ownerCaller.datePoll.resetVotes({ tripId });
+
+    // All votes should be gone
+    const after = await ownerCaller.datePoll.get({ tripId });
+    const winAfter = after.windows.find((w) => w.id === windowId);
+    expect(winAfter?.votes.length).toBe(0);
+  });
+
+  it("resetVotes — member cannot reset", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.datePoll.resetVotes({ tripId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });
