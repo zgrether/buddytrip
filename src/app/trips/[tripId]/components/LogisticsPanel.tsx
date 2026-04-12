@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, CalendarDays, Plane, Car, Plus, Trash2, Hotel, Pencil } from "lucide-react";
+import { ExternalLink, MapPin, CalendarDays, Plane, Car, Plus, Trash2, Hotel, Pencil, Home } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
@@ -337,17 +337,33 @@ export function LogisticsPanel({
           {/* ── LODGING ─────────────────────────────────────────────── */}
           <div>
             <p
-              className="mb-2 text-[11px] font-medium uppercase tracking-wider"
+              className="mb-1 text-[11px] font-medium uppercase tracking-wider"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
               Lodging
             </p>
 
-            {lodgingItems.length === 0 ? (
-              <p className="text-[13px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                No properties added yet
-              </p>
-            ) : (
+            <p className="mb-3 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Add the places you&apos;ll be staying so your crew can easily find them.
+            </p>
+
+            {isOwner && (
+              <button
+                onClick={() => setShowAddLodging(true)}
+                className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                <Home size={14} />
+                <Plus size={12} />
+                Add property
+              </button>
+            )}
+
+            {lodgingItems.length > 0 && (
               <div className="flex flex-col gap-2">
                 {lodgingItems.map((item) => (
                   <LodgingCard
@@ -360,21 +376,6 @@ export function LogisticsPanel({
                   />
                 ))}
               </div>
-            )}
-
-            {isOwner && (
-              <button
-                onClick={() => setShowAddLodging(true)}
-                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                <Plus size={14} />
-                Add property
-              </button>
             )}
           </div>
 
