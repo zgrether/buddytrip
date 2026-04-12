@@ -107,6 +107,7 @@ function IdeaCard({
   const [editDraft, setEditDraft] = useState("");
   const [showAddLodging, setShowAddLodging] = useState(false);
   const [editingLodging, setEditingLodging] = useState<IdeaLodgingOption | null>(null);
+  const [deletingLodgingId, setDeletingLodgingId] = useState<string | null>(null);
 
   const { data: lodgingOptions = [] } = trpc.ideaLodging.list.useQuery(
     { ideaId: idea.id },
@@ -114,7 +115,11 @@ function IdeaCard({
   );
 
   const removeLodging = trpc.ideaLodging.remove.useMutation({
-    onSuccess: () => utils.ideaLodging.list.invalidate({ ideaId: idea.id }),
+    onSuccess: () => {
+      utils.ideaLodging.list.invalidate({ ideaId: idea.id });
+      setDeletingLodgingId(null);
+    },
+    onError: () => setDeletingLodgingId(null),
   });
 
   const updateIdea = trpc.ideas.update.useMutation({
@@ -623,8 +628,8 @@ function IdeaCard({
                             <Pencil size={11} style={{ color: "var(--color-bt-text-dim)" }} />
                           </button>
                           <button
-                            onClick={() => removeLodging.mutate({ id: opt.id, tripId: idea.trip_id })}
-                            disabled={removeLodging.isPending}
+                            onClick={() => { setDeletingLodgingId(opt.id); removeLodging.mutate({ id: opt.id, tripId: idea.trip_id }); }}
+                            disabled={deletingLodgingId === opt.id}
                             className="flex h-5 w-5 items-center justify-center rounded disabled:opacity-40"
                             aria-label="Delete"
                           >
