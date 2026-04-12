@@ -17,6 +17,8 @@ import {
   Plus,
   MessageCircle,
   Users,
+  Pencil,
+  ExternalLink,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -26,6 +28,7 @@ import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { SidebarChatPanel } from "./PlanningChatPanel";
 import { StageContextBar } from "./StageContextBar";
+import { AddIdeaLodgingSheet } from "./AddIdeaLodgingSheet";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -51,6 +54,23 @@ interface Idea {
   notes?: string | null;
   image_url?: string | null;
   votes: IdeaVote[];
+}
+
+// ── IdeaLodgingOption ─────────────────────────────────────────────────────
+
+export interface IdeaLodgingOption {
+  id: string;
+  idea_id: string;
+  trip_id: string;
+  name: string;
+  source?: string | null;
+  sleeps?: number | null;
+  price_note?: string | null;
+  url?: string | null;
+  notes?: string | null;
+  sort_order: number;
+  created_by: string;
+  created_at: string;
 }
 
 // ── IdeaCard ─────────────────────────────────────────────────────────────
@@ -85,6 +105,22 @@ function IdeaCard({
   const utils = trpc.useUtils();
   const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | "golfCourses" | "activities" | "accommodation" | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [showAddLodging, setShowAddLodging] = useState(false);
+  const [editingLodging, setEditingLodging] = useState<IdeaLodgingOption | null>(null);
+  const [deletingLodgingId, setDeletingLodgingId] = useState<string | null>(null);
+
+  const { data: lodgingOptions = [] } = trpc.ideaLodging.list.useQuery(
+    { ideaId: idea.id },
+    { staleTime: 30_000 }
+  );
+
+  const removeLodging = trpc.ideaLodging.remove.useMutation({
+    onSuccess: () => {
+      utils.ideaLodging.list.invalidate({ ideaId: idea.id });
+      setDeletingLodgingId(null);
+    },
+    onError: () => setDeletingLodgingId(null),
+  });
 
   const updateIdea = trpc.ideas.update.useMutation({
     onSuccess() {
@@ -543,43 +579,123 @@ function IdeaCard({
             </div>
           </div>
 
-          {/* Lodging */}
-          {(idea.accommodation || editingField === "accommodation" || canEdit) && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Lodging
+          {/* Lodging options */}
+          <div>
+            {/* Header row: LODGING label + inline + Add button */}
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                Lodging Ideas
               </p>
-              {editingField === "accommodation" ? (
-                <div>
-                  <input
-                    autoFocus
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
-                    placeholder="e.g. The Lodge at Pebble Beach"
-                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
-                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                  />
-                  {inlineEditControls}
-                </div>
-              ) : idea.accommodation ? (
-                <p
-                  className="text-sm"
-                  onClick={canEdit ? () => startEdit("accommodation", idea.accommodation ?? "") : undefined}
-                  style={{ color: "var(--color-bt-text)", cursor: canEdit ? "pointer" : "default" }}
-                >
-                  {idea.accommodation}
-                </p>
-              ) : canEdit ? (
+              {canEdit && (
                 <button
-                  onClick={() => startEdit("accommodation", "")}
-                  className="text-sm transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-text-dim)" }}
+                  data-testid={`add-lodging-empty-${idea.id}`}
+                  onClick={() => setShowAddLodging(true)}
+                  className="flex items-center gap-1 text-xs"
+                  style={{ color: "var(--color-bt-accent)" }}
                 >
-                  + Add lodging
+                  <Plus size={13} /> Add
                 </button>
-              ) : null}
+              )}
             </div>
+
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              {lodgingOptions.map((opt) => {
+                const platformLabel: Record<string, string> = {
+                  airbnb: "AirBnB", vrbo: "VRBO", hotel: "Hotel", other: "Listing",
+                };
+                const linkLabel = opt.source ? (platformLabel[opt.source] ?? "Listing") : "Listing";
+                return (
+                  <div
+                    key={opt.id}
+                    className="rounded-xl px-3 py-2.5"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {/* Name + edit/delete */}
+                    <div className="flex items-start justify-between gap-1">
+                      <p className="min-w-0 flex-1 text-[13px] font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                        {opt.name}
+                      </p>
+                      {canEdit && (
+                        <div className="flex flex-shrink-0 items-center gap-0.5">
+                          <button
+                            onClick={() => setEditingLodging(opt as IdeaLodgingOption)}
+                            className="flex h-5 w-5 items-center justify-center rounded"
+                            aria-label="Edit"
+                          >
+                            <Pencil size={11} style={{ color: "var(--color-bt-text-dim)" }} />
+                          </button>
+                          <button
+                            onClick={() => { setDeletingLodgingId(opt.id); removeLodging.mutate({ id: opt.id, tripId: idea.trip_id }); }}
+                            disabled={deletingLodgingId === opt.id}
+                            className="flex h-5 w-5 items-center justify-center rounded disabled:opacity-40"
+                            aria-label="Delete"
+                          >
+                            <Trash2 size={11} style={{ color: "var(--color-bt-text-dim)" }} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sleeps (left) · Price (right) */}
+                    {(opt.sleeps != null || opt.price_note) && (
+                      <div className="mt-0.5 flex items-center justify-between gap-1">
+                        {opt.sleeps != null ? (
+                          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            Sleeps {opt.sleeps}
+                          </span>
+                        ) : <span />}
+                        {opt.price_note && (
+                          <span className="flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {opt.price_note}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Thoughts */}
+                    {opt.notes && (
+                      <p className="mt-1 text-[11px] italic leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {opt.notes}
+                      </p>
+                    )}
+
+                    {/* → Platform link */}
+                    {opt.url && (
+                      <a
+                        href={opt.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1.5 flex items-center gap-1 text-[11px] transition-opacity hover:opacity-70"
+                        style={{ color: "var(--color-bt-accent)" }}
+                      >
+                        <ExternalLink size={10} />
+                        {linkLabel}
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+          {/* AddIdeaLodgingSheet */}
+          {showAddLodging && (
+            <AddIdeaLodgingSheet
+              tripId={tripId}
+              ideaId={idea.id}
+              onClose={() => setShowAddLodging(false)}
+            />
+          )}
+          {editingLodging && (
+            <AddIdeaLodgingSheet
+              tripId={tripId}
+              ideaId={idea.id}
+              item={editingLodging}
+              onClose={() => setEditingLodging(null)}
+            />
           )}
 
           {/* Footer actions */}
@@ -1151,19 +1267,78 @@ function SetDestinationSheet({
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lodgingError, setLodgingError] = useState<string | null>(null);
+
+  const { data: lodgingOptions = [] } = trpc.ideaLodging.list.useQuery(
+    { ideaId: idea.id },
+    { staleTime: 30_000 }
+  );
+
+  // Default: all options checked
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(
+    () => new Set(lodgingOptions.map((o) => o.id))
+  );
+
+  // Update checkedIds when options load (initialises after query resolves)
+  const [initialised, setInitialised] = useState(false);
+  if (!initialised && lodgingOptions.length > 0) {
+    setCheckedIds(new Set(lodgingOptions.map((o) => o.id)));
+    setInitialised(true);
+  }
 
   const lockDestination = trpc.trips.lockDestination.useMutation();
   const advanceToPlanning = trpc.trips.advanceToPlanning.useMutation();
   const unlockDestination = trpc.trips.unlockDestination.useMutation();
+  const createLogistics = trpc.logistics.create.useMutation();
+
+  const toggleCheck = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const handleConfirm = async () => {
     setIsSubmitting(true);
+    setLodgingError(null);
     try {
+      // 1. Lock destination
       await lockDestination.mutateAsync({
         tripId,
         title: idea.title,
         location: idea.location,
       });
+
+      // 2. Carry over checked lodging options
+      const toCarry = lodgingOptions.filter((o) => checkedIds.has(o.id));
+      if (toCarry.length > 0) {
+        try {
+          await Promise.all(
+            toCarry.map((opt) =>
+              createLogistics.mutateAsync({
+                tripId,
+                type: "lodging",
+                label: opt.name,
+                propertyName: opt.sleeps != null ? String(opt.sleeps) : undefined,
+                detail: opt.url ?? undefined,
+                transportType: opt.source ?? "other",
+              })
+            )
+          );
+        } catch {
+          setLodgingError(
+            "Destination set but some lodging options couldn't be copied — add them manually."
+          );
+          // Stage advance still proceeds
+        }
+      }
+
+      // 3. Advance to planning
       try {
         await advanceToPlanning.mutateAsync({ tripId });
       } catch {
@@ -1171,6 +1346,7 @@ function SetDestinationSheet({
         await unlockDestination.mutateAsync({ tripId });
         throw new Error("Failed to advance to planning. Destination lock rolled back.");
       }
+
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
       utils.ideas.list.invalidate({ tripId });
@@ -1189,7 +1365,7 @@ function SetDestinationSheet({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-t-2xl p-5"
+        className="w-full max-w-lg rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto"
         style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)", boxShadow: "var(--shadow-floating)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1204,6 +1380,69 @@ function SetDestinationSheet({
           <strong style={{ color: "var(--color-bt-text)" }}>{idea.location}</strong>{" "}
           and move the trip to Planning. The crew can start on dates and logistics.
         </p>
+
+        {/* Lodging carry-over section */}
+        {lodgingOptions.length > 0 && (
+          <>
+            <div className="my-4" style={{ borderTop: "1px solid var(--color-bt-border)" }} />
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Lodging Options
+            </p>
+            <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Carry these over to your planning logistics?
+            </p>
+            <div className="space-y-2 mb-3">
+              {lodgingOptions.map((opt) => {
+                const isChecked = checkedIds.has(opt.id);
+                const meta = [
+                  opt.sleeps != null ? `Sleeps ${opt.sleeps}` : null,
+                  opt.price_note ?? null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => toggleCheck(opt.id)}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                    style={{ background: "var(--color-bt-card-raised)" }}
+                  >
+                    <div
+                      className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded"
+                      style={{
+                        background: isChecked ? "var(--color-bt-accent)" : "transparent",
+                        border: isChecked ? "none" : "1.5px solid var(--color-bt-border)",
+                      }}
+                    >
+                      {isChecked && <Check size={10} color="var(--color-bt-base)" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {opt.name}
+                      </p>
+                      {meta && (
+                        <p className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {meta}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mb-4 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Checked items will be added to your planning logistics.
+            </p>
+          </>
+        )}
+
+        {lodgingError && (
+          <p className="mb-3 text-xs" style={{ color: "var(--color-bt-danger)" }}>
+            {lodgingError}
+          </p>
+        )}
+
         <div className="flex gap-2">
           <button
             onClick={onClose}
