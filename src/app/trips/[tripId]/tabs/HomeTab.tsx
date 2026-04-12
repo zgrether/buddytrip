@@ -33,7 +33,8 @@ import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
-import { LogisticsPanel } from "../components/LogisticsPanel";
+import { LodgingPanel } from "../components/LodgingPanel";
+import { TravelPanel } from "../components/TravelPanel";
 import { TravelEntryForm } from "../components/TravelEntryForm";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
@@ -1039,8 +1040,10 @@ function PlanningSection({
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
 }) {
+  // Auto-expand dates only when a poll is genuinely open — not if dates are
+  // already locked (guards against stale date_poll_active in the DB).
   const [openRow, setOpenRow] = useState<string | null>(
-    trip.date_poll_active ? "dates" : null
+    trip.date_poll_active && !trip.start_date ? "dates" : null
   );
   const [showSetDest, setShowSetDest] = useState(false);
   // Edge case: PLANNING stage with no locked destination (old data / migration artifact).
@@ -1226,13 +1229,18 @@ function PlanningSection({
         onToggle={() => toggle("dates")}
         onTabChange={onTabChange}
       />
-      {/* ── Logistics ── */}
-      <LogisticsPanel
+      {/* ── Lodging ── */}
+      <LodgingPanel
         tripId={trip.id}
         canEdit={canEdit}
-        isOwner={isOwner}
-        isOpen={openRow === "logistics"}
-        onToggle={() => toggle("logistics")}
+        isOpen={openRow === "lodging"}
+        onToggle={() => toggle("lodging")}
+      />
+      {/* ── Travel ── */}
+      <TravelPanel
+        tripId={trip.id}
+        isOpen={openRow === "travel"}
+        onToggle={() => toggle("travel")}
       />
 
 

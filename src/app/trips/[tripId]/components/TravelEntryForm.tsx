@@ -23,9 +23,10 @@ interface TravelEntryFormProps {
     flight_airport?: string | null;
     travel_shared?: boolean | null;
   } | null;
+  onSave?: () => void;
 }
 
-export function TravelEntryForm({ tripId, currentTravel }: TravelEntryFormProps) {
+export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFormProps) {
   const utils = trpc.useUtils();
 
   const hasSaved = !!currentTravel?.travel_mode;
@@ -59,6 +60,7 @@ export function TravelEntryForm({ tripId, currentTravel }: TravelEntryFormProps)
     onSuccess() {
       utils.tripMembers.list.invalidate({ tripId });
       setEditing(false);
+      onSave?.();
     },
   });
 

@@ -45,6 +45,7 @@ export const logisticsRouter = router({
         address: z.string().max(500).optional(),
         checkInTime: z.string().max(50).optional(),
         checkOutTime: z.string().max(50).optional(),
+        totalPrice: z.string().max(100).optional(),
         // Transport fields
         transportType: z.string().max(100).optional(),
         pickupLocation: z.string().max(500).optional(),
@@ -67,6 +68,7 @@ export const logisticsRouter = router({
           address: input.address ?? null,
           check_in_time: input.checkInTime ?? null,
           check_out_time: input.checkOutTime ?? null,
+          total_price: input.totalPrice ?? null,
           transport_type: input.transportType ?? null,
           pickup_location: input.pickupLocation ?? null,
           pickup_time: input.pickupTime ?? null,
@@ -101,6 +103,7 @@ export const logisticsRouter = router({
         address: z.string().max(500).nullable().optional(),
         checkInTime: z.string().max(50).nullable().optional(),
         checkOutTime: z.string().max(50).nullable().optional(),
+        totalPrice: z.string().max(100).nullable().optional(),
         transportType: z.string().max(100).nullable().optional(),
         pickupLocation: z.string().max(500).nullable().optional(),
         pickupTime: z.string().max(50).nullable().optional(),
@@ -117,6 +120,7 @@ export const logisticsRouter = router({
       if (input.address !== undefined) update.address = input.address;
       if (input.checkInTime !== undefined) update.check_in_time = input.checkInTime;
       if (input.checkOutTime !== undefined) update.check_out_time = input.checkOutTime;
+      if (input.totalPrice !== undefined) update.total_price = input.totalPrice;
       if (input.transportType !== undefined) update.transport_type = input.transportType;
       if (input.pickupLocation !== undefined) update.pickup_location = input.pickupLocation;
       if (input.pickupTime !== undefined) update.pickup_time = input.pickupTime;
@@ -142,6 +146,41 @@ export const logisticsRouter = router({
       }
 
       return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // confirm / unconfirm — Planner+ can lock in a lodging property
+  // -----------------------------------------------------------------------
+  confirm: authedProcedure
+    .input(z.object({ tripId: z.string(), itemId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("logistics_items")
+        .update({ is_confirmed: true })
+        .eq("id", input.itemId)
+        .eq("trip_id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to confirm item" });
+      }
+      return { success: true };
+    }),
+
+  unconfirm: authedProcedure
+    .input(z.object({ tripId: z.string(), itemId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("logistics_items")
+        .update({ is_confirmed: false })
+        .eq("id", input.itemId)
+        .eq("trip_id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to unconfirm item" });
+      }
+      return { success: true };
     }),
 
   // -----------------------------------------------------------------------
