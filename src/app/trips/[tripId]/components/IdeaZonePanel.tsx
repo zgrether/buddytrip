@@ -579,117 +579,118 @@ function IdeaCard({
             <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
               Lodging
             </p>
-            {lodgingOptions.length === 0 ? (
-              canEdit ? (
+            <div className="flex flex-wrap gap-2">
+              {lodgingOptions.map((opt) => {
+                const platformLabel: Record<string, string> = {
+                  airbnb: "AirBnB", vrbo: "VRBO", hotel: "Hotel", other: "Listing",
+                };
+                const linkLabel = opt.source ? (platformLabel[opt.source] ?? "Listing") : "Listing";
+                return (
+                  <div
+                    key={opt.id}
+                    className="w-[calc(50%-4px)] flex-shrink-0 rounded-xl px-3 py-2.5"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {/* Top row: source badge + edit/delete */}
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      {opt.source ? (
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
+                          style={{
+                            background: "var(--color-bt-card)",
+                            border: "1px solid var(--color-bt-border)",
+                            color: "var(--color-bt-text-dim)",
+                          }}
+                        >
+                          {opt.source}
+                        </span>
+                      ) : <span />}
+                      {canEdit && (
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => setEditingLodging(opt as IdeaLodgingOption)}
+                            className="flex h-5 w-5 items-center justify-center rounded"
+                            aria-label="Edit"
+                          >
+                            <Pencil size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                          </button>
+                          <button
+                            onClick={() => removeLodging.mutate({ id: opt.id, tripId: idea.trip_id })}
+                            disabled={removeLodging.isPending}
+                            className="flex h-5 w-5 items-center justify-center rounded disabled:opacity-40"
+                            aria-label="Delete"
+                          >
+                            <Trash2 size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Name */}
+                    <p className="text-[13px] font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                      {opt.name}
+                    </p>
+
+                    {/* Sleeps (left) · Price (right) */}
+                    {(opt.sleeps != null || opt.price_note) && (
+                      <div className="mt-1 flex items-center justify-between gap-1">
+                        {opt.sleeps != null ? (
+                          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            Sleeps {opt.sleeps}
+                          </span>
+                        ) : <span />}
+                        {opt.price_note && (
+                          <span className="text-[11px] flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {opt.price_note}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Thoughts */}
+                    {opt.notes && (
+                      <p className="mt-1 text-[11px] italic leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {opt.notes}
+                      </p>
+                    )}
+
+                    {/* → Platform link */}
+                    {opt.url && (
+                      <a
+                        href={opt.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1.5 flex items-center gap-1 text-[11px] transition-opacity hover:opacity-70"
+                        style={{ color: "var(--color-bt-accent)" }}
+                      >
+                        <ExternalLink size={10} />
+                        {linkLabel}
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* +Add button — same fixed width as cards */}
+              {canEdit && (
                 <button
-                  data-testid={`add-lodging-empty-${idea.id}`}
+                  data-testid={lodgingOptions.length === 0 ? `add-lodging-empty-${idea.id}` : `add-lodging-more-${idea.id}`}
                   onClick={() => setShowAddLodging(true)}
-                  className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-[13px] transition-opacity hover:opacity-70"
+                  className="w-[calc(50%-4px)] flex-shrink-0 flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-2.5 text-[12px] transition-opacity hover:opacity-70"
                   style={{
                     border: "1.5px dashed var(--color-bt-accent)",
                     color: "var(--color-bt-accent)",
+                    minHeight: "80px",
                   }}
                 >
-                  <Plus size={14} />
-                  Add properties for discussion
+                  <Plus size={16} />
+                  {lodgingOptions.length === 0 ? "Add property" : "Add another"}
                 </button>
-              ) : null
-            ) : (
-              <>
-                <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
-                  {lodgingOptions.map((opt) => (
-                    <div
-                      key={opt.id}
-                      className="rounded-xl px-3 py-2.5"
-                      style={{
-                        background: "var(--color-bt-card-raised)",
-                        border: "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {opt.source && (
-                            <span
-                              className="flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase"
-                              style={{
-                                background: "var(--color-bt-card)",
-                                border: "1px solid var(--color-bt-border)",
-                                color: "var(--color-bt-text-dim)",
-                              }}
-                            >
-                              {opt.source}
-                            </span>
-                          )}
-                          <p className="truncate text-[14px] font-medium" style={{ color: "var(--color-bt-text)" }}>
-                            {opt.name}
-                          </p>
-                        </div>
-                        {canEdit && (
-                          <div className="flex flex-shrink-0 items-center gap-1">
-                            <button
-                              onClick={() => setEditingLodging(opt as IdeaLodgingOption)}
-                              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
-                              aria-label="Edit"
-                            >
-                              <Pencil size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-                            </button>
-                            <button
-                              onClick={() => removeLodging.mutate({ id: opt.id, tripId: idea.trip_id })}
-                              disabled={removeLodging.isPending}
-                              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
-                              aria-label="Delete"
-                            >
-                              <Trash2 size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      {(opt.sleeps != null || opt.price_note) && (
-                        <p className="mt-1 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                          {[
-                            opt.sleeps != null ? `Sleeps ${opt.sleeps}` : null,
-                            opt.price_note ?? null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      )}
-                      {opt.notes && (
-                        <p className="mt-1 text-[12px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                          {opt.notes}
-                        </p>
-                      )}
-                      {opt.url && (
-                        <a
-                          href={opt.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 flex items-center gap-1 text-[12px] transition-opacity hover:opacity-70"
-                          style={{ color: "var(--color-bt-accent)" }}
-                        >
-                          <ExternalLink size={11} />
-                          View listing
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {canEdit && (
-                  <button
-                    data-testid={`add-lodging-more-${idea.id}`}
-                    onClick={() => setShowAddLodging(true)}
-                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-4 py-3 text-[13px] transition-opacity hover:opacity-70"
-                    style={{
-                      border: "1.5px dashed var(--color-bt-accent)",
-                      color: "var(--color-bt-accent)",
-                    }}
-                  >
-                    <Plus size={14} />
-                    Add another property
-                  </button>
-                )}
-              </>
-            )}
+              )}
+            </div>
           </div>
           {/* AddIdeaLodgingSheet */}
           {showAddLodging && (
