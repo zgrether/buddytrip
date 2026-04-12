@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, CalendarDays, Plus, Trash2, Hotel, Pencil, Home, DollarSign, Check, Lock } from "lucide-react";
+import { ExternalLink, MapPin, CalendarDays, Plus, Trash2, Hotel, Pencil, Home, DollarSign } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import { AddLodgingSheet, type LodgingItem } from "./AddLodgingSheet";
@@ -69,7 +69,6 @@ function LodgingCard({
   onRemove,
   onConfirmToggle,
   removing,
-  confirming,
 }: {
   item: LodgingItemFull;
   canEdit: boolean;
@@ -77,7 +76,6 @@ function LodgingCard({
   onRemove: () => void;
   onConfirmToggle: () => void;
   removing: boolean;
-  confirming: boolean;
 }) {
   const platform = getPlatform(item.transport_type);
   const url = isHttpUrl(item.detail) ? item.detail! : null;
@@ -112,29 +110,16 @@ function LodgingCard({
           {platform.label}
         </span>
 
-        {/* Confirmed badge */}
-        {confirmed && (
-          <span
-            className="flex items-center gap-1 text-[11px] font-medium"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            <Lock size={10} />
-            Confirmed
-          </span>
-        )}
-
         <span className="flex-1" />
 
         {/* Confirm toggle — planners only */}
         {canEdit && (
           <button
             onClick={onConfirmToggle}
-            disabled={confirming}
-            className="flex-shrink-0 flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-40"
+            className="flex-shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
             style={{ color: confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
           >
-            <Check size={11} />
-            {confirmed ? "Locked in" : "Lock in"}
+            {confirmed ? "Confirmed 🔒" : "Confirm"}
           </button>
         )}
 
@@ -336,7 +321,6 @@ export function LodgingPanel({
                       : confirmItem.mutate({ tripId, itemId: item.id })
                   }
                   removing={removeItem.isPending}
-                  confirming={confirmItem.isPending || unconfirmItem.isPending}
                 />
               ))}
             </div>
