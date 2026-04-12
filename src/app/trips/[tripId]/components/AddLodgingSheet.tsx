@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Link, Globe } from "lucide-react";
+import { Link, Globe, Pencil } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { trpc } from "@/lib/trpc-client";
 
@@ -20,8 +20,8 @@ const PLATFORM_LABEL: Record<Platform, string> = {
 function detectPlatform(url: string): Platform {
   try {
     const host = new URL(url).hostname.toLowerCase();
-    if (host.includes("airbnb"))                          return "airbnb";
-    if (host.includes("vrbo") || host.includes("homeaway")) return "vrbo";
+    if (host.includes("airbnb"))                              return "airbnb";
+    if (host.includes("vrbo") || host.includes("homeaway"))   return "vrbo";
     if (host.includes("booking.com") || host.includes("marriott") || host.includes("hilton")) return "hotel";
     return "other";
   } catch {
@@ -100,6 +100,19 @@ function LinkPreviewCard({
   );
 }
 
+// ── Types ─────────────────────────────────────────────────────────────────
+
+export interface LodgingItem {
+  id: string;
+  label: string;
+  detail?: string | null;
+  property_name?: string | null;   // repurposed: stores sleeps count as string
+  address?: string | null;
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  transport_type?: string | null;
+}
+
 // ── Sheet ─────────────────────────────────────────────────────────────────
 
 const inputStyle = {
@@ -110,22 +123,34 @@ const inputStyle = {
 
 export function AddLodgingSheet({
   tripId,
+  item,
   onClose,
 }: {
   tripId: string;
+  item?: LodgingItem;          // present → edit mode
   onClose: () => void;
 }) {
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
 
-  const [url, setUrl] = useState("");
-  const [nickname, setNickname] = useState("");
-  const [address, setAddress] = useState("");
-  const [checkIn, setCheckIn] = useState("");
-  const [checkOut, setCheckOut] = useState("");
+  const isEditing = !!item;
+
+  // Seed state from existing item when editing
+  const existingUrl = isEditing && item.detail?.startsWith("http") ? item.detail : "";
+  const existingNickname =
+    isEditing && item.label && item.label !== extractDomain(existingUrl)
+      ? item.label
+      : "";
+
+  const [url, setUrl] = useState(existingUrl);
+  const [nickname, setNickname] = useState(existingNickname);
+  const [sleeps, setSleeps] = useState(item?.property_name ?? "");
+  const [address, setAddress] = useState(item?.address ?? "");
+  const [checkIn, setCheckIn] = useState(item?.check_in_time ?? "");
+  const [checkOut, setCheckOut] = useState(item?.check_out_time ?? "");
 
   const validUrl = isValidUrl(url);
-  const platform = detectPlatform(url);
+  const platform = validUrl ? detectPlatform(url) : ((item?.transport_type ?? "other") as Platform);
 
   const create = trpc.logistics.create.useMutation({
     onSuccess: () => {
@@ -134,19 +159,45 @@ export function AddLodgingSheet({
     },
   });
 
+  const update = trpc.logistics.update.useMutation({
+    onSuccess: () => {
+      utils.logistics.list.invalidate({ tripId });
+      onClose();
+    },
+  });
+
+  const isPending = create.isPending || update.isPending;
+
   const handleSubmit = () => {
     if (!validUrl) return;
     const domain = extractDomain(url);
-    create.mutate({
-      tripId,
-      type: "lodging",
-      label: nickname.trim() || domain,  // nickname → domain as fallback
-      address: address.trim() || undefined,
-      checkInTime: checkIn || undefined,
-      checkOutTime: checkOut || undefined,
-      transportType: platform,           // stores detected platform
-      detail: url,                       // URL stored in detail
-    });
+    const label = nickname.trim() || domain;
+
+    if (isEditing) {
+      update.mutate({
+        tripId,
+        itemId: item.id,
+        label,
+        detail: url,
+        propertyName: sleeps.trim() || null,
+        address: address.trim() || null,
+        checkInTime: checkIn || null,
+        checkOutTime: checkOut || null,
+        transportType: platform,
+      });
+    } else {
+      create.mutate({
+        tripId,
+        type: "lodging",
+        label,
+        propertyName: sleeps.trim() || undefined,
+        address: address.trim() || undefined,
+        checkInTime: checkIn || undefined,
+        checkOutTime: checkOut || undefined,
+        transportType: platform,
+        detail: url,
+      });
+    }
   };
 
   return (
@@ -160,11 +211,16 @@ export function AddLodgingSheet({
         style={{ background: "var(--color-bt-card)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Add Property
-        </h2>
+        <div className="flex items-center gap-2">
+          {isEditing && <Pencil size={15} style={{ color: "var(--color-bt-accent)" }} />}
+          <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {isEditing ? "Edit Property" : "Add Property"}
+          </h2>
+        </div>
         <p className="mt-0.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Paste an AirBnB, VRBO, or hotel link
+          {isEditing
+            ? "Update the link, nickname, address, or dates"
+            : "Paste an AirBnB, VRBO, or hotel link"}
         </p>
 
         {/* URL field — primary */}
@@ -180,7 +236,7 @@ export function AddLodgingSheet({
             value={url}
             onChange={(e) => setUrl(e.target.value.trim())}
             // eslint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus
+            autoFocus={!isEditing}
             className="w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm outline-none"
             style={{
               ...inputStyle,
@@ -199,14 +255,25 @@ export function AddLodgingSheet({
           </div>
         )}
 
-        {/* Optional fields — shown after URL is valid */}
-        {validUrl && (
+        {/* Optional fields — shown after URL is valid (or always in edit mode) */}
+        {(validUrl || isEditing) && (
           <div className="mt-4 space-y-2">
             <input
               type="text"
               placeholder="Nickname (optional) — e.g. Beach House"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={inputStyle}
+            />
+
+            <input
+              type="number"
+              placeholder="Sleeps (optional) — e.g. 8"
+              min={1}
+              max={99}
+              value={sleeps}
+              onChange={(e) => setSleeps(e.target.value)}
               className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
@@ -252,11 +319,13 @@ export function AddLodgingSheet({
         {/* Actions */}
         <button
           onClick={handleSubmit}
-          disabled={create.isPending || !validUrl}
+          disabled={isPending || !validUrl}
           className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
           style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
-          {create.isPending ? "Adding..." : "Add Property"}
+          {isPending
+            ? (isEditing ? "Saving..." : "Adding...")
+            : (isEditing ? "Save Changes" : "Add Property")}
         </button>
         <button
           onClick={onClose}

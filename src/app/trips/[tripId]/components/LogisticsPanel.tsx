@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Globe, ExternalLink, MapPin, CalendarDays, Plane, Car, Plus, Trash2, Hotel } from "lucide-react";
+import { Globe, ExternalLink, MapPin, CalendarDays, Plane, Car, Plus, Trash2, Hotel, Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
-import { AddLodgingSheet } from "./AddLodgingSheet";
+import { AddLodgingSheet, type LodgingItem } from "./AddLodgingSheet";
 import { TravelEntryForm } from "./TravelEntryForm";
 
 // ── Platform config ───────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ interface LogisticsItem {
   type: "lodging" | "transport" | "general";
   label: string;
   detail?: string | null;
-  property_name?: string | null;
+  property_name?: string | null;   // repurposed: stores sleeps count as string
   address?: string | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
@@ -83,11 +83,13 @@ interface TripMemberTravel {
 function LodgingCard({
   item,
   canEdit,
+  onEdit,
   onRemove,
   removing,
 }: {
   item: LogisticsItem;
   canEdit: boolean;
+  onEdit: () => void;
   onRemove: () => void;
   removing: boolean;
 }) {
@@ -125,15 +127,25 @@ function LodgingCard({
           {platform.label}
         </span>
         {canEdit && (
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-            disabled={removing}
-            className="flex-shrink-0 flex h-4 w-4 items-center justify-center rounded disabled:opacity-40"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Remove property"
-          >
-            <Trash2 size={10} />
-          </button>
+          <>
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
+              className="flex-shrink-0 flex h-4 w-4 items-center justify-center rounded"
+              style={{ color: "var(--color-bt-accent)" }}
+              aria-label="Edit property"
+            >
+              <Pencil size={10} />
+            </button>
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+              disabled={removing}
+              className="flex-shrink-0 flex h-4 w-4 items-center justify-center rounded disabled:opacity-40"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              aria-label="Remove property"
+            >
+              <Trash2 size={10} />
+            </button>
+          </>
         )}
       </div>
 
@@ -167,6 +179,12 @@ function LodgingCard({
               {dateRange}
             </p>
           </div>
+        )}
+
+        {item.property_name && (
+          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Sleeps {item.property_name}
+          </p>
         )}
 
         {url && (
@@ -255,6 +273,7 @@ export function LogisticsPanel({
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
   const [showAddLodging, setShowAddLodging] = useState(false);
+  const [editingItem, setEditingItem] = useState<LodgingItem | null>(null);
   const [showTravelSheet, setShowTravelSheet] = useState(false);
 
   const removeItem = trpc.logistics.remove.useMutation({
@@ -318,6 +337,7 @@ export function LogisticsPanel({
                     key={item.id}
                     item={item}
                     canEdit={canEdit}
+                    onEdit={() => setEditingItem(item)}
                     onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
                     removing={removeItem.isPending}
                   />
@@ -440,6 +460,14 @@ export function LogisticsPanel({
         <AddLodgingSheet
           tripId={tripId}
           onClose={() => setShowAddLodging(false)}
+        />
+      )}
+
+      {editingItem && (
+        <AddLodgingSheet
+          tripId={tripId}
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
         />
       )}
 
