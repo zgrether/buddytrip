@@ -608,18 +608,11 @@ function IdeaCard({
                       border: "1px solid var(--color-bt-border)",
                     }}
                   >
-                    {/* Name + Sleeps on same line + edit/delete */}
+                    {/* Name + edit/delete */}
                     <div className="flex items-start justify-between gap-1">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                          {opt.name}
-                          {opt.sleeps != null && (
-                            <span className="ml-1 text-[11px] font-normal" style={{ color: "var(--color-bt-text-dim)" }}>
-                              · {opt.sleeps}
-                            </span>
-                          )}
-                        </p>
-                      </div>
+                      <p className="min-w-0 flex-1 text-[13px] font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                        {opt.name}
+                      </p>
                       {canEdit && (
                         <div className="flex flex-shrink-0 items-center gap-0.5">
                           <button
@@ -641,11 +634,20 @@ function IdeaCard({
                       )}
                     </div>
 
-                    {/* Price — right-justified */}
-                    {opt.price_note && (
-                      <p className="mt-0.5 text-right text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {opt.price_note}
-                      </p>
+                    {/* Sleeps (left) · Price (right) */}
+                    {(opt.sleeps != null || opt.price_note) && (
+                      <div className="mt-0.5 flex items-center justify-between gap-1">
+                        {opt.sleeps != null ? (
+                          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            Sleeps {opt.sleeps}
+                          </span>
+                        ) : <span />}
+                        {opt.price_note && (
+                          <span className="flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {opt.price_note}
+                          </span>
+                        )}
+                      </div>
                     )}
 
                     {/* Thoughts */}
