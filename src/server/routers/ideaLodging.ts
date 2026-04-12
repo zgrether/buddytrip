@@ -71,6 +71,7 @@ export const ideaLodgingRouter = router({
         sleeps: z.number().int().positive().optional(),
         priceNote: z.string().max(200).optional(),
         url: z.string().max(2000).optional(),
+        notes: z.string().max(1000).optional(),
       })
     )
     .use(requireTripMember)
@@ -86,6 +87,7 @@ export const ideaLodgingRouter = router({
           sleeps: input.sleeps ?? null,
           price_note: input.priceNote ?? null,
           url: input.url ?? null,
+          notes: input.notes ?? null,
           created_by: ctx.user!.id,
         });
 
@@ -131,6 +133,7 @@ export const ideaLodgingRouter = router({
         sleeps: z.number().int().positive().nullable().optional(),
         priceNote: z.string().max(200).nullable().optional(),
         url: z.string().max(2000).nullable().optional(),
+        notes: z.string().max(1000).nullable().optional(),
       })
     )
     .use(requireTripMember)
@@ -141,6 +144,7 @@ export const ideaLodgingRouter = router({
       if (input.sleeps !== undefined) update.sleeps = input.sleeps;
       if (input.priceNote !== undefined) update.price_note = input.priceNote;
       if (input.url !== undefined) update.url = input.url;
+      if (input.notes !== undefined) update.notes = input.notes;
 
       if (Object.keys(update).length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });

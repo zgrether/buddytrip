@@ -5,9 +5,23 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { trpc } from "@/lib/trpc-client";
 import type { IdeaLodgingOption } from "./IdeaZonePanel";
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── Platform auto-detection from URL ─────────────────────────────────────
 
 type Source = "vrbo" | "airbnb" | "hotel" | "other";
+
+function detectSource(url: string): Source {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host.includes("airbnb"))                              return "airbnb";
+    if (host.includes("vrbo") || host.includes("homeaway"))   return "vrbo";
+    if (host.includes("booking.com") || host.includes("marriott") || host.includes("hilton")) return "hotel";
+    return "other";
+  } catch {
+    return "other";
+  }
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────
 
 export interface AddIdeaLodgingSheetProps {
   tripId: string;
@@ -15,13 +29,6 @@ export interface AddIdeaLodgingSheetProps {
   item?: IdeaLodgingOption; // present = edit mode
   onClose: () => void;
 }
-
-const SOURCE_OPTIONS: { value: Source; label: string }[] = [
-  { value: "vrbo", label: "VRBO" },
-  { value: "airbnb", label: "Airbnb" },
-  { value: "hotel", label: "Hotel" },
-  { value: "other", label: "Other" },
-];
 
 const inputStyle = {
   background: "var(--color-bt-card-raised)",
@@ -41,15 +48,13 @@ export function AddIdeaLodgingSheet({
   const utils = trpc.useUtils();
   const isEditing = !!item;
 
-  const [source, setSource] = useState<Source | null>(
-    (item?.source as Source) ?? null
-  );
   const [name, setName] = useState(item?.name ?? "");
+  const [url, setUrl] = useState(item?.url ?? "");
   const [sleeps, setSleeps] = useState(
     item?.sleeps != null ? String(item.sleeps) : ""
   );
   const [priceNote, setPriceNote] = useState(item?.price_note ?? "");
-  const [url, setUrl] = useState(item?.url ?? "");
+  const [notes, setNotes] = useState(item?.notes ?? "");
 
   const create = trpc.ideaLodging.create.useMutation({
     onSuccess: () => {
@@ -71,6 +76,8 @@ export function AddIdeaLodgingSheet({
   const handleSubmit = () => {
     if (!canSubmit) return;
     const sleepsNum = sleeps.trim() ? parseInt(sleeps.trim(), 10) : undefined;
+    const trimmedUrl = url.trim() || undefined;
+    const source = trimmedUrl ? detectSource(trimmedUrl) : undefined;
 
     if (isEditing) {
       update.mutate({
@@ -80,17 +87,19 @@ export function AddIdeaLodgingSheet({
         source: source ?? null,
         sleeps: sleepsNum ?? null,
         priceNote: priceNote.trim() || null,
-        url: url.trim() || null,
+        url: trimmedUrl ?? null,
+        notes: notes.trim() || null,
       });
     } else {
       create.mutate({
         ideaId,
         tripId,
         name: name.trim(),
-        source: source ?? undefined,
+        source,
         sleeps: sleepsNum,
         priceNote: priceNote.trim() || undefined,
-        url: url.trim() || undefined,
+        url: trimmedUrl,
+        notes: notes.trim() || undefined,
       });
     }
   };
@@ -107,48 +116,15 @@ export function AddIdeaLodgingSheet({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle bar (mobile) */}
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full lg:hidden" style={{ background: "var(--color-bt-border)" }} />
+        <div
+          className="mx-auto mb-4 h-1 w-10 rounded-full lg:hidden"
+          style={{ background: "var(--color-bt-border)" }}
+        />
 
         <h2 className="mb-4 text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
           {isEditing ? "Edit property" : "Add a property"}
         </h2>
 
-        {/* Source pill selector */}
-        <div className="mb-4">
-          <p className="mb-2 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-            Platform
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {SOURCE_OPTIONS.map((opt) => {
-              const isSelected = source === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setSource(isSelected ? null : opt.value)}
-                  className="rounded-full px-3 py-1.5 text-sm font-medium transition-colors"
-                  style={
-                    isSelected
-                      ? {
-                          background: "var(--color-bt-accent)",
-                          color: "var(--color-bt-base)",
-                          border: "1px solid var(--color-bt-accent)",
-                        }
-                      : {
-                          background: "var(--color-bt-card-raised)",
-                          color: "var(--color-bt-text-dim)",
-                          border: "1px solid var(--color-bt-border)",
-                        }
-                  }
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Fields */}
         <div className="space-y-3">
           {/* Property name — required */}
           <div>
@@ -162,44 +138,12 @@ export function AddIdeaLodgingSheet({
               onChange={(e) => setName(e.target.value)}
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={!isEditing}
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-1"
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
           </div>
 
-          {/* Sleeps */}
-          <div>
-            <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-              Sleeps
-            </label>
-            <input
-              type="number"
-              placeholder="e.g. 12"
-              min={1}
-              max={99}
-              value={sleeps}
-              onChange={(e) => setSleeps(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-1"
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Estimated price */}
-          <div>
-            <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-              Estimated price
-            </label>
-            <input
-              type="text"
-              placeholder={`"$230/night", "~$2,300 total", etc.`}
-              value={priceNote}
-              onChange={(e) => setPriceNote(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-1"
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Link to listing */}
+          {/* Link to listing — below name */}
           <div>
             <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
               Link to listing
@@ -209,7 +153,54 @@ export function AddIdeaLodgingSheet({
               placeholder="https://airbnb.com/rooms/…"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-1"
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Sleeps + Estimated price — side by side */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                Sleeps
+              </label>
+              <input
+                type="number"
+                placeholder="e.g. 12"
+                min={1}
+                max={99}
+                value={sleeps}
+                onChange={(e) => setSleeps(e.target.value)}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                Est. price
+              </label>
+              <input
+                type="text"
+                placeholder="~$2,300 total"
+                value={priceNote}
+                onChange={(e) => setPriceNote(e.target.value)}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {/* Thoughts — free text notes */}
+          <div>
+            <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+              Thoughts
+            </label>
+            <textarea
+              placeholder="e.g. great pool, tons of space, perfect grilling deck"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
           </div>

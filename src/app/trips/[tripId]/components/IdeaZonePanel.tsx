@@ -67,6 +67,7 @@ export interface IdeaLodgingOption {
   sleeps?: number | null;
   price_note?: string | null;
   url?: string | null;
+  notes?: string | null;
   sort_order: number;
   created_by: string;
   created_at: string;
@@ -651,6 +652,11 @@ function IdeaCard({
                           ]
                             .filter(Boolean)
                             .join(" · ")}
+                        </p>
+                      )}
+                      {opt.notes && (
+                        <p className="mt-1 text-[12px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {opt.notes}
                         </p>
                       )}
                       {opt.url && (
