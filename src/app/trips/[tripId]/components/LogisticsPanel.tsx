@@ -40,6 +40,14 @@ function isHttpUrl(str?: string | null): boolean {
   return str.startsWith("http://") || str.startsWith("https://");
 }
 
+// ── Maps URL ──────────────────────────────────────────────────────────────
+// google.com/maps handles all platforms: iOS may redirect to Apple Maps,
+// Android opens Google Maps, desktop opens browser.
+
+function mapsUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
 // ── Date formatting ───────────────────────────────────────────────────────
 
 function fmtDate(dateStr?: string | null): string {
@@ -164,12 +172,18 @@ function LodgingCard({
         )}
 
         {item.address && (
-          <div className="flex items-start gap-1">
-            <MapPin size={9} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-            <p className="text-[10px] leading-tight" style={{ color: "var(--color-bt-text-dim)" }}>
+          <a
+            href={mapsUrl(item.address)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-start gap-1 no-underline"
+          >
+            <MapPin size={9} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+            <p className="text-[10px] leading-tight underline" style={{ color: "var(--color-bt-accent)" }}>
               {item.address}
             </p>
-          </div>
+          </a>
         )}
 
         {dateRange && (
@@ -282,7 +296,15 @@ export function LogisticsPanel({
 
   // ── Derived data ─────────────────────────────────────────────────────
   const allItems = items as LogisticsItem[];
-  const lodgingItems = allItems.filter((i) => i.type === "lodging");
+  const lodgingItems = allItems
+    .filter((i) => i.type === "lodging")
+    .sort((a, b) => {
+      // Nulls (no check-in date) go last
+      if (!a.check_in_time && !b.check_in_time) return 0;
+      if (!a.check_in_time) return 1;
+      if (!b.check_in_time) return -1;
+      return a.check_in_time < b.check_in_time ? -1 : 1;
+    });
 
   const travelMembers = (members as TripMemberTravel[]).filter(
     (m) => m.travel_shared || m.user_id === currentUser?.id
