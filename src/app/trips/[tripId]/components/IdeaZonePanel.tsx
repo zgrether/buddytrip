@@ -1271,19 +1271,78 @@ function SetDestinationSheet({
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lodgingError, setLodgingError] = useState<string | null>(null);
+
+  const { data: lodgingOptions = [] } = trpc.ideaLodging.list.useQuery(
+    { ideaId: idea.id },
+    { staleTime: 30_000 }
+  );
+
+  // Default: all options checked
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(
+    () => new Set(lodgingOptions.map((o) => o.id))
+  );
+
+  // Update checkedIds when options load (initialises after query resolves)
+  const [initialised, setInitialised] = useState(false);
+  if (!initialised && lodgingOptions.length > 0) {
+    setCheckedIds(new Set(lodgingOptions.map((o) => o.id)));
+    setInitialised(true);
+  }
 
   const lockDestination = trpc.trips.lockDestination.useMutation();
   const advanceToPlanning = trpc.trips.advanceToPlanning.useMutation();
   const unlockDestination = trpc.trips.unlockDestination.useMutation();
+  const createLogistics = trpc.logistics.create.useMutation();
+
+  const toggleCheck = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const handleConfirm = async () => {
     setIsSubmitting(true);
+    setLodgingError(null);
     try {
+      // 1. Lock destination
       await lockDestination.mutateAsync({
         tripId,
         title: idea.title,
         location: idea.location,
       });
+
+      // 2. Carry over checked lodging options
+      const toCarry = lodgingOptions.filter((o) => checkedIds.has(o.id));
+      if (toCarry.length > 0) {
+        try {
+          await Promise.all(
+            toCarry.map((opt) =>
+              createLogistics.mutateAsync({
+                tripId,
+                type: "lodging",
+                label: opt.name,
+                propertyName: opt.sleeps != null ? String(opt.sleeps) : undefined,
+                detail: opt.url ?? undefined,
+                transportType: opt.source ?? "other",
+              })
+            )
+          );
+        } catch {
+          setLodgingError(
+            "Destination set but some lodging options couldn't be copied — add them manually."
+          );
+          // Stage advance still proceeds
+        }
+      }
+
+      // 3. Advance to planning
       try {
         await advanceToPlanning.mutateAsync({ tripId });
       } catch {
@@ -1291,6 +1350,7 @@ function SetDestinationSheet({
         await unlockDestination.mutateAsync({ tripId });
         throw new Error("Failed to advance to planning. Destination lock rolled back.");
       }
+
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
       utils.ideas.list.invalidate({ tripId });
@@ -1309,7 +1369,7 @@ function SetDestinationSheet({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-t-2xl p-5"
+        className="w-full max-w-lg rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto"
         style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)", boxShadow: "var(--shadow-floating)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1324,6 +1384,69 @@ function SetDestinationSheet({
           <strong style={{ color: "var(--color-bt-text)" }}>{idea.location}</strong>{" "}
           and move the trip to Planning. The crew can start on dates and logistics.
         </p>
+
+        {/* Lodging carry-over section */}
+        {lodgingOptions.length > 0 && (
+          <>
+            <div className="my-4" style={{ borderTop: "1px solid var(--color-bt-border)" }} />
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Lodging Options
+            </p>
+            <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Carry these over to your planning logistics?
+            </p>
+            <div className="space-y-2 mb-3">
+              {lodgingOptions.map((opt) => {
+                const isChecked = checkedIds.has(opt.id);
+                const meta = [
+                  opt.sleeps != null ? `Sleeps ${opt.sleeps}` : null,
+                  opt.price_note ?? null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => toggleCheck(opt.id)}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                    style={{ background: "var(--color-bt-card-raised)" }}
+                  >
+                    <div
+                      className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded"
+                      style={{
+                        background: isChecked ? "var(--color-bt-accent)" : "transparent",
+                        border: isChecked ? "none" : "1.5px solid var(--color-bt-border)",
+                      }}
+                    >
+                      {isChecked && <Check size={10} color="var(--color-bt-base)" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {opt.name}
+                      </p>
+                      {meta && (
+                        <p className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {meta}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mb-4 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Checked items will be added to your planning logistics.
+            </p>
+          </>
+        )}
+
+        {lodgingError && (
+          <p className="mb-3 text-xs" style={{ color: "var(--color-bt-danger)" }}>
+            {lodgingError}
+          </p>
+        )}
+
         <div className="flex gap-2">
           <button
             onClick={onClose}
