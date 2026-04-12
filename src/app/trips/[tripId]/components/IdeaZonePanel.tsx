@@ -598,7 +598,7 @@ function IdeaCard({
               )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
               {lodgingOptions.map((opt) => {
                 const platformLabel: Record<string, string> = {
                   airbnb: "AirBnB", vrbo: "VRBO", hotel: "Hotel", other: "Listing",
@@ -607,7 +607,7 @@ function IdeaCard({
                 return (
                   <div
                     key={opt.id}
-                    className="w-[calc(50%-4px)] flex-shrink-0 rounded-xl px-3 py-2.5"
+                    className="rounded-xl px-3 py-2.5"
                     style={{
                       background: "var(--color-bt-card-raised)",
                       border: "1px solid var(--color-bt-border)",
