@@ -1,18 +1,106 @@
 "use client";
 
 import { useState } from "react";
+import { Link, Globe } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { trpc } from "@/lib/trpc-client";
 
+// ── Platform detection ────────────────────────────────────────────────────
+
 type Platform = "airbnb" | "vrbo" | "hotel" | "rental" | "other";
 
-const PLATFORMS: { value: Platform; label: string }[] = [
-  { value: "airbnb",  label: "AirBnB" },
-  { value: "vrbo",    label: "VRBO" },
-  { value: "hotel",   label: "Hotel" },
-  { value: "rental",  label: "Rental" },
-  { value: "other",   label: "Other" },
-];
+const PLATFORM_LABEL: Record<Platform, string> = {
+  airbnb: "AirBnB",
+  vrbo:   "VRBO",
+  hotel:  "Hotel",
+  rental: "Rental",
+  other:  "Lodging",
+};
+
+function detectPlatform(url: string): Platform {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host.includes("airbnb"))                          return "airbnb";
+    if (host.includes("vrbo") || host.includes("homeaway")) return "vrbo";
+    if (host.includes("booking.com") || host.includes("marriott") || host.includes("hilton")) return "hotel";
+    return "other";
+  } catch {
+    return "other";
+  }
+}
+
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function isValidUrl(str: string): boolean {
+  try {
+    const u = new URL(str);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// ── Link preview card — mirrors what shows in the lodging grid ────────────
+
+function LinkPreviewCard({
+  url,
+  nickname,
+  platform,
+}: {
+  url: string;
+  nickname: string;
+  platform: Platform;
+}) {
+  const domain = extractDomain(url);
+  const label = PLATFORM_LABEL[platform];
+
+  return (
+    <div
+      className="overflow-hidden rounded-xl"
+      style={{ border: "1px solid var(--color-bt-accent-border)" }}
+    >
+      {/* Domain strip */}
+      <div
+        className="flex items-center gap-1.5 px-3 py-2"
+        style={{ background: "var(--color-bt-tag-bg)" }}
+      >
+        <Globe size={11} style={{ color: "var(--color-bt-accent)" }} />
+        <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
+          {domain}
+        </span>
+        <span
+          className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {label}
+        </span>
+      </div>
+      {/* Body */}
+      <div className="px-3 py-2.5" style={{ background: "var(--color-bt-card-raised)" }}>
+        {nickname ? (
+          <p className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {nickname}
+          </p>
+        ) : (
+          <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+            Add a nickname below (optional)
+          </p>
+        )}
+        <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          {url.length > 55 ? url.slice(0, 52) + "…" : url}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Sheet ─────────────────────────────────────────────────────────────────
 
 const inputStyle = {
   background: "var(--color-bt-card-raised)",
@@ -30,12 +118,14 @@ export function AddLodgingSheet({
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
 
-  const [platform, setPlatform] = useState<Platform>("other");
-  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [nickname, setNickname] = useState("");
   const [address, setAddress] = useState("");
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
-  const [notes, setNotes] = useState("");
+
+  const validUrl = isValidUrl(url);
+  const platform = detectPlatform(url);
 
   const create = trpc.logistics.create.useMutation({
     onSuccess: () => {
@@ -45,18 +135,17 @@ export function AddLodgingSheet({
   });
 
   const handleSubmit = () => {
-    if (!name.trim()) return;
+    if (!validUrl) return;
+    const domain = extractDomain(url);
     create.mutate({
       tripId,
       type: "lodging",
-      label: name.trim(),
+      label: nickname.trim() || domain,  // nickname → domain as fallback
       address: address.trim() || undefined,
-      // check_in_time / check_out_time store date strings ("YYYY-MM-DD")
       checkInTime: checkIn || undefined,
       checkOutTime: checkOut || undefined,
-      // transport_type repurposed to store platform for lodging items
-      transportType: platform,
-      detail: notes.trim() || undefined,
+      transportType: platform,           // stores detected platform
+      detail: url,                       // URL stored in detail
     });
   };
 
@@ -75,94 +164,95 @@ export function AddLodgingSheet({
           Add Property
         </h2>
         <p className="mt-0.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Where is everyone staying?
+          Paste an AirBnB, VRBO, or hotel link
         </p>
 
-        {/* Platform chips */}
-        <p className="mt-4 mb-2 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-          Booked on
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setPlatform(value)}
-              className="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
-              style={{
-                background: platform === value ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                color: platform === value ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                border: platform === value ? "none" : "1px solid var(--color-bt-border)",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+        {/* URL field — primary */}
+        <div className="relative mt-4">
+          <Link
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2"
+            style={{ color: validUrl ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+          />
+          <input
+            type="url"
+            placeholder="https://airbnb.com/rooms/…"
+            value={url}
+            onChange={(e) => setUrl(e.target.value.trim())}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            className="w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm outline-none"
+            style={{
+              ...inputStyle,
+              borderColor: validUrl ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
+            }}
+          />
         </div>
 
-        {/* Property name */}
-        <input
-          type="text"
-          placeholder="Property name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
-          className="mt-3 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={inputStyle}
-        />
+        {/* Live preview — shown once URL is valid */}
+        {validUrl && (
+          <div className="mt-3">
+            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Preview
+            </p>
+            <LinkPreviewCard url={url} nickname={nickname} platform={platform} />
+          </div>
+        )}
 
-        {/* Address */}
-        <input
-          type="text"
-          placeholder="Address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={inputStyle}
-        />
-
-        {/* Check-in / check-out dates */}
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div>
-            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Check-in
-            </label>
+        {/* Optional fields — shown after URL is valid */}
+        {validUrl && (
+          <div className="mt-4 space-y-2">
             <input
-              type="date"
-              value={checkIn}
-              onChange={(e) => setCheckIn(e.target.value)}
+              type="text"
+              placeholder="Nickname (optional) — e.g. Beach House"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
               className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Check-out
-            </label>
+
             <input
-              type="date"
-              value={checkOut}
-              onChange={(e) => setCheckOut(e.target.value)}
+              type="text"
+              placeholder="Address (optional)"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
               className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
-          </div>
-        </div>
 
-        {/* Notes / link */}
-        <input
-          type="text"
-          placeholder="Link or notes (optional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="mt-2 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={inputStyle}
-        />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Check-in
+                </label>
+                <input
+                  type="date"
+                  value={checkIn}
+                  onChange={(e) => setCheckIn(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Check-out
+                </label>
+                <input
+                  type="date"
+                  value={checkOut}
+                  onChange={(e) => setCheckOut(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <button
           onClick={handleSubmit}
-          disabled={create.isPending || !name.trim()}
+          disabled={create.isPending || !validUrl}
           className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
           style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >

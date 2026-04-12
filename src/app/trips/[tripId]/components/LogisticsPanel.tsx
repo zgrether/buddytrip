@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Hotel, MapPin, CalendarDays, Plane, Car, Plus, Trash2 } from "lucide-react";
+import { Globe, ExternalLink, MapPin, CalendarDays, Plane, Car, Plus, Trash2, Hotel } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
@@ -22,6 +22,22 @@ const PLATFORM: Record<string, { label: string; color: string; bg: string }> = {
 
 function getPlatform(key?: string | null) {
   return PLATFORM[key ?? ""] ?? PLATFORM.other;
+}
+
+// ── URL helpers ───────────────────────────────────────────────────────────
+
+function extractDomain(url?: string | null): string {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function isHttpUrl(str?: string | null): boolean {
+  if (!str) return false;
+  return str.startsWith("http://") || str.startsWith("https://");
 }
 
 // ── Date formatting ───────────────────────────────────────────────────────
@@ -76,104 +92,101 @@ function LodgingCard({
   removing: boolean;
 }) {
   const platform = getPlatform(item.transport_type);
-  const name = item.property_name || item.label;
+  const url = isHttpUrl(item.detail) ? item.detail! : null;
+  const domain = url ? extractDomain(url) : null;
+
+  // Nickname: label unless it equals the domain (auto-filled fallback)
+  const nickname = item.label && item.label !== domain ? item.label : null;
+
   const checkIn = fmtDate(item.check_in_time);
   const checkOut = fmtDate(item.check_out_time);
   const dateRange = checkIn && checkOut
     ? `${checkIn} – ${checkOut}`
     : checkIn || checkOut || null;
 
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{ border: "1px solid var(--color-bt-border)" }}
-    >
-      {/* Platform header strip */}
+  const cardBody = (
+    <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--color-bt-border)" }}>
+      {/* iMessage-style domain strip */}
       <div
-        className="flex items-center justify-between px-2.5 py-1.5"
-        style={{ background: platform.bg }}
+        className="flex items-center gap-1.5 px-2.5 py-1.5"
+        style={{ background: "var(--color-bt-tag-bg)" }}
       >
+        <Globe size={10} style={{ color: "var(--color-bt-accent)" }} />
         <span
-          className="text-[10px] font-bold uppercase tracking-wider"
-          style={{ color: platform.color }}
+          className="flex-1 truncate text-[10px] font-medium"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          {domain ?? platform.label}
+        </span>
+        <span
+          className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+          style={{ background: platform.color, color: "var(--color-bt-base)" }}
         >
           {platform.label}
         </span>
         {canEdit && (
           <button
-            onClick={onRemove}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
             disabled={removing}
-            className="flex h-5 w-5 items-center justify-center rounded disabled:opacity-40"
-            style={{ color: platform.color }}
+            className="flex-shrink-0 flex h-4 w-4 items-center justify-center rounded disabled:opacity-40"
+            style={{ color: "var(--color-bt-text-dim)" }}
             aria-label="Remove property"
           >
-            <Trash2 size={11} />
+            <Trash2 size={10} />
           </button>
         )}
       </div>
 
       {/* Card body */}
-      <div
-        className="px-2.5 py-2.5 space-y-1"
-        style={{ background: "var(--color-bt-card-raised)" }}
-      >
-        <div className="flex items-start gap-1.5">
-          <Hotel
-            size={12}
-            className="mt-0.5 flex-shrink-0"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          />
-          <p
-            className="text-xs font-semibold leading-tight"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {name}
+      <div className="px-2.5 py-2 space-y-1" style={{ background: "var(--color-bt-card-raised)" }}>
+        {nickname && (
+          <p className="text-xs font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+            {nickname}
           </p>
-        </div>
+        )}
+
+        {url && (
+          <p className="truncate text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            {url.length > 42 ? url.slice(0, 39) + "…" : url}
+          </p>
+        )}
 
         {item.address && (
-          <div className="flex items-start gap-1.5">
-            <MapPin
-              size={10}
-              className="mt-0.5 flex-shrink-0"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            />
-            <p
-              className="text-[11px] leading-tight"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
+          <div className="flex items-start gap-1">
+            <MapPin size={9} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+            <p className="text-[10px] leading-tight" style={{ color: "var(--color-bt-text-dim)" }}>
               {item.address}
             </p>
           </div>
         )}
 
         {dateRange && (
-          <div className="flex items-center gap-1.5">
-            <CalendarDays
-              size={10}
-              className="flex-shrink-0"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            />
-            <p
-              className="text-[11px]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
+          <div className="flex items-center gap-1">
+            <CalendarDays size={9} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+            <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {dateRange}
             </p>
           </div>
         )}
 
-        {item.detail && (
-          <p
-            className="mt-1 truncate text-[11px] italic"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {item.detail}
-          </p>
+        {url && (
+          <div className="flex items-center gap-1 pt-0.5">
+            <ExternalLink size={9} style={{ color: "var(--color-bt-accent)" }} />
+            <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
+              Open link
+            </span>
+          </div>
         )}
       </div>
     </div>
   );
+
+  // Wrap in anchor if URL is present
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="block no-underline">
+      {cardBody}
+    </a>
+  ) : cardBody;
 }
 
 // ── TravelSheet ───────────────────────────────────────────────────────────
