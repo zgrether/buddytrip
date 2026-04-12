@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, CalendarDays, Plus, Trash2, Hotel, Pencil, Home, DollarSign } from "lucide-react";
+import { ExternalLink, MapPin, CalendarDays, Plus, Trash2, Hotel, Pencil, Home } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import { AddLodgingSheet, type LodgingItem } from "./AddLodgingSheet";
@@ -190,29 +190,28 @@ function LodgingCard({
           </div>
         )}
 
-        {/* Row 3: Price */}
-        {item.total_price && (
-          <div className="flex items-center gap-1.5">
-            <DollarSign size={11} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-            <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {item.total_price}
-            </span>
+        {/* Bottom row: Address (left) · Price (right) */}
+        {(item.address || item.total_price) && (
+          <div className="flex items-end justify-between gap-2">
+            {item.address ? (
+              <a
+                href={mapsUrl(item.address)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-1.5 no-underline"
+              >
+                <MapPin size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+                <span className="text-[12px] leading-tight underline" style={{ color: "var(--color-bt-accent)" }}>
+                  {item.address}
+                </span>
+              </a>
+            ) : <span />}
+            {item.total_price && (
+              <span className="flex-shrink-0 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {item.total_price}
+              </span>
+            )}
           </div>
-        )}
-
-        {/* Row 4: Address → opens maps */}
-        {item.address && (
-          <a
-            href={mapsUrl(item.address)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-start gap-1.5 no-underline"
-          >
-            <MapPin size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-            <span className="text-[12px] leading-tight underline" style={{ color: "var(--color-bt-accent)" }}>
-              {item.address}
-            </span>
-          </a>
         )}
       </div>
     </div>
