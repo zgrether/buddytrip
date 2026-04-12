@@ -1039,8 +1039,10 @@ function PlanningSection({
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
 }) {
+  // Auto-expand dates only when a poll is genuinely open — not if dates are
+  // already locked (guards against stale date_poll_active in the DB).
   const [openRow, setOpenRow] = useState<string | null>(
-    trip.date_poll_active ? "dates" : null
+    trip.date_poll_active && !trip.start_date ? "dates" : null
   );
   const [showSetDest, setShowSetDest] = useState(false);
   // Edge case: PLANNING stage with no locked destination (old data / migration artifact).
