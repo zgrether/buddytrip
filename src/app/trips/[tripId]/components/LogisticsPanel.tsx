@@ -90,13 +90,13 @@ interface TripMemberTravel {
 
 function LodgingCard({
   item,
-  canEdit,
+  isOwner,
   onEdit,
   onRemove,
   removing,
 }: {
   item: LogisticsItem;
-  canEdit: boolean;
+  isOwner: boolean;
   onEdit: () => void;
   onRemove: () => void;
   removing: boolean;
@@ -131,7 +131,7 @@ function LodgingCard({
           {platform.label}
         </span>
         <span className="flex-1" />
-        {canEdit && (
+        {isOwner && (
           <>
             <button
               onClick={onEdit}
@@ -271,7 +271,7 @@ interface LogisticsPanelProps {
 export function LogisticsPanel({
   tripId,
   canEdit,
-  isOwner: _isOwner,
+  isOwner,
   isOpen,
   onToggle,
 }: LogisticsPanelProps) {
@@ -353,7 +353,7 @@ export function LogisticsPanel({
                   <LodgingCard
                     key={item.id}
                     item={item}
-                    canEdit={canEdit}
+                    isOwner={isOwner}
                     onEdit={() => setEditingItem(item)}
                     onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
                     removing={removeItem.isPending}
@@ -365,11 +365,11 @@ export function LogisticsPanel({
             {canEdit && (
               <button
                 onClick={() => setShowAddLodging(true)}
-                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium"
+                className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
                 style={{
-                  border: "1.5px dashed var(--color-bt-accent)",
-                  color: "var(--color-bt-accent)",
-                  background: "transparent",
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
                 }}
               >
                 <Plus size={14} />
