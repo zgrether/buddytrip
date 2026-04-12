@@ -268,7 +268,7 @@ export function LodgingPanel({
   let note = "No properties added yet";
   if (totalCount > 0) {
     note = confirmedCount > 0
-      ? `${confirmedCount} of ${totalCount} locked in`
+      ? `${confirmedCount} of ${totalCount} confirmed`
       : `${totalCount} option${totalCount !== 1 ? "s" : ""} being considered`;
   }
 
