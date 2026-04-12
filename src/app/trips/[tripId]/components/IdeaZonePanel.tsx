@@ -576,9 +576,23 @@ function IdeaCard({
 
           {/* Lodging options */}
           <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-              Lodging
-            </p>
+            {/* Header row: LODGING label + inline + Add button */}
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                Lodging
+              </p>
+              {canEdit && (
+                <button
+                  data-testid={`add-lodging-empty-${idea.id}`}
+                  onClick={() => setShowAddLodging(true)}
+                  className="flex items-center gap-1 text-xs"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  <Plus size={13} /> Add
+                </button>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-2">
               {lodgingOptions.map((opt) => {
                 const platformLabel: Record<string, string> = {
@@ -594,28 +608,26 @@ function IdeaCard({
                       border: "1px solid var(--color-bt-border)",
                     }}
                   >
-                    {/* Top row: source badge + edit/delete */}
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      {opt.source ? (
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
-                          style={{
-                            background: "var(--color-bt-card)",
-                            border: "1px solid var(--color-bt-border)",
-                            color: "var(--color-bt-text-dim)",
-                          }}
-                        >
-                          {opt.source}
-                        </span>
-                      ) : <span />}
+                    {/* Name + Sleeps on same line + edit/delete */}
+                    <div className="flex items-start justify-between gap-1">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                          {opt.name}
+                          {opt.sleeps != null && (
+                            <span className="ml-1 text-[11px] font-normal" style={{ color: "var(--color-bt-text-dim)" }}>
+                              · {opt.sleeps}
+                            </span>
+                          )}
+                        </p>
+                      </div>
                       {canEdit && (
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex flex-shrink-0 items-center gap-0.5">
                           <button
                             onClick={() => setEditingLodging(opt as IdeaLodgingOption)}
                             className="flex h-5 w-5 items-center justify-center rounded"
                             aria-label="Edit"
                           >
-                            <Pencil size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                            <Pencil size={11} style={{ color: "var(--color-bt-text-dim)" }} />
                           </button>
                           <button
                             onClick={() => removeLodging.mutate({ id: opt.id, tripId: idea.trip_id })}
@@ -623,31 +635,17 @@ function IdeaCard({
                             className="flex h-5 w-5 items-center justify-center rounded disabled:opacity-40"
                             aria-label="Delete"
                           >
-                            <Trash2 size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                            <Trash2 size={11} style={{ color: "var(--color-bt-text-dim)" }} />
                           </button>
                         </div>
                       )}
                     </div>
 
-                    {/* Name */}
-                    <p className="text-[13px] font-medium leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                      {opt.name}
-                    </p>
-
-                    {/* Sleeps (left) · Price (right) */}
-                    {(opt.sleeps != null || opt.price_note) && (
-                      <div className="mt-1 flex items-center justify-between gap-1">
-                        {opt.sleeps != null ? (
-                          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                            Sleeps {opt.sleeps}
-                          </span>
-                        ) : <span />}
-                        {opt.price_note && (
-                          <span className="text-[11px] flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }}>
-                            {opt.price_note}
-                          </span>
-                        )}
-                      </div>
+                    {/* Price — right-justified */}
+                    {opt.price_note && (
+                      <p className="mt-0.5 text-right text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {opt.price_note}
+                      </p>
                     )}
 
                     {/* Thoughts */}
@@ -673,24 +671,8 @@ function IdeaCard({
                   </div>
                 );
               })}
-
-              {/* +Add button — same fixed width as cards */}
-              {canEdit && (
-                <button
-                  data-testid={lodgingOptions.length === 0 ? `add-lodging-empty-${idea.id}` : `add-lodging-more-${idea.id}`}
-                  onClick={() => setShowAddLodging(true)}
-                  className="w-[calc(50%-4px)] flex-shrink-0 flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-2.5 text-[12px] transition-opacity hover:opacity-70"
-                  style={{
-                    border: "1.5px dashed var(--color-bt-accent)",
-                    color: "var(--color-bt-accent)",
-                    minHeight: "80px",
-                  }}
-                >
-                  <Plus size={16} />
-                  {lodgingOptions.length === 0 ? "Add property" : "Add another"}
-                </button>
-              )}
             </div>
+
           </div>
           {/* AddIdeaLodgingSheet */}
           {showAddLodging && (
