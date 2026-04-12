@@ -33,7 +33,8 @@ import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
-import { LogisticsPanel } from "../components/LogisticsPanel";
+import { LodgingPanel } from "../components/LodgingPanel";
+import { TravelPanel } from "../components/TravelPanel";
 import { TravelEntryForm } from "../components/TravelEntryForm";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
@@ -1228,13 +1229,18 @@ function PlanningSection({
         onToggle={() => toggle("dates")}
         onTabChange={onTabChange}
       />
-      {/* ── Logistics ── */}
-      <LogisticsPanel
+      {/* ── Lodging ── */}
+      <LodgingPanel
         tripId={trip.id}
         canEdit={canEdit}
-        isOwner={isOwner}
-        isOpen={openRow === "logistics"}
-        onToggle={() => toggle("logistics")}
+        isOpen={openRow === "lodging"}
+        onToggle={() => toggle("lodging")}
+      />
+      {/* ── Travel ── */}
+      <TravelPanel
+        tripId={trip.id}
+        isOpen={openRow === "travel"}
+        onToggle={() => toggle("travel")}
       />
 
 

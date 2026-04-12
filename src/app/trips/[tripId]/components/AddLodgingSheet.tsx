@@ -106,11 +106,12 @@ export interface LodgingItem {
   id: string;
   label: string;
   detail?: string | null;
-  property_name?: string | null;   // repurposed: stores sleeps count as string
+  property_name?: string | null;   // sleeps count
   address?: string | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
   transport_type?: string | null;
+  total_price?: string | null;
 }
 
 // ── Sheet ─────────────────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ export function AddLodgingSheet({
   const [url, setUrl] = useState(existingUrl);
   const [nickname, setNickname] = useState(existingNickname);
   const [sleeps, setSleeps] = useState(item?.property_name ?? "");
+  const [totalPrice, setTotalPrice] = useState(item?.total_price ?? "");
   const [address, setAddress] = useState(item?.address ?? "");
   const [checkIn, setCheckIn] = useState(item?.check_in_time ?? "");
   const [checkOut, setCheckOut] = useState(item?.check_out_time ?? "");
@@ -180,6 +182,7 @@ export function AddLodgingSheet({
         label,
         detail: url,
         propertyName: sleeps.trim() || null,
+        totalPrice: totalPrice.trim() || null,
         address: address.trim() || null,
         checkInTime: checkIn || null,
         checkOutTime: checkOut || null,
@@ -191,6 +194,7 @@ export function AddLodgingSheet({
         type: "lodging",
         label,
         propertyName: sleeps.trim() || undefined,
+        totalPrice: totalPrice.trim() || undefined,
         address: address.trim() || undefined,
         checkInTime: checkIn || undefined,
         checkOutTime: checkOut || undefined,
@@ -267,16 +271,26 @@ export function AddLodgingSheet({
               style={inputStyle}
             />
 
-            <input
-              type="number"
-              placeholder="Sleeps (optional) — e.g. 8"
-              min={1}
-              max={99}
-              value={sleeps}
-              onChange={(e) => setSleeps(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-              style={inputStyle}
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                placeholder="Sleeps — e.g. 8"
+                min={1}
+                max={99}
+                value={sleeps}
+                onChange={(e) => setSleeps(e.target.value)}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                style={inputStyle}
+              />
+              <input
+                type="text"
+                placeholder="Total price — e.g. $2,400"
+                value={totalPrice}
+                onChange={(e) => setTotalPrice(e.target.value)}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                style={inputStyle}
+              />
+            </div>
 
             <input
               type="text"
