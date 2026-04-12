@@ -348,7 +348,7 @@ export function LogisticsPanel({
                 No properties added yet
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-2">
                 {lodgingItems.map((item) => (
                   <LodgingCard
                     key={item.id}
@@ -362,7 +362,7 @@ export function LogisticsPanel({
               </div>
             )}
 
-            {canEdit && (
+            {isOwner && (
               <button
                 onClick={() => setShowAddLodging(true)}
                 className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
