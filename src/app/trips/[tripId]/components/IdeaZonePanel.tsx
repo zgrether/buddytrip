@@ -584,7 +584,7 @@ function IdeaCard({
             {/* Header row: LODGING label + inline + Add button */}
             <div className="mb-1.5 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Lodging
+                Lodging Ideas
               </p>
               {canEdit && (
                 <button
