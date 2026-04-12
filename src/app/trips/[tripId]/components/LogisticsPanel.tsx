@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Globe, ExternalLink, MapPin, CalendarDays, Plane, Car, Plus, Trash2, Hotel, Pencil } from "lucide-react";
+import { ExternalLink, MapPin, CalendarDays, Plane, Car, Plus, Trash2, Hotel, Pencil } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
@@ -114,30 +114,27 @@ function LodgingCard({
     ? `${checkIn} – ${checkOut}`
     : checkIn || checkOut || null;
 
-  const cardBody = (
+  // Name: nickname if set, otherwise fall back to domain, then platform label
+  const name = nickname ?? domain ?? platform.label;
+
+  return (
     <div className="overflow-hidden rounded-xl" style={{ border: "1px solid var(--color-bt-border)" }}>
-      {/* iMessage-style domain strip */}
+      {/* Platform strip */}
       <div
         className="flex items-center gap-1.5 px-2.5 py-1.5"
         style={{ background: "var(--color-bt-tag-bg)" }}
       >
-        <Globe size={10} style={{ color: "var(--color-bt-accent)" }} />
-        <span
-          className="flex-1 truncate text-[10px] font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          {domain ?? platform.label}
-        </span>
         <span
           className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
           style={{ background: platform.color, color: "var(--color-bt-base)" }}
         >
           {platform.label}
         </span>
+        <span className="flex-1" />
         {canEdit && (
           <>
             <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
+              onClick={onEdit}
               className="flex-shrink-0 flex h-4 w-4 items-center justify-center rounded"
               style={{ color: "var(--color-bt-accent)" }}
               aria-label="Edit property"
@@ -145,7 +142,7 @@ function LodgingCard({
               <Pencil size={10} />
             </button>
             <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+              onClick={onRemove}
               disabled={removing}
               className="flex-shrink-0 flex h-4 w-4 items-center justify-center rounded disabled:opacity-40"
               style={{ color: "var(--color-bt-text-dim)" }}
@@ -158,67 +155,65 @@ function LodgingCard({
       </div>
 
       {/* Card body */}
-      <div className="px-2.5 py-2 space-y-1" style={{ background: "var(--color-bt-card-raised)" }}>
-        {nickname && (
+      <div className="px-2.5 py-2 space-y-1.5" style={{ background: "var(--color-bt-card-raised)" }}>
+
+        {/* Row 1: Name · Open link */}
+        <div className="flex items-start justify-between gap-2">
           <p className="text-xs font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-            {nickname}
+            {name}
           </p>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-shrink-0 flex items-center gap-0.5 no-underline"
+            >
+              <ExternalLink size={9} style={{ color: "var(--color-bt-accent)" }} />
+              <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
+                Open
+              </span>
+            </a>
+          )}
+        </div>
+
+        {/* Row 2: Date · Sleeps */}
+        {(dateRange || item.property_name) && (
+          <div className="flex items-center justify-between gap-2">
+            {dateRange ? (
+              <div className="flex items-center gap-1">
+                <CalendarDays size={9} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+                <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {dateRange}
+                </span>
+              </div>
+            ) : <span />}
+            {item.property_name && (
+              <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Sleeps {item.property_name}
+              </span>
+            )}
+          </div>
         )}
 
-        {url && (
-          <p className="truncate text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {url.length > 42 ? url.slice(0, 39) + "…" : url}
-          </p>
-        )}
-
+        {/* Row 3: Address → opens maps */}
         {item.address && (
           <a
             href={mapsUrl(item.address)}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
             className="flex items-start gap-1 no-underline"
           >
             <MapPin size={9} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-            <p className="text-[10px] leading-tight underline" style={{ color: "var(--color-bt-accent)" }}>
+            <span className="text-[10px] leading-tight underline" style={{ color: "var(--color-bt-accent)" }}>
               {item.address}
-            </p>
+            </span>
           </a>
         )}
 
-        {dateRange && (
-          <div className="flex items-center gap-1">
-            <CalendarDays size={9} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-            <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {dateRange}
-            </p>
-          </div>
-        )}
-
-        {item.property_name && (
-          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Sleeps {item.property_name}
-          </p>
-        )}
-
-        {url && (
-          <div className="flex items-center gap-1 pt-0.5">
-            <ExternalLink size={9} style={{ color: "var(--color-bt-accent)" }} />
-            <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
-              Open link
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );
-
-  // Wrap in anchor if URL is present
-  return url ? (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="block no-underline">
-      {cardBody}
-    </a>
-  ) : cardBody;
 }
 
 // ── TravelSheet ───────────────────────────────────────────────────────────
