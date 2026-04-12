@@ -208,7 +208,7 @@ function LodgingCard({
             ) : <span />}
             {item.total_price && (
               <span className="flex-shrink-0 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                {item.total_price}
+                {/^[$€£¥]/.test(item.total_price) ? item.total_price : `$${item.total_price}`}
               </span>
             )}
           </div>
