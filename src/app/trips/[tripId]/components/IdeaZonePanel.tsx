@@ -17,6 +17,8 @@ import {
   Plus,
   MessageCircle,
   Users,
+  Pencil,
+  ExternalLink,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -26,6 +28,7 @@ import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { SidebarChatPanel } from "./PlanningChatPanel";
 import { StageContextBar } from "./StageContextBar";
+import { AddIdeaLodgingSheet } from "./AddIdeaLodgingSheet";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -51,6 +54,22 @@ interface Idea {
   notes?: string | null;
   image_url?: string | null;
   votes: IdeaVote[];
+}
+
+// ── IdeaLodgingOption ─────────────────────────────────────────────────────
+
+export interface IdeaLodgingOption {
+  id: string;
+  idea_id: string;
+  trip_id: string;
+  name: string;
+  source?: string | null;
+  sleeps?: number | null;
+  price_note?: string | null;
+  url?: string | null;
+  sort_order: number;
+  created_by: string;
+  created_at: string;
 }
 
 // ── IdeaCard ─────────────────────────────────────────────────────────────
@@ -85,6 +104,17 @@ function IdeaCard({
   const utils = trpc.useUtils();
   const [editingField, setEditingField] = useState<"title" | "location" | "description" | "pros" | "cons" | "golfCourses" | "activities" | "accommodation" | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [showAddLodging, setShowAddLodging] = useState(false);
+  const [editingLodging, setEditingLodging] = useState<IdeaLodgingOption | null>(null);
+
+  const { data: lodgingOptions = [] } = trpc.ideaLodging.list.useQuery(
+    { ideaId: idea.id },
+    { staleTime: 30_000 }
+  );
+
+  const removeLodging = trpc.ideaLodging.remove.useMutation({
+    onSuccess: () => utils.ideaLodging.list.invalidate({ ideaId: idea.id }),
+  });
 
   const updateIdea = trpc.ideas.update.useMutation({
     onSuccess() {
@@ -543,43 +573,133 @@ function IdeaCard({
             </div>
           </div>
 
-          {/* Lodging */}
-          {(idea.accommodation || editingField === "accommodation" || canEdit) && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Lodging
-              </p>
-              {editingField === "accommodation" ? (
-                <div>
-                  <input
-                    autoFocus
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") cancelEdit(); }}
-                    placeholder="e.g. The Lodge at Pebble Beach"
-                    className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
-                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                  />
-                  {inlineEditControls}
-                </div>
-              ) : idea.accommodation ? (
-                <p
-                  className="text-sm"
-                  onClick={canEdit ? () => startEdit("accommodation", idea.accommodation ?? "") : undefined}
-                  style={{ color: "var(--color-bt-text)", cursor: canEdit ? "pointer" : "default" }}
-                >
-                  {idea.accommodation}
-                </p>
-              ) : canEdit ? (
+          {/* Lodging options */}
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Lodging
+            </p>
+            {lodgingOptions.length === 0 ? (
+              canEdit ? (
                 <button
-                  onClick={() => startEdit("accommodation", "")}
-                  className="text-sm transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-text-dim)" }}
+                  data-testid={`add-lodging-empty-${idea.id}`}
+                  onClick={() => setShowAddLodging(true)}
+                  className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-[13px] transition-opacity hover:opacity-70"
+                  style={{
+                    border: "1.5px dashed var(--color-bt-accent)",
+                    color: "var(--color-bt-accent)",
+                  }}
                 >
-                  + Add lodging
+                  <Plus size={14} />
+                  Add properties for discussion
                 </button>
-              ) : null}
-            </div>
+              ) : null
+            ) : (
+              <>
+                <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
+                  {lodgingOptions.map((opt) => (
+                    <div
+                      key={opt.id}
+                      className="rounded-xl px-3 py-2.5"
+                      style={{
+                        background: "var(--color-bt-card-raised)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {opt.source && (
+                            <span
+                              className="flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase"
+                              style={{
+                                background: "var(--color-bt-card)",
+                                border: "1px solid var(--color-bt-border)",
+                                color: "var(--color-bt-text-dim)",
+                              }}
+                            >
+                              {opt.source}
+                            </span>
+                          )}
+                          <p className="truncate text-[14px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+                            {opt.name}
+                          </p>
+                        </div>
+                        {canEdit && (
+                          <div className="flex flex-shrink-0 items-center gap-1">
+                            <button
+                              onClick={() => setEditingLodging(opt as IdeaLodgingOption)}
+                              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+                              aria-label="Edit"
+                            >
+                              <Pencil size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                            </button>
+                            <button
+                              onClick={() => removeLodging.mutate({ id: opt.id, tripId: idea.trip_id })}
+                              disabled={removeLodging.isPending}
+                              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
+                              aria-label="Delete"
+                            >
+                              <Trash2 size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {(opt.sleeps != null || opt.price_note) && (
+                        <p className="mt-1 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {[
+                            opt.sleeps != null ? `Sleeps ${opt.sleeps}` : null,
+                            opt.price_note ?? null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
+                      {opt.url && (
+                        <a
+                          href={opt.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 flex items-center gap-1 text-[12px] transition-opacity hover:opacity-70"
+                          style={{ color: "var(--color-bt-accent)" }}
+                        >
+                          <ExternalLink size={11} />
+                          View listing
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {canEdit && (
+                  <button
+                    data-testid={`add-lodging-more-${idea.id}`}
+                    onClick={() => setShowAddLodging(true)}
+                    className="mt-2 flex w-full items-center gap-2 rounded-xl px-4 py-3 text-[13px] transition-opacity hover:opacity-70"
+                    style={{
+                      border: "1.5px dashed var(--color-bt-accent)",
+                      color: "var(--color-bt-accent)",
+                    }}
+                  >
+                    <Plus size={14} />
+                    Add another property
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+          {/* AddIdeaLodgingSheet */}
+          {showAddLodging && (
+            <AddIdeaLodgingSheet
+              tripId={tripId}
+              ideaId={idea.id}
+              onClose={() => setShowAddLodging(false)}
+            />
+          )}
+          {editingLodging && (
+            <AddIdeaLodgingSheet
+              tripId={tripId}
+              ideaId={idea.id}
+              item={editingLodging}
+              onClose={() => setEditingLodging(null)}
+            />
           )}
 
           {/* Footer actions */}
