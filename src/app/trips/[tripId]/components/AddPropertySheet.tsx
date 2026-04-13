@@ -300,38 +300,42 @@ export function AddPropertySheet({
           </div>
         )}
 
-        {/* Expanded optional fields */}
+        {/* Name / Nickname — shown as soon as the form expands, above Optional divider */}
+        {showExpanded && (
+          <div className="mt-3">
+            <Field label={manualMode && !isEditing ? "Property name *" : "Nickname"}>
+              <input
+                type="text"
+                placeholder="e.g. Beach House, The Lodge"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus={manualMode && !isEditing}
+                className={inputCls}
+                style={{
+                  ...inputStyle,
+                  borderColor: manualMode && !isEditing && name.trim()
+                    ? "var(--color-bt-accent-border)"
+                    : "var(--color-bt-border)",
+                }}
+              />
+            </Field>
+          </div>
+        )}
+
+        {/* Optional fields — sleeps, price, thoughts, address, dates */}
         {showExpanded && (
           <>
             {/* Divider */}
             <div className="mt-4 mb-3 flex items-center gap-2">
               <div className="flex-1 border-t" style={{ borderColor: "var(--color-bt-border)" }} />
               <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                {manualMode && !isEditing ? "Property details" : "Optional"}
+                Optional
               </span>
               <div className="flex-1 border-t" style={{ borderColor: "var(--color-bt-border)" }} />
             </div>
 
             <div className="space-y-3">
-              {/* Nickname / Name */}
-              <Field label={manualMode && !isEditing ? "Property name *" : "Nickname"}>
-                <input
-                  type="text"
-                  placeholder="e.g. Beach House, The Lodge"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  // eslint-disable-next-line jsx-a11y/no-autofocus
-                  autoFocus={manualMode && !isEditing}
-                  className={inputCls}
-                  style={{
-                    ...inputStyle,
-                    borderColor: manualMode && !isEditing && name.trim()
-                      ? "var(--color-bt-accent-border)"
-                      : "var(--color-bt-border)",
-                  }}
-                />
-              </Field>
-
               {/* Sleeps + Price */}
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Sleeps">
