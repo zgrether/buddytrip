@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, CalendarDays, Plus, Trash2, Hotel, Pencil, Home } from "lucide-react";
+import { ExternalLink, MapPin, Plus, Trash2, Hotel, Pencil, Home, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import { AddLodgingSheet, type LodgingItem } from "./AddLodgingSheet";
@@ -81,7 +81,7 @@ function LodgingCard({
   const url = isHttpUrl(item.detail) ? item.detail! : null;
   const domain = url ? extractDomain(url) : null;
   const nickname = item.label && item.label !== domain ? item.label : null;
-  const name = nickname ?? domain ?? platform.label;
+  const name = nickname ?? domain ?? "No name";
 
   const checkIn = fmtDate(item.check_in_time);
   const checkOut = fmtDate(item.check_out_time);
@@ -91,127 +91,112 @@ function LodgingCard({
 
   const confirmed = !!item.is_confirmed;
 
+  const price = item.total_price
+    ? (/^[$€£¥]/.test(item.total_price) ? item.total_price : `$${item.total_price}`)
+    : null;
+
   return (
     <div
-      className="overflow-hidden rounded-xl transition-all"
+      className="flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
       style={{
+        background: confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
         border: `1px solid ${confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
       }}
     >
-      {/* Platform strip */}
-      <div
-        className="flex items-center gap-2 px-3 py-2"
-        style={{ background: confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-tag-bg)" }}
-      >
-        <span
-          className="flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider"
-          style={{ background: platform.color, color: "var(--color-bt-base)" }}
-        >
-          {platform.label}
-        </span>
-
-        <span className="flex-1" />
-
-        {/* Confirm toggle — planners only */}
-        {canEdit && (
-          <button
-            onClick={onConfirmToggle}
-            className="flex-shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
-            style={{ color: confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-          >
-            {confirmed ? "Confirmed 🔒" : "Confirm"}
-          </button>
-        )}
-
-        {canEdit && (
-          <>
-            <button
-              onClick={onEdit}
-              className="flex-shrink-0 flex h-5 w-5 items-center justify-center rounded"
-              style={{ color: "var(--color-bt-accent)" }}
-              aria-label="Edit property"
-            >
-              <Pencil size={13} />
-            </button>
-            <button
-              onClick={onRemove}
-              disabled={removing}
-              className="flex-shrink-0 flex h-5 w-5 items-center justify-center rounded disabled:opacity-40"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              aria-label="Remove property"
-            >
-              <Trash2 size={13} />
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Card body */}
-      <div
-        className="px-3 py-2.5 space-y-2"
-        style={{ background: "var(--color-bt-card-raised)" }}
-      >
-        {/* Row 1: Name · Open link */}
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        {/* Line 1: Name · sleeps · price · link */}
+        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             {name}
-          </p>
+          </span>
+          {item.property_name && (
+            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              · Sleeps {item.property_name}
+            </span>
+          )}
+          {price && (
+            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              · {price}
+            </span>
+          )}
           {url && (
             <a
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-shrink-0 flex items-center gap-1 no-underline"
+              className="flex items-center gap-0.5 no-underline"
+              style={{ color: "var(--color-bt-accent)" }}
             >
-              <ExternalLink size={11} style={{ color: "var(--color-bt-accent)" }} />
-              <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
-                → {platform.label}
-              </span>
+              <ExternalLink size={10} />
+              <span className="text-[11px] font-medium">→ {platform.label}</span>
             </a>
           )}
         </div>
 
-        {/* Row 2: Date · Sleeps */}
-        {(dateRange || item.property_name) && (
-          <div className="flex items-center justify-between gap-2">
-            {dateRange ? (
-              <div className="flex items-center gap-1.5">
-                <CalendarDays size={11} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-                <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {dateRange}
-                </span>
-              </div>
-            ) : <span />}
-            {item.property_name && (
-              <span className="flex-shrink-0 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                Sleeps {item.property_name}
-              </span>
-            )}
+        {/* Line 2: Notes / detail */}
+        {item.detail && !isHttpUrl(item.detail) && (
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {item.detail}
+          </p>
+        )}
+
+        {/* Line 3: Address → Map */}
+        {item.address && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <span>{item.address}</span>
+            <a
+              href={mapsUrl(item.address)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5"
+              style={{ color: "var(--color-bt-accent)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MapPin size={10} />
+              Map
+            </a>
           </div>
         )}
 
-        {/* Bottom row: Address (left) · Price (right) */}
-        {(item.address || item.total_price) && (
-          <div className="flex items-end justify-between gap-2">
-            {item.address ? (
-              <a
-                href={mapsUrl(item.address)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-start gap-1.5 no-underline"
-              >
-                <MapPin size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
-                <span className="text-[12px] leading-tight underline" style={{ color: "var(--color-bt-accent)" }}>
-                  {item.address}
-                </span>
-              </a>
-            ) : <span />}
-            {item.total_price && (
-              <span className="flex-shrink-0 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                {/^[$€£¥]/.test(item.total_price) ? item.total_price : `$${item.total_price}`}
-              </span>
-            )}
+        {/* Line 4: Check-in / check-out */}
+        {dateRange && (
+          <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <Clock size={10} />
+            {dateRange}
           </div>
+        )}
+      </div>
+
+      {/* Right actions */}
+      <div className="flex flex-shrink-0 items-center gap-1">
+        {canEdit && (
+          <button
+            onClick={onConfirmToggle}
+            className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
+            style={{ color: confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+          >
+            {confirmed ? "Confirmed 🔒" : "Confirm"}
+          </button>
+        )}
+        {canEdit && (
+          <>
+            <button
+              onClick={onEdit}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded"
+              aria-label="Edit property"
+            >
+              <Pencil size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+            <button
+              onClick={onRemove}
+              disabled={removing}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded disabled:opacity-40"
+              aria-label="Remove property"
+            >
+              <Trash2 size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          </>
         )}
       </div>
     </div>
