@@ -46,6 +46,7 @@ export const logisticsRouter = router({
         checkInTime: z.string().max(50).optional(),
         checkOutTime: z.string().max(50).optional(),
         totalPrice: z.string().max(100).optional(),
+        notes: z.string().max(1000).optional(),
         // Transport fields
         transportType: z.string().max(100).optional(),
         pickupLocation: z.string().max(500).optional(),
@@ -69,6 +70,7 @@ export const logisticsRouter = router({
           check_in_time: input.checkInTime ?? null,
           check_out_time: input.checkOutTime ?? null,
           total_price: input.totalPrice ?? null,
+          notes: input.notes ?? null,
           transport_type: input.transportType ?? null,
           pickup_location: input.pickupLocation ?? null,
           pickup_time: input.pickupTime ?? null,
@@ -104,6 +106,7 @@ export const logisticsRouter = router({
         checkInTime: z.string().max(50).nullable().optional(),
         checkOutTime: z.string().max(50).nullable().optional(),
         totalPrice: z.string().max(100).nullable().optional(),
+        notes: z.string().max(1000).nullable().optional(),
         transportType: z.string().max(100).nullable().optional(),
         pickupLocation: z.string().max(500).nullable().optional(),
         pickupTime: z.string().max(50).nullable().optional(),
@@ -121,6 +124,7 @@ export const logisticsRouter = router({
       if (input.checkInTime !== undefined) update.check_in_time = input.checkInTime;
       if (input.checkOutTime !== undefined) update.check_out_time = input.checkOutTime;
       if (input.totalPrice !== undefined) update.total_price = input.totalPrice;
+      if (input.notes !== undefined) update.notes = input.notes;
       if (input.transportType !== undefined) update.transport_type = input.transportType;
       if (input.pickupLocation !== undefined) update.pickup_location = input.pickupLocation;
       if (input.pickupTime !== undefined) update.pickup_time = input.pickupTime;

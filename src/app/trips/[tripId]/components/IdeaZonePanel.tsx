@@ -28,7 +28,7 @@ import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { SidebarChatPanel } from "./PlanningChatPanel";
 import { StageContextBar } from "./StageContextBar";
-import { AddIdeaLodgingSheet } from "./AddIdeaLodgingSheet";
+import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -114,6 +114,14 @@ function IdeaCard({
     { staleTime: 30_000 }
   );
 
+  const createLodging = trpc.ideaLodging.create.useMutation({
+    onSuccess: () => { utils.ideaLodging.list.invalidate({ ideaId: idea.id }); setShowAddLodging(false); },
+  });
+
+  const updateLodging = trpc.ideaLodging.update.useMutation({
+    onSuccess: () => { utils.ideaLodging.list.invalidate({ ideaId: idea.id }); setEditingLodging(null); },
+  });
+
   const removeLodging = trpc.ideaLodging.remove.useMutation({
     onSuccess: () => {
       utils.ideaLodging.list.invalidate({ ideaId: idea.id });
@@ -121,6 +129,40 @@ function IdeaCard({
     },
     onError: () => setDeletingLodgingId(null),
   });
+
+  const toIdeaSource = (platform: ReturnType<typeof detectPlatform>) =>
+    platform === "rental" ? "other" as const : platform;
+
+  const handleLodgingCreate = (values: PropertyFormValues) => {
+    const trimmedUrl = values.url.trim() || undefined;
+    const sleepsNum = values.sleeps.trim() ? parseInt(values.sleeps.trim(), 10) : undefined;
+    createLodging.mutate({
+      ideaId: idea.id,
+      tripId,
+      name: values.name.trim() || (trimmedUrl ? extractDomain(trimmedUrl) : "Property"),
+      source: trimmedUrl ? toIdeaSource(detectPlatform(trimmedUrl)) : undefined,
+      sleeps: sleepsNum,
+      priceNote: values.price.trim() || undefined,
+      url: trimmedUrl,
+      notes: values.notes.trim() || undefined,
+    });
+  };
+
+  const handleLodgingUpdate = (values: PropertyFormValues) => {
+    if (!editingLodging) return;
+    const trimmedUrl = values.url.trim() || undefined;
+    const sleepsNum = values.sleeps.trim() ? parseInt(values.sleeps.trim(), 10) : undefined;
+    updateLodging.mutate({
+      id: editingLodging.id,
+      tripId,
+      name: values.name.trim() || (trimmedUrl ? extractDomain(trimmedUrl) : "Property"),
+      source: trimmedUrl ? toIdeaSource(detectPlatform(trimmedUrl)) : null,
+      sleeps: sleepsNum ?? null,
+      priceNote: values.price.trim() || null,
+      url: trimmedUrl ?? null,
+      notes: values.notes.trim() || null,
+    });
+  };
 
   const updateIdea = trpc.ideas.update.useMutation({
     onSuccess() {
@@ -681,19 +723,28 @@ function IdeaCard({
             </div>
 
           </div>
-          {/* AddIdeaLodgingSheet */}
           {showAddLodging && (
-            <AddIdeaLodgingSheet
-              tripId={tripId}
-              ideaId={idea.id}
+            <AddPropertySheet
+              isPending={createLodging.isPending}
+              onSubmit={handleLodgingCreate}
               onClose={() => setShowAddLodging(false)}
             />
           )}
           {editingLodging && (
-            <AddIdeaLodgingSheet
-              tripId={tripId}
-              ideaId={idea.id}
-              item={editingLodging}
+            <AddPropertySheet
+              isEditing
+              initialValues={{
+                url: editingLodging.url ?? "",
+                name: editingLodging.name ?? "",
+                sleeps: editingLodging.sleeps != null ? String(editingLodging.sleeps) : "",
+                price: editingLodging.price_note ?? "",
+                notes: editingLodging.notes ?? "",
+                address: "",
+                checkIn: "",
+                checkOut: "",
+              }}
+              isPending={updateLodging.isPending}
+              onSubmit={handleLodgingUpdate}
               onClose={() => setEditingLodging(null)}
             />
           )}
