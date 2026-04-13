@@ -105,7 +105,7 @@ function LodgingCard({
     >
       {/* Content */}
       <div className="min-w-0 flex-1">
-        {/* Line 1: Name · sleeps · price · link */}
+        {/* Line 1: Name · sleeps · price */}
         <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
           <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             {name}
@@ -119,18 +119,6 @@ function LodgingCard({
             <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               · {price}
             </span>
-          )}
-          {url && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-0.5 no-underline"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              <ExternalLink size={10} />
-              <span className="text-[11px] font-medium">→ {platform.label}</span>
-            </a>
           )}
         </div>
 
@@ -164,6 +152,22 @@ function LodgingCard({
           <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             <Clock size={10} />
             {dateRange}
+          </div>
+        )}
+
+        {/* Bottom-right: listing link */}
+        {url && (
+          <div className="mt-1.5 flex justify-end">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5 no-underline"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              <ExternalLink size={10} />
+              <span className="text-[11px] font-medium">→ {platform.label}</span>
+            </a>
           </div>
         )}
       </div>
