@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ExternalLink, MapPin, Plus, Trash2, Hotel, Pencil, Home, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
-import { AddLodgingSheet, type LodgingItem } from "./AddLodgingSheet";
+import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
 
 // ── Platform config ───────────────────────────────────────────────────────
 
@@ -22,10 +22,9 @@ function getPlatform(key?: string | null) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-function extractDomain(url?: string | null): string {
+function extractDomainNullable(url?: string | null): string {
   if (!url) return "";
-  try { return new URL(url).hostname.replace(/^www\./, ""); }
-  catch { return url; }
+  return extractDomain(url);
 }
 
 function isHttpUrl(str?: string | null): boolean {
@@ -57,6 +56,7 @@ interface LodgingItemFull {
   check_out_time?: string | null;
   transport_type?: string | null;  // platform
   total_price?: string | null;
+  notes?: string | null;
   is_confirmed?: boolean | null;
 }
 
@@ -79,7 +79,7 @@ function LodgingCard({
 }) {
   const platform = getPlatform(item.transport_type);
   const url = isHttpUrl(item.detail) ? item.detail! : null;
-  const domain = url ? extractDomain(url) : null;
+  const domain = url ? extractDomainNullable(url) : null;
   const nickname = item.label && item.label !== domain ? item.label : null;
   const name = nickname ?? domain ?? "No name";
 
@@ -122,10 +122,10 @@ function LodgingCard({
           )}
         </div>
 
-        {/* Line 2: Notes / detail */}
-        {item.detail && !isHttpUrl(item.detail) && (
-          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {item.detail}
+        {/* Line 2: Thoughts/notes */}
+        {item.notes && (
+          <p className="mt-0.5 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+            {item.notes}
           </p>
         )}
 
@@ -226,7 +226,15 @@ export function LodgingPanel({
   const { data: items = [] } = trpc.logistics.list.useQuery({ tripId });
 
   const [showAddLodging, setShowAddLodging] = useState(false);
-  const [editingItem, setEditingItem] = useState<LodgingItem | null>(null);
+  const [editingItem, setEditingItem] = useState<LodgingItemFull | null>(null);
+
+  const createItem = trpc.logistics.create.useMutation({
+    onSuccess: () => { utils.logistics.list.invalidate({ tripId }); setShowAddLodging(false); },
+  });
+
+  const updateItem = trpc.logistics.update.useMutation({
+    onSuccess: () => { utils.logistics.list.invalidate({ tripId }); setEditingItem(null); },
+  });
 
   const removeItem = trpc.logistics.remove.useMutation({
     onSuccess: () => utils.logistics.list.invalidate({ tripId }),
@@ -274,6 +282,44 @@ export function LodgingPanel({
       if (!b.check_in_time) return -1;
       return a.check_in_time < b.check_in_time ? -1 : 1;
     });
+
+  // ── Submit handlers ──────────────────────────────────────────────────
+  const handleCreate = (values: PropertyFormValues) => {
+    const platform = isValidUrl(values.url) ? detectPlatform(values.url) : "other";
+    const domain = isValidUrl(values.url) ? extractDomain(values.url) : "";
+    createItem.mutate({
+      tripId,
+      type: "lodging",
+      label: values.name.trim() || domain || "Property",
+      detail: values.url || undefined,
+      propertyName: values.sleeps.trim() || undefined,
+      totalPrice: values.price.trim() || undefined,
+      notes: values.notes.trim() || undefined,
+      address: values.address.trim() || undefined,
+      checkInTime: values.checkIn || undefined,
+      checkOutTime: values.checkOut || undefined,
+      transportType: platform,
+    });
+  };
+
+  const handleUpdate = (values: PropertyFormValues) => {
+    if (!editingItem) return;
+    const platform = isValidUrl(values.url) ? detectPlatform(values.url) : "other";
+    const domain = isValidUrl(values.url) ? extractDomain(values.url) : "";
+    updateItem.mutate({
+      tripId,
+      itemId: editingItem.id,
+      label: values.name.trim() || domain || "Property",
+      detail: values.url || null,
+      propertyName: values.sleeps.trim() || null,
+      totalPrice: values.price.trim() || null,
+      notes: values.notes.trim() || null,
+      address: values.address.trim() || null,
+      checkInTime: values.checkIn || null,
+      checkOutTime: values.checkOut || null,
+      transportType: platform,
+    });
+  };
 
   const confirmedCount = lodgingItems.filter((i) => i.is_confirmed).length;
   const totalCount = lodgingItems.length;
@@ -343,16 +389,33 @@ export function LodgingPanel({
       </PlanningRow>
 
       {showAddLodging && (
-        <AddLodgingSheet
-          tripId={tripId}
+        <AddPropertySheet
+          showAddressAndDates
+          isPending={createItem.isPending}
+          onSubmit={handleCreate}
           onClose={() => setShowAddLodging(false)}
         />
       )}
 
       {editingItem && (
-        <AddLodgingSheet
-          tripId={tripId}
-          item={editingItem}
+        <AddPropertySheet
+          isEditing
+          showAddressAndDates
+          initialValues={{
+            url: editingItem.detail?.startsWith("http") ? editingItem.detail : "",
+            name: (() => {
+              const domain = editingItem.detail?.startsWith("http") ? extractDomainNullable(editingItem.detail) : "";
+              return editingItem.label && editingItem.label !== domain ? editingItem.label : "";
+            })(),
+            sleeps: editingItem.property_name ?? "",
+            price: editingItem.total_price ?? "",
+            notes: editingItem.notes ?? "",
+            address: editingItem.address ?? "",
+            checkIn: editingItem.check_in_time ?? "",
+            checkOut: editingItem.check_out_time ?? "",
+          }}
+          isPending={updateItem.isPending}
+          onSubmit={handleUpdate}
           onClose={() => setEditingItem(null)}
         />
       )}
