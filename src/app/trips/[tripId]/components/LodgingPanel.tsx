@@ -229,10 +229,37 @@ export function LodgingPanel({
     onSuccess: () => utils.logistics.list.invalidate({ tripId }),
   });
   const confirmItem = trpc.logistics.confirm.useMutation({
-    onSuccess: () => utils.logistics.list.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.logistics.list.cancel({ tripId });
+      const prev = utils.logistics.list.getData({ tripId });
+      utils.logistics.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId ? { ...item, is_confirmed: true } : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.logistics.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.logistics.list.invalidate({ tripId }),
   });
+
   const unconfirmItem = trpc.logistics.unconfirm.useMutation({
-    onSuccess: () => utils.logistics.list.invalidate({ tripId }),
+    async onMutate(vars) {
+      await utils.logistics.list.cancel({ tripId });
+      const prev = utils.logistics.list.getData({ tripId });
+      utils.logistics.list.setData({ tripId }, (old) =>
+        old?.map((item) =>
+          item.id === vars.itemId ? { ...item, is_confirmed: false } : item
+        )
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.logistics.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.logistics.list.invalidate({ tripId }),
   });
 
   // ── Derived data ─────────────────────────────────────────────────────
