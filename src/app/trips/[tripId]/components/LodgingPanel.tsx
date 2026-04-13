@@ -165,7 +165,7 @@ function LodgingCard({
             >
               <ExternalLink size={11} style={{ color: "var(--color-bt-accent)" }} />
               <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
-                Open
+                → {platform.label}
               </span>
             </a>
           )}
