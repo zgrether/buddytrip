@@ -155,52 +155,51 @@ function LodgingCard({
           </div>
         )}
 
-        {/* Bottom-right: listing link */}
-        {url && (
-          <div className="mt-1.5 flex justify-end">
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-0.5 no-underline"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              <ExternalLink size={10} />
-              <span className="text-[11px] font-medium">→ {platform.label}</span>
-            </a>
-          </div>
-        )}
       </div>
 
-      {/* Right actions */}
-      <div className="flex flex-shrink-0 items-center gap-1">
-        {canEdit && (
-          <button
-            onClick={onConfirmToggle}
-            className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
-            style={{ color: confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+      {/* Right column: actions (top) + listing link (bottom) */}
+      <div className="flex flex-shrink-0 flex-col items-end justify-between gap-2 self-stretch">
+        <div className="flex items-center gap-1">
+          {canEdit && (
+            <button
+              onClick={onConfirmToggle}
+              className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
+              style={{ color: confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+            >
+              {confirmed ? "Confirmed 🔒" : "Confirm"}
+            </button>
+          )}
+          {canEdit && (
+            <>
+              <button
+                onClick={onEdit}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded"
+                aria-label="Edit property"
+              >
+                <Pencil size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
+              <button
+                onClick={onRemove}
+                disabled={removing}
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded disabled:opacity-40"
+                aria-label="Remove property"
+              >
+                <Trash2 size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+              </button>
+            </>
+          )}
+        </div>
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-0.5 no-underline"
+            style={{ color: "var(--color-bt-accent)" }}
           >
-            {confirmed ? "Confirmed 🔒" : "Confirm"}
-          </button>
-        )}
-        {canEdit && (
-          <>
-            <button
-              onClick={onEdit}
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded"
-              aria-label="Edit property"
-            >
-              <Pencil size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
-            <button
-              onClick={onRemove}
-              disabled={removing}
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded disabled:opacity-40"
-              aria-label="Remove property"
-            >
-              <Trash2 size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
-          </>
+            <ExternalLink size={10} />
+            <span className="text-[11px] font-medium">→ {platform.label}</span>
+          </a>
         )}
       </div>
     </div>
