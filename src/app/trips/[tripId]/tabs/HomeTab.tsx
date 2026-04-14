@@ -1212,17 +1212,17 @@ function PlanningSection({
           trip={trip}
           canEdit={canEdit}
           isOwner={isOwner}
-          isOpen={openRow === "dates"}
-          onToggle={() => toggle("dates")}
+          isOpen={true}
+          onToggle={() => {}}
           onTabChange={onTabChange}
         />
       )}
-      {/* ── Lodging ── */}
+      {/* ── Lodging — always expanded ── */}
       <LodgingPanel
         tripId={trip.id}
         canEdit={canEdit}
-        isOpen={openRow === "lodging"}
-        onToggle={() => toggle("lodging")}
+        isOpen={true}
+        onToggle={() => {}}
       />
       {/* ── Travel — hidden during planning ── */}
       {stage !== "planning" && (
