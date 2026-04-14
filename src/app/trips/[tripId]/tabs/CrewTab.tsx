@@ -106,6 +106,7 @@ function CrewMemberRow({
   const rsvpCfg = m.rsvp_status ? RSVP_LABEL[m.rsvp_status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
   const canActOnPlanner = isOwner && !isMe && m.role === "Planner";
+  const canPromoteToCoplanner = isOwner && !isMe && m.role === "Member" && !m.isGuest && !isPlannerRow;
   const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
 
   const handleSave = async () => {
@@ -236,6 +237,17 @@ function CrewMemberRow({
                 style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
               >
                 Move to rest of crew
+              </button>
+            )}
+            {/* Crew row: promote to co-planner */}
+            {canPromoteToCoplanner && (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Planner" }); }}
+                disabled={updateRole.isPending}
+                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+                style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+              >
+                Make co-planner
               </button>
             )}
             {/* Remove (X) */}
