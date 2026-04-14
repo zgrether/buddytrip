@@ -483,22 +483,40 @@ export default function TripDetailPage() {
         );
       })()}
 
-      {/* ── Planning mobile chat FAB ──────────────────────────────────── */}
+      {/* ── Planning mobile side rail (chat + invitation) ─────────────── */}
       {stage === "planning" && (
-        <button
-          onClick={() => setShowChatDrawer(true)}
-          data-testid="floating-chat-btn"
-          className="fixed right-3 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center transition-colors active:scale-95 lg:hidden"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-            borderRadius: "1rem",
-            boxShadow: "var(--shadow-floating)",
-          }}
-          aria-label="Open crew chat"
-        >
-          <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
+        <div className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 lg:hidden">
+          <button
+            onClick={() => setShowChatDrawer(true)}
+            data-testid="floating-chat-btn"
+            className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+              borderRadius: "1rem",
+              boxShadow: "var(--shadow-floating)",
+            }}
+            aria-label="Open crew chat"
+          >
+            <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+          {isOwner && (
+            <button
+              onClick={() => setShowInvitationModal(true)}
+              data-testid="floating-invitation-btn"
+              className="flex h-12 w-12 items-center justify-center transition-opacity active:scale-95 hover:opacity-90"
+              style={{
+                background: "var(--color-bt-accent)",
+                color: "var(--color-bt-base)",
+                borderRadius: "1rem",
+                boxShadow: "var(--shadow-floating)",
+              }}
+              aria-label="Write invitation"
+            >
+              <Send size={18} />
+            </button>
+          )}
+        </div>
       )}
       <ChatDrawer
         tripId={tripId}

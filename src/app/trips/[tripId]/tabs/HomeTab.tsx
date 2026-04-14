@@ -1224,12 +1224,14 @@ function PlanningSection({
         isOpen={openRow === "lodging"}
         onToggle={() => toggle("lodging")}
       />
-      {/* ── Travel ── */}
-      <TravelPanel
-        tripId={trip.id}
-        isOpen={openRow === "travel"}
-        onToggle={() => toggle("travel")}
-      />
+      {/* ── Travel — hidden during planning ── */}
+      {stage !== "planning" && (
+        <TravelPanel
+          tripId={trip.id}
+          isOpen={openRow === "travel"}
+          onToggle={() => toggle("travel")}
+        />
+      )}
 
 
       {/* Modals rendered outside PlanningRows so they aren't gated by isOpen */}
