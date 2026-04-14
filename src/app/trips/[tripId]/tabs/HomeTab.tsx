@@ -500,6 +500,10 @@ function SetDestinationModal({
           </p>
         )}
 
+        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          Once set, the destination can only be changed from the trip settings.
+        </p>
+
         <button
           onClick={handleSave}
           disabled={lock.isPending || !title.trim()}
@@ -1110,15 +1114,6 @@ function PlanningSection({
                 </span>
               )}
             </p>
-            {canEdit && stage === "planning" && (
-              <button
-                onClick={() => setShowChangeDest(true)}
-                className="text-xs font-medium"
-                style={{ color: "var(--color-bt-accent)" }}
-              >
-                Change destination →
-              </button>
-            )}
           </div>
         ) : (
           /* No destination set */
@@ -1600,7 +1595,7 @@ export function HomeTab({
           )}
 
           {/* ── Itinerary panel — read-only confirmed-only timeline ── */}
-          {stage !== "idea" && (
+          {stage !== "idea" && stage !== "planning" && (
             <ItineraryPanel
               tripId={trip.id}
               tripStartDate={trip.start_date}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { MoreHorizontal, Lock, HelpCircle, X, MessageCircle, Send, Mail } from "lucide-react";
+import { Settings, Lock, HelpCircle, X, MessageCircle, Send, Mail } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -185,7 +185,7 @@ export default function TripDetailPage() {
       style={{ color: "var(--color-bt-text-dim)" }}
       aria-label="Trip settings"
     >
-      <MoreHorizontal size={18} />
+      <Settings size={18} />
     </button>
   ) : null;
 
@@ -406,6 +406,7 @@ export default function TripDetailPage() {
         <TripSettingsModal
           tripId={tripId}
           tripName={trip.title}
+          trip={trip}
           viewerRole={role}
           onClose={() => setShowSettings(false)}
         />
