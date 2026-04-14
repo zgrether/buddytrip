@@ -191,10 +191,10 @@ function CrewMemberRow({
 
         {/* ── Right side: status + actions ─────────────────────────────────── */}
         <div className="flex flex-shrink-0 items-center">
-          {/* vote chip (going stage), invite status (planning), hidden (idea) */}
-          {stage !== "idea" && (
+          {/* RSVP chip — going stage only */}
+          {showRsvpStatus && (
           <div className="flex w-[64px] flex-shrink-0 justify-center">
-            {showRsvpStatus ? (() => {
+            {(() => {
               const rsvp = m.rsvp_status;
               const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
               return cfg ? (
@@ -212,17 +212,7 @@ function CrewMemberRow({
                   Pending
                 </span>
               );
-            })() : m.role !== "Owner" ? (
-              m.status === "draft" ? (
-                <span className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Not invited
-                </span>
-              ) : m.status === "invited" ? (
-                <span className="text-xs" style={{ color: "var(--color-bt-ready)" }}>
-                  Invited
-                </span>
-              ) : null
-            ) : null}
+            })()}
           </div>
           )}
 
