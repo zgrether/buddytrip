@@ -106,7 +106,7 @@ function CrewMemberRow({
   const rsvpCfg = m.rsvp_status ? RSVP_LABEL[m.rsvp_status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
   const canActOnPlanner = isOwner && !isMe && m.role === "Planner";
-  const canPromoteToCoplanner = isOwner && !isMe && m.role === "Member" && !m.isGuest && !isPlannerRow;
+  const canPromoteToCoplanner = isOwner && !isMe && m.role === "Member" && !isPlannerRow && !!m.user?.email;
   const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
 
   const handleSave = async () => {
@@ -236,7 +236,7 @@ function CrewMemberRow({
                 className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
                 style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
               >
-                Move to rest of crew
+                Remove as planner
               </button>
             )}
             {/* Crew row: promote to co-planner */}
@@ -247,7 +247,7 @@ function CrewMemberRow({
                 className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
                 style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
               >
-                Make co-planner
+                Make planner
               </button>
             )}
             {/* Remove (X) */}
@@ -591,17 +591,31 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         </div>
       )}
 
-      {/* ── CO-PLANNERS section ── */}
+      {/* ── PLANNERS section ── */}
       <div>
+        {/* Search above header — owner only */}
+        {isOwner && (
+          <div className="mb-2">
+            <CrewSearchInput
+              tripId={tripId}
+              defaultRole="Planner"
+              defaultStatus="draft"
+              allowGhost={false}
+              allowInvite
+              showSearchIcon
+              placeholder="Search by email..."
+              frequentTripmates={[]}
+              onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
+            />
+          </div>
+        )}
         <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          className="mb-1 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Co-planners
+          Planners
         </h2>
-
-        {/* Owner rows first */}
-        {plannersSorted.filter((m) => m.role === "Owner").map((m, i) => {
+        {plannersSorted.map((m, i) => {
           const isMe = m.user_id === currentUser?.id;
           return (
             <CrewMemberRow
@@ -621,52 +635,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
             />
           );
         })}
-
-        {/* Get some help — between owner and planners, owner only */}
-        {isOwner && (
-          <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-            <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-              Get some help
-            </p>
-            <CrewSearchInput
-              tripId={tripId}
-              defaultRole="Planner"
-              defaultStatus="draft"
-              allowGhost={false}
-              allowInvite
-              showSearchIcon
-              placeholder="Search by email..."
-              frequentTripmates={[]}
-              onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
-            />
-          </div>
-        )}
-
-        {/* Planner rows */}
-        {plannersSorted.filter((m) => m.role === "Planner").length > 0 && (
-          <div className="mt-2">
-            {plannersSorted.filter((m) => m.role === "Planner").map((m, i) => {
-              const isMe = m.user_id === currentUser?.id;
-              return (
-                <CrewMemberRow
-                  key={m.memberId}
-                  member={m}
-                  tripId={tripId}
-                  canEdit={canEdit}
-                  isOwner={isOwner}
-                  isMe={isMe}
-                  index={i}
-                  isExpanded={false}
-                  showRsvpStatus={showRsvpStatus}
-                  stage={stage}
-                  isPlannerRow
-                  onToggle={() => {}}
-                  onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-                />
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* ── REST OF THE CREW section ── */}
@@ -680,7 +648,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
         {/* Name + email add for crew members */}
         {canEdit && (
-          <div className="mb-4">
+          <div className="mb-2">
             <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
               Start adding the names and emails of everyone you&apos;re planning to invite. Nothing is set in stone — you can always add, remove, or update people later.
             </p>
