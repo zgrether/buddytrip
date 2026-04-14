@@ -581,53 +581,80 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
       {/* ── CO-PLANNERS section ── */}
       <div>
-        <div className="mb-2 flex items-center gap-3">
-          <h2
-            className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Co-planners
-          </h2>
-          {isOwner && (
-            <div className="flex-1">
-              <CrewSearchInput
-                tripId={tripId}
-                defaultRole="Planner"
-                defaultStatus="draft"
-                allowGhost={false}
-                allowInvite
-                showSearchIcon
-                placeholder="Search by email..."
-                frequentTripmates={[]}
-                onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
-              />
-            </div>
-          )}
-        </div>
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Co-planners
+        </h2>
 
-        <div>
-          {plannersSorted.map((m, i) => {
-            const isMe = m.user_id === currentUser?.id;
-            return (
-              <CrewMemberRow
-                key={m.memberId}
-                member={m}
-                tripId={tripId}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                isMe={isMe}
-                index={i}
-                isExpanded={false}
-                showRsvpStatus={showRsvpStatus}
-                stage={stage}
-                isPlannerRow
-                onToggle={() => {}}
-                onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-              />
-            );
-          })}
-        </div>
+        {/* Owner rows first */}
+        {plannersSorted.filter((m) => m.role === "Owner").map((m, i) => {
+          const isMe = m.user_id === currentUser?.id;
+          return (
+            <CrewMemberRow
+              key={m.memberId}
+              member={m}
+              tripId={tripId}
+              canEdit={canEdit}
+              isOwner={isOwner}
+              isMe={isMe}
+              index={i}
+              isExpanded={false}
+              showRsvpStatus={showRsvpStatus}
+              stage={stage}
+              isPlannerRow
+              onToggle={() => {}}
+              onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+            />
+          );
+        })}
 
+        {/* Get some help — between owner and planners, owner only */}
+        {isOwner && (
+          <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+            <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+              Get some help
+            </p>
+            <CrewSearchInput
+              tripId={tripId}
+              defaultRole="Planner"
+              defaultStatus="draft"
+              allowGhost={false}
+              allowInvite
+              showSearchIcon
+              placeholder="Search by email..."
+              frequentTripmates={[]}
+              onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
+            />
+          </div>
+        )}
+
+        {/* Planner rows */}
+        {plannersSorted.filter((m) => m.role === "Planner").length > 0 && (
+          <div className="mt-2">
+            {plannersSorted.filter((m) => m.role === "Planner").map((m, i) => {
+              const isMe = m.user_id === currentUser?.id;
+              return (
+                <CrewMemberRow
+                  key={m.memberId}
+                  member={m}
+                  tripId={tripId}
+                  canEdit={canEdit}
+                  isOwner={isOwner}
+                  isMe={isMe}
+                  index={i}
+                  isExpanded={false}
+                  showRsvpStatus={showRsvpStatus}
+                  stage={stage}
+                  isPlannerRow
+                  onToggle={() => {}}
+                  onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── REST OF THE CREW section ── */}
@@ -638,6 +665,42 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         >
           Rest of the crew
         </h2>
+
+        {/* Name + email add for crew members */}
+        {canEdit && (
+          <div className="mb-4">
+            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Start adding the names and emails of everyone you&apos;re planning to invite. Nothing is set in stone — you can always add, remove, or update people later.
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="Name"
+                className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+              />
+              <input
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                placeholder="Email (optional)"
+                type="email"
+                className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+              />
+              <button
+                onClick={handleAdd}
+                disabled={!addName.trim() || isAdding}
+                className="flex-shrink-0 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {isAdding ? "..." : "Add"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* RSVP headcount summary (GOING/NOW stage) */}
         {showRsvpStatus && (() => {
@@ -681,37 +744,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
           <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             No crew members yet.
           </p>
-        )}
-
-        {/* Name + email add for crew members */}
-        {canEdit && (
-          <div className="mt-2 flex gap-2">
-            <input
-              value={addName}
-              onChange={(e) => setAddName(e.target.value)}
-              placeholder="Name"
-              className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-            />
-            <input
-              value={addEmail}
-              onChange={(e) => setAddEmail(e.target.value)}
-              placeholder="Email (optional)"
-              type="email"
-              className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-            />
-            <button
-              onClick={handleAdd}
-              disabled={!addName.trim() || isAdding}
-              className="flex-shrink-0 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              {isAdding ? "..." : "Add"}
-            </button>
-          </div>
         )}
       </div>
     </div>
