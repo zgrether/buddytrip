@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, Mail, Send, X } from "lucide-react";
+import { Ghost, Send, X } from "lucide-react";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import type { TabProps } from "./types";
 
 // ── RSVP helpers ──────────────────────────────────────────────────────────
@@ -411,81 +410,6 @@ function CrewMemberRow({
   );
 }
 
-// ── WriteInvitationPanel ─────────────────────────────────────────────────
-
-function WriteInvitationPanel({
-  tripId,
-  aboutMessage,
-  isOpen,
-  onToggle,
-}: {
-  tripId: string;
-  aboutMessage?: string | null;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const [draft, setDraft] = useState(aboutMessage ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const updateMessage = trpc.trips.updateAboutMessage.useMutation({
-    onSuccess() {
-      setSaving(false);
-      utils.trips.getById.invalidate({ tripId });
-    },
-    onError() {
-      setSaving(false);
-    },
-  });
-
-  const hasDraft = !!(draft.trim());
-  const state: ArcCardState = "none";
-  const note = hasDraft ? "Draft saved" : "Not written yet";
-
-  const handleBlur = () => {
-    const trimmed = draft.trim();
-    if (trimmed === (aboutMessage?.trim() ?? "")) return;
-    setSaving(true);
-    updateMessage.mutate({ tripId, aboutMessage: trimmed });
-  };
-
-  return (
-    <PlanningRow
-      icon={<Mail size={16} />}
-      label="Write Invitation"
-      note={note}
-      noteWarn={hasDraft}
-      state={state}
-      isOpen={isOpen}
-      onToggle={onToggle}
-    >
-      <div className="space-y-2">
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Write a message to your crew — this goes out by email when you make the trip official.
-        </p>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="Hey crew, here's the plan..."
-          rows={4}
-          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        {saving && (
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Saving…
-          </p>
-        )}
-      </div>
-    </PlanningRow>
-  );
-}
-
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
 export function CrewTab({ trip, canEdit }: TabProps) {
@@ -498,7 +422,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const [addEmail, setAddEmail] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [invitationOpen, setInvitationOpen] = useState(false);
 
   const createGhost = trpc.ghostCrew.create.useMutation();
   const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
@@ -552,16 +475,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
   return (
     <div className="space-y-4 px-4">
-      {/* ── Write Invitation — owner only ── */}
-      {isOwner && (
-        <WriteInvitationPanel
-          tripId={tripId}
-          aboutMessage={trip.about_message}
-          isOpen={invitationOpen}
-          onToggle={() => setInvitationOpen((v) => !v)}
-        />
-      )}
-
       {/* Nudge button (going stage only) */}
       {canEdit && showRsvpStatus && pendingWithEmailCount > 0 && (
         <div className="flex items-center justify-center">
