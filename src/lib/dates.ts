@@ -77,3 +77,16 @@ export function formatDateRange(
   if (start) return `From ${fmt(start)}`;
   return `Until ${fmt(end!)}`;
 }
+
+/**
+ * Format an "HH:MM" 24-hour time string as 12-hour with AM/PM (e.g. "3:45 PM").
+ * Returns the input unchanged if it doesn't match the expected shape.
+ */
+export function fmtTime12(t: string): string {
+  const [hStr, mStr] = t.split(":");
+  const h = parseInt(hStr, 10);
+  if (Number.isNaN(h) || mStr === undefined) return t;
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${mStr} ${suffix}`;
+}
