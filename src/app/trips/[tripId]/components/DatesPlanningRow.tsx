@@ -80,7 +80,7 @@ export function DatesPlanningRow({
   canEdit,
   isOwner,
   isOpen,
-  onToggle,
+  onToggle: _onToggle,
   onTabChange,
 }: DatesPlanningRowProps) {
   const tripId = trip.id;
@@ -363,33 +363,6 @@ export function DatesPlanningRow({
     },
   });
 
-  const unlockDates = trpc.datePoll.unlock.useMutation({
-    async onMutate() {
-      await utils.trips.getById.cancel({ tripId });
-      const prevTrip = utils.trips.getById.getData({ tripId });
-      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
-        old
-          ? {
-              ...old,
-              start_date: null,
-              end_date: null,
-              date_poll_active: old.date_set_method === "poll",
-              date_poll_state: old.date_set_method === "poll" ? "draft" : null,
-            }
-          : old
-      );
-      return { prevTrip };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prevTrip !== undefined)
-        utils.trips.getById.setData({ tripId }, ctx.prevTrip);
-    },
-    onSettled() {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
   const resetVotes = trpc.datePoll.resetVotes.useMutation({
     async onMutate() {
       await utils.datePoll.get.cancel({ tripId });
@@ -456,12 +429,6 @@ export function DatesPlanningRow({
       return `Poll closed · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
     return "";
   }, [datesLocked, isOwner, pollState, windows.length, trip.start_date, trip.end_date]);
-
-  // Non-owners can expand when dates are locked (to see them) or when a
-  // poll is active (to vote). Owners can always expand.
-  const canExpand = isOwner || datesLocked || (pollState === "active" && hasWindows);
-  const effectiveOpen = isOpen && canExpand;
-  const handleToggle = canExpand ? onToggle : () => {};
 
   const anyVotes = useMemo(
     () => windows.some((w) => w.votes.length > 0),
@@ -1080,9 +1047,9 @@ export function DatesPlanningRow({
         note={headerNote}
         warnState={pollState !== null}
         state={state}
-        isOpen={effectiveOpen}
-        onToggle={handleToggle}
-        noExpand={!canExpand}
+        isOpen={true}
+        onToggle={() => {}}
+        noExpand={true}
       >
         {renderBody()}
       </PlanningRow>

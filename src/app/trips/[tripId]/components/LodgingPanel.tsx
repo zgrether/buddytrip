@@ -343,6 +343,7 @@ export function LodgingPanel({
         state={state}
         isOpen={isOpen}
         onToggle={onToggle}
+        noExpand={true}
       >
         <div>
           <p className="mb-3 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
