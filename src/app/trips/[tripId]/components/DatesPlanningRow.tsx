@@ -114,7 +114,6 @@ export function DatesPlanningRow({
   const [directEnd, setDirectEnd] = useState("");
 
   // Modals and confirm dialogs
-  const [showChangeDates, setShowChangeDates] = useState(false);
   const [showSelectDateModal, setShowSelectDateModal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -995,7 +994,6 @@ export function DatesPlanningRow({
     // For poll-set dates: go straight back to poll draft state (no modal needed).
     // For direct-set dates: open the change-dates modal.
     if (datesLocked) {
-      const fromPoll = trip.date_set_method === "poll";
       return (
         <div className="space-y-2">
           <p
@@ -1008,20 +1006,6 @@ export function DatesPlanningRow({
             {nightsBetween(trip.start_date!, trip.end_date!)} night
             {nightsBetween(trip.start_date!, trip.end_date!) !== 1 ? "s" : ""}
           </p>
-          {isOwner && (
-            <button
-              onClick={
-                fromPoll
-                  ? () => unlockDates.mutate({ tripId })
-                  : () => setShowChangeDates(true)
-              }
-              disabled={fromPoll && unlockDates.isPending}
-              className="text-xs font-medium transition-opacity disabled:opacity-50"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              {fromPoll && unlockDates.isPending ? "Going back…" : "Change dates →"}
-            </button>
-          )}
         </div>
       );
     }
@@ -1051,6 +1035,16 @@ export function DatesPlanningRow({
 
             {/* Date pickers + action button */}
             {renderDatePickerRow(pollState === "draft" ? "poll" : "set")}
+
+            {/* Note: dates can be changed later from trip settings */}
+            {pollState !== "draft" && (
+              <p
+                className="mt-2 text-xs"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Once set, dates can only be changed from the trip settings.
+              </p>
+            )}
 
             {/* Poll the crew — only in null (direct) mode */}
             {pollState === null && (
@@ -1093,37 +1087,6 @@ export function DatesPlanningRow({
         {renderBody()}
       </PlanningRow>
 
-      {/* Change dates modal (opens from the locked-dates card) */}
-      {showChangeDates && (
-        <ChangeDatesModal
-          tripId={tripId}
-          initialStart={trip.start_date ?? ""}
-          initialEnd={trip.end_date ?? ""}
-          method={trip.date_set_method ?? "direct"}
-          onClose={() => setShowChangeDates(false)}
-          onSubmit={(startDate, endDate) => {
-            lockDates.mutate(
-              {
-                tripId,
-                startDate,
-                endDate,
-                method: trip.date_set_method ?? "direct",
-              },
-              {
-                onSuccess() {
-                  setShowChangeDates(false);
-                },
-              }
-            );
-          }}
-          isPending={lockDates.isPending}
-          onClear={() => {
-            unlockDates.mutate({ tripId }, { onSuccess() { setShowChangeDates(false); } });
-          }}
-          isClearPending={unlockDates.isPending}
-        />
-      )}
-
       {/* Select date modal — pick a winning window from the poll */}
       {showSelectDateModal && (
         <SelectDateModal
@@ -1164,112 +1127,6 @@ export function DatesPlanningRow({
   );
 }
 
-// ── ChangeDatesModal ─────────────────────────────────────────────────────
-
-function ChangeDatesModal({
-  tripId: _tripId,
-  initialStart,
-  initialEnd,
-  onClose,
-  onSubmit,
-  isPending,
-  onClear,
-  isClearPending,
-}: {
-  tripId: string;
-  initialStart: string;
-  initialEnd: string;
-  method: "direct" | "poll";
-  onClose: () => void;
-  onSubmit: (startDate: string, endDate: string) => void;
-  isPending: boolean;
-  onClear: () => void;
-  isClearPending: boolean;
-}) {
-  useModalBackButton(onClose);
-  const [startDate, setStartDate] = useState(initialStart);
-  const [endDate, setEndDate] = useState(initialEnd);
-  const canSubmit = !!startDate && !!endDate && startDate < endDate && !isPending;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[400px] rounded-t-2xl p-6 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          className="text-lg font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Change dates
-        </h2>
-
-        <div className="mt-4 flex items-center gap-2">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
-        </div>
-
-        <button
-          onClick={() => onSubmit(startDate, endDate)}
-          disabled={!canSubmit}
-          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-          }}
-        >
-          {isPending ? "Updating..." : "Update dates"}
-        </button>
-
-        <button
-          onClick={onClear}
-          disabled={isClearPending || isPending}
-          className="mt-2 w-full rounded-xl border py-2.5 text-sm font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
-          style={{
-            borderColor: "var(--color-bt-danger-border)",
-            color: "var(--color-bt-danger)",
-          }}
-        >
-          {isClearPending ? "Clearing..." : "Clear dates"}
-        </button>
-
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── SelectDateModal ──────────────────────────────────────────────────────
 
 function SelectDateModal({
@@ -1294,7 +1151,7 @@ function SelectDateModal({
         className="w-full max-w-sm rounded-t-2xl p-5 lg:rounded-2xl"
         style={{ background: "var(--color-bt-card)" }}
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between">
           <p
             className="text-base font-semibold"
             style={{ color: "var(--color-bt-text)" }}
@@ -1310,6 +1167,12 @@ function SelectDateModal({
             <X size={16} />
           </button>
         </div>
+        <p
+          className="mb-4 text-xs"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Once selected, dates can only be changed from the trip settings.
+        </p>
         <div className="space-y-2">
           {windows.map((w) => {
             const nights = nightsBetween(w.start_date, w.end_date);
