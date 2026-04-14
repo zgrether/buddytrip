@@ -593,28 +593,32 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
       {/* ── PLANNERS section ── */}
       <div>
-        {/* Search above header — owner only */}
-        {isOwner && (
-          <div className="mb-2">
-            <CrewSearchInput
-              tripId={tripId}
-              defaultRole="Planner"
-              defaultStatus="draft"
-              allowGhost={false}
-              allowInvite
-              showSearchIcon
-              placeholder="Search by email..."
-              frequentTripmates={[]}
-              onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
-            />
-          </div>
-        )}
         <h2
           className="mb-1 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Planners
         </h2>
+        {isOwner && (
+          <>
+            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Invite friends who are good at planning to join the early conversations — they&apos;ll be able to add ideas, vote, and help shape the trip before it&apos;s official.
+            </p>
+            <div className="mb-2">
+              <CrewSearchInput
+                tripId={tripId}
+                defaultRole="Planner"
+                defaultStatus="draft"
+                allowGhost={false}
+                allowInvite
+                showSearchIcon
+                placeholder="Search by email..."
+                frequentTripmates={[]}
+                onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
+              />
+            </div>
+          </>
+        )}
         {plannersSorted.map((m, i) => {
           const isMe = m.user_id === currentUser?.id;
           return (
