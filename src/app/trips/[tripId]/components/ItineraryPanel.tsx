@@ -306,8 +306,10 @@ function LoadingSkeleton() {
 
 function EmptyState({
   onTabChange,
+  planning,
 }: {
   onTabChange?: (tab: string) => void;
+  planning: boolean;
 }) {
   return (
     <div
@@ -332,9 +334,11 @@ function EmptyState({
         className="mt-0.5 text-xs"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Planners can confirm items in the Schedule tab.
+        {planning
+          ? "Confirmed items will show up here as they get locked in."
+          : "Planners can confirm items in the Schedule tab."}
       </p>
-      {onTabChange && (
+      {!planning && onTabChange && (
         <button
           type="button"
           onClick={() => onTabChange("schedule")}
@@ -344,6 +348,34 @@ function EmptyState({
           Open the Schedule tab
         </button>
       )}
+    </div>
+  );
+}
+
+function WipBanner() {
+  return (
+    <div
+      className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2"
+      style={{
+        background: "var(--color-bt-warning-faint)",
+        border: "1px solid var(--color-bt-warning)",
+      }}
+    >
+      <Sparkles
+        size={14}
+        className="mt-0.5 flex-shrink-0"
+        style={{ color: "var(--color-bt-warning)" }}
+        aria-hidden
+      />
+      <p
+        className="text-xs leading-snug"
+        style={{ color: "var(--color-bt-warning)" }}
+      >
+        <span className="font-semibold">Schedule is a work in progress.</span>{" "}
+        <span style={{ color: "var(--color-bt-text-dim)" }}>
+          Planners are still finalizing details — confirmed items are shown below.
+        </span>
+      </p>
     </div>
   );
 }
@@ -360,11 +392,12 @@ export function ItineraryPanel({
   // Hidden entirely during the idea stage.
   const hidden = stage === "idea";
 
-  // Show the "still being worked on" copy during planning.
-  const planning = !hidden && stage === "planning" && status !== "now" && status !== "past";
+  // Planning stage still shows confirmed items, with a "work in progress"
+  // banner so viewers know details may change.
+  const planning =
+    !hidden && stage === "planning" && status !== "now" && status !== "past";
 
-  // Always call hooks in the same order — but only render results outside the
-  // planning teaser.
+  // Always call hooks in the same order.
   const scheduleQuery = trpc.schedule.list.useQuery(
     { tripId },
     { enabled: !hidden }
@@ -379,7 +412,7 @@ export function ItineraryPanel({
   );
 
   const events = useMemo(() => {
-    if (hidden || planning) return [];
+    if (hidden) return [];
     return buildItinerary({
       scheduleItems: scheduleQuery.data ?? [],
       logisticsItems: logisticsQuery.data ?? [],
@@ -387,7 +420,6 @@ export function ItineraryPanel({
     });
   }, [
     hidden,
-    planning,
     scheduleQuery.data,
     logisticsQuery.data,
     membersQuery.data,
@@ -400,34 +432,6 @@ export function ItineraryPanel({
 
   if (hidden) return null;
 
-  if (planning) {
-    return (
-      <PanelShell>
-        <PanelHeader />
-        <div
-          className="rounded-xl px-4 py-5 text-center"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            border: "1px dashed var(--color-bt-border)",
-          }}
-        >
-          <p
-            className="text-sm font-medium"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            Your planners are still working on the schedule.
-          </p>
-          <p
-            className="mt-1 text-xs"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Confirmed items will show up here.
-          </p>
-        </div>
-      </PanelShell>
-    );
-  }
-
   const isLoading =
     scheduleQuery.isLoading ||
     logisticsQuery.isLoading ||
@@ -437,10 +441,12 @@ export function ItineraryPanel({
     <PanelShell>
       <PanelHeader />
 
+      {planning && <WipBanner />}
+
       {isLoading ? (
         <LoadingSkeleton />
       ) : events.length === 0 ? (
-        <EmptyState onTabChange={onTabChange} />
+        <EmptyState onTabChange={onTabChange} planning={planning} />
       ) : (
         <div className="space-y-4">
           {/* Past — collapsed behind <details> */}
