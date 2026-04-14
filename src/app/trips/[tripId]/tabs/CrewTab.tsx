@@ -642,7 +642,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
       </div>
 
       {/* ── REST OF THE CREW section ── */}
-      <div className="pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+      <div className="pt-4">
         <h2
           className="mb-2 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
