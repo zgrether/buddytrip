@@ -7,7 +7,6 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { RoleBadge } from "@/components/RoleBadge";
 import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import type { TabProps } from "./types";
 
@@ -24,12 +23,6 @@ function _rsvpSortKey(rsvpStatus: string | null): number {
   if (rsvpStatus === null || rsvpStatus === undefined) return 2; // pending after maybe, before out
   return RSVP_SORT_ORDER[rsvpStatus] ?? 2;
 }
-
-const ROLE_COLOR: Record<string, string> = {
-  Owner:   "var(--color-bt-accent)",
-  Planner: "var(--color-bt-ready)",
-  Member:  "var(--color-bt-text-dim)",
-};
 
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
 
@@ -110,7 +103,6 @@ function CrewMemberRow({
   };
 
   const display = m.displayName;
-  const _roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
   const rsvpCfg = m.rsvp_status ? RSVP_LABEL[m.rsvp_status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
   const canActOnPlanner = isOwner && !isMe && m.role === "Planner";
@@ -196,18 +188,9 @@ function CrewMemberRow({
           ) : null}
         </div>
 
-        {/* ── Right side: fixed 3-column layout ───────────────────────────── */}
-        {/* Col 1 (badge) | Col 2 (vote/status) | Col 3 (delete) — widths are */}
-        {/* fixed so every row aligns regardless of content.                   */}
+        {/* ── Right side: status + actions ─────────────────────────────────── */}
         <div className="flex flex-shrink-0 items-center">
-          {/* Col 1: role badge */}
-          <div className="flex w-[68px] flex-shrink-0 justify-center">
-            {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
-              <RoleBadge role={m.role} />
-            )}
-          </div>
-
-          {/* Col 2: vote chip (going stage), invite status (planning), hidden (idea) */}
+          {/* vote chip (going stage), invite status (planning), hidden (idea) */}
           {stage !== "idea" && (
           <div className="flex w-[64px] flex-shrink-0 justify-center">
             {showRsvpStatus ? (() => {
@@ -244,7 +227,7 @@ function CrewMemberRow({
 
           {/* Col 3: actions */}
           <div className="flex flex-shrink-0 items-center gap-1">
-            {/* Planner row: demote to Member */}
+            {/* Planner row: move to rest of crew */}
             {isPlannerRow && canActOnPlanner && (
               <button
                 onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
@@ -252,7 +235,7 @@ function CrewMemberRow({
                 className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
                 style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
               >
-                Demote
+                Move to rest of crew
               </button>
             )}
             {/* Remove (X) */}
@@ -598,12 +581,29 @@ export function CrewTab({ trip, canEdit }: TabProps) {
 
       {/* ── CO-PLANNERS section ── */}
       <div>
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Co-planners
-        </h2>
+        <div className="mb-2 flex items-center gap-3">
+          <h2
+            className="flex-shrink-0 text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Co-planners
+          </h2>
+          {isOwner && (
+            <div className="flex-1">
+              <CrewSearchInput
+                tripId={tripId}
+                defaultRole="Planner"
+                defaultStatus="draft"
+                allowGhost={false}
+                allowInvite
+                showSearchIcon
+                placeholder="Search by email..."
+                frequentTripmates={[]}
+                onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
+              />
+            </div>
+          )}
+        </div>
 
         <div>
           {plannersSorted.map((m, i) => {
@@ -628,31 +628,15 @@ export function CrewTab({ trip, canEdit }: TabProps) {
           })}
         </div>
 
-        {/* Email-find add for planners — owner only */}
-        {isOwner && (
-          <div className="mt-2">
-            <CrewSearchInput
-              tripId={tripId}
-              defaultRole="Planner"
-              defaultStatus="draft"
-              allowGhost={false}
-              allowInvite
-              showSearchIcon
-              placeholder="Find by email to add a co-planner..."
-              frequentTripmates={[]}
-              onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
-            />
-          </div>
-        )}
       </div>
 
-      {/* ── CREW section ── */}
+      {/* ── REST OF THE CREW section ── */}
       <div className="pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
         <h2
           className="mb-2 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Crew
+          Rest of the crew
         </h2>
 
         {/* RSVP headcount summary (GOING/NOW stage) */}
