@@ -36,6 +36,7 @@ import { DatesPlanningRow } from "../components/DatesPlanningRow";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TravelPanel } from "../components/TravelPanel";
 import { TravelEntryForm } from "../components/TravelEntryForm";
+import { ItineraryPanel } from "../components/ItineraryPanel";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
@@ -1596,6 +1597,17 @@ export function HomeTab({
           {/* ── GOING / NOW stage: RSVP panel ──────────────────────── */}
           {(stage === "going" || status === "now") && (
             <RsvpPanel tripId={trip.id} members={members} currentUserId={currentUser?.id ?? null} />
+          )}
+
+          {/* ── Itinerary panel — read-only confirmed-only timeline ── */}
+          {stage !== "idea" && (
+            <ItineraryPanel
+              tripId={trip.id}
+              tripStartDate={trip.start_date}
+              stage={stage}
+              status={status}
+              onTabChange={onTabChange}
+            />
           )}
 
           {/* ── Planning rows — gated by stage ────────────────────── */}

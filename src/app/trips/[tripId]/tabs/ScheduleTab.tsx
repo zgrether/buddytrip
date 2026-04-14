@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
-import { parseLocalDate } from "@/lib/dates";
+import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
 import type { TabProps } from "./types";
 
@@ -84,14 +84,6 @@ function generateTripDays(start: string, end: string): string[] {
     cur.setDate(cur.getDate() + 1);
   }
   return days;
-}
-
-function fmtTime12(t: string): string {
-  const [hStr, mStr] = t.split(":");
-  const h = parseInt(hStr, 10);
-  const suffix = h >= 12 ? "PM" : "AM";
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${mStr} ${suffix}`;
 }
 
 function dayNumber(date: string, tripStart: string | null): number | null {
