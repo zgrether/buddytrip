@@ -125,12 +125,6 @@ function CrewMemberRow({
     onUpdated();
   };
 
-  const handleTogglePlanner = () => {
-    if (!m.user_id) return;
-    const newRole = m.role === "Planner" ? "Member" : "Planner";
-    updateRole.mutate({ tripId, userId: m.user_id, role: newRole });
-  };
-
   const handleRemove = () => {
     if (!m.user_id) return;
     if (m.isGuest) {
@@ -286,24 +280,26 @@ function CrewMemberRow({
           className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
         >
-          {/* Name + email */}
-          <div className="flex gap-2">
-            <input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="Name"
-              className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            />
-            <input
-              value={editEmail}
-              onChange={(e) => setEditEmail(e.target.value)}
-              placeholder="Email"
-              type="email"
-              className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-              style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            />
-          </div>
+          {/* Name + email — guest-only (validated users manage their own profile) */}
+          {m.isGuest && (
+            <div className="flex gap-2">
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Name"
+                className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              />
+              <input
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="Email"
+                type="email"
+                className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              />
+            </div>
+          )}
 
           {/* RSVP override + nudge (going stage) */}
           {showRsvpStatus && (
@@ -363,29 +359,9 @@ function CrewMemberRow({
             </div>
           )}
 
-          {/* Actions row — planner toggle + save/cancel */}
-          <div className="flex items-center gap-2">
-            {/* Planner toggle — Owner only, real members only */}
-            {isOwner && m.role !== "Owner" && !m.isGuest && (
-              <button
-                onClick={handleTogglePlanner}
-                disabled={updateRole.isPending}
-                className="mr-auto flex items-center gap-1.5 disabled:opacity-40"
-              >
-                <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Planner</span>
-                <span
-                  className="relative inline-block h-5 w-8 rounded-full transition-colors"
-                  style={{ background: m.role === "Planner" ? "var(--color-bt-accent)" : "var(--color-bt-border)" }}
-                >
-                  <span
-                    className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
-                    style={{ transform: m.role === "Planner" ? "translateX(12px)" : "translateX(0)" }}
-                  />
-                </span>
-              </button>
-            )}
-
-            <div className="ml-auto flex gap-2">
+          {/* Actions row — save/cancel (planner promotion lives in the inline row button) */}
+          <div className="flex items-center justify-end gap-2">
+            {m.isGuest && (
               <button
                 onClick={handleSave}
                 disabled={!hasTextChanges || updateGuest.isPending}
@@ -394,15 +370,14 @@ function CrewMemberRow({
               >
                 Save
               </button>
-              <button
-                onClick={onToggle}
-                disabled={!hasTextChanges}
-                className="rounded-lg border px-3 py-1 text-xs disabled:opacity-40"
-                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-              >
-                Cancel
-              </button>
-            </div>
+            )}
+            <button
+              onClick={onToggle}
+              className="rounded-lg border px-3 py-1 text-xs"
+              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+            >
+              {m.isGuest ? "Cancel" : "Close"}
+            </button>
           </div>
         </div>
       )}
