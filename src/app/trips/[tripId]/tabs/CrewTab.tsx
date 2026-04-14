@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, Mail, Send, X } from "lucide-react";
+import { Ghost, Send, X } from "lucide-react";
+import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { RoleBadge } from "@/components/RoleBadge";
-import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import type { TabProps } from "./types";
 
 // ── RSVP helpers ──────────────────────────────────────────────────────────
@@ -23,12 +22,6 @@ function _rsvpSortKey(rsvpStatus: string | null): number {
   if (rsvpStatus === null || rsvpStatus === undefined) return 2; // pending after maybe, before out
   return RSVP_SORT_ORDER[rsvpStatus] ?? 2;
 }
-
-const ROLE_COLOR: Record<string, string> = {
-  Owner:   "var(--color-bt-accent)",
-  Planner: "var(--color-bt-ready)",
-  Member:  "var(--color-bt-text-dim)",
-};
 
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
 
@@ -57,6 +50,7 @@ function CrewMemberRow({
   index,
   showRsvpStatus,
   stage,
+  isPlannerRow,
   onToggle,
   onUpdated,
 }: {
@@ -69,6 +63,7 @@ function CrewMemberRow({
   index: number;
   showRsvpStatus: boolean;
   stage: string;
+  isPlannerRow?: boolean;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
@@ -107,9 +102,10 @@ function CrewMemberRow({
   };
 
   const display = m.displayName;
-  const _roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
   const rsvpCfg = m.rsvp_status ? RSVP_LABEL[m.rsvp_status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
+  const canActOnPlanner = isOwner && !isMe && m.role === "Planner";
+  const canPromoteToCoplanner = isOwner && !isMe && m.role === "Member" && !isPlannerRow && !!m.user?.email;
   const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
 
   const handleSave = async () => {
@@ -157,9 +153,9 @@ function CrewMemberRow({
         className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
         style={{
           background: rsvpCfg && !m.isGuest ? `${rsvpCfg.color}0a` : undefined,
-          cursor: editable ? "pointer" : undefined,
+          cursor: editable && !isPlannerRow ? "pointer" : undefined,
         }}
-        onClick={editable ? onToggle : undefined}
+        onClick={editable && !isPlannerRow ? onToggle : undefined}
       >
         {/* Avatar */}
         {m.isGuest ? (
@@ -192,21 +188,12 @@ function CrewMemberRow({
           ) : null}
         </div>
 
-        {/* ── Right side: fixed 3-column layout ───────────────────────────── */}
-        {/* Col 1 (badge) | Col 2 (vote/status) | Col 3 (delete) — widths are */}
-        {/* fixed so every row aligns regardless of content.                   */}
+        {/* ── Right side: status + actions ─────────────────────────────────── */}
         <div className="flex flex-shrink-0 items-center">
-          {/* Col 1: role badge */}
-          <div className="flex w-[68px] flex-shrink-0 justify-center">
-            {!m.isGuest && (m.role === "Owner" || m.role === "Planner") && (
-              <RoleBadge role={m.role} />
-            )}
-          </div>
-
-          {/* Col 2: vote chip (going stage), invite status (planning), hidden (idea) */}
-          {stage !== "idea" && (
+          {/* RSVP chip — going stage only */}
+          {showRsvpStatus && (
           <div className="flex w-[64px] flex-shrink-0 justify-center">
-            {showRsvpStatus ? (() => {
+            {(() => {
               const rsvp = m.rsvp_status;
               const cfg = rsvp ? RSVP_LABEL[rsvp] : null;
               return cfg ? (
@@ -224,22 +211,35 @@ function CrewMemberRow({
                   Pending
                 </span>
               );
-            })() : m.role !== "Owner" ? (
-              m.status === "draft" ? (
-                <span className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Not invited
-                </span>
-              ) : m.status === "invited" ? (
-                <span className="text-xs" style={{ color: "var(--color-bt-ready)" }}>
-                  Invited
-                </span>
-              ) : null
-            ) : null}
+            })()}
           </div>
           )}
 
-          {/* Col 3: delete */}
-          <div className="flex w-7 flex-shrink-0 justify-center">
+          {/* Col 3: actions */}
+          <div className="flex flex-shrink-0 items-center gap-1">
+            {/* Planner row: move to rest of crew */}
+            {isPlannerRow && canActOnPlanner && (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
+                disabled={updateRole.isPending}
+                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+                style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+              >
+                Remove as planner
+              </button>
+            )}
+            {/* Crew row: promote to co-planner */}
+            {canPromoteToCoplanner && (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Planner" }); }}
+                disabled={updateRole.isPending}
+                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+                style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+              >
+                Make planner
+              </button>
+            )}
+            {/* Remove (X) */}
             {editable && (
               <button
                 onClick={(e) => { e.stopPropagation(); setConfirmRemove(true); }}
@@ -280,8 +280,8 @@ function CrewMemberRow({
         </div>
       )}
 
-      {/* ── Expanded edit panel ──────────────────────────────────────────── */}
-      {isExpanded && editable && (
+      {/* ── Expanded edit panel — crew only, not for planner rows ─────────── */}
+      {isExpanded && editable && !isPlannerRow && (
         <div
           className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
@@ -410,81 +410,6 @@ function CrewMemberRow({
   );
 }
 
-// ── WriteInvitationPanel ─────────────────────────────────────────────────
-
-function WriteInvitationPanel({
-  tripId,
-  aboutMessage,
-  isOpen,
-  onToggle,
-}: {
-  tripId: string;
-  aboutMessage?: string | null;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  const utils = trpc.useUtils();
-  const [draft, setDraft] = useState(aboutMessage ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const updateMessage = trpc.trips.updateAboutMessage.useMutation({
-    onSuccess() {
-      setSaving(false);
-      utils.trips.getById.invalidate({ tripId });
-    },
-    onError() {
-      setSaving(false);
-    },
-  });
-
-  const hasDraft = !!(draft.trim());
-  const state: ArcCardState = "none";
-  const note = hasDraft ? "Draft saved" : "Not written yet";
-
-  const handleBlur = () => {
-    const trimmed = draft.trim();
-    if (trimmed === (aboutMessage?.trim() ?? "")) return;
-    setSaving(true);
-    updateMessage.mutate({ tripId, aboutMessage: trimmed });
-  };
-
-  return (
-    <PlanningRow
-      icon={<Mail size={16} />}
-      label="Write Invitation"
-      note={note}
-      noteWarn={hasDraft}
-      state={state}
-      isOpen={isOpen}
-      onToggle={onToggle}
-    >
-      <div className="space-y-2">
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Write a message to your crew — this goes out by email when you make the trip official.
-        </p>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="Hey crew, here's the plan..."
-          rows={4}
-          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        {saving && (
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Saving…
-          </p>
-        )}
-      </div>
-    </PlanningRow>
-  );
-}
-
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
 export function CrewTab({ trip, canEdit }: TabProps) {
@@ -497,7 +422,6 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const [addEmail, setAddEmail] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [invitationOpen, setInvitationOpen] = useState(false);
 
   const createGhost = trpc.ghostCrew.create.useMutation();
   const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
@@ -538,35 +462,20 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   };
 
   const stage = trip.stage ?? "idea";
+  const showRsvpStatus = stage === "going";
 
   // Count pending members who have an email (can actually be nudged)
   const pendingWithEmailCount = members.filter(
     (m) => (m as { rsvp_status?: string | null }).rsvp_status == null && !!m.user?.email
   ).length;
 
-  // Stage-aware config
-  const sectionLabel = stage === "idea" ? "CO-PLANNERS" : "CREW";
-  const helperText =
-    stage === "idea"
-      ? "Add anyone you're thinking of inviting. Make them a planner if you want their help deciding where to go."
-      : stage === "planning"
-        ? "Building your roster. Add everyone you're considering — you'll send the official RSVP when you're ready."
-        : null;
-  const showRsvpStatus = stage === "going";
+  // Split members into planners and crew
+  const plannersSorted = sorted.filter((m) => m.role === "Owner" || m.role === "Planner");
+  const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
     <div className="space-y-4 px-4">
-      {/* ── Write Invitation — owner only ── */}
-      {isOwner && (
-        <WriteInvitationPanel
-          tripId={tripId}
-          aboutMessage={trip.about_message}
-          isOpen={invitationOpen}
-          onToggle={() => setInvitationOpen((v) => !v)}
-        />
-      )}
-
-      {/* Header row — nudge button (going stage only) */}
+      {/* Nudge button (going stage only) */}
       {canEdit && showRsvpStatus && pendingWithEmailCount > 0 && (
         <div className="flex items-center justify-center">
           <button
@@ -585,70 +494,35 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         </div>
       )}
 
-      {/* Stage-aware helper text */}
-      {helperText && (
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          {helperText}
-        </p>
-      )}
-
-      {/* Inline add row */}
-      {canEdit && (
-        <div className="flex gap-2">
-          <input
-            value={addName}
-            onChange={(e) => setAddName(e.target.value)}
-            placeholder="Name"
-            className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-          />
-          <input
-            value={addEmail}
-            onChange={(e) => setAddEmail(e.target.value)}
-            placeholder="Email (optional)"
-            type="email"
-            className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-          />
-          <button
-            onClick={handleAdd}
-            disabled={!addName.trim() || isAdding}
-            className="flex-shrink-0 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {isAdding ? "..." : "Add"}
-          </button>
-        </div>
-      )}
-
-      {/* Member list */}
-      <h2
-        className="mt-6 mb-1 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        {sectionLabel}
-      </h2>
-
-      {/* RSVP headcount summary (GOING/NOW stage) */}
-      {showRsvpStatus && (() => {
-        const inC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "in").length;
-        const maybeC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "maybe").length;
-        const outC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "out").length;
-        const pendC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status == null).length;
-        return (
-          <p
-            className="mb-3 inline-block rounded-full px-3 py-1.5 text-[13px]"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-          >
-            {inC} in · {maybeC} maybe · {pendC} pending · {outC} out
-          </p>
-        );
-      })()}
-
+      {/* ── PLANNERS section ── */}
       <div>
-        {sorted.map((m, i) => {
+        <h2
+          className="mb-1 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Planners
+        </h2>
+        {isOwner && (
+          <>
+            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Invite friends who are good at planning to join the early conversations — they&apos;ll be able to add ideas, vote, and help shape the trip before it&apos;s official.
+            </p>
+            <div className="mb-2">
+              <CrewSearchInput
+                tripId={tripId}
+                defaultRole="Planner"
+                defaultStatus="draft"
+                allowGhost={false}
+                allowInvite
+                showSearchIcon
+                placeholder="Search by email..."
+                frequentTripmates={[]}
+                onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
+              />
+            </div>
+          </>
+        )}
+        {plannersSorted.map((m, i) => {
           const isMe = m.user_id === currentUser?.id;
           return (
             <CrewMemberRow
@@ -659,22 +533,106 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               isOwner={isOwner}
               isMe={isMe}
               index={i}
-              isExpanded={expandedId === m.user_id}
+              isExpanded={false}
               showRsvpStatus={showRsvpStatus}
               stage={stage}
-              onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+              isPlannerRow
+              onToggle={() => {}}
               onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
             />
           );
         })}
       </div>
 
-      {members.length === 0 && (
-        <p className="py-8 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          No members yet. Add someone above to get started.
-        </p>
-      )}
+      {/* ── REST OF THE CREW section ── */}
+      <div className="pt-4">
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Rest of the crew
+        </h2>
 
+        {/* Name + email add for crew members */}
+        {canEdit && (
+          <div className="mb-2">
+            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Start adding the names and emails of everyone you&apos;re planning to invite. Nothing is set in stone — you can always add, remove, or update people later.
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="Name"
+                className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+              />
+              <input
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                placeholder="Email (optional)"
+                type="email"
+                className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+              />
+              <button
+                onClick={handleAdd}
+                disabled={!addName.trim() || isAdding}
+                className="flex-shrink-0 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {isAdding ? "..." : "Add"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* RSVP headcount summary (GOING/NOW stage) */}
+        {showRsvpStatus && (() => {
+          const inC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "in").length;
+          const maybeC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "maybe").length;
+          const outC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "out").length;
+          const pendC = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status == null).length;
+          return (
+            <p
+              className="mb-3 inline-block rounded-full px-3 py-1.5 text-[13px]"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+            >
+              {inC} in · {maybeC} maybe · {pendC} pending · {outC} out
+            </p>
+          );
+        })()}
+
+        <div>
+          {crewSorted.map((m, i) => {
+            const isMe = m.user_id === currentUser?.id;
+            return (
+              <CrewMemberRow
+                key={m.memberId}
+                member={m}
+                tripId={tripId}
+                canEdit={canEdit}
+                isOwner={isOwner}
+                isMe={isMe}
+                index={i}
+                isExpanded={expandedId === m.user_id}
+                showRsvpStatus={showRsvpStatus}
+                stage={stage}
+                onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+              />
+            );
+          })}
+        </div>
+
+        {crewSorted.length === 0 && !canEdit && (
+          <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+            No crew members yet.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

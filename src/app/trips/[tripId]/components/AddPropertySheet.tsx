@@ -350,7 +350,7 @@ export function AddPropertySheet({
                     style={inputStyle}
                   />
                 </Field>
-                <Field label="Total price">
+                <Field label="Price">
                   <input
                     type="text"
                     placeholder="e.g. $2,400"
