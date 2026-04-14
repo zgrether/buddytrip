@@ -623,12 +623,12 @@ function IdeaCard({
 
           {/* Lodging options */}
           <div>
-            {/* Header row: LODGING label + inline + Add button */}
+            {/* Header row: LODGING IDEAS label + inline Add (only when options exist) */}
             <div className="mb-1.5 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
                 Lodging Ideas
               </p>
-              {canEdit && (
+              {canEdit && lodgingOptions.length > 0 && (
                 <button
                   data-testid={`add-lodging-empty-${idea.id}`}
                   onClick={() => setShowAddLodging(true)}
@@ -639,6 +639,18 @@ function IdeaCard({
                 </button>
               )}
             </div>
+
+            {/* Empty state: full-width Add button below header */}
+            {canEdit && lodgingOptions.length === 0 && (
+              <button
+                data-testid={`add-lodging-empty-${idea.id}`}
+                onClick={() => setShowAddLodging(true)}
+                className="mb-1.5 flex items-center gap-1 text-xs"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                <Plus size={13} /> Add a property
+              </button>
+            )}
 
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
               {lodgingOptions.map((opt) => {
