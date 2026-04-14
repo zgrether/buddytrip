@@ -58,6 +58,7 @@ function CrewMemberRow({
   index,
   showRsvpStatus,
   stage,
+  isPlannerRow,
   onToggle,
   onUpdated,
 }: {
@@ -70,6 +71,7 @@ function CrewMemberRow({
   index: number;
   showRsvpStatus: boolean;
   stage: string;
+  isPlannerRow?: boolean;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
@@ -111,6 +113,7 @@ function CrewMemberRow({
   const _roleColor = ROLE_COLOR[m.role] ?? "var(--color-bt-text-dim)";
   const rsvpCfg = m.rsvp_status ? RSVP_LABEL[m.rsvp_status] : null;
   const editable = canEdit && !isMe && m.role !== "Owner";
+  const canActOnPlanner = isOwner && !isMe && m.role === "Planner";
   const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
 
   const handleSave = async () => {
@@ -158,9 +161,9 @@ function CrewMemberRow({
         className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
         style={{
           background: rsvpCfg && !m.isGuest ? `${rsvpCfg.color}0a` : undefined,
-          cursor: editable ? "pointer" : undefined,
+          cursor: editable && !isPlannerRow ? "pointer" : undefined,
         }}
-        onClick={editable ? onToggle : undefined}
+        onClick={editable && !isPlannerRow ? onToggle : undefined}
       >
         {/* Avatar */}
         {m.isGuest ? (
@@ -239,8 +242,20 @@ function CrewMemberRow({
           </div>
           )}
 
-          {/* Col 3: delete */}
-          <div className="flex w-7 flex-shrink-0 justify-center">
+          {/* Col 3: actions */}
+          <div className="flex flex-shrink-0 items-center gap-1">
+            {/* Planner row: demote to Member */}
+            {isPlannerRow && canActOnPlanner && (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
+                disabled={updateRole.isPending}
+                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+                style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+              >
+                Demote
+              </button>
+            )}
+            {/* Remove (X) */}
             {editable && (
               <button
                 onClick={(e) => { e.stopPropagation(); setConfirmRemove(true); }}
@@ -281,8 +296,8 @@ function CrewMemberRow({
         </div>
       )}
 
-      {/* ── Expanded edit panel ──────────────────────────────────────────── */}
-      {isExpanded && editable && (
+      {/* ── Expanded edit panel — crew only, not for planner rows ─────────── */}
+      {isExpanded && editable && !isPlannerRow && (
         <div
           className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
@@ -602,10 +617,11 @@ export function CrewTab({ trip, canEdit }: TabProps) {
                 isOwner={isOwner}
                 isMe={isMe}
                 index={i}
-                isExpanded={expandedId === m.user_id}
+                isExpanded={false}
                 showRsvpStatus={showRsvpStatus}
                 stage={stage}
-                onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                isPlannerRow
+                onToggle={() => {}}
                 onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
               />
             );
