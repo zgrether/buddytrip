@@ -37,7 +37,6 @@ export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFo
   );
   const [detail, setDetail] = useState(currentTravel?.travel_detail ?? "");
   const [airline, setAirline] = useState(currentTravel?.flight_airline ?? "");
-  const [flightNum, setFlightNum] = useState(currentTravel?.flight_number ?? "");
   const [arrivalTime, setArrivalTime] = useState(currentTravel?.flight_arrival_time ?? "");
   const [airport, setAirport] = useState(currentTravel?.flight_airport ?? "");
   const [shared, setShared] = useState(currentTravel?.travel_shared ?? true);
@@ -49,7 +48,6 @@ export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFo
       setMode(currentTravel.travel_mode as TravelMode);
       setDetail(currentTravel.travel_detail ?? "");
       setAirline(currentTravel.flight_airline ?? "");
-      setFlightNum(currentTravel.flight_number ?? "");
       setArrivalTime(currentTravel.flight_arrival_time ?? "");
       setAirport(currentTravel.flight_airport ?? "");
       setShared(currentTravel.travel_shared ?? true);
@@ -71,7 +69,7 @@ export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFo
       travelMode: mode,
       travelDetail: detail.trim() || null,
       flightAirline: airline.trim() || null,
-      flightNumber: flightNum.trim() || null,
+      flightNumber: null,
       flightArrivalTime: arrivalTime || null,
       flightAirport: airport.trim() || null,
       travelShared: shared,
@@ -90,7 +88,6 @@ export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFo
     if (currentTravel?.travel_mode === "flying") {
       summary = [
         currentTravel.flight_airline,
-        currentTravel.flight_number,
         currentTravel.flight_airport && `→ ${currentTravel.flight_airport}`,
       ]
         .filter(Boolean)
@@ -168,26 +165,18 @@ export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFo
       {/* Flying fields */}
       {mode === "flying" && (
         <div className="mt-3 space-y-2">
-          <input
-            type="text"
-            placeholder="Airline"
-            value={airline}
-            onChange={(e) => setAirline(e.target.value)}
-            className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-            style={inputStyle}
-          />
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Flight number"
-              value={flightNum}
-              onChange={(e) => setFlightNum(e.target.value)}
+              placeholder="Flight (e.g. Delta 1733)"
+              value={airline}
+              onChange={(e) => setAirline(e.target.value)}
               className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
             <input
               type="text"
-              placeholder="Airport (e.g. JAX)"
+              placeholder="Airport (e.g. SAV)"
               value={airport}
               onChange={(e) => setAirport(e.target.value)}
               className="w-28 rounded-xl border px-3 py-2.5 text-sm outline-none"
