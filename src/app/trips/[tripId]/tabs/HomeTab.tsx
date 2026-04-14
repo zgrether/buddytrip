@@ -1095,28 +1095,17 @@ function PlanningSection({
         Planning
       </p>
 
-      {/* ── Destination ── */}
-      <PlanningRow
-        icon={<MapPin size={16} />}
-        label="Destination"
-        note={destNote}
-        state={destState}
-        isOpen={openRow === "dest"}
-        onToggle={() => toggle("dest")}
-      >
-        {isLocked ? (
-          <div className="space-y-3">
-            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {trip.locked_destination_title}
-              {trip.locked_destination_location && trip.locked_destination_location !== trip.locked_destination_title && (
-                <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>
-                  · {trip.locked_destination_location}
-                </span>
-              )}
-            </p>
-          </div>
-        ) : (
-          /* No destination set */
+      {/* ── Destination — hidden once set (shown in header, edit in settings) ── */}
+      {!isLocked && (
+        <PlanningRow
+          icon={<MapPin size={16} />}
+          label="Destination"
+          note={destNote}
+          state={destState}
+          isOpen={openRow === "dest"}
+          onToggle={() => toggle("dest")}
+        >
+          {/* No destination set */}
           <div className="space-y-3">
             <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
               Where are you headed? Set a destination or brainstorm ideas with the crew.
@@ -1169,8 +1158,8 @@ function PlanningSection({
             </div>
 
           </div>
-        )}
-      </PlanningRow>
+        </PlanningRow>
+      )}
 
       {/* ── Crew — visible in IDEA stage only ── */}
       {stage !== "planning" && (
@@ -1216,15 +1205,18 @@ function PlanningSection({
         </PlanningRow>
       )}
 
-      {/* ── Dates ── */}
-      <DatesPlanningRow
-        trip={trip}
-        canEdit={canEdit}
-        isOwner={isOwner}
-        isOpen={openRow === "dates"}
-        onToggle={() => toggle("dates")}
-        onTabChange={onTabChange}
-      />
+      {/* ── Dates — hidden once locked (shown in header, edit in settings; ── */}
+      {/*    re-open a poll via settings → Reopen poll to revisit options) ── */}
+      {!(trip.start_date && trip.end_date) && (
+        <DatesPlanningRow
+          trip={trip}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          isOpen={openRow === "dates"}
+          onToggle={() => toggle("dates")}
+          onTabChange={onTabChange}
+        />
+      )}
       {/* ── Lodging ── */}
       <LodgingPanel
         tripId={trip.id}
