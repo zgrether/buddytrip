@@ -360,8 +360,6 @@ Until a shared component is created, copy these patterns exactly.
       hierarchy tokens from Section 1.
 - [ ] **Do not use light-only or dark-only hardcoded colors** — every
       color must resolve correctly in both modes via the token system.
-      The warning banner in DatesSection uses `#fffbeb` bg and `#78350f`
-      text which only work in light mode.
 - [ ] **Do not set `--color-bt-card-raised` and `--color-bt-base` to
       the same value** — they must be visibly distinct in both modes.
 - [ ] **Do not set custom padding per-button** — use the three sizes
@@ -387,40 +385,21 @@ incrementally in follow-up PRs.
 
 ### `#00d4aa` (hardcoded teal CTA) → `var(--color-bt-accent)`
 
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:522` — Add date option border/text
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:952` — Add Option button bg
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:997` — Lock It In button bg
 - [ ] `src/components/LocationHero.tsx:91` — city pin fill
 - [ ] `src/components/TripCard.tsx:114` — city pin fill
 
 ### `#f59e0b` (hardcoded amber) → `var(--color-bt-warning)`
 
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:500` — AlertCircle icon color
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:509` — "Go to Crew tab" link color
 - [ ] `src/app/trips/[tripId]/tabs/HomeTab.tsx:883` — PlanningRow noteWarn icon
 - [ ] `src/app/trips/[tripId]/tabs/HomeTab.tsx:893` — PlanningRow noteWarn text
 - [ ] `src/app/trips/[tripId]/tabs/CompTab.tsx:916-918` — submitted status badge
 
-### `#fffbeb` / `#fde68a` / `#78350f` (light-only warning banner) → tokens
-
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:498` — `#fffbeb` bg → `var(--color-bt-warning-faint)`
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:498` — `#fde68a` border → `var(--color-bt-warning-border)`
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:502` — `#78350f` text → needs a `--color-bt-warning-text` token or `var(--color-bt-text)`
-
-### `#d1d5db` (sheet drag handle) → `var(--color-bt-border)`
-
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:906`
-
 ### `rgba(0,0,0,0.4)` (modal overlay) → `var(--color-bt-overlay)`
 
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:899`
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:973`
 - [ ] `src/app/trips/[tripId]/tabs/CrewTab.tsx:431`
 
 ### `#fff` / `white` on colored buttons → consider `--color-bt-on-accent` token
 
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:952` — "white" on teal
-- [ ] `src/app/trips/[tripId]/tabs/DatesSection.tsx:997` — "white" on teal
 - [ ] `src/app/trips/[tripId]/compare/page.tsx:890` — `#fff` on danger
 - [ ] `src/app/trips/[tripId]/compare/page.tsx:1593` — `#fff` on warning
 - [ ] `src/app/trips/[tripId]/tabs/MoreTab.tsx:772` — `#fff` on danger
@@ -447,9 +426,8 @@ These are team identity colors, intentionally outside the design system:
 
 ### Image overlay rgba values (acceptable exception)
 
-`rgba(255,255,255,0.*)` values in HomeTab competition tile and
-PendingActionsCard are inside dark image-overlay contexts where tokens
-don't apply. No migration needed.
+`rgba(255,255,255,0.*)` values in HomeTab competition tile are inside
+dark image-overlay contexts where tokens don't apply. No migration needed.
 
 ---
 
