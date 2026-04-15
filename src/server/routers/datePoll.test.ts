@@ -56,7 +56,7 @@ describe("datePoll router", () => {
 
   it("vote — member can vote yes", async () => {
     const caller = ctx.callerAs("member");
-    const vote = await caller.datePoll.vote({
+    const vote = await caller.datePoll.castDateVote({
       tripId,
       windowId,
       answer: "yes",
@@ -66,7 +66,7 @@ describe("datePoll router", () => {
 
   it("vote — member can vote maybe", async () => {
     const caller = ctx.callerAs("member");
-    const vote = await caller.datePoll.vote({
+    const vote = await caller.datePoll.castDateVote({
       tripId,
       windowId: window2Id,
       answer: "maybe",
@@ -77,7 +77,7 @@ describe("datePoll router", () => {
   it("vote — toggle off: same answer deletes vote", async () => {
     const caller = ctx.callerAs("member");
     // Vote 'yes' on windowId again (already voted 'yes')
-    const result = await caller.datePoll.vote({
+    const result = await caller.datePoll.castDateVote({
       tripId,
       windowId,
       answer: "yes",
@@ -96,9 +96,9 @@ describe("datePoll router", () => {
   it("vote — switching answer updates without deleting", async () => {
     const caller = ctx.callerAs("member");
     // First vote yes
-    await caller.datePoll.vote({ tripId, windowId, answer: "yes" });
+    await caller.datePoll.castDateVote({ tripId, windowId, answer: "yes" });
     // Then switch to no
-    const result = await caller.datePoll.vote({ tripId, windowId, answer: "no" });
+    const result = await caller.datePoll.castDateVote({ tripId, windowId, answer: "no" });
     expect(result.answer).toBe("no");
 
     // Verify the vote is 'no'
@@ -118,7 +118,7 @@ describe("datePoll router", () => {
 
   it("lockWindow — owner can lock and writes locked_window_id", async () => {
     const caller = ctx.caller();
-    const trip = await caller.datePoll.lockWindow({ tripId, windowId });
+    const trip = await caller.datePoll.lockDateWindow({ tripId, windowId });
     expect(trip.start_date).toBe("2026-10-05");
     expect(trip.end_date).toBe("2026-10-08");
 
@@ -141,7 +141,7 @@ describe("datePoll router", () => {
   it("unlock — date windows and votes are preserved after unlock", async () => {
     // Lock then unlock again
     const caller = ctx.caller();
-    await caller.datePoll.lockWindow({ tripId, windowId });
+    await caller.datePoll.lockDateWindow({ tripId, windowId });
     await caller.datePoll.unlock({ tripId });
 
     const poll = await caller.datePoll.get({ tripId });
@@ -252,7 +252,7 @@ describe("datePoll router", () => {
     // Add a window and cast a vote on it
     const removeId = genId("dw");
     await caller.datePoll.addWindow({ tripId, id: removeId, startDate: "2026-12-01", endDate: "2026-12-05" });
-    await caller.datePoll.vote({ tripId, windowId: removeId, answer: "yes" });
+    await caller.datePoll.castDateVote({ tripId, windowId: removeId, answer: "yes" });
 
     const result = await caller.datePoll.removeWindow({ tripId, windowId: removeId });
     expect(result.success).toBe(true);
@@ -285,10 +285,10 @@ describe("datePoll router", () => {
     const memberUser = ctx.getUser("member");
 
     // Member casts a vote
-    await memberCaller.datePoll.vote({ tripId, windowId, answer: "yes" });
+    await memberCaller.datePoll.castDateVote({ tripId, windowId, answer: "yes" });
 
     // Owner casts a vote too
-    await ownerCaller.datePoll.vote({ tripId, windowId, answer: "maybe" });
+    await ownerCaller.datePoll.castDateVote({ tripId, windowId, answer: "maybe" });
 
     // Confirm both votes exist
     const before = await ownerCaller.datePoll.get({ tripId });
@@ -296,7 +296,7 @@ describe("datePoll router", () => {
     expect(win?.votes.some((v) => v.user_id === memberUser.id)).toBe(true);
 
     // Owner resets
-    await ownerCaller.datePoll.resetVotes({ tripId });
+    await ownerCaller.datePoll.resetPoll({ tripId });
 
     // All votes should be gone
     const after = await ownerCaller.datePoll.get({ tripId });
@@ -307,7 +307,7 @@ describe("datePoll router", () => {
   it("resetVotes — member cannot reset", async () => {
     const caller = ctx.callerAs("member");
     await expect(
-      caller.datePoll.resetVotes({ tripId })
+      caller.datePoll.resetPoll({ tripId })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

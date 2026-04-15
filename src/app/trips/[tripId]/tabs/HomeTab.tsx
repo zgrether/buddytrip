@@ -20,13 +20,13 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
-import { formatDateRange, parseLocalDate } from "@/lib/dates";
+import { formatDateRange } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
+import { ActionCenter } from "./components/ActionCenter";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TravelPanel } from "../components/TravelPanel";
 import { TravelEntryForm } from "../components/TravelEntryForm";
@@ -982,52 +982,9 @@ export function HomeTab({
   onMakeOfficial,
 }: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onMakeOfficial?: (message: string) => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
-  const { data: poll } = trpc.datePoll.get.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
   const currentUser = useCurrentUser();
-  const utils = trpc.useUtils();
-  const [interstitialDismissed, setInterstitialDismissed] = useState(false);
-
-  // Vote mutation for the pending-actions interstitial (same optimistic pattern as DatesSection)
-  const interstitialVote = trpc.datePoll.vote.useMutation({
-    async onMutate(vars) {
-      await utils.datePoll.get.cancel({ tripId: trip.id });
-      const prev = utils.datePoll.get.getData({ tripId: trip.id });
-      utils.datePoll.get.setData({ tripId: trip.id }, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          windows: old.windows.map((w) => {
-            if (w.id !== vars.windowId) return w;
-            const existing = w.votes.find((v) => v.user_id === currentUser?.id);
-            if (existing?.answer === vars.answer) {
-              return { ...w, votes: w.votes.filter((v) => v.user_id !== currentUser?.id) };
-            }
-            if (existing) {
-              return {
-                ...w,
-                votes: w.votes.map((v) =>
-                  v.user_id === currentUser?.id ? { ...v, answer: vars.answer } : v
-                ),
-              };
-            }
-            return {
-              ...w,
-              votes: [...w.votes, { window_id: vars.windowId, user_id: currentUser?.id ?? "", answer: vars.answer, created_at: new Date().toISOString() }],
-            };
-          }),
-        };
-      });
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.datePoll.get.setData({ tripId: trip.id }, context.prev);
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId: trip.id });
-    },
-  });
 
   const status = getTripStatus(trip);
   const _isCompleted = status === "past";
@@ -1035,22 +992,6 @@ export function HomeTab({
   const _isExploring = !!trip.comparison_mode && !isLocked;
   const isBlank = !trip.comparison_mode && !isLocked;
   const stage = trip.stage ?? "idea";
-
-  // Pending-actions interstitial: show when member has no votes on an open poll
-  const datesLocked = !!(trip.start_date && trip.end_date);
-  const pollWindows = poll?.windows ?? [];
-  const hasNoVotes = pollWindows.length > 0 && pollWindows.every(
-    (w) => !w.votes.some((v) => v.user_id === currentUser?.id)
-  );
-  const showDateInterstitial =
-    !isOwner &&
-    !canEditProp &&
-    !datesLocked &&
-    pollWindows.length > 0 &&
-    hasNoVotes &&
-    !interstitialDismissed;
-  const ownerMember = members.find((m) => m.role === "Owner");
-  const ownerFirstName = ownerMember?.displayName?.split(" ")[0] ?? "The organizer";
 
   // IDEA stage: render IdeaZonePanel only — no planning rows
   if (stage === "idea") {
@@ -1067,59 +1008,6 @@ export function HomeTab({
 
   return (
     <div className="space-y-4">
-      {/* 0. Pending-actions interstitial for members with open action items */}
-      {showDateInterstitial && (
-        <PendingActionsCard
-          title="Your input is needed"
-          description={`${ownerFirstName} is asking everyone to weigh in on dates. Takes 30 seconds.`}
-          onDismiss={() => setInterstitialDismissed(true)}
-        >
-          <div className="space-y-3">
-            {pollWindows.map((w) => {
-              const myVote = w.votes.find((v) => v.user_id === currentUser?.id)?.answer ?? null;
-              const startFmt = parseLocalDate(w.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              const endFmt = parseLocalDate(w.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              return (
-                <div key={w.id}>
-                  <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
-                    {startFmt}–{endFmt}
-                  </p>
-                  <div className="flex gap-2">
-                    {([
-                      { label: "✓ Works", answer: "yes" as const },
-                      { label: "~ Maybe", answer: "maybe" as const },
-                      { label: "✗ Can't", answer: "no" as const },
-                    ]).map(({ label, answer }) => {
-                      const isActive = myVote === answer;
-                      const colorMap = {
-                        yes: { color: "var(--color-bt-accent)", border: "var(--color-bt-accent)" },
-                        maybe: { color: "var(--color-bt-warning)", border: "var(--color-bt-warning)" },
-                        no: { color: "var(--color-bt-danger)", border: "var(--color-bt-danger)" },
-                      };
-                      const c = colorMap[answer];
-                      return (
-                        <button
-                          key={answer}
-                          onClick={() => interstitialVote.mutate({ tripId: trip.id, windowId: w.id, answer })}
-                          className="flex flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium transition-all"
-                          style={{
-                            background: "var(--color-bt-state-fill)",
-                            border: isActive ? `2px solid ${c.border}` : "1px solid var(--color-bt-border)",
-                            color: isActive ? c.color : "var(--color-bt-text-dim)",
-                          }}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </PendingActionsCard>
-      )}
-
       {/* ── Two-column desktop layout (going/now/past stages) ─────────── */}
       <div className={(stage === "going" || status === "now" || status === "past") ? "lg:grid lg:grid-cols-[1fr_320px] lg:gap-6" : ""}>
         {/* ── Left column: primary planning content ─────────────────── */}
@@ -1145,8 +1033,13 @@ export function HomeTab({
             />
           )}
 
-          {/* ── Planning rows — gated by stage ────────────────────── */}
-          {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
+          {/* ── Action Center — everyone sees their active tasks ──── */}
+          {stage === "planning" && (
+            <ActionCenter trip={trip} canEdit={canEditProp} />
+          )}
+
+          {/* ── Planning rows — gated by stage + canEdit ──────────── */}
+          {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && canEditProp && (
             <PlanningSection
               trip={trip}
               canEdit={canEditProp}

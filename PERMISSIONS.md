@@ -64,13 +64,16 @@
 
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
-| Set dates (known dates) | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Open date poll | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Add date window to poll | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Vote on date windows | ✓ | ✓ | ✓ | None | TripDetail HomeTab |
-| Lock date window | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Close date poll (without locking) | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Change locked dates | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
+| Set dates (known dates) — `trips.lockDates` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
+| Toggle poll mode on/off — `datePoll.setPollMode` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
+| Add date window to poll — `datePoll.addWindow` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
+| Remove date window — `datePoll.removeWindow` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
+| Vote on date windows — `datePoll.castDateVote` | ✓ | ✓ | ✓ | None | DatePollCard |
+| Vote on behalf of member — `datePoll.castVoteForMember` | ✓ | ✓ | — | `canEdit` | DatePollCard |
+| Notify crew poll opened — `datePoll.notifyCrewPollOpen` | ✓ | ✓ | — | `canEdit` (opt-in, once) | DatePollCard |
+| Reset poll votes — `datePoll.resetPoll` | ✓ | ✓ | — | `canEdit` | DatePollCard |
+| Lock date window — `datePoll.lockDateWindow` | ✓ | ✓ | — | `canEdit` | DatePollGrid popover |
+| Change locked dates | ✓ | ✓ | — | `canEdit` | TripSettingsModal |
 
 ### Quick Info Tiles
 

@@ -387,20 +387,19 @@ describe("trips router — stage model", () => {
   });
 });
 
-// ── setDatePollActive — poll lifecycle state machine ──────────────────────
+// ── setPollMode — poll mode toggle ────────────────────────────────────────
 
-describe("trips router — setDatePollActive state machine", () => {
+describe("datePoll router — setPollMode", () => {
   let ctx: TestContext;
   let pollTripId: string;
 
   beforeAll(async () => {
     ctx = await TestContext.create();
     const caller = ctx.caller();
-    const id = `test-poll-state-${Date.now()}`;
-    await caller.trips.create({ id, title: "Poll State Test" });
+    const id = `test-poll-mode-${Date.now()}`;
+    await caller.trips.create({ id, title: "Poll Mode Test" });
     ctx.trackTrip(id);
     pollTripId = id;
-    // Advance to planning so dates panel is active
     await ctx.admin
       .from("trips")
       .update({ stage: "planning", locked_destination_title: "Test Dest" })
@@ -411,59 +410,33 @@ describe("trips router — setDatePollActive state machine", () => {
     await ctx.cleanup();
   });
 
-  it("setDatePollActive — owner can set state to draft", async () => {
+  it("setPollMode — owner can flip poll_mode on", async () => {
     const caller = ctx.caller();
-    await caller.trips.setDatePollActive({ tripId: pollTripId, state: "draft" });
+    await caller.datePoll.setPollMode({ tripId: pollTripId, pollMode: true });
     const { data } = await ctx.admin
       .from("trips")
-      .select("date_poll_state, date_poll_active")
+      .select("poll_mode")
       .eq("id", pollTripId)
       .single();
-    expect(data?.date_poll_state).toBe("draft");
-    expect(data?.date_poll_active).toBe(false);
+    expect(data?.poll_mode).toBe(true);
   });
 
-  it("setDatePollActive — owner can set state to active (date_poll_active = true)", async () => {
+  it("setPollMode — owner can flip poll_mode off", async () => {
     const caller = ctx.caller();
-    await caller.trips.setDatePollActive({ tripId: pollTripId, state: "active" });
+    await caller.datePoll.setPollMode({ tripId: pollTripId, pollMode: false });
     const { data } = await ctx.admin
       .from("trips")
-      .select("date_poll_state, date_poll_active")
+      .select("poll_mode")
       .eq("id", pollTripId)
       .single();
-    expect(data?.date_poll_state).toBe("active");
-    expect(data?.date_poll_active).toBe(true);
+    expect(data?.poll_mode).toBe(false);
   });
 
-  it("setDatePollActive — owner can set state to closed (date_poll_active = false)", async () => {
-    const caller = ctx.caller();
-    await caller.trips.setDatePollActive({ tripId: pollTripId, state: "closed" });
-    const { data } = await ctx.admin
-      .from("trips")
-      .select("date_poll_state, date_poll_active")
-      .eq("id", pollTripId)
-      .single();
-    expect(data?.date_poll_state).toBe("closed");
-    expect(data?.date_poll_active).toBe(false);
-  });
-
-  it("setDatePollActive — owner can set state to null (exit poll mode)", async () => {
-    const caller = ctx.caller();
-    await caller.trips.setDatePollActive({ tripId: pollTripId, state: null });
-    const { data } = await ctx.admin
-      .from("trips")
-      .select("date_poll_state, date_poll_active")
-      .eq("id", pollTripId)
-      .single();
-    expect(data?.date_poll_state).toBeNull();
-    expect(data?.date_poll_active).toBe(false);
-  });
-
-  it("setDatePollActive — planner cannot call", async () => {
-    await ctx.addTripMember(pollTripId, "planner", "Planner");
-    const caller = ctx.callerAs("planner");
+  it("setPollMode — member cannot call", async () => {
+    await ctx.addTripMember(pollTripId, "member", "Member");
+    const caller = ctx.callerAs("member");
     await expect(
-      caller.trips.setDatePollActive({ tripId: pollTripId, state: "active" })
+      caller.datePoll.setPollMode({ tripId: pollTripId, pollMode: true })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

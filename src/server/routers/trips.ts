@@ -508,11 +508,8 @@ export const tripsRouter = router({
         tripId: z.string(),
         startDate: z.string().min(1),
         endDate: z.string().min(1),
-        // Which flow chose the date — controls the "Change date" affordance
-        // in the locked view. "poll" implies an existing window was picked.
-        method: z.enum(["direct", "poll"]).optional(),
-        // When method === 'poll', the caller passes the chosen window id so
-        // we don't create a duplicate date_window row.
+        // When locking from a poll selection, the caller passes the chosen
+        // window id so we don't create a duplicate date_window row.
         windowId: z.string().optional(),
       })
     )
@@ -525,13 +522,10 @@ export const tripsRouter = router({
         });
       }
 
-      const method = input.method ?? "direct";
-
-      // 1. For direct mode (or if no windowId was supplied) insert a new
-      //    date_window for this range. For poll mode we reuse the selected
-      //    window.
+      // 1. If no windowId was supplied, insert a new date_window for this
+      //    range. Otherwise reuse the selected window.
       let windowId = input.windowId ?? null;
-      if (method === "direct" || !windowId) {
+      if (!windowId) {
         windowId = crypto.randomUUID();
         const { error: winErr } = await ctx.supabase
           .from("date_windows")
@@ -550,15 +544,13 @@ export const tripsRouter = router({
         }
       }
 
-      // 2. Lock the trip dates + record which flow chose them. Locking
-      //    always closes any active poll.
+      // 2. Lock the trip dates. Locking always closes any active poll.
       const { error: tripErr } = await ctx.supabase
         .from("trips")
         .update({
           start_date: input.startDate,
           end_date: input.endDate,
-          date_set_method: method,
-          date_poll_active: false,
+          poll_mode: false,
         })
         .eq("id", ctx.tripId);
 
@@ -622,76 +614,6 @@ export const tripsRouter = router({
       }
 
       return { windowId, startDate: input.startDate, endDate: input.endDate };
-    }),
-
-  // -----------------------------------------------------------------------
-  // setDatePollActive — Owner advances the poll through draft/active/closed
-  // -----------------------------------------------------------------------
-  setDatePollActive: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        state: z.enum(["draft", "active", "closed"]).nullable(),
-      })
-    )
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({
-          date_poll_state: input.state,
-          date_poll_active: input.state === "active",
-        })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to update date poll state: ${error.message}`,
-        });
-      }
-
-      // Notify all trip members when poll becomes active
-      if (input.state === "active") {
-        try {
-          const { data: tripData } = await ctx.supabase
-            .from("trips")
-            .select("title")
-            .eq("id", ctx.tripId)
-            .single();
-
-          const { data: ownerData } = await ctx.supabase
-            .from("users")
-            .select("name, nickname")
-            .eq("id", ctx.user!.id)
-            .single();
-
-          const { data: members } = await ctx.supabase
-            .from("trip_members")
-            .select("user_id")
-            .eq("trip_id", ctx.tripId)
-            .neq("user_id", ctx.user!.id);
-
-          const { createNotification } = await import("./notifications");
-          for (const member of members ?? []) {
-            await createNotification(ctx.supabase, {
-              tripId: ctx.tripId,
-              actorId: ctx.user!.id,
-              recipientId: member.user_id,
-              type: "date_poll_started",
-              payload: {
-                owner_name: ownerData?.nickname ?? ownerData?.name ?? "The organizer",
-                trip_name: tripData?.title ?? "the trip",
-                trip_id: ctx.tripId,
-              },
-            });
-          }
-        } catch {
-          // Notification failure shouldn't block the mutation
-        }
-      }
-
-      return { success: true };
     }),
 
   // -----------------------------------------------------------------------
