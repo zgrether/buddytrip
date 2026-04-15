@@ -67,7 +67,6 @@ export function TripSettingsModal({
   const canEditPlan = stage === "planning" && (viewerRole === "Owner" || viewerRole === "Planner");
   const destinationLocked = !!trip?.locked_destination_title;
   const datesLocked = !!(trip?.start_date && trip?.end_date);
-  const datesFromPoll = trip?.date_set_method === "poll";
 
   const [destExpanded, setDestExpanded] = useState(false);
   const [destDraft, setDestDraft] = useState(trip?.locked_destination_title ?? "");
@@ -394,27 +393,7 @@ export function TripSettingsModal({
                       className="mt-2 space-y-2 rounded-xl border p-3"
                       style={{ borderColor: "var(--color-bt-border)" }}
                     >
-                      {datesFromPoll ? (
-                        <>
-                          <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                            These dates came from a crew poll. Going back will reopen the poll so the
-                            crew can vote again.
-                          </p>
-                          <button
-                            data-testid="settings-reopen-poll-btn"
-                            disabled={unlockDatesMutation.isPending}
-                            onClick={() => unlockDatesMutation.mutate({ tripId })}
-                            className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-                            style={{
-                              background: "var(--color-bt-accent)",
-                              color: "var(--color-bt-base)",
-                            }}
-                          >
-                            {unlockDatesMutation.isPending ? "Reopening…" : "Reopen poll"}
-                          </button>
-                        </>
-                      ) : (
-                        <>
+                      <>
                           <div className="flex items-center gap-2">
                             <input
                               type="date"
@@ -449,7 +428,6 @@ export function TripSettingsModal({
                                 tripId,
                                 startDate: startDraft,
                                 endDate: endDraft,
-                                method: "direct",
                               })
                             }
                             className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
@@ -472,8 +450,7 @@ export function TripSettingsModal({
                           >
                             {unlockDatesMutation.isPending ? "Clearing…" : "Clear dates"}
                           </button>
-                        </>
-                      )}
+                      </>
                       <button
                         onClick={() => setDatesExpanded(false)}
                         className="w-full rounded-xl border py-2 text-sm"

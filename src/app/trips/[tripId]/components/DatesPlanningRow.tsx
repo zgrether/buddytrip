@@ -90,7 +90,7 @@ export function DatesPlanningRow({
   // Refresh votes every 30 s while the owner has the panel open and the poll
   // is active — lets them watch responses come in without a manual reload.
   const liveVotePolling =
-    isOwner && isOpen && trip.date_poll_state === "active" && !trip.start_date;
+    isOwner && isOpen && !!trip.poll_mode && !trip.start_date;
 
   const { data: poll } = trpc.datePoll.get.useQuery(
     { tripId },
@@ -104,7 +104,7 @@ export function DatesPlanningRow({
   );
 
   const datesLocked = !!(trip.start_date && trip.end_date);
-  const pollState = trip.date_poll_state ?? null;
+  const pollMode = !!trip.poll_mode;
   const hasWindows = windows.length > 0;
 
   // Manual date picker state — shared between the empty/idle state and the
@@ -129,9 +129,7 @@ export function DatesPlanningRow({
               ...old,
               start_date: vars.startDate,
               end_date: vars.endDate,
-              date_set_method: vars.method,
-              date_poll_active: false,
-              date_poll_state: null,
+              poll_mode: false,
             }
           : old
       );
@@ -151,7 +149,7 @@ export function DatesPlanningRow({
     },
   });
 
-  const setPollActive = trpc.trips.setDatePollActive.useMutation({
+  const setPollActive = trpc.datePoll.setPollMode.useMutation({
     async onMutate(vars) {
       await utils.trips.getById.cancel({ tripId });
       const prevTrip = utils.trips.getById.getData({ tripId });
@@ -159,8 +157,7 @@ export function DatesPlanningRow({
         old
           ? {
               ...old,
-              date_poll_state: vars.state,
-              date_poll_active: vars.state === "active",
+              poll_mode: vars.pollMode,
             }
           : old
       );
@@ -189,7 +186,12 @@ export function DatesPlanningRow({
           votes: [] as { window_id: string; user_id: string; answer: string; created_at: string }[],
         };
         if (!old) {
-          return { lockedWindowId: null, windows: [newWindow] };
+          return {
+            lockedWindowId: null,
+            notifySent: false,
+            pollMode: true,
+            windows: [newWindow],
+          };
         }
         const merged = [...old.windows, newWindow];
         merged.sort((a, b) => {
@@ -234,7 +236,7 @@ export function DatesPlanningRow({
     },
   });
 
-  const voteSelf = trpc.datePoll.vote.useMutation({
+  const voteSelf = trpc.datePoll.castDateVote.useMutation({
     async onMutate(vars) {
       await utils.datePoll.get.cancel({ tripId });
       const prev = utils.datePoll.get.getData({ tripId });
@@ -244,6 +246,13 @@ export function DatesPlanningRow({
           ...old,
           windows: old.windows.map((w) => {
             if (w.id !== vars.windowId) return w;
+            // Null answer = delete the vote
+            if (vars.answer === null) {
+              return {
+                ...w,
+                votes: w.votes.filter((v) => v.user_id !== currentUser?.id),
+              };
+            }
             const existing = w.votes.find((v) => v.user_id === currentUser?.id);
             if (existing?.answer === vars.answer) {
               return {
@@ -256,7 +265,7 @@ export function DatesPlanningRow({
                 ...w,
                 votes: w.votes.map((v) =>
                   v.user_id === currentUser?.id
-                    ? { ...v, answer: vars.answer }
+                    ? { ...v, answer: vars.answer as string }
                     : v
                 ),
               };
@@ -330,7 +339,7 @@ export function DatesPlanningRow({
     },
   });
 
-  const lockWindow = trpc.datePoll.lockWindow.useMutation({
+  const lockWindow = trpc.datePoll.lockDateWindow.useMutation({
     async onMutate(vars) {
       await utils.trips.getById.cancel({ tripId });
       const prevTrip = utils.trips.getById.getData({ tripId });
@@ -344,9 +353,7 @@ export function DatesPlanningRow({
                 ...old,
                 start_date: win.start_date,
                 end_date: win.end_date,
-                date_set_method: "poll" as const,
-                date_poll_active: false,
-                date_poll_state: null,
+                poll_mode: false,
               }
             : old
         );
@@ -363,7 +370,7 @@ export function DatesPlanningRow({
     },
   });
 
-  const resetVotes = trpc.datePoll.resetVotes.useMutation({
+  const resetVotes = trpc.datePoll.resetPoll.useMutation({
     async onMutate() {
       await utils.datePoll.get.cancel({ tripId });
       const prev = utils.datePoll.get.getData({ tripId });
@@ -386,7 +393,7 @@ export function DatesPlanningRow({
 
   const state: ArcCardState = datesLocked
     ? "done"
-    : pollState !== null
+    : pollMode
     ? "inProgress"
     : "none";
 
@@ -397,15 +404,9 @@ export function DatesPlanningRow({
 
   const headerLabel = datesLocked
     ? "Dates Selected"
-    : pollState === "active"
-    ? "Checking Availability"
-    : pollState === "draft"
+    : pollMode
     ? isOwner
-      ? "Building Poll"
-      : `Dates TBD: ${ownerDisplayName} is working on it`
-    : pollState === "closed"
-    ? isOwner
-      ? "Poll Closed"
+      ? "Poll Open"
       : `Dates TBD: ${ownerDisplayName} is working on it`
     : isOwner
     ? "Set Dates"
@@ -415,20 +416,15 @@ export function DatesPlanningRow({
     if (datesLocked) {
       return formatDateRangeCompact(trip.start_date, trip.end_date);
     }
-    // Non-owners only see the note when poll is active (so they know to vote)
     if (!isOwner) {
-      return pollState === "active"
-        ? `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`
+      return pollMode
+        ? `Poll open · ${windows.length} option${windows.length !== 1 ? "s" : ""}`
         : "";
     }
-    if (pollState === "active")
-      return `Poll active · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
-    if (pollState === "draft")
-      return `Building · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
-    if (pollState === "closed")
-      return `Poll closed · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
+    if (pollMode)
+      return `Poll open · ${windows.length} option${windows.length !== 1 ? "s" : ""}`;
     return "";
-  }, [datesLocked, isOwner, pollState, windows.length, trip.start_date, trip.end_date]);
+  }, [datesLocked, isOwner, pollMode, windows.length, trip.start_date, trip.end_date]);
 
   const anyVotes = useMemo(
     () => windows.some((w) => w.votes.length > 0),
@@ -443,7 +439,6 @@ export function DatesPlanningRow({
       tripId,
       startDate: directStart,
       endDate: directEnd,
-      method: "direct",
     });
   };
 
@@ -466,11 +461,11 @@ export function DatesPlanningRow({
   };
 
   const handlePollTheCrew = () => {
-    setPollActive.mutate({ tripId, state: "draft" });
+    setPollActive.mutate({ tripId, pollMode: true });
   };
 
   const handleNevermind = () => {
-    setPollActive.mutate({ tripId, state: null });
+    setPollActive.mutate({ tripId, pollMode: false });
   };
 
   // ── Body renderers ─────────────────────────────────────────────────────
@@ -550,7 +545,7 @@ export function DatesPlanningRow({
                   · {nights} night{nights !== 1 ? "s" : ""}
                 </span>
               </div>
-              {canEdit && pollState !== "active" && (
+              {canEdit && !pollMode && (
                 <button
                   onClick={() =>
                     removeWindowM.mutate({ tripId, windowId: w.id })
@@ -751,24 +746,19 @@ export function DatesPlanningRow({
 
         {canEdit && (
           <>
-            {/* Lifecycle buttons — always visible, each enabled only in the right state */}
+            {/* Lifecycle buttons — open/close poll + reset */}
             <div className="flex gap-2">
               {(
                 [
                   {
-                    label: "Start Poll",
-                    enabled: pollState === "draft" && hasWindows,
-                    onClick: () => setPollActive.mutate({ tripId, state: "active" }),
+                    label: "Open Poll",
+                    enabled: !pollMode && hasWindows,
+                    onClick: () => setPollActive.mutate({ tripId, pollMode: true }),
                   },
                   {
-                    label: "Stop Poll",
-                    enabled: pollState === "active",
-                    onClick: () => setPollActive.mutate({ tripId, state: "closed" }),
-                  },
-                  {
-                    label: "Reset Poll",
-                    enabled: pollState === "closed",
-                    onClick: () => setPollActive.mutate({ tripId, state: "draft" }),
+                    label: "Close Poll",
+                    enabled: pollMode,
+                    onClick: () => setPollActive.mutate({ tripId, pollMode: false }),
                   },
                 ] as const
               ).map(({ label, enabled, onClick }) => (
@@ -979,12 +969,12 @@ export function DatesPlanningRow({
 
     // Non-owner view: simplified poll-only panel (Planners and Members alike)
     if (!isOwner) {
-      if (pollState === "active" && hasWindows) return renderMemberPollView();
+      if (pollMode && hasWindows) return renderMemberPollView();
       return null;
     }
 
-    // Owner view
-    const showInputRow = pollState !== "active" && pollState !== "closed";
+    // Owner view — input row visible whenever poll is not yet open
+    const showInputRow = !pollMode;
 
     return (
       <div className="space-y-0">
@@ -997,44 +987,36 @@ export function DatesPlanningRow({
               When are you going?
             </p>
 
-            {/* In poll draft mode, list existing windows as text rows above the inputs */}
-            {pollState === "draft" && renderWindowTextRows()}
-
             {/* Date pickers + action button */}
-            {renderDatePickerRow(pollState === "draft" ? "poll" : "set")}
+            {renderDatePickerRow("set")}
 
-            {/* Note: dates can be changed later from trip settings */}
-            {pollState !== "draft" && (
-              <p
-                className="mt-2 text-xs"
-                style={{ color: "var(--color-bt-text-dim)" }}
+            <p
+              className="mt-2 text-xs"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Once set, dates can only be changed from the trip settings.
+            </p>
+
+            {/* Poll the crew — direct mode escape to poll flow */}
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={handlePollTheCrew}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+                style={{
+                  border: "1.5px dashed var(--color-bt-accent)",
+                  color: "var(--color-bt-accent)",
+                  background: "transparent",
+                }}
               >
-                Once set, dates can only be changed from the trip settings.
-              </p>
-            )}
-
-            {/* Poll the crew — only in null (direct) mode */}
-            {pollState === null && (
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={handlePollTheCrew}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
-                  style={{
-                    border: "1.5px dashed var(--color-bt-accent)",
-                    color: "var(--color-bt-accent)",
-                    background: "transparent",
-                  }}
-                >
-                  <Plus size={14} />
-                  Poll the crew
-                </button>
-              </div>
-            )}
+                <Plus size={14} />
+                Poll the crew
+              </button>
+            </div>
           </>
         )}
 
-        {/* Polling grid — visible whenever poll mode is engaged (draft/active/closed) */}
-        {pollState !== null && renderPollGrid()}
+        {/* Polling grid — visible whenever poll mode is on */}
+        {pollMode && renderPollGrid()}
       </div>
     );
   }
@@ -1045,7 +1027,7 @@ export function DatesPlanningRow({
         icon={<Calendar size={16} />}
         label={headerLabel}
         note={headerNote}
-        warnState={pollState !== null}
+        warnState={pollMode}
         state={state}
         isOpen={true}
         onToggle={() => {}}

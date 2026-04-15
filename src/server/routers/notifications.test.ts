@@ -209,7 +209,6 @@ describe("lockDates creates dates_locked notifications", () => {
       tripId: tripId3,
       startDate: "2026-09-01",
       endDate: "2026-09-05",
-      method: "direct",
     });
 
     const { data: notifs } = await ctx3.admin
@@ -246,7 +245,6 @@ describe("advanceToGoing creates stage_advanced notifications", () => {
       tripId: tripId4,
       startDate: "2026-10-01",
       endDate: "2026-10-05",
-      method: "direct",
     });
   });
 

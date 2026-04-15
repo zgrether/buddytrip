@@ -41,15 +41,24 @@ export const datePollRouter = router({
         votesByWindow.set(v.window_id, arr);
       }
 
-      // Fetch locked_window_id from date_polls
+      // Fetch locked_window_id + notify_sent from date_polls
       const { data: poll } = await ctx.supabase
         .from("date_polls")
-        .select("locked_window_id")
+        .select("locked_window_id, notify_sent")
         .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+
+      // Poll mode lives on trips
+      const { data: trip } = await ctx.supabase
+        .from("trips")
+        .select("poll_mode")
+        .eq("id", ctx.tripId)
         .maybeSingle();
 
       return {
         lockedWindowId: poll?.locked_window_id ?? null,
+        notifySent: poll?.notify_sent ?? false,
+        pollMode: trip?.poll_mode ?? false,
         windows: (windows ?? []).map((w) => ({
           ...w,
           votes: votesByWindow.get(w.id) ?? [],
@@ -89,30 +98,43 @@ export const datePollRouter = router({
         });
       }
 
-      // Auto-advance to draft state when the first window is added
-      await ctx.supabase
-        .from("trips")
-        .update({ date_poll_state: "draft" })
-        .eq("id", ctx.tripId)
-        .is("date_poll_state", null);
-
       return data;
     }),
 
   // -----------------------------------------------------------------------
-  // vote — any member can vote on a window (toggle: same answer = delete)
+  // castDateVote — any member can vote on a window.
+  // answer cycles client-side through: null → yes → maybe → no → null.
+  // null deletes the vote; any other value upserts it.
   // -----------------------------------------------------------------------
-  vote: authedProcedure
+  castDateVote: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         windowId: z.string(),
-        answer: z.enum(["yes", "no", "maybe"]),
+        answer: z.enum(["yes", "no", "maybe"]).nullable(),
       })
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      // Check if user already has this exact vote (toggle-off)
+      // null answer → delete the vote
+      if (input.answer === null) {
+        const { error } = await ctx.supabase
+          .from("date_poll_votes")
+          .delete()
+          .eq("window_id", input.windowId)
+          .eq("user_id", ctx.user!.id);
+
+        if (error) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to remove vote: ${error.message}`,
+          });
+        }
+
+        return { window_id: input.windowId, user_id: ctx.user!.id, answer: null, deleted: true };
+      }
+
+      // Check if user already has this exact vote (toggle-off via repeated tap)
       const { data: existing } = await ctx.supabase
         .from("date_poll_votes")
         .select("answer")
@@ -421,9 +443,9 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // lockWindow — Owner or Planner: lock the winning window
+  // lockDateWindow — Owner or Planner: lock the winning window as trip dates
   // -----------------------------------------------------------------------
-  lockWindow: authedProcedure
+  lockDateWindow: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
@@ -447,15 +469,13 @@ export const datePollRouter = router({
         });
       }
 
-      // Update the trip's start/end dates and mark as poll-sourced
+      // Lock the dates on the trip and close poll mode
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
           start_date: window.start_date,
           end_date: window.end_date,
-          date_set_method: "poll",
-          date_poll_active: false,
-          date_poll_state: null,
+          poll_mode: false,
         })
         .eq("id", ctx.tripId)
         .select()
@@ -524,22 +544,13 @@ export const datePollRouter = router({
         }
       }
 
-      // Clear trip dates and re-enable poll if dates were set via poll
-      const { data: tripData } = await ctx.supabase
-        .from("trips")
-        .select("date_set_method")
-        .eq("id", ctx.tripId)
-        .single();
-
-      const wasFromPoll = tripData?.date_set_method === "poll";
-
+      // Clear the locked trip dates. Leave poll_mode untouched — the owner
+      // decides (via setPollMode) whether to reopen the poll or go direct.
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
           start_date: null,
           end_date: null,
-          date_poll_active: wasFromPoll,
-          date_poll_state: wasFromPoll ? "draft" : null,
         })
         .eq("id", ctx.tripId)
         .select()
@@ -559,5 +570,143 @@ export const datePollRouter = router({
         .eq("trip_id", ctx.tripId);
 
       return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // setPollMode — Owner or Planner: flip trips.poll_mode on or off
+  // -----------------------------------------------------------------------
+  setPollMode: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        pollMode: z.boolean(),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ poll_mode: input.pollMode })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update poll mode: ${error.message}`,
+        });
+      }
+
+      // Ensure a date_polls row exists so notify_sent can be read/written.
+      if (input.pollMode) {
+        await ctx.supabase
+          .from("date_polls")
+          .upsert(
+            { trip_id: ctx.tripId, open: true },
+            { onConflict: "trip_id" }
+          );
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // notifyCrewPollOpen — Owner or Planner: fire date_poll_started
+  // notifications to every non-actor member, then set notify_sent = true.
+  // -----------------------------------------------------------------------
+  notifyCrewPollOpen: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      try {
+        const { data: tripData } = await ctx.supabase
+          .from("trips")
+          .select("title")
+          .eq("id", ctx.tripId)
+          .single();
+
+        const { data: actorData } = await ctx.supabase
+          .from("users")
+          .select("name, nickname")
+          .eq("id", ctx.user!.id)
+          .single();
+
+        const { data: members } = await ctx.supabase
+          .from("trip_members")
+          .select("user_id")
+          .eq("trip_id", ctx.tripId)
+          .neq("user_id", ctx.user!.id);
+
+        const { createNotification } = await import("./notifications");
+        for (const member of members ?? []) {
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: member.user_id,
+            type: "date_poll_started",
+            payload: {
+              owner_name: actorData?.nickname ?? actorData?.name ?? "The organizer",
+              trip_name: tripData?.title ?? "the trip",
+              trip_id: ctx.tripId,
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the flag flip
+      }
+
+      // Record that crew has been notified so the button disables.
+      await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          { trip_id: ctx.tripId, open: true, notify_sent: true },
+          { onConflict: "trip_id" }
+        );
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // resetPoll — Owner or Planner: clear all votes + reset notify_sent.
+  // Windows are preserved.
+  // -----------------------------------------------------------------------
+  resetPoll: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { data: windows, error: winErr } = await ctx.supabase
+        .from("date_windows")
+        .select("id")
+        .eq("trip_id", ctx.tripId);
+
+      if (winErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to read date windows: ${winErr.message}`,
+        });
+      }
+
+      const ids = (windows ?? []).map((w) => w.id);
+      if (ids.length > 0) {
+        const { error } = await ctx.supabase
+          .from("date_poll_votes")
+          .delete()
+          .in("window_id", ids);
+
+        if (error) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to reset votes: ${error.message}`,
+          });
+        }
+      }
+
+      await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          { trip_id: ctx.tripId, open: true, notify_sent: false },
+          { onConflict: "trip_id" }
+        );
+
+      return { success: true };
     }),
 });
