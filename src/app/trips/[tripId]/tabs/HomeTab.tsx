@@ -26,6 +26,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
+import { ActionCenter } from "./components/ActionCenter";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TravelPanel } from "../components/TravelPanel";
 import { TravelEntryForm } from "../components/TravelEntryForm";
@@ -1032,8 +1033,13 @@ export function HomeTab({
             />
           )}
 
-          {/* ── Planning rows — gated by stage ────────────────────── */}
-          {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
+          {/* ── Action Center — everyone sees their active tasks ──── */}
+          {stage === "planning" && (
+            <ActionCenter trip={trip} canEdit={canEditProp} />
+          )}
+
+          {/* ── Planning rows — gated by stage + canEdit ──────────── */}
+          {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && canEditProp && (
             <PlanningSection
               trip={trip}
               canEdit={canEditProp}
