@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, Fragment } from "react";
-import { UserAvatar } from "@/components/UserAvatar";
 import {
   Plus,
   Hotel,
@@ -13,9 +12,6 @@ import {
   X,
   Trophy,
   Check,
-  Users,
-  MapPin,
-  ThumbsUp,
   Loader2,
   Minus,
   Edit2,
@@ -28,10 +24,8 @@ import { formatDateRange, parseLocalDate } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { hashToHue } from "@/components/LocationHero";
 import { PendingActionsCard } from "@/components/PendingActionsCard";
 import IdeaZonePanel from "../components/IdeaZonePanel";
-import { PlanningRow, type ArcCardState } from "../components/PlanningRow";
 import { DatesPlanningRow } from "../components/DatesPlanningRow";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TravelPanel } from "../components/TravelPanel";
@@ -48,13 +42,6 @@ interface QuickTile {
   value: string;
   icon?: string | null;
   sort_order?: number | null;
-}
-
-interface IdeaWithVotes {
-  id: string;
-  title: string;
-  location: string;
-  votes: { idea_id: string; user_id: string; created_at: string }[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -422,104 +409,6 @@ function CompetitionPreviewModal({
   );
 }
 
-// ── SetDestinationModal ──────────────────────────────────────────────────
-
-function SetDestinationModal({
-  tripId,
-  onClose,
-}: {
-  tripId: string;
-  onClose: () => void;
-}) {
-  useModalBackButton(onClose);
-  const utils = trpc.useUtils();
-  const [title, setTitle] = useState("");
-  const [error, setError] = useState("");
-
-  const lock = trpc.trips.lockDestination.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-      onClose();
-    },
-    onError(e) {
-      setError(e.message ?? "Failed to save");
-    },
-  });
-
-  const handleSave = () => {
-    const t = title.trim();
-    if (!t) return;
-    lock.mutate({ tripId, title: t, location: t });
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0"
-        style={{ background: "var(--color-bt-overlay)" }}
-        onClick={onClose}
-      />
-      <div
-        className="relative w-full max-w-sm space-y-4 rounded-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Set Destination
-          </h3>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={15} />
-          </button>
-        </div>
-
-        <div
-          className="flex items-center gap-2 rounded-lg border px-3 py-2.5"
-          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)" }}
-        >
-          <MapPin size={15} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-          <input
-            autoFocus
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSave()}
-            placeholder="Scottsdale, AZ"
-            maxLength={200}
-            className="flex-1 bg-transparent text-sm outline-none"
-            style={{ color: "var(--color-bt-text)" }}
-          />
-        </div>
-
-        {error && (
-          <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
-            {error}
-          </p>
-        )}
-
-        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          Once set, the destination can only be changed from the trip settings.
-        </p>
-
-        <button
-          onClick={handleSave}
-          disabled={lock.isPending || !title.trim()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {lock.isPending && <Loader2 size={14} className="animate-spin" />}
-          Set Destination
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── ChangeDestinationModal ────────────────────────────────────────────────
-
 // ── RSVP Panel (GOING/NOW stage Home tab) ────────────────────────────────
 
 const RSVP_OPTIONS = [
@@ -614,92 +503,6 @@ function RsvpPanel({
 }
 
 type TravelEntryFormProps = Parameters<typeof TravelEntryForm>[0];
-
-// ── ChangeDestinationModal ────────────────────────────────────────────────
-
-function ChangeDestinationModal({
-  tripId,
-  onClose,
-}: {
-  tripId: string;
-  onClose: () => void;
-}) {
-  useModalBackButton(onClose);
-  const utils = trpc.useUtils();
-  const [destination, setDestination] = useState("");
-
-  const changeDest = trpc.trips.changeDestination.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-      utils.datePoll.get.invalidate({ tripId });
-      onClose();
-    },
-  });
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[400px] rounded-t-2xl p-6 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Change destination
-        </h2>
-
-        <div
-          className="mt-3 flex items-start gap-2 rounded-xl px-4 py-3"
-          style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
-        >
-          <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
-          <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
-            Changing the destination will reset any date poll responses.
-          </p>
-        </div>
-
-        <input
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          placeholder="New destination"
-          autoFocus
-          className="mt-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && destination.trim()) {
-              changeDest.mutate({ tripId, destination: destination.trim() });
-            }
-          }}
-        />
-
-        <button
-          onClick={() => changeDest.mutate({ tripId, destination: destination.trim() })}
-          disabled={!destination.trim() || changeDest.isPending}
-          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {changeDest.isPending ? "Updating..." : "Update destination"}
-        </button>
-
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Competition Panel ─────────────────────────────────────────────────────
 
@@ -940,151 +743,19 @@ function QuickInfoSection({
 
 // ── Planning Section (expandable rows) ───────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function MiniIdeaHero({
-  idea,
-  tripId,
-  totalMembers,
-}: {
-  idea: IdeaWithVotes;
-  tripId: string;
-  totalMembers: number;
-}) {
-  const currentUser = useCurrentUser();
-  const utils = trpc.useUtils();
-
-  const vote = trpc.ideas.vote.useMutation({
-    async onMutate({ ideaId }) {
-      await utils.ideas.list.cancel({ tripId });
-      const prev = utils.ideas.list.getData({ tripId });
-      utils.ideas.list.setData({ tripId }, (prev ?? []).map((i) => {
-        if (i.id !== ideaId) return i;
-        const alreadyVoted = i.votes.some((v: { user_id: string }) => v.user_id === currentUser?.id);
-        return {
-          ...i,
-          votes: alreadyVoted
-            ? i.votes.filter((v: { user_id: string }) => v.user_id !== currentUser?.id)
-            : [...i.votes, { idea_id: ideaId, user_id: currentUser?.id ?? "", created_at: new Date().toISOString() }],
-        };
-      }));
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev !== undefined) utils.ideas.list.setData({ tripId }, context.prev);
-    },
-    onSettled() {
-      utils.ideas.list.invalidate({ tripId });
-    },
-  });
-
-  const isVoted = !!currentUser?.id && idea.votes.some((v) => v.user_id === currentUser.id);
-  const voteCount = idea.votes.length;
-  const votePercent = totalMembers > 0 ? (voteCount / totalMembers) * 100 : 0;
-  const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
-
-  return (
-    <div
-      className="flex w-40 flex-shrink-0 flex-col overflow-hidden rounded-xl"
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue}, 55%, 35%) 0%, hsl(${(hue + 30) % 360}, 45%, 25%) 100%)`,
-      }}
-    >
-      <div className="px-3 pb-1 pt-3">
-        <p className="truncate text-sm font-bold text-white">{idea.title}</p>
-        <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-white/60">
-          <MapPin size={10} />
-          {idea.location}
-        </p>
-      </div>
-      <div className="px-3 pb-1">
-        <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.15)" }}>
-          <div
-            className="h-full rounded-full transition-all duration-300"
-            style={{ width: `${votePercent}%`, background: "rgba(255,255,255,0.75)" }}
-          />
-        </div>
-        <p className="mt-0.5 text-[10px] text-white/50">
-          {voteCount} vote{voteCount !== 1 ? "s" : ""}
-        </p>
-      </div>
-      <div className="p-3 pt-1">
-        <button
-          onClick={() => vote.mutate({ tripId, ideaId: idea.id })}
-          disabled={vote.isPending}
-          className="flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-medium transition-all disabled:opacity-40"
-          style={{
-            background: isVoted ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.08)",
-            border: `1px solid ${isVoted ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.18)"}`,
-            color: "rgba(255,255,255,0.9)",
-          }}
-        >
-          <ThumbsUp size={10} />
-          {isVoted ? "Voted" : "Vote"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-
 function PlanningSection({
   trip,
-  ideas,
-  tripMembers,
-  reservations,
   canEdit,
   isOwner,
   onTabChange,
 }: {
   trip: TripData;
-  ideas: IdeaWithVotes[];
-  tripMembers: { user_id: string | null; status: string; displayName: string; isGuest?: boolean; role?: string }[];
-  reservations: unknown[];
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
 }) {
-  // Auto-expand dates only when a poll is genuinely open — not if dates are
-  // already locked (guards against stale date_poll_active in the DB).
-  const [openRow, setOpenRow] = useState<string | null>(
-    trip.date_poll_active && !trip.start_date ? "dates" : null
-  );
-  const [showSetDest, setShowSetDest] = useState(false);
-  // Edge case: PLANNING stage with no locked destination (old data / migration artifact).
-  // Initialize open so the owner is prompted to fix it immediately on mount.
-  const [showChangeDest, setShowChangeDest] = useState(
-    (trip.stage ?? "idea") === "planning" && !trip.locked_destination_title && canEdit
-  );
   const stage = trip.stage ?? "idea";
-  const toggle = (key: string) => setOpenRow((prev) => (prev === key ? null : key));
-
-  // ── Destination ──────────────────────────────────────────────────────
-  const isLocked = !!trip.locked_destination_title;
-  const isExploring = !!trip.comparison_mode && !isLocked;
-  const destState: ArcCardState = isLocked ? "done" : isExploring ? "inProgress" : "none";
-  const destNote = isLocked
-    ? trip.locked_destination_title!
-    : isExploring
-    ? `${ideas.length} idea${ideas.length !== 1 ? "s" : ""} · voting`
-    : "Not set yet";
-
-  // ── Crew (computed first — Dates depends on crew count) ──────────────
-  const confirmedMembers = tripMembers.filter((m) =>
-    m.status === "in" || m.status === "likely" || m.status === "maybe" || m.status === "out"
-  );
-  const confirmed = confirmedMembers.length;
-  const invitedCount = tripMembers.filter((m) => m.status === "invited").length;
-  const draftCount = tripMembers.filter((m) => m.status === "draft").length;
-  const hasAnyone = tripMembers.length > 1;
-  const crewState: ArcCardState = confirmed >= 1 ? "done" : hasAnyone ? "inProgress" : "none";
-  const crewNote = `${confirmed} confirmed`;
-
-  // ── Logistics ─────────────────────────────────────────────────────────
-  const _bookingCount = reservations.length;
-  const _scheduleNote = _bookingCount > 0
-    ? `${_bookingCount} booking${_bookingCount !== 1 ? "s" : ""}`
-    : "Not booked yet";
+  const [travelOpen, setTravelOpen] = useState(false);
 
   return (
     <section className="space-y-2">
@@ -1094,116 +765,6 @@ function PlanningSection({
       >
         Planning
       </p>
-
-      {/* ── Destination — hidden once set (shown in header, edit in settings) ── */}
-      {!isLocked && (
-        <PlanningRow
-          icon={<MapPin size={16} />}
-          label="Destination"
-          note={destNote}
-          state={destState}
-          isOpen={openRow === "dest"}
-          onToggle={() => toggle("dest")}
-        >
-          {/* No destination set */}
-          <div className="space-y-3">
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Where are you headed? Set a destination or brainstorm ideas with the crew.
-            </p>
-
-            <div className="flex flex-col gap-2">
-              {canEdit && (
-                <button
-                  onClick={() => setShowSetDest(true)}
-                  className="flex w-full items-center justify-center rounded-xl py-2.5 text-sm font-semibold transition-opacity"
-                  style={{
-                    background: "var(--color-bt-accent)",
-                    color: "var(--color-bt-base)",
-                  }}
-                >
-                  Set destination
-                </button>
-              )}
-              {ideas.length > 0 && (
-                <div
-                  className="w-full overflow-hidden rounded-xl border"
-                  style={{ borderColor: "var(--color-bt-border)" }}
-                >
-                  <p
-                    className="px-3 pt-2.5 text-xs font-medium"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    {ideas.length} idea{ideas.length !== 1 ? "s" : ""} under consideration
-                  </p>
-                  <div className="flex flex-col gap-1.5 px-3 pb-2.5 pt-2">
-                    {ideas.slice(0, 5).map((idea) => {
-                      const hue = hashToHue((idea.location ?? idea.title).toLowerCase());
-                      return (
-                        <div
-                          key={idea.id}
-                          className="w-full rounded-lg px-2.5 py-1.5"
-                          style={{
-                            background: `linear-gradient(135deg, hsl(${hue}, 50%, 18%), hsl(${(hue + 40) % 360}, 40%, 10%))`,
-                          }}
-                        >
-                          <p className="truncate text-xs font-medium text-white">
-                            {idea.title}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
-        </PlanningRow>
-      )}
-
-      {/* ── Crew — visible in IDEA stage only ── */}
-      {stage !== "planning" && (
-        <PlanningRow
-          icon={<Users size={16} />}
-          label="Crew"
-          note={crewNote}
-          state={crewState}
-          isOpen={openRow === "crew"}
-          onToggle={() => toggle("crew")}
-        >
-          <div className="space-y-3">
-            {confirmedMembers.length > 0 && (
-              <div className="flex -space-x-2">
-                {confirmedMembers.slice(0, 5).map((m) => (
-                  <div key={m.user_id} className="rounded-full ring-2 ring-[var(--color-bt-card)]">
-                    <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
-                  </div>
-                ))}
-                {confirmedMembers.length > 5 && (
-                  <div
-                    className="flex h-8 w-8 items-center justify-center rounded-full ring-2 ring-[var(--color-bt-card)] text-xs"
-                    style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                  >
-                    +{confirmedMembers.length - 5}
-                  </div>
-                )}
-              </div>
-            )}
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {confirmed} confirmed
-              {invitedCount > 0 && ` \u00b7 ${invitedCount} invited`}
-              {draftCount > 0 && ` \u00b7 ${draftCount} not yet invited`}
-            </p>
-            <button
-              onClick={() => onTabChange?.("crew")}
-              className="text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              {canEdit ? "Manage crew \u2192" : "View crew \u2192"}
-            </button>
-          </div>
-        </PlanningRow>
-      )}
 
       {/* ── Dates — hidden once locked (shown in header, edit in settings; ── */}
       {/*    re-open a poll via settings → Reopen poll to revisit options) ── */}
@@ -1228,23 +789,8 @@ function PlanningSection({
       {stage !== "planning" && (
         <TravelPanel
           tripId={trip.id}
-          isOpen={openRow === "travel"}
-          onToggle={() => toggle("travel")}
-        />
-      )}
-
-
-      {/* Modals rendered outside PlanningRows so they aren't gated by isOpen */}
-      {showSetDest && (
-        <SetDestinationModal
-          tripId={trip.id}
-          onClose={() => setShowSetDest(false)}
-        />
-      )}
-      {showChangeDest && (
-        <ChangeDestinationModal
-          tripId={trip.id}
-          onClose={() => setShowChangeDest(false)}
+          isOpen={travelOpen}
+          onToggle={() => setTravelOpen((v) => !v)}
         />
       )}
     </section>
@@ -1603,9 +1149,6 @@ export function HomeTab({
           {(isBlank || isLocked) && (stage === "idea" || stage === "planning") && (
             <PlanningSection
               trip={trip}
-              ideas={ideas as IdeaWithVotes[]}
-              tripMembers={members}
-              reservations={reservations}
               canEdit={canEditProp}
               isOwner={!!isOwner}
               onTabChange={onTabChange}
@@ -1616,9 +1159,6 @@ export function HomeTab({
           {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
             <PlanningSection
               trip={trip}
-              ideas={ideas as IdeaWithVotes[]}
-              tripMembers={members}
-              reservations={reservations}
               canEdit={canEditProp}
               isOwner={!!isOwner}
               onTabChange={onTabChange}
