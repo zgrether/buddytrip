@@ -338,7 +338,8 @@ export const datePollRouter = router({
         tripId: z.string(),
         windowId: z.string(),
         userId: z.string(),
-        answer: z.enum(["yes", "no", "maybe"]),
+        // Nullable — null clears the vote, mirroring castDateVote.
+        answer: z.enum(["yes", "no", "maybe"]).nullable(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -356,6 +357,22 @@ export const datePollRouter = router({
           code: "NOT_FOUND",
           message: "User is not a member of this trip",
         });
+      }
+
+      // Null answer = clear the vote (delete row, mirrors castDateVote).
+      if (input.answer === null) {
+        const { error } = await ctx.supabase
+          .from("date_poll_votes")
+          .delete()
+          .eq("window_id", input.windowId)
+          .eq("user_id", input.userId);
+        if (error) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to clear vote for member: ${error.message}`,
+          });
+        }
+        return { cleared: true };
       }
 
       const { data, error } = await ctx.supabase

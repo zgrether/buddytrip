@@ -17,6 +17,7 @@ import {
 export interface DatePollCardProps {
   trip: TripData;
   canEdit: boolean;
+  isOwner: boolean;
 }
 
 function sortWindows(ws: PollWindow[]): PollWindow[] {
@@ -35,7 +36,7 @@ function sortWindows(ws: PollWindow[]): PollWindow[] {
  * date poll. Wraps ActionCard + DatePollGrid. Shows resolved chip when
  * dates are locked. Footer actions (Notify crew / Reset) visible to canEdit.
  */
-export function DatePollCard({ trip, canEdit }: DatePollCardProps) {
+export function DatePollCard({ trip, canEdit, isOwner }: DatePollCardProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
@@ -115,6 +116,59 @@ export function DatePollCard({ trip, canEdit }: DatePollCardProps) {
     },
   });
 
+  const voteForMember = trpc.datePoll.castVoteForMember.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          windows: old.windows.map((w) => {
+            if (w.id !== vars.windowId) return w;
+            // Null answer = clear that member's vote.
+            if (vars.answer === null) {
+              return {
+                ...w,
+                votes: w.votes.filter((v) => v.user_id !== vars.userId),
+              };
+            }
+            const existing = w.votes.find((v) => v.user_id === vars.userId);
+            if (existing) {
+              return {
+                ...w,
+                votes: w.votes.map((v) =>
+                  v.user_id === vars.userId
+                    ? { ...v, answer: vars.answer as string }
+                    : v
+                ),
+              };
+            }
+            return {
+              ...w,
+              votes: [
+                ...w.votes,
+                {
+                  window_id: vars.windowId,
+                  user_id: vars.userId,
+                  answer: vars.answer as string,
+                  created_at: new Date().toISOString(),
+                },
+              ],
+            };
+          }),
+        };
+      });
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
+    },
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
   const notifyCrew = trpc.datePoll.notifyCrewPollOpen.useMutation({
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -155,8 +209,14 @@ export function DatePollCard({ trip, canEdit }: DatePollCardProps) {
 
   // ── Poll-open view ─────────────────────────────────────────────────────
 
-  const handleVote = (windowId: string, answer: VoteAnswer) => {
-    castVote.mutate({ tripId, windowId, answer });
+  const handleVote = (windowId: string, answer: VoteAnswer, userId: string) => {
+    if (userId === currentUser?.id) {
+      castVote.mutate({ tripId, windowId, answer });
+    } else if (isOwner) {
+      // Owner voting on behalf of another crew member.
+      voteForMember.mutate({ tripId, windowId, userId, answer });
+    }
+    // Non-owner clicks on another member's cell are blocked at the grid level.
   };
 
   const anyVotes = windows.some((w) => w.votes.length > 0);
@@ -165,7 +225,7 @@ export function DatePollCard({ trip, canEdit }: DatePollCardProps) {
     <ActionCard
       icon={<Calendar size={16} />}
       title="Pick your dates"
-      subtitle={canEdit ? "Tap a cell to vote on behalf of a member" : "Tap your row to cast a vote"}
+      subtitle={isOwner ? "Tap any cell to vote on behalf of a crew member" : "Tap your row to cast a vote"}
       isResolved={false}
     >
       <div className="space-y-3">
@@ -174,6 +234,7 @@ export function DatePollCard({ trip, canEdit }: DatePollCardProps) {
           members={pollMembers}
           currentUserId={currentUser?.id ?? ""}
           canEdit={canEdit}
+          isOwner={isOwner}
           onVote={handleVote}
         />
 

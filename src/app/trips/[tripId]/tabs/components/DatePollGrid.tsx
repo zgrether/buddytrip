@@ -33,8 +33,12 @@ export interface DatePollGridProps {
   dateWindows: PollWindow[];
   members: PollMember[];
   currentUserId: string;
+  /** Owner + Planner — controls column-header popover (lock/edit/remove). */
   canEdit: boolean;
-  onVote: (dateWindowId: string, answer: VoteAnswer) => void;
+  /** Owner only — controls vote-for-other-members. Non-owners can only vote in their own row. */
+  isOwner: boolean;
+  /** Fires with the target member's user_id. For non-owners this is always the current user. */
+  onVote: (dateWindowId: string, answer: VoteAnswer, userId: string) => void;
   // canEdit-only — optional so caller can omit for member-rendered grids
   onAddDateWindow?: () => void;
   onEditDateWindow?: (id: string) => void;
@@ -75,6 +79,7 @@ export function DatePollGrid({
   members,
   currentUserId,
   canEdit,
+  isOwner,
   onVote,
   onAddDateWindow,
   onEditDateWindow,
@@ -165,8 +170,10 @@ export function DatePollGrid({
                 ? "var(--color-bt-card)"
                 : "var(--color-bt-state-fill)";
             const isMe = m.user_id === currentUserId;
-            // Members see other rows dimmed; canEdit sees all rows clearly
-            const rowDimmed = !isMe && !canEdit;
+            // Only the owner can see / interact with other members' rows.
+            // Planners and Members see their own row clearly and others dimmed
+            // (and non-operational).
+            const rowDimmed = !isMe && !isOwner;
             return (
               <div key={m.user_id ?? rowIdx} className="contents">
                 <div
@@ -205,14 +212,12 @@ export function DatePollGrid({
                     >
                       <VoteButton
                         answer={answer}
-                        interactive={isMe || canEdit}
+                        interactive={isMe || isOwner}
                         dimmed={rowDimmed}
                         onClick={() => {
                           if (!m.user_id) return;
-                          if (isMe) {
-                            onVote(w.id, cycleAnswer(answer));
-                          } else if (canEdit) {
-                            onVote(w.id, cycleAnswer(answer));
+                          if (isMe || isOwner) {
+                            onVote(w.id, cycleAnswer(answer), m.user_id);
                           }
                         }}
                       />
