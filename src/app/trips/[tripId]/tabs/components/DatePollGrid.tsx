@@ -84,20 +84,40 @@ export function DatePollGrid({
   onRemoveDateWindow,
   onLockDateWindow,
 }: DatePollGridProps) {
-  const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
+  // Popover state keeps the anchor rect so the menu can be positioned
+  // directly beneath the column header button that opened it.
+  const [openPopover, setOpenPopover] = useState<
+    | { id: string; anchorLeft: number; anchorBottom: number; anchorCenter: number }
+    | null
+  >(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Close popover on outside click
   useEffect(() => {
-    if (!openPopoverId) return;
+    if (!openPopover) return;
     const handler = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setOpenPopoverId(null);
+        setOpenPopover(null);
       }
     };
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
-  }, [openPopoverId]);
+  }, [openPopover]);
+
+  // Close popover if the page / grid scrolls so it doesn't desync from the
+  // column it's anchored to.
+  useEffect(() => {
+    if (!openPopover) return;
+    const close = () => setOpenPopover(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [openPopover]);
+
+  const openPopoverId = openPopover?.id ?? null;
 
   const gridMinWidth = NAME_COL_MIN_WIDTH + dateWindows.length * COLUMN_WIDTH;
 
@@ -155,9 +175,18 @@ export function DatePollGrid({
                   label={formatColumnLabel(w.start_date, w.end_date)}
                   isActive={isActive}
                   canEdit={canEdit}
-                  onToggle={() =>
-                    setOpenPopoverId((prev) => (prev === w.id ? null : w.id))
-                  }
+                  onToggle={(btnRect) => {
+                    if (openPopoverId === w.id) {
+                      setOpenPopover(null);
+                      return;
+                    }
+                    setOpenPopover({
+                      id: w.id,
+                      anchorLeft: btnRect.left,
+                      anchorBottom: btnRect.bottom,
+                      anchorCenter: btnRect.left + btnRect.width / 2,
+                    });
+                  }}
                 />
               );
             })
@@ -251,11 +280,13 @@ export function DatePollGrid({
       )}
 
       {/* ── column header popover ─────────────────────────────────────── */}
-      {openPopoverId && canEdit && (
+      {openPopover && canEdit && (
         <div
           ref={popoverRef}
-          className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-xl p-1.5 shadow-lg"
+          className="fixed z-50 -translate-x-1/2 rounded-xl p-1.5 shadow-lg"
           style={{
+            top: `${openPopover.anchorBottom + 6}px`,
+            left: `${openPopover.anchorCenter}px`,
             background: "var(--color-bt-card-raised)",
             border: "1px solid var(--color-bt-border)",
             minWidth: "180px",
@@ -265,16 +296,16 @@ export function DatePollGrid({
             icon={<CheckCircle2 size={14} />}
             label="Select this date"
             onClick={() => {
-              onLockDateWindow?.(openPopoverId);
-              setOpenPopoverId(null);
+              onLockDateWindow?.(openPopover.id);
+              setOpenPopover(null);
             }}
           />
           <PopoverItem
             icon={<Trash2 size={14} />}
             label="Remove"
             onClick={() => {
-              onRemoveDateWindow?.(openPopoverId);
-              setOpenPopoverId(null);
+              onRemoveDateWindow?.(openPopover.id);
+              setOpenPopover(null);
             }}
             danger
           />
@@ -295,7 +326,7 @@ function ColumnHeader({
   label: string;
   isActive: boolean;
   canEdit: boolean;
-  onToggle: () => void;
+  onToggle: (anchorRect: DOMRect) => void;
 }) {
   const bg = isActive ? "rgba(45, 212, 191, 0.07)" : "var(--color-bt-card)";
   if (!canEdit) {
@@ -332,7 +363,7 @@ function ColumnHeader({
       </span>
       <button
         type="button"
-        onClick={onToggle}
+        onClick={(e) => onToggle(e.currentTarget.getBoundingClientRect())}
         className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider leading-none transition-colors"
         style={{
           background: isActive
