@@ -338,7 +338,8 @@ export const datePollRouter = router({
         tripId: z.string(),
         windowId: z.string(),
         userId: z.string(),
-        answer: z.enum(["yes", "no", "maybe"]),
+        // Nullable — null clears the vote, mirroring castDateVote.
+        answer: z.enum(["yes", "no", "maybe"]).nullable(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -356,6 +357,22 @@ export const datePollRouter = router({
           code: "NOT_FOUND",
           message: "User is not a member of this trip",
         });
+      }
+
+      // Null answer = clear the vote (delete row, mirrors castDateVote).
+      if (input.answer === null) {
+        const { error } = await ctx.supabase
+          .from("date_poll_votes")
+          .delete()
+          .eq("window_id", input.windowId)
+          .eq("user_id", input.userId);
+        if (error) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to clear vote for member: ${error.message}`,
+          });
+        }
+        return { cleared: true };
       }
 
       const { data, error } = await ctx.supabase
@@ -570,6 +587,60 @@ export const datePollRouter = router({
         .eq("trip_id", ctx.tripId);
 
       return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // returnToPoll — Owner or Planner: clear locked dates AND reopen the
+  // poll (trips.poll_mode = true) while preserving every existing window
+  // and vote — including the formerly-locked window (even if it has zero
+  // votes, which unlock() would have deleted). This is the reverse of
+  // lockDateWindow: the crew lands back on the poll grid with their full
+  // history intact.
+  // -----------------------------------------------------------------------
+  returnToPoll: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      // Clear the trip dates and flip poll_mode back on in a single update
+      // so the UI transitions in one render.
+      const { error: tripErr } = await ctx.supabase
+        .from("trips")
+        .update({
+          start_date: null,
+          end_date: null,
+          poll_mode: true,
+        })
+        .eq("id", ctx.tripId);
+
+      if (tripErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to return to poll: ${tripErr.message}`,
+        });
+      }
+
+      // Reopen the poll row — if it doesn't exist (direct-date-entry path),
+      // create one. We intentionally do NOT delete any date_windows so the
+      // previously-chosen window remains available as a voting option.
+      const { error: pollErr } = await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          {
+            trip_id: ctx.tripId,
+            open: true,
+            locked_window_id: null,
+          },
+          { onConflict: "trip_id" }
+        );
+
+      if (pollErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reopen date poll: ${pollErr.message}`,
+        });
+      }
+
+      return { ok: true };
     }),
 
   // -----------------------------------------------------------------------

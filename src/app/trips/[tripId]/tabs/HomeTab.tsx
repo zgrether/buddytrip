@@ -766,9 +766,9 @@ function PlanningSection({
         Planning
       </p>
 
-      {/* ── Dates — hidden once locked (shown in header, edit in settings; ── */}
-      {/*    re-open a poll via settings → Reopen poll to revisit options) ── */}
-      {!(trip.start_date && trip.end_date) && (
+      {/* ── Dates — Owner-only admin surface. Non-owners use the  ── */}
+      {/*    DatePollCard in ActionCenter. Hidden once locked.     ── */}
+      {!(trip.start_date && trip.end_date) && isOwner && (
         <DatesPlanningRow
           trip={trip}
           canEdit={canEdit}
@@ -1033,9 +1033,10 @@ export function HomeTab({
             />
           )}
 
-          {/* ── Action Center — everyone sees their active tasks ──── */}
-          {stage === "planning" && (
-            <ActionCenter trip={trip} canEdit={canEditProp} />
+          {/* ── Action Center — everyone sees their active tasks in   ── */}
+          {/*    idea + planning stages (matches DatesPlanningRow gate) ── */}
+          {(stage === "idea" || stage === "planning") && (
+            <ActionCenter trip={trip} isOwner={!!isOwner} />
           )}
 
           {/* ── Planning rows — gated by stage + canEdit ──────────── */}

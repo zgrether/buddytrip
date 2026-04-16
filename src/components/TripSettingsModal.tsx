@@ -99,6 +99,23 @@ export function TripSettingsModal({
     },
   });
 
+  // Return-to-poll: clears trip dates, flips poll_mode back on, and
+  // reopens the poll row — all in one server call that preserves every
+  // existing window (including the formerly-locked one) and every vote.
+  const returnToPollMutation = trpc.datePoll.returnToPoll.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+      setDatesExpanded(false);
+    },
+  });
+
+  const returnToPollPending = returnToPollMutation.isPending;
+
+  const handleReturnToPoll = () => {
+    returnToPollMutation.mutate({ tripId });
+  };
+
   const canSaveDest =
     destDraft.trim().length > 0 &&
     destDraft.trim() !== (trip?.locked_destination_title ?? "") &&
@@ -439,8 +456,20 @@ export function TripSettingsModal({
                             {lockDatesMutation.isPending ? "Updating…" : "Update dates"}
                           </button>
                           <button
+                            data-testid="settings-return-to-poll-btn"
+                            disabled={returnToPollPending || lockDatesMutation.isPending}
+                            onClick={handleReturnToPoll}
+                            className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
+                            style={{
+                              borderColor: "var(--color-bt-accent-border)",
+                              color: "var(--color-bt-accent)",
+                            }}
+                          >
+                            {returnToPollPending ? "Returning…" : "Return to poll"}
+                          </button>
+                          <button
                             data-testid="settings-clear-dates-btn"
-                            disabled={unlockDatesMutation.isPending || lockDatesMutation.isPending}
+                            disabled={unlockDatesMutation.isPending || lockDatesMutation.isPending || returnToPollMutation.isPending}
                             onClick={() => unlockDatesMutation.mutate({ tripId })}
                             className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
                             style={{

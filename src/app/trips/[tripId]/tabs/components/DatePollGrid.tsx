@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarPlus, Check, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { CalendarPlus, Check, CheckCircle2, Trash2 } from "lucide-react";
 import { parseLocalDate } from "@/lib/dates";
 import { UserAvatar } from "@/components/UserAvatar";
 
@@ -33,11 +33,17 @@ export interface DatePollGridProps {
   dateWindows: PollWindow[];
   members: PollMember[];
   currentUserId: string;
-  canEdit: boolean;
-  onVote: (dateWindowId: string, answer: VoteAnswer) => void;
-  // canEdit-only — optional so caller can omit for member-rendered grids
+  /**
+   * Owner only. Controls every admin affordance on the grid: column
+   * popover (Select / Remove), add-date column, voting on behalf of other
+   * crew members, un-dimmed rendering of other rows. Non-owners see a
+   * read-only surface where only their own row is interactive.
+   */
+  isOwner: boolean;
+  /** Fires with the target member's user_id. For non-owners this is always the current user. */
+  onVote: (dateWindowId: string, answer: VoteAnswer, userId: string) => void;
+  // isOwner-only — optional so caller can omit for non-owner grids
   onAddDateWindow?: () => void;
-  onEditDateWindow?: (id: string) => void;
   onRemoveDateWindow?: (id: string) => void;
   onLockDateWindow?: (id: string) => void;
 }
@@ -63,53 +69,136 @@ function formatColumnLabel(start: string, end: string): string {
 }
 
 const COLUMN_WIDTH = 88; // px, per-window column
-const NAME_COL_WIDTH = 96; // px, sticky name column
-const ADD_COL_WIDTH = 46; // px, always-visible add column
+const NAME_COL_MIN_WIDTH = 120; // px, sticky name column minimum — grows to fit names
+const ADD_COL_WIDTH = 54; // px, always-visible add column
 
 /**
  * Grid UI for the date poll. Pure rendering — emits callbacks for vote
  * changes and column header actions. Caller wires mutations.
  */
+// Media query hook — tiny inline helper so we can branch the vote cell
+// layout on viewport width without pulling a dependency.
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 export function DatePollGrid({
   dateWindows,
   members,
   currentUserId,
-  canEdit,
+  isOwner,
   onVote,
   onAddDateWindow,
-  onEditDateWindow,
   onRemoveDateWindow,
   onLockDateWindow,
 }: DatePollGridProps) {
-  const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
+  // On desktop with three or fewer date options the cell is wide enough to
+  // render the three answer buttons side-by-side (yes / maybe / no) instead
+  // of the cycle single-button. Mobile always uses cycle mode.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const useTripletLayout = isDesktop && dateWindows.length > 0 && dateWindows.length <= 3;
+  // Popover state keeps the anchor rect so the menu can be positioned
+  // directly beneath the column header button that opened it.
+  const [openPopover, setOpenPopover] = useState<
+    | { id: string; anchorLeft: number; anchorBottom: number; anchorCenter: number }
+    | null
+  >(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Close popover on outside click
   useEffect(() => {
-    if (!openPopoverId) return;
+    if (!openPopover) return;
     const handler = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setOpenPopoverId(null);
+        setOpenPopover(null);
       }
     };
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
-  }, [openPopoverId]);
+  }, [openPopover]);
 
-  const gridMinWidth = NAME_COL_WIDTH + dateWindows.length * COLUMN_WIDTH;
+  // Close popover if the page / grid scrolls so it doesn't desync from the
+  // column it's anchored to.
+  useEffect(() => {
+    if (!openPopover) return;
+    const close = () => setOpenPopover(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [openPopover]);
+
+  const openPopoverId = openPopover?.id ?? null;
+
+  const hasWindows = dateWindows.length > 0;
+  const gridMinWidth = NAME_COL_MIN_WIDTH + dateWindows.length * COLUMN_WIDTH;
+
+  // Empty-state short-circuit: when there are no date windows, rendering
+  // member rows inside the grid causes layout to jumble (the grid template
+  // has a placeholder column, but each row only contributes the name cell,
+  // so names flow across the extra column). Swap to a single-line empty
+  // banner until the first window is added.
+  if (!hasWindows) {
+    return (
+      <div className="flex">
+        <div
+          className="min-w-0 flex-1 rounded-xl px-4 py-6 text-center"
+          style={{ background: "var(--color-bt-card)" }}
+        >
+          <span
+            className="text-[13px] italic"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {isOwner
+              ? "No dates added yet — tap the + to propose a date option."
+              : "No dates added yet — the host hasn't proposed any options."}
+          </span>
+        </div>
+        {isOwner && onAddDateWindow && (
+          <button
+            type="button"
+            onClick={onAddDateWindow}
+            className="group relative ml-2 flex flex-shrink-0 items-center justify-center self-stretch rounded-xl transition-colors hover:bg-[var(--color-bt-card-raised)]"
+            style={{
+              width: `${ADD_COL_WIDTH}px`,
+              background: "transparent",
+              border: "1.5px dashed var(--color-bt-border)",
+              color: "var(--color-bt-accent)",
+            }}
+            aria-label="Add date option"
+          >
+            <CalendarPlus size={22} />
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex">
       {/* ── scrollable grid ────────────────────────────────────────────── */}
       <div
-        className="min-w-0 flex-1 overflow-x-auto rounded-l-xl"
+        className="min-w-0 flex-1 overflow-x-auto rounded-xl"
         style={{ background: "var(--color-bt-card)" }}
       >
         <div
           className="grid"
           style={{
             minWidth: `${gridMinWidth}px`,
-            gridTemplateColumns: `${NAME_COL_WIDTH}px repeat(${Math.max(dateWindows.length, 1)}, minmax(${COLUMN_WIDTH}px, 1fr))`,
+            // Name column auto-fits content (no truncate) with a minimum width.
+            // Date columns use a fixed min then flex to share space.
+            gridTemplateColumns: `minmax(${NAME_COL_MIN_WIDTH}px, max-content) repeat(${dateWindows.length}, minmax(${COLUMN_WIDTH}px, 1fr))`,
           }}
         >
           {/* Header: name column */}
@@ -129,34 +218,29 @@ export function DatePollGrid({
           </div>
 
           {/* Header: per-window label + popover trigger */}
-          {dateWindows.length === 0 ? (
-            <div
-              className="flex items-center justify-center px-3 py-2.5"
-              style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-            >
-              <span
-                className="text-[12px] italic"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                No dates added yet
-              </span>
-            </div>
-          ) : (
-            dateWindows.map((w) => {
-              const isActive = openPopoverId === w.id;
-              return (
-                <ColumnHeader
-                  key={w.id}
-                  label={formatColumnLabel(w.start_date, w.end_date)}
-                  isActive={isActive}
-                  canEdit={canEdit}
-                  onToggle={() =>
-                    setOpenPopoverId((prev) => (prev === w.id ? null : w.id))
+          {dateWindows.map((w) => {
+            const isActive = openPopoverId === w.id;
+            return (
+              <ColumnHeader
+                key={w.id}
+                label={formatColumnLabel(w.start_date, w.end_date)}
+                isActive={isActive}
+                canEdit={isOwner}
+                onToggle={(btnRect) => {
+                  if (openPopoverId === w.id) {
+                    setOpenPopover(null);
+                    return;
                   }
-                />
-              );
-            })
-          )}
+                  setOpenPopover({
+                    id: w.id,
+                    anchorLeft: btnRect.left,
+                    anchorBottom: btnRect.bottom,
+                    anchorCenter: btnRect.left + btnRect.width / 2,
+                  });
+                }}
+              />
+            );
+          })}
 
           {/* Member rows */}
           {members.map((m, rowIdx) => {
@@ -165,17 +249,19 @@ export function DatePollGrid({
                 ? "var(--color-bt-card)"
                 : "var(--color-bt-state-fill)";
             const isMe = m.user_id === currentUserId;
-            // Members see other rows dimmed; canEdit sees all rows clearly
-            const rowDimmed = !isMe && !canEdit;
+            // Only the owner can see / interact with other members' rows.
+            // Planners and Members see their own row clearly and others dimmed
+            // (and non-operational).
+            const rowDimmed = !isMe && !isOwner;
             return (
               <div key={m.user_id ?? rowIdx} className="contents">
                 <div
-                  className="sticky left-0 z-[2] flex min-w-0 items-center gap-2 px-3 py-2"
+                  className="sticky left-0 z-[2] flex items-center gap-2 whitespace-nowrap px-3 py-2"
                   style={{ background: rowBg }}
                 >
                   <UserAvatar name={m.displayName} avatarUrl={m.avatarUrl ?? null} size="sm" />
                   <span
-                    className="truncate text-[13px]"
+                    className="text-[13px]"
                     style={{ color: "var(--color-bt-text)" }}
                   >
                     {m.displayName}
@@ -197,25 +283,32 @@ export function DatePollGrid({
                   const cellBg = isColumnHighlighted
                     ? "rgba(45, 212, 191, 0.07)"
                     : rowBg;
+                  const interactive = isMe || isOwner;
+                  const handleSet = (next: VoteAnswer) => {
+                    if (!m.user_id || !interactive) return;
+                    onVote(w.id, next, m.user_id);
+                  };
                   return (
                     <div
                       key={w.id}
                       className="flex items-center justify-center px-1 py-2"
                       style={{ background: cellBg }}
                     >
-                      <VoteButton
-                        answer={answer}
-                        interactive={isMe || canEdit}
-                        dimmed={rowDimmed}
-                        onClick={() => {
-                          if (!m.user_id) return;
-                          if (isMe) {
-                            onVote(w.id, cycleAnswer(answer));
-                          } else if (canEdit) {
-                            onVote(w.id, cycleAnswer(answer));
-                          }
-                        }}
-                      />
+                      {useTripletLayout ? (
+                        <VoteTriplet
+                          answer={answer}
+                          interactive={interactive}
+                          dimmed={rowDimmed}
+                          onSet={handleSet}
+                        />
+                      ) : (
+                        <VoteButton
+                          answer={answer}
+                          interactive={interactive}
+                          dimmed={rowDimmed}
+                          onClick={() => handleSet(cycleAnswer(answer))}
+                        />
+                      )}
                     </div>
                   );
                 })}
@@ -226,58 +319,52 @@ export function DatePollGrid({
       </div>
 
       {/* ── add-column sibling (outside scroll) ───────────────────────── */}
-      {canEdit && onAddDateWindow && (
+      {isOwner && onAddDateWindow && (
         <button
           type="button"
           onClick={onAddDateWindow}
-          className="flex flex-shrink-0 items-center justify-center rounded-r-xl transition-colors"
+          className="group relative ml-2 flex flex-shrink-0 items-center justify-center self-stretch rounded-xl transition-colors hover:bg-[var(--color-bt-card-raised)]"
           style={{
             width: `${ADD_COL_WIDTH}px`,
-            background: "var(--color-bt-card)",
-            borderLeft: "1px solid var(--color-bt-border)",
+            background: "transparent",
+            border: "1.5px dashed var(--color-bt-border)",
             color: "var(--color-bt-accent)",
           }}
           aria-label="Add date option"
         >
           <span className="relative flex items-center justify-center">
-            <CalendarPlus size={20} />
+            <CalendarPlus size={22} />
           </span>
         </button>
       )}
 
       {/* ── column header popover ─────────────────────────────────────── */}
-      {openPopoverId && canEdit && (
+      {openPopover && isOwner && (
         <div
           ref={popoverRef}
-          className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-xl p-1.5 shadow-lg"
+          className="fixed z-50 -translate-x-1/2 rounded-xl p-1.5 shadow-lg"
           style={{
+            top: `${openPopover.anchorBottom + 6}px`,
+            left: `${openPopover.anchorCenter}px`,
             background: "var(--color-bt-card-raised)",
             border: "1px solid var(--color-bt-border)",
             minWidth: "180px",
           }}
         >
           <PopoverItem
-            icon={<Lock size={14} />}
-            label="Lock this date"
+            icon={<CheckCircle2 size={14} />}
+            label="Select this date"
             onClick={() => {
-              onLockDateWindow?.(openPopoverId);
-              setOpenPopoverId(null);
-            }}
-          />
-          <PopoverItem
-            icon={<Pencil size={14} />}
-            label="Edit dates"
-            onClick={() => {
-              onEditDateWindow?.(openPopoverId);
-              setOpenPopoverId(null);
+              onLockDateWindow?.(openPopover.id);
+              setOpenPopover(null);
             }}
           />
           <PopoverItem
             icon={<Trash2 size={14} />}
             label="Remove"
             onClick={() => {
-              onRemoveDateWindow?.(openPopoverId);
-              setOpenPopoverId(null);
+              onRemoveDateWindow?.(openPopover.id);
+              setOpenPopover(null);
             }}
             danger
           />
@@ -298,13 +385,13 @@ function ColumnHeader({
   label: string;
   isActive: boolean;
   canEdit: boolean;
-  onToggle: () => void;
+  onToggle: (anchorRect: DOMRect) => void;
 }) {
   const bg = isActive ? "rgba(45, 212, 191, 0.07)" : "var(--color-bt-card)";
   if (!canEdit) {
     return (
       <div
-        className="flex items-center justify-center px-2 py-2.5 text-center"
+        className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
         style={{
           background: bg,
           borderBottom: "1px solid var(--color-bt-border)",
@@ -320,10 +407,8 @@ function ColumnHeader({
     );
   }
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex items-center justify-center gap-1 px-2 py-2.5 text-center transition-colors"
+    <div
+      className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
       style={{
         background: bg,
         borderBottom: "1px solid var(--color-bt-border)",
@@ -335,14 +420,26 @@ function ColumnHeader({
       >
         {label}
       </span>
-      <MoreHorizontal
-        size={14}
+      <button
+        type="button"
+        onClick={(e) => onToggle(e.currentTarget.getBoundingClientRect())}
+        className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider leading-none transition-colors"
         style={{
-          color: isActive ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-          opacity: isActive ? 1 : 0.4,
+          background: isActive
+            ? "var(--color-bt-accent)"
+            : "var(--color-bt-card-raised)",
+          color: isActive
+            ? "var(--color-bt-base)"
+            : "var(--color-bt-accent)",
+          border: isActive
+            ? "1px solid var(--color-bt-accent)"
+            : "1px solid var(--color-bt-accent-border)",
         }}
-      />
-    </button>
+        aria-label="Select this date"
+      >
+        Select
+      </button>
+    </div>
   );
 }
 
@@ -376,6 +473,61 @@ function VoteButton({
     >
       {text}
     </button>
+  );
+}
+
+function VoteTriplet({
+  answer,
+  interactive,
+  dimmed,
+  onSet,
+}: {
+  answer: VoteAnswer;
+  interactive: boolean;
+  dimmed: boolean;
+  onSet: (next: VoteAnswer) => void;
+}) {
+  // Three side-by-side buttons. Clicking the active one clears the vote.
+  const options: { key: Exclude<VoteAnswer, null>; label: string }[] = [
+    { key: "yes", label: "✓" },
+    { key: "maybe", label: "~" },
+    { key: "no", label: "✕" },
+  ];
+  return (
+    <div
+      className="flex items-center gap-1"
+      style={{
+        opacity: dimmed ? 0.4 : 1,
+        pointerEvents: dimmed ? "none" : undefined,
+      }}
+    >
+      {options.map((opt) => {
+        const isActive = answer === opt.key;
+        const { background, color, border } = voteVisual(opt.key);
+        // Inactive pill uses the empty-state styling so it reads as "not picked"
+        // but still telegraphs what choice it represents via the glyph.
+        const inactive = voteVisual(null);
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onSet(isActive ? null : opt.key)}
+            disabled={!interactive}
+            className="flex h-[28px] w-[28px] items-center justify-center rounded-lg text-[12px] font-bold transition-all"
+            style={{
+              background: isActive ? background : inactive.background,
+              color: isActive ? color : "var(--color-bt-text-dim)",
+              border: isActive ? border : inactive.border,
+              cursor: interactive ? "pointer" : "default",
+            }}
+            aria-label={`Vote: ${opt.key}`}
+            aria-pressed={isActive}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

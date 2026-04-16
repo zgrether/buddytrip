@@ -305,12 +305,21 @@ export function DatesPlanningRow({
           ...old,
           windows: old.windows.map((w) => {
             if (w.id !== vars.windowId) return w;
+            // Null answer = clear this member's vote.
+            if (vars.answer === null) {
+              return {
+                ...w,
+                votes: w.votes.filter((v) => v.user_id !== vars.userId),
+              };
+            }
             const existing = w.votes.find((v) => v.user_id === vars.userId);
             if (existing) {
               return {
                 ...w,
                 votes: w.votes.map((v) =>
-                  v.user_id === vars.userId ? { ...v, answer: vars.answer } : v
+                  v.user_id === vars.userId
+                    ? { ...v, answer: vars.answer as string }
+                    : v
                 ),
               };
             }
@@ -321,7 +330,7 @@ export function DatesPlanningRow({
                 {
                   window_id: vars.windowId,
                   user_id: vars.userId,
-                  answer: vars.answer,
+                  answer: vars.answer as string,
                   created_at: new Date().toISOString(),
                 },
               ],
