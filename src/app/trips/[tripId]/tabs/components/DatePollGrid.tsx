@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarPlus, Check, Lock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { CalendarPlus, Check, CheckCircle2, Trash2 } from "lucide-react";
 import { parseLocalDate } from "@/lib/dates";
 import { UserAvatar } from "@/components/UserAvatar";
 
@@ -41,7 +41,6 @@ export interface DatePollGridProps {
   onVote: (dateWindowId: string, answer: VoteAnswer, userId: string) => void;
   // canEdit-only — optional so caller can omit for member-rendered grids
   onAddDateWindow?: () => void;
-  onEditDateWindow?: (id: string) => void;
   onRemoveDateWindow?: (id: string) => void;
   onLockDateWindow?: (id: string) => void;
 }
@@ -67,8 +66,8 @@ function formatColumnLabel(start: string, end: string): string {
 }
 
 const COLUMN_WIDTH = 88; // px, per-window column
-const NAME_COL_WIDTH = 96; // px, sticky name column
-const ADD_COL_WIDTH = 46; // px, always-visible add column
+const NAME_COL_MIN_WIDTH = 120; // px, sticky name column minimum — grows to fit names
+const ADD_COL_WIDTH = 54; // px, always-visible add column
 
 /**
  * Grid UI for the date poll. Pure rendering — emits callbacks for vote
@@ -82,7 +81,6 @@ export function DatePollGrid({
   isOwner,
   onVote,
   onAddDateWindow,
-  onEditDateWindow,
   onRemoveDateWindow,
   onLockDateWindow,
 }: DatePollGridProps) {
@@ -101,20 +99,22 @@ export function DatePollGrid({
     return () => window.removeEventListener("mousedown", handler);
   }, [openPopoverId]);
 
-  const gridMinWidth = NAME_COL_WIDTH + dateWindows.length * COLUMN_WIDTH;
+  const gridMinWidth = NAME_COL_MIN_WIDTH + dateWindows.length * COLUMN_WIDTH;
 
   return (
     <div className="flex">
       {/* ── scrollable grid ────────────────────────────────────────────── */}
       <div
-        className="min-w-0 flex-1 overflow-x-auto rounded-l-xl"
+        className="min-w-0 flex-1 overflow-x-auto rounded-xl"
         style={{ background: "var(--color-bt-card)" }}
       >
         <div
           className="grid"
           style={{
             minWidth: `${gridMinWidth}px`,
-            gridTemplateColumns: `${NAME_COL_WIDTH}px repeat(${Math.max(dateWindows.length, 1)}, minmax(${COLUMN_WIDTH}px, 1fr))`,
+            // Name column auto-fits content (no truncate) with a minimum width.
+            // Date columns use a fixed min then flex to share space.
+            gridTemplateColumns: `minmax(${NAME_COL_MIN_WIDTH}px, max-content) repeat(${Math.max(dateWindows.length, 1)}, minmax(${COLUMN_WIDTH}px, 1fr))`,
           }}
         >
           {/* Header: name column */}
@@ -177,12 +177,12 @@ export function DatePollGrid({
             return (
               <div key={m.user_id ?? rowIdx} className="contents">
                 <div
-                  className="sticky left-0 z-[2] flex min-w-0 items-center gap-2 px-3 py-2"
+                  className="sticky left-0 z-[2] flex items-center gap-2 whitespace-nowrap px-3 py-2"
                   style={{ background: rowBg }}
                 >
                   <UserAvatar name={m.displayName} avatarUrl={m.avatarUrl ?? null} size="sm" />
                   <span
-                    className="truncate text-[13px]"
+                    className="text-[13px]"
                     style={{ color: "var(--color-bt-text)" }}
                   >
                     {m.displayName}
@@ -235,17 +235,17 @@ export function DatePollGrid({
         <button
           type="button"
           onClick={onAddDateWindow}
-          className="flex flex-shrink-0 items-center justify-center rounded-r-xl transition-colors"
+          className="group relative ml-2 flex flex-shrink-0 items-center justify-center self-stretch rounded-xl transition-colors hover:bg-[var(--color-bt-card-raised)]"
           style={{
             width: `${ADD_COL_WIDTH}px`,
-            background: "var(--color-bt-card)",
-            borderLeft: "1px solid var(--color-bt-border)",
+            background: "transparent",
+            border: "1.5px dashed var(--color-bt-border)",
             color: "var(--color-bt-accent)",
           }}
           aria-label="Add date option"
         >
           <span className="relative flex items-center justify-center">
-            <CalendarPlus size={20} />
+            <CalendarPlus size={22} />
           </span>
         </button>
       )}
@@ -262,18 +262,10 @@ export function DatePollGrid({
           }}
         >
           <PopoverItem
-            icon={<Lock size={14} />}
-            label="Lock this date"
+            icon={<CheckCircle2 size={14} />}
+            label="Select this date"
             onClick={() => {
               onLockDateWindow?.(openPopoverId);
-              setOpenPopoverId(null);
-            }}
-          />
-          <PopoverItem
-            icon={<Pencil size={14} />}
-            label="Edit dates"
-            onClick={() => {
-              onEditDateWindow?.(openPopoverId);
               setOpenPopoverId(null);
             }}
           />
@@ -309,7 +301,7 @@ function ColumnHeader({
   if (!canEdit) {
     return (
       <div
-        className="flex items-center justify-center px-2 py-2.5 text-center"
+        className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
         style={{
           background: bg,
           borderBottom: "1px solid var(--color-bt-border)",
@@ -325,10 +317,8 @@ function ColumnHeader({
     );
   }
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex items-center justify-center gap-1 px-2 py-2.5 text-center transition-colors"
+    <div
+      className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
       style={{
         background: bg,
         borderBottom: "1px solid var(--color-bt-border)",
@@ -340,14 +330,26 @@ function ColumnHeader({
       >
         {label}
       </span>
-      <MoreHorizontal
-        size={14}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider leading-none transition-colors"
         style={{
-          color: isActive ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-          opacity: isActive ? 1 : 0.4,
+          background: isActive
+            ? "var(--color-bt-accent)"
+            : "var(--color-bt-card-raised)",
+          color: isActive
+            ? "var(--color-bt-base)"
+            : "var(--color-bt-accent)",
+          border: isActive
+            ? "1px solid var(--color-bt-accent)"
+            : "1px solid var(--color-bt-accent-border)",
         }}
-      />
-    </button>
+        aria-label="Select this date"
+      >
+        Select
+      </button>
+    </div>
   );
 }
 
