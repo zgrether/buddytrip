@@ -99,6 +99,33 @@ export function TripSettingsModal({
     },
   });
 
+  // Return-to-poll: flips poll_mode back on so the crew sees the poll UI
+  // again. Paired with unlock to drop the locked trip dates in one action.
+  const setPollModeMutation = trpc.datePoll.setPollMode.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+      setDatesExpanded(false);
+    },
+  });
+
+  const returnToPollPending =
+    unlockDatesMutation.isPending || setPollModeMutation.isPending;
+
+  const handleReturnToPoll = () => {
+    // Unlock dates first, then flip poll_mode on. Server order matters —
+    // unlock clears start/end + reopens the poll row; setPollMode flips
+    // the trip's poll_mode flag so the action center renders the grid.
+    unlockDatesMutation.mutate(
+      { tripId },
+      {
+        onSuccess: () => {
+          setPollModeMutation.mutate({ tripId, pollMode: true });
+        },
+      }
+    );
+  };
+
   const canSaveDest =
     destDraft.trim().length > 0 &&
     destDraft.trim() !== (trip?.locked_destination_title ?? "") &&
@@ -439,8 +466,20 @@ export function TripSettingsModal({
                             {lockDatesMutation.isPending ? "Updating…" : "Update dates"}
                           </button>
                           <button
+                            data-testid="settings-return-to-poll-btn"
+                            disabled={returnToPollPending || lockDatesMutation.isPending}
+                            onClick={handleReturnToPoll}
+                            className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
+                            style={{
+                              borderColor: "var(--color-bt-accent-border)",
+                              color: "var(--color-bt-accent)",
+                            }}
+                          >
+                            {returnToPollPending ? "Returning…" : "Return to poll"}
+                          </button>
+                          <button
                             data-testid="settings-clear-dates-btn"
-                            disabled={unlockDatesMutation.isPending || lockDatesMutation.isPending}
+                            disabled={unlockDatesMutation.isPending || lockDatesMutation.isPending || setPollModeMutation.isPending}
                             onClick={() => unlockDatesMutation.mutate({ tripId })}
                             className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
                             style={{
@@ -448,7 +487,7 @@ export function TripSettingsModal({
                               color: "var(--color-bt-danger)",
                             }}
                           >
-                            {unlockDatesMutation.isPending ? "Clearing…" : "Clear dates"}
+                            {unlockDatesMutation.isPending && !setPollModeMutation.isPending ? "Clearing…" : "Clear dates"}
                           </button>
                       </>
                       <button

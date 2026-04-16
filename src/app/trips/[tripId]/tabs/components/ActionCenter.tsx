@@ -5,7 +5,6 @@ import { DatePollCard } from "./DatePollCard";
 
 export interface ActionCenterProps {
   trip: TripData;
-  canEdit: boolean;
   isOwner: boolean;
 }
 
@@ -21,7 +20,7 @@ export interface ActionCenterProps {
  * dates have just been locked. Future cards (RsvpCard, TravelCard) will
  * follow the same shell pattern and plug in here.
  */
-export function ActionCenter({ trip, canEdit, isOwner }: ActionCenterProps) {
+export function ActionCenter({ trip, isOwner }: ActionCenterProps) {
   const stage = trip.stage ?? "idea";
   if (stage !== "idea" && stage !== "planning") return null;
 
@@ -41,9 +40,7 @@ export function ActionCenter({ trip, canEdit, isOwner }: ActionCenterProps) {
       >
         Action Center
       </p>
-      {showDatePollCard && (
-        <DatePollCard trip={trip} canEdit={canEdit} isOwner={isOwner} />
-      )}
+      {showDatePollCard && <DatePollCard trip={trip} isOwner={isOwner} />}
       {/* TODO: RsvpCard + TravelCard slot in here in later phases */}
     </section>
   );

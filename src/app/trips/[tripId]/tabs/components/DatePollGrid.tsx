@@ -33,13 +33,16 @@ export interface DatePollGridProps {
   dateWindows: PollWindow[];
   members: PollMember[];
   currentUserId: string;
-  /** Owner + Planner — controls column-header popover (lock/edit/remove). */
-  canEdit: boolean;
-  /** Owner only — controls vote-for-other-members. Non-owners can only vote in their own row. */
+  /**
+   * Owner only. Controls every admin affordance on the grid: column
+   * popover (Select / Remove), add-date column, voting on behalf of other
+   * crew members, un-dimmed rendering of other rows. Non-owners see a
+   * read-only surface where only their own row is interactive.
+   */
   isOwner: boolean;
   /** Fires with the target member's user_id. For non-owners this is always the current user. */
   onVote: (dateWindowId: string, answer: VoteAnswer, userId: string) => void;
-  // canEdit-only — optional so caller can omit for member-rendered grids
+  // isOwner-only — optional so caller can omit for non-owner grids
   onAddDateWindow?: () => void;
   onRemoveDateWindow?: (id: string) => void;
   onLockDateWindow?: (id: string) => void;
@@ -73,17 +76,36 @@ const ADD_COL_WIDTH = 54; // px, always-visible add column
  * Grid UI for the date poll. Pure rendering — emits callbacks for vote
  * changes and column header actions. Caller wires mutations.
  */
+// Media query hook — tiny inline helper so we can branch the vote cell
+// layout on viewport width without pulling a dependency.
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 export function DatePollGrid({
   dateWindows,
   members,
   currentUserId,
-  canEdit,
   isOwner,
   onVote,
   onAddDateWindow,
   onRemoveDateWindow,
   onLockDateWindow,
 }: DatePollGridProps) {
+  // On desktop with three or fewer date options the cell is wide enough to
+  // render the three answer buttons side-by-side (yes / maybe / no) instead
+  // of the cycle single-button. Mobile always uses cycle mode.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const useTripletLayout = isDesktop && dateWindows.length > 0 && dateWindows.length <= 3;
   // Popover state keeps the anchor rect so the menu can be positioned
   // directly beneath the column header button that opened it.
   const [openPopover, setOpenPopover] = useState<
@@ -174,7 +196,7 @@ export function DatePollGrid({
                   key={w.id}
                   label={formatColumnLabel(w.start_date, w.end_date)}
                   isActive={isActive}
-                  canEdit={canEdit}
+                  canEdit={isOwner}
                   onToggle={(btnRect) => {
                     if (openPopoverId === w.id) {
                       setOpenPopover(null);
@@ -233,23 +255,32 @@ export function DatePollGrid({
                   const cellBg = isColumnHighlighted
                     ? "rgba(45, 212, 191, 0.07)"
                     : rowBg;
+                  const interactive = isMe || isOwner;
+                  const handleSet = (next: VoteAnswer) => {
+                    if (!m.user_id || !interactive) return;
+                    onVote(w.id, next, m.user_id);
+                  };
                   return (
                     <div
                       key={w.id}
                       className="flex items-center justify-center px-1 py-2"
                       style={{ background: cellBg }}
                     >
-                      <VoteButton
-                        answer={answer}
-                        interactive={isMe || isOwner}
-                        dimmed={rowDimmed}
-                        onClick={() => {
-                          if (!m.user_id) return;
-                          if (isMe || isOwner) {
-                            onVote(w.id, cycleAnswer(answer), m.user_id);
-                          }
-                        }}
-                      />
+                      {useTripletLayout ? (
+                        <VoteTriplet
+                          answer={answer}
+                          interactive={interactive}
+                          dimmed={rowDimmed}
+                          onSet={handleSet}
+                        />
+                      ) : (
+                        <VoteButton
+                          answer={answer}
+                          interactive={interactive}
+                          dimmed={rowDimmed}
+                          onClick={() => handleSet(cycleAnswer(answer))}
+                        />
+                      )}
                     </div>
                   );
                 })}
@@ -260,7 +291,7 @@ export function DatePollGrid({
       </div>
 
       {/* ── add-column sibling (outside scroll) ───────────────────────── */}
-      {canEdit && onAddDateWindow && (
+      {isOwner && onAddDateWindow && (
         <button
           type="button"
           onClick={onAddDateWindow}
@@ -280,7 +311,7 @@ export function DatePollGrid({
       )}
 
       {/* ── column header popover ─────────────────────────────────────── */}
-      {openPopover && canEdit && (
+      {openPopover && isOwner && (
         <div
           ref={popoverRef}
           className="fixed z-50 -translate-x-1/2 rounded-xl p-1.5 shadow-lg"
@@ -414,6 +445,61 @@ function VoteButton({
     >
       {text}
     </button>
+  );
+}
+
+function VoteTriplet({
+  answer,
+  interactive,
+  dimmed,
+  onSet,
+}: {
+  answer: VoteAnswer;
+  interactive: boolean;
+  dimmed: boolean;
+  onSet: (next: VoteAnswer) => void;
+}) {
+  // Three side-by-side buttons. Clicking the active one clears the vote.
+  const options: { key: Exclude<VoteAnswer, null>; label: string }[] = [
+    { key: "yes", label: "✓" },
+    { key: "maybe", label: "~" },
+    { key: "no", label: "✕" },
+  ];
+  return (
+    <div
+      className="flex items-center gap-1"
+      style={{
+        opacity: dimmed ? 0.4 : 1,
+        pointerEvents: dimmed ? "none" : undefined,
+      }}
+    >
+      {options.map((opt) => {
+        const isActive = answer === opt.key;
+        const { background, color, border } = voteVisual(opt.key);
+        // Inactive pill uses the empty-state styling so it reads as "not picked"
+        // but still telegraphs what choice it represents via the glyph.
+        const inactive = voteVisual(null);
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onSet(isActive ? null : opt.key)}
+            disabled={!interactive}
+            className="flex h-[28px] w-[28px] items-center justify-center rounded-lg text-[12px] font-bold transition-all"
+            style={{
+              background: isActive ? background : inactive.background,
+              color: isActive ? color : "var(--color-bt-text-dim)",
+              border: isActive ? border : inactive.border,
+              cursor: interactive ? "pointer" : "default",
+            }}
+            aria-label={`Vote: ${opt.key}`}
+            aria-pressed={isActive}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
