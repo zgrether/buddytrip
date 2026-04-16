@@ -1033,8 +1033,9 @@ export function HomeTab({
             />
           )}
 
-          {/* ── Action Center — everyone sees their active tasks ──── */}
-          {stage === "planning" && (
+          {/* ── Action Center — everyone sees their active tasks in   ── */}
+          {/*    idea + planning stages (matches DatesPlanningRow gate) ── */}
+          {(stage === "idea" || stage === "planning") && (
             <ActionCenter trip={trip} canEdit={canEditProp} isOwner={!!isOwner} />
           )}
 
