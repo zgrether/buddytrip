@@ -310,4 +310,66 @@ describe("datePoll router", () => {
       caller.datePoll.resetPoll({ tripId })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  // ── returnToPoll ────────────────────────────────────────────────────────
+
+  it("returnToPoll — preserves all windows and votes (even the locked one with zero votes)", async () => {
+    // Fresh trip + direct-lock (creates a single window with no votes) so we
+    // can prove returnToPoll does NOT delete it the way unlock would.
+    const rtTripId = await ctx.createTrip("Return To Poll Test");
+    const caller = ctx.caller();
+
+    await caller.trips.lockDates({
+      tripId: rtTripId,
+      startDate: "2026-09-01",
+      endDate: "2026-09-05",
+    });
+
+    // Confirm the window was created and dates are locked
+    let poll = await caller.datePoll.get({ tripId: rtTripId });
+    expect(poll.windows.length).toBe(1);
+    const directWindowId = poll.windows[0]!.id;
+
+    await caller.datePoll.returnToPoll({ tripId: rtTripId });
+
+    // Window should still be there (unlock would have deleted it)
+    poll = await caller.datePoll.get({ tripId: rtTripId });
+    expect(poll.windows.length).toBe(1);
+    expect(poll.windows[0]!.id).toBe(directWindowId);
+    expect(poll.lockedWindowId).toBeNull();
+    expect(poll.pollMode).toBe(true);
+
+    // Trip dates should be cleared
+    const trip = await caller.trips.getById({ tripId: rtTripId });
+    expect(trip.start_date).toBeNull();
+    expect(trip.end_date).toBeNull();
+  });
+
+  it("returnToPoll — preserves votes on non-locked windows", async () => {
+    // Use the main suite trip which has windows + votes from earlier tests.
+    const ownerCaller = ctx.caller();
+    const memberCaller = ctx.callerAs("member");
+
+    // Ensure at least one vote exists
+    await memberCaller.datePoll.castDateVote({ tripId, windowId, answer: "yes" });
+
+    // Lock then return to poll
+    await ownerCaller.datePoll.lockDateWindow({ tripId, windowId });
+    await ownerCaller.datePoll.returnToPoll({ tripId });
+
+    const poll = await ownerCaller.datePoll.get({ tripId });
+    const win = poll.windows.find((w) => w.id === windowId);
+    const memberUser = ctx.getUser("member");
+    const memberVote = win?.votes.find((v) => v.user_id === memberUser.id);
+    expect(memberVote?.answer).toBe("yes");
+    expect(poll.pollMode).toBe(true);
+    expect(poll.lockedWindowId).toBeNull();
+  });
+
+  it("returnToPoll — member cannot call", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.datePoll.returnToPoll({ tripId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });

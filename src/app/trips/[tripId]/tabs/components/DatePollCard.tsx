@@ -5,7 +5,7 @@ import { Calendar, Bell, RotateCcw, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { formatDateRangeCompact, parseLocalDate } from "@/lib/dates";
+import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
 import { ActionCard } from "./ActionCard";
 import {
@@ -297,18 +297,11 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     },
   });
 
-  // ── Resolved view ──────────────────────────────────────────────────────
-
-  if (datesLocked) {
-    return (
-      <ActionCard
-        icon={<Calendar size={16} />}
-        title="Dates locked"
-        isResolved
-        resolvedSummary={formatDateRangeCompact(trip.start_date, trip.end_date)}
-      />
-    );
-  }
+  // When dates are locked, the date poll is not an action surface — the
+  // ActionCenter renders its own "nothing needed right now" placeholder
+  // (which will also cover future resolved-stage cards like RSVP / travel).
+  // Returning null here keeps DatePollCard a pure poll-mode component.
+  if (datesLocked) return null;
 
   // ── Poll-open view ─────────────────────────────────────────────────────
 

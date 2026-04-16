@@ -141,7 +141,49 @@ export function DatePollGrid({
 
   const openPopoverId = openPopover?.id ?? null;
 
+  const hasWindows = dateWindows.length > 0;
   const gridMinWidth = NAME_COL_MIN_WIDTH + dateWindows.length * COLUMN_WIDTH;
+
+  // Empty-state short-circuit: when there are no date windows, rendering
+  // member rows inside the grid causes layout to jumble (the grid template
+  // has a placeholder column, but each row only contributes the name cell,
+  // so names flow across the extra column). Swap to a single-line empty
+  // banner until the first window is added.
+  if (!hasWindows) {
+    return (
+      <div className="flex">
+        <div
+          className="min-w-0 flex-1 rounded-xl px-4 py-6 text-center"
+          style={{ background: "var(--color-bt-card)" }}
+        >
+          <span
+            className="text-[13px] italic"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {isOwner
+              ? "No dates added yet — tap the + to propose a date option."
+              : "No dates added yet — the host hasn't proposed any options."}
+          </span>
+        </div>
+        {isOwner && onAddDateWindow && (
+          <button
+            type="button"
+            onClick={onAddDateWindow}
+            className="group relative ml-2 flex flex-shrink-0 items-center justify-center self-stretch rounded-xl transition-colors hover:bg-[var(--color-bt-card-raised)]"
+            style={{
+              width: `${ADD_COL_WIDTH}px`,
+              background: "transparent",
+              border: "1.5px dashed var(--color-bt-border)",
+              color: "var(--color-bt-accent)",
+            }}
+            aria-label="Add date option"
+          >
+            <CalendarPlus size={22} />
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex">
@@ -156,7 +198,7 @@ export function DatePollGrid({
             minWidth: `${gridMinWidth}px`,
             // Name column auto-fits content (no truncate) with a minimum width.
             // Date columns use a fixed min then flex to share space.
-            gridTemplateColumns: `minmax(${NAME_COL_MIN_WIDTH}px, max-content) repeat(${Math.max(dateWindows.length, 1)}, minmax(${COLUMN_WIDTH}px, 1fr))`,
+            gridTemplateColumns: `minmax(${NAME_COL_MIN_WIDTH}px, max-content) repeat(${dateWindows.length}, minmax(${COLUMN_WIDTH}px, 1fr))`,
           }}
         >
           {/* Header: name column */}
@@ -176,43 +218,29 @@ export function DatePollGrid({
           </div>
 
           {/* Header: per-window label + popover trigger */}
-          {dateWindows.length === 0 ? (
-            <div
-              className="flex items-center justify-center px-3 py-2.5"
-              style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-            >
-              <span
-                className="text-[12px] italic"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                No dates added yet
-              </span>
-            </div>
-          ) : (
-            dateWindows.map((w) => {
-              const isActive = openPopoverId === w.id;
-              return (
-                <ColumnHeader
-                  key={w.id}
-                  label={formatColumnLabel(w.start_date, w.end_date)}
-                  isActive={isActive}
-                  canEdit={isOwner}
-                  onToggle={(btnRect) => {
-                    if (openPopoverId === w.id) {
-                      setOpenPopover(null);
-                      return;
-                    }
-                    setOpenPopover({
-                      id: w.id,
-                      anchorLeft: btnRect.left,
-                      anchorBottom: btnRect.bottom,
-                      anchorCenter: btnRect.left + btnRect.width / 2,
-                    });
-                  }}
-                />
-              );
-            })
-          )}
+          {dateWindows.map((w) => {
+            const isActive = openPopoverId === w.id;
+            return (
+              <ColumnHeader
+                key={w.id}
+                label={formatColumnLabel(w.start_date, w.end_date)}
+                isActive={isActive}
+                canEdit={isOwner}
+                onToggle={(btnRect) => {
+                  if (openPopoverId === w.id) {
+                    setOpenPopover(null);
+                    return;
+                  }
+                  setOpenPopover({
+                    id: w.id,
+                    anchorLeft: btnRect.left,
+                    anchorBottom: btnRect.bottom,
+                    anchorCenter: btnRect.left + btnRect.width / 2,
+                  });
+                }}
+              />
+            );
+          })}
 
           {/* Member rows */}
           {members.map((m, rowIdx) => {

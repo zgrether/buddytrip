@@ -590,6 +590,60 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // returnToPoll — Owner or Planner: clear locked dates AND reopen the
+  // poll (trips.poll_mode = true) while preserving every existing window
+  // and vote — including the formerly-locked window (even if it has zero
+  // votes, which unlock() would have deleted). This is the reverse of
+  // lockDateWindow: the crew lands back on the poll grid with their full
+  // history intact.
+  // -----------------------------------------------------------------------
+  returnToPoll: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      // Clear the trip dates and flip poll_mode back on in a single update
+      // so the UI transitions in one render.
+      const { error: tripErr } = await ctx.supabase
+        .from("trips")
+        .update({
+          start_date: null,
+          end_date: null,
+          poll_mode: true,
+        })
+        .eq("id", ctx.tripId);
+
+      if (tripErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to return to poll: ${tripErr.message}`,
+        });
+      }
+
+      // Reopen the poll row — if it doesn't exist (direct-date-entry path),
+      // create one. We intentionally do NOT delete any date_windows so the
+      // previously-chosen window remains available as a voting option.
+      const { error: pollErr } = await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          {
+            trip_id: ctx.tripId,
+            open: true,
+            locked_window_id: null,
+          },
+          { onConflict: "trip_id" }
+        );
+
+      if (pollErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reopen date poll: ${pollErr.message}`,
+        });
+      }
+
+      return { ok: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // setPollMode — Owner or Planner: flip trips.poll_mode on or off
   // -----------------------------------------------------------------------
   setPollMode: authedProcedure
