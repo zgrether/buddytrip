@@ -46,19 +46,16 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange }: ActionCent
         // Dates locked — nothing to do
         <ActionCenterIdle isOwner={isOwner} />
       ) : isOwner ? (
-        <>
-          {/* Owner view: DatesPanel is the admin surface. When the poll is
-              active the DatePollCard (crew availability) appears below it. */}
-          <DatesPanel
-            trip={trip}
-            canEdit={canEdit}
-            isOwner={isOwner}
-            isOpen={true}
-            onToggle={() => {}}
-            onTabChange={onTabChange}
-          />
-          {pollMode && <DatePollCard trip={trip} isOwner={isOwner} />}
-        </>
+        // Owner view: DatesPanel is a two-button state machine that
+        // internally expands to embed DatePollCard when the poll is active.
+        <DatesPanel
+          trip={trip}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          isOpen={true}
+          onToggle={() => {}}
+          onTabChange={onTabChange}
+        />
       ) : pollMode ? (
         // Non-owner view: DatesPanel is hidden entirely — the DatePollCard
         // is the only surface they need to see / interact with.
