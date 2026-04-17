@@ -214,7 +214,7 @@ export function DatePollGrid({
         <div
           className="sticky left-0 z-[3] flex items-center px-3 py-2.5"
           style={{
-            background: "var(--color-bt-card-raised)",
+            background: "var(--color-bt-card)",
             borderBottom: "1px solid var(--color-bt-border)",
           }}
         >
@@ -258,7 +258,7 @@ export function DatePollGrid({
             onClick={onAddDateWindow}
             className="flex items-center justify-center transition-colors hover:bg-[var(--color-bt-card)]"
             style={{
-              background: "var(--color-bt-card-raised)",
+              background: "var(--color-bt-card)",
               borderLeft: "1px solid var(--color-bt-border)",
               borderBottom: "1px solid var(--color-bt-border)",
               color: "var(--color-bt-accent)",
@@ -271,10 +271,11 @@ export function DatePollGrid({
 
         {/* Member rows */}
         {members.map((m, rowIdx) => {
-          // Match DatesPanel row striping: state-fill on even, transparent
-          // on odd (revealing the card-raised container).
+          // Row striping: state-fill on even rows, card-raised on odd rows.
+          // Explicit background on both so dark-mode contrast is preserved —
+          // transparent would make the cell invisible against the container.
           const rowBg =
-            rowIdx % 2 === 0 ? "var(--color-bt-state-fill)" : "transparent";
+            rowIdx % 2 === 0 ? "var(--color-bt-state-fill)" : "var(--color-bt-card-raised)";
           const isMe = m.user_id === currentUserId;
           // Only the owner can see / interact with other members' rows.
           // Planners and Members see their own row clearly and others dimmed
