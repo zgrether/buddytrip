@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Calendar, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Calendar } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, formatDateRangeCompact } from "@/lib/dates";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
@@ -45,17 +45,13 @@ function formatLongDate(d: string): string {
  * DatesPanel — owner-only admin surface for trip dates.
  *
  * Three states (owner, !datesLocked):
- *   1. idle:       two buttons — "Set Dates" and "Poll the Crew"
- *   2. setDates:   pickers revealed below the buttons (local UI only)
- *   3. pollMode:   Set Dates disabled; Poll the Crew becomes
- *                  "Nevermind — cancel poll". Crew availability grid
- *                  (DatePollCard) renders below.
+ *   1. idle/set:    segmented control on "Set Dates" — pickers revealed below
+ *   2. poll:        segmented control on "Poll the Crew" — DatePollCard below
  *
- * Clicking "Poll the Crew" in idle → flips server pollMode=true → state 3.
- * Clicking "Nevermind — cancel poll" in state 3 → flips pollMode=false +
- * clears vote/window data (server-side cascade) → back to state 1.
- * Clicking "Set Dates" → toggles local pickers (state 2).
- * Entering valid dates + clicking Set → lockDates → locked view.
+ * Switching to "Poll the Crew" segment fires setPollMode(true) if not already.
+ * Setting dates with an active poll cascades: lockDates + setPollMode(false).
+ * The Set button is two-stage: first click shows a confirmation message,
+ * second click executes. Confirm message is context-aware (poll active vs not).
  *
  * DatesPanel is owner-only. Non-owners see DatePollCard directly from
  * ActionCenter; DatesPanel returns null for them.
@@ -82,11 +78,16 @@ export function DatesPanel({
   );
   const windowCount = poll?.windows.length ?? 0;
 
-  // Local UI — whether the date pickers are revealed. Reset whenever the
-  // user hands control to the poll flow.
-  const [showPickers, setShowPickers] = useState(false);
+  // Local UI state — segmented control selection + date picker values
+  const [mode, setMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
+  const [showSetConfirm, setShowSetConfirm] = useState(false);
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
+
+  // Sync mode with server state (e.g. poll cancelled from another session)
+  useEffect(() => {
+    setMode(pollMode ? "poll" : "set");
+  }, [pollMode]);
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
@@ -113,7 +114,7 @@ export function DatesPanel({
     onSuccess() {
       setDirectStart("");
       setDirectEnd("");
-      setShowPickers(false);
+      setShowSetConfirm(false);
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
@@ -158,23 +159,26 @@ export function DatesPanel({
 
   // ── Actions ────────────────────────────────────────────────────────────
 
-  const handleSetDates = () => {
+  const handleSetDatesConfirm = () => {
     if (!directStart || !directEnd || directStart >= directEnd) return;
+    // If a poll is active, cascade clear it alongside locking dates
+    if (pollMode) {
+      setPollActive.mutate({ tripId, pollMode: false });
+    }
     lockDates.mutate({ tripId, startDate: directStart, endDate: directEnd });
   };
 
-  const handlePollTheCrew = () => {
-    setShowPickers(false);
-    setPollActive.mutate({ tripId, pollMode: true });
+  const handleSelectPollSegment = () => {
+    setMode("poll");
+    setShowSetConfirm(false);
+    if (!pollMode) {
+      setPollActive.mutate({ tripId, pollMode: true });
+    }
   };
 
-  const handleCancelPoll = () => {
-    setPollActive.mutate({ tripId, pollMode: false });
-  };
-
-  const handleToggleSetDates = () => {
-    if (pollMode) return; // disabled while poll active
-    setShowPickers((v) => !v);
+  const handleSelectSetSegment = () => {
+    setMode("set");
+    setShowSetConfirm(false);
   };
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -211,8 +215,12 @@ export function DatesPanel({
     );
   }
 
-  // Owner, not-locked — two-button state machine.
+  // Owner, not-locked — segmented control state machine.
   const valid = !!directStart && !!directEnd && directStart < directEnd;
+
+  const confirmMessage = pollMode
+    ? "This will lock these dates and clear the poll. Are you sure?"
+    : "Lock these dates?";
 
   return (
     <PlanningRow
@@ -226,117 +234,122 @@ export function DatesPanel({
       noExpand={true}
     >
       <div className="space-y-3">
-        {/* ── Button row: Set Dates + Poll the Crew / Cancel ──────────── */}
-        <div className="flex gap-2">
-          {/* Set Dates — disabled while poll is active. When pickers are
-              open in idle mode we tint it accent to signal "you're here". */}
+        {/* ── Segmented control: Set Dates | Poll the Crew ──────────────── */}
+        <div
+          className="flex overflow-hidden rounded-xl"
+          style={{ border: "1px solid var(--color-bt-border)" }}
+        >
           <button
             type="button"
-            onClick={handleToggleSetDates}
-            disabled={pollMode}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+            onClick={handleSelectSetSegment}
+            className="flex flex-1 items-center justify-center py-2.5 text-sm font-medium transition-colors"
             style={
-              pollMode
+              mode === "set"
                 ? {
-                    border: "1.5px dashed var(--color-bt-border)",
-                    color: "var(--color-bt-text-dim)",
-                    background: "transparent",
-                    opacity: 0.5,
-                    cursor: "not-allowed",
-                  }
-                : showPickers
-                ? {
-                    background: "var(--color-bt-accent)",
-                    color: "var(--color-bt-base)",
-                    border: "1.5px solid var(--color-bt-accent)",
+                    background: "var(--color-bt-card-float)",
+                    color: "var(--color-bt-text)",
                   }
                 : {
-                    border: "1.5px dashed var(--color-bt-accent)",
-                    color: "var(--color-bt-accent)",
                     background: "transparent",
+                    color: "var(--color-bt-text-dim)",
                   }
             }
           >
             Set Dates
           </button>
-
-          {/* Poll the Crew / Nevermind — cancel poll */}
-          {pollMode ? (
-            <button
-              type="button"
-              onClick={handleCancelPoll}
-              disabled={setPollActive.isPending}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
-              style={{
-                border: "1.5px dashed var(--color-bt-warning)",
-                color: "var(--color-bt-warning)",
-                background: "transparent",
-              }}
-            >
-              <X size={14} />
-              {setPollActive.isPending ? "Cancelling…" : "Nevermind — cancel poll"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handlePollTheCrew}
-              disabled={setPollActive.isPending}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
-              style={{
-                border: "1.5px dashed var(--color-bt-accent)",
-                color: "var(--color-bt-accent)",
-                background: "transparent",
-              }}
-            >
-              Poll the Crew
-            </button>
-          )}
+          <div
+            className="w-px self-stretch"
+            style={{ background: "var(--color-bt-border)" }}
+          />
+          <button
+            type="button"
+            onClick={handleSelectPollSegment}
+            disabled={setPollActive.isPending}
+            className="flex flex-1 items-center justify-center py-2.5 text-sm font-medium transition-colors"
+            style={
+              mode === "poll"
+                ? {
+                    background: "var(--color-bt-card-float)",
+                    color: "var(--color-bt-text)",
+                  }
+                : {
+                    background: "transparent",
+                    color: "var(--color-bt-text-dim)",
+                  }
+            }
+          >
+            Poll the Crew
+          </button>
         </div>
 
-        {/* ── Expanded: date pickers (idle + Set Dates clicked) ─────────── */}
-        {showPickers && !pollMode && (
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={directStart}
-              onChange={(e) => setDirectStart(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <input
-              type="date"
-              value={directEnd}
-              onChange={(e) => setDirectEnd(e.target.value)}
-              className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <button
-              type="button"
-              disabled={!valid || lockDates.isPending}
-              onClick={handleSetDates}
-              className="flex-shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity"
-              style={{
-                background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                opacity: valid ? 1 : 0.6,
-                cursor: valid ? "pointer" : "not-allowed",
-              }}
-            >
-              {lockDates.isPending ? "Setting…" : "Set"}
-            </button>
+        {/* ── Set Dates content: pickers + two-stage confirm ─────────────── */}
+        {mode === "set" && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={directStart}
+                onChange={(e) => {
+                  setDirectStart(e.target.value);
+                  setShowSetConfirm(false);
+                }}
+                className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+              <input
+                type="date"
+                value={directEnd}
+                onChange={(e) => {
+                  setDirectEnd(e.target.value);
+                  setShowSetConfirm(false);
+                }}
+                className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+              <button
+                type="button"
+                disabled={!valid || lockDates.isPending}
+                onClick={() => {
+                  if (!showSetConfirm) {
+                    setShowSetConfirm(true);
+                  } else {
+                    handleSetDatesConfirm();
+                  }
+                }}
+                className="flex-shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity"
+                style={{
+                  background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+                  color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                  opacity: valid ? 1 : 0.6,
+                  cursor: valid ? "pointer" : "not-allowed",
+                }}
+              >
+                {lockDates.isPending ? "Setting…" : "Set"}
+              </button>
+            </div>
+
+            {/* Two-stage confirm message */}
+            {showSetConfirm && valid && (
+              <p
+                className="text-xs leading-snug"
+                style={{ color: "var(--color-bt-warning)" }}
+              >
+                {confirmMessage}
+              </p>
+            )}
           </div>
         )}
 
-        {/* ── Expanded: crew availability (poll active) ─────────────────── */}
-        {pollMode && <DatePollCard trip={trip} isOwner={true} />}
+        {/* ── Poll the Crew content: DatePollCard ───────────────────────── */}
+        {mode === "poll" && <DatePollCard trip={trip} isOwner={true} />}
       </div>
     </PlanningRow>
   );
