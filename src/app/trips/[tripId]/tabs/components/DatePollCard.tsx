@@ -326,12 +326,6 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
           the "panel inside panel" visual nesting. Matches DatesPanel's
           internal poll-grid pattern: small uppercase header + grid. */}
       <div className="space-y-2">
-        <p
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Crew Availability
-        </p>
         <DatePollGrid
           dateWindows={windows}
           members={pollMembers}
