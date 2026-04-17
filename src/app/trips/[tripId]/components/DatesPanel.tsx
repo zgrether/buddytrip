@@ -116,6 +116,8 @@ export function DatesPanel({
   // Modals and confirm dialogs
   const [showSelectDateModal, setShowSelectDateModal] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  // Inline cancel-poll confirmation (no modal — renders below the cancel button)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // ── Mutations (optimistic updates from main's rewrite) ────────────────
 
@@ -1024,8 +1026,80 @@ export function DatesPanel({
           </>
         )}
 
-        {/* Polling grid — visible whenever poll mode is on */}
-        {pollMode && renderPollGrid()}
+        {/* Poll-active state — date pickers grayed out + amber cancel button */}
+        {pollMode && (
+          <div className="mt-3 space-y-3">
+            {/* Date pickers — visible but non-interactive to show the direct
+                entry path is temporarily unavailable while the poll is open */}
+            <div style={{ opacity: 0.4, pointerEvents: "none" }}>
+              {renderDatePickerRow("set")}
+              <p
+                className="mt-2 text-xs"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Once set, dates can only be changed from the trip settings.
+              </p>
+            </div>
+
+            {/* Amber dashed cancel button — caution, not primary action */}
+            <button
+              type="button"
+              onClick={() => setShowCancelConfirm((v) => !v)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-3 text-sm font-medium transition-colors"
+              style={{
+                border: "1.5px dashed var(--color-bt-warning)",
+                color: "var(--color-bt-warning)",
+                background: "transparent",
+              }}
+            >
+              <X size={14} />
+              Nevermind — cancel poll, set dates instead
+            </button>
+
+            {/* Inline confirmation row — no modal, renders directly below */}
+            {showCancelConfirm && (
+              <div className="flex items-center justify-between px-1 pt-1">
+                <span
+                  className="text-xs"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  This will clear all votes. Are you sure?
+                </span>
+                <div className="flex gap-2">
+                  {/* Ghost small */}
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelConfirm(false)}
+                    className="rounded-xl px-3 py-1.5 text-xs font-medium"
+                    style={{
+                      background: "transparent",
+                      color: "var(--color-bt-text-dim)",
+                      border: "0.5px solid var(--color-bt-border)",
+                    }}
+                  >
+                    Keep poll
+                  </button>
+                  {/* Danger small */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPollActive.mutate({ tripId, pollMode: false });
+                      setShowCancelConfirm(false);
+                    }}
+                    disabled={setPollActive.isPending}
+                    className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+                    style={{
+                      background: "var(--color-bt-danger)",
+                      color: "white",
+                    }}
+                  >
+                    {setPollActive.isPending ? "Cancelling…" : "Yes, cancel"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
