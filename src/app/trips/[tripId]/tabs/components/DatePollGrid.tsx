@@ -307,7 +307,8 @@ export function DatePollGrid({
               {dateWindows.map((w) => {
                 const vote = w.votes.find((v) => v.user_id === m.user_id);
                 const answer = (vote?.answer ?? null) as VoteAnswer;
-                const cellBg = rowBg;
+                const cellBg =
+                  openPopoverId === w.id ? "var(--color-bt-state-stroke)" : rowBg;
                 const interactive = isMe || isOwner;
                 const handleSet = (next: VoteAnswer) => {
                   if (!m.user_id || !interactive) return;
@@ -400,7 +401,7 @@ function ColumnHeader({
   canEdit: boolean;
   onToggle: (anchorRect: DOMRect) => void;
 }) {
-  const headerBg = isActive ? "var(--color-bt-state-fill)" : "var(--color-bt-card)";
+  const headerBg = isActive ? "var(--color-bt-state-stroke)" : "var(--color-bt-card)";
   if (!canEdit) {
     return (
       <div
