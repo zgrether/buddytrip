@@ -307,8 +307,7 @@ export function DatePollGrid({
               {dateWindows.map((w) => {
                 const vote = w.votes.find((v) => v.user_id === m.user_id);
                 const answer = (vote?.answer ?? null) as VoteAnswer;
-                const cellBg =
-                  openPopoverId === w.id ? "var(--color-bt-state-stroke)" : rowBg;
+                const isColumnActive = openPopoverId === w.id;
                 const interactive = isMe || isOwner;
                 const handleSet = (next: VoteAnswer) => {
                   if (!m.user_id || !interactive) return;
@@ -317,9 +316,15 @@ export function DatePollGrid({
                 return (
                   <div
                     key={w.id}
-                    className="flex items-center justify-center px-1 py-2"
-                    style={{ background: cellBg }}
+                    className="relative flex items-center justify-center px-1 py-2"
+                    style={{ background: rowBg }}
                   >
+                    {isColumnActive && (
+                      <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{ background: "var(--color-bt-state-stroke)" }}
+                      />
+                    )}
                     {useTripletLayout ? (
                       <VoteTriplet
                         answer={answer}
@@ -401,16 +406,21 @@ function ColumnHeader({
   canEdit: boolean;
   onToggle: (anchorRect: DOMRect) => void;
 }) {
-  const headerBg = isActive ? "var(--color-bt-state-stroke)" : "var(--color-bt-card)";
   if (!canEdit) {
     return (
       <div
-        className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
+        className="relative flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
         style={{
-          background: headerBg,
+          background: "var(--color-bt-card)",
           borderBottom: "1px solid var(--color-bt-border)",
         }}
       >
+        {isActive && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ background: "var(--color-bt-state-stroke)" }}
+          />
+        )}
         <span
           className="text-[12px] font-semibold leading-none"
           style={{ color: "var(--color-bt-text)" }}
@@ -422,12 +432,18 @@ function ColumnHeader({
   }
   return (
     <div
-      className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
+      className="relative flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
       style={{
-        background: headerBg,
+        background: "var(--color-bt-card)",
         borderBottom: "1px solid var(--color-bt-border)",
       }}
     >
+      {isActive && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "var(--color-bt-state-stroke)" }}
+        />
+      )}
       <span
         className="text-[12px] font-semibold leading-none"
         style={{ color: "var(--color-bt-text)" }}
