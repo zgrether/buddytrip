@@ -41,10 +41,10 @@ export const datePollRouter = router({
         votesByWindow.set(v.window_id, arr);
       }
 
-      // Fetch locked_window_id + notify_sent from date_polls
+      // Fetch locked_window_id + notify_sent + poll_note from date_polls
       const { data: poll } = await ctx.supabase
         .from("date_polls")
-        .select("locked_window_id, notify_sent")
+        .select("locked_window_id, notify_sent, poll_note")
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
 
@@ -58,6 +58,7 @@ export const datePollRouter = router({
       return {
         lockedWindowId: poll?.locked_window_id ?? null,
         notifySent: poll?.notify_sent ?? false,
+        pollNote: poll?.poll_note ?? null,
         pollMode: trip?.poll_mode ?? false,
         windows: (windows ?? []).map((w) => ({
           ...w,
@@ -97,6 +98,12 @@ export const datePollRouter = router({
           message: `Failed to add date window: ${error.message}`,
         });
       }
+
+      // Reset notify_sent so the owner can re-notify after adding a new option.
+      await ctx.supabase
+        .from("date_polls")
+        .update({ notify_sent: false })
+        .eq("trip_id", ctx.tripId);
 
       return data;
     }),
@@ -792,6 +799,36 @@ export const datePollRouter = router({
           { trip_id: ctx.tripId, open: true, notify_sent: true },
           { onConflict: "trip_id" }
         );
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // updatePollNote — Owner: set the free-text note shown to crew at the top
+  // of the date poll. Pass null to clear it (UI falls back to default text).
+  // -----------------------------------------------------------------------
+  updatePollNote: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        note: z.string().max(500).nullable(),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          { trip_id: ctx.tripId, open: true, poll_note: input.note },
+          { onConflict: "trip_id" }
+        );
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update poll note: ${error.message}`,
+        });
+      }
 
       return { success: true };
     }),
