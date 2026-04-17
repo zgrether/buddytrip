@@ -20,7 +20,7 @@ export interface DatePollCardProps {
 }
 
 const DEFAULT_POLL_NOTE =
-  "Vote on each date option — ✓ if it works, ~ if maybe, ✕ if you can't make it.";
+  "We're trying to get a feel for everyone's availability before locking in a date — let us know what you think about these options.";
 
 function sortWindows(ws: PollWindow[]): PollWindow[] {
   return ws.slice().sort((a, b) => {
