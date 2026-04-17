@@ -53,8 +53,11 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Re-notify: track member count at time of last notify so we can detect
-  // new joiners client-side. Server handles the addWindow + resetPoll cases.
+  // Re-notify state:
+  // hasFiredNotify latches true on success so refetch races can't re-enable
+  // the button. It's only cleared when one of the three re-enable criteria
+  // fire (addWindow, resetPoll, or new members joined).
+  const [hasFiredNotify, setHasFiredNotify] = useState(false);
   const [memberCountAtNotify, setMemberCountAtNotify] = useState<number | null>(null);
 
   // Poll note editor
@@ -73,13 +76,13 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
   const datesLocked = !!(trip.start_date && trip.end_date);
   const notifySent = !!poll?.notifySent;
 
-  // Re-notify is allowed when:
-  //   1. Notify hasn't been sent yet, OR
-  //   2. New members joined since the last notify (client-only detection), OR
-  //   3. notify_sent was reset by addWindow or resetPoll (server-driven, picked up via refetch)
+  // Button is disabled when notifySent (server) OR hasFiredNotify (local latch).
+  // Either condition alone is enough to disable — this prevents refetch races
+  // from re-enabling after the user clicks Notify.
+  // Re-enabled explicitly when: addWindow fires, resetPoll fires, or new members joined.
   const hasNewMembers =
     memberCountAtNotify !== null && members.length > memberCountAtNotify;
-  const canNotify = !notifySent || hasNewMembers;
+  const canNotify = !(notifySent || hasFiredNotify) || hasNewMembers;
 
   const pollNote = poll?.pollNote ?? null;
   const displayNote = pollNote ?? DEFAULT_POLL_NOTE;
@@ -242,6 +245,10 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     onError(_e, _v, ctx) {
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
+    onSuccess() {
+      // Clear the notify latch so the button re-enables for the new date option.
+      setHasFiredNotify(false);
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -309,7 +316,7 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
     onSuccess() {
-      // Snapshot current member count so we can detect new joiners
+      setHasFiredNotify(true);
       setMemberCountAtNotify(members.length);
     },
     onSettled() {
@@ -337,6 +344,7 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     },
     onSuccess() {
       setShowResetConfirm(false);
+      setHasFiredNotify(false);
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -532,7 +540,7 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
               }}
             >
               <Bell size={13} />
-              {notifySent && !hasNewMembers ? "Crew notified" : "Notify crew"}
+              {canNotify ? "Notify crew" : "Crew notified"}
             </button>
             {anyVotes && (
               showResetConfirm ? (
