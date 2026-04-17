@@ -285,49 +285,51 @@ export function DatesPanel({
         {/* ── Set Dates content: pickers + two-stage confirm ─────────────── */}
         {mode === "set" && (
           <div className="space-y-3">
-            <div className="space-y-1">
-              <label
-                className="text-[11px] font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Start date
-              </label>
-              <input
-                type="date"
-                value={directStart}
-                onChange={(e) => {
-                  setDirectStart(e.target.value);
-                  setShowSetConfirm(false);
-                }}
-                className="w-full rounded-xl px-3 py-2.5 text-sm"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <label
-                className="text-[11px] font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                End date
-              </label>
-              <input
-                type="date"
-                value={directEnd}
-                onChange={(e) => {
-                  setDirectEnd(e.target.value);
-                  setShowSetConfirm(false);
-                }}
-                className="w-full rounded-xl px-3 py-2.5 text-sm"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label
+                  className="text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Start date
+                </label>
+                <input
+                  type="date"
+                  value={directStart}
+                  onChange={(e) => {
+                    setDirectStart(e.target.value);
+                    setShowSetConfirm(false);
+                  }}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    border: "1px solid var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <label
+                  className="text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  End date
+                </label>
+                <input
+                  type="date"
+                  value={directEnd}
+                  onChange={(e) => {
+                    setDirectEnd(e.target.value);
+                    setShowSetConfirm(false);
+                  }}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    border: "1px solid var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                  }}
+                />
+              </div>
             </div>
 
             {/* Two-stage confirm message */}

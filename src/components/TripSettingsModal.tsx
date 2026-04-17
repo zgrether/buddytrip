@@ -411,7 +411,7 @@ export function TripSettingsModal({
                       style={{ borderColor: "var(--color-bt-border)" }}
                     >
                       <>
-                          <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
                               <label
                                 className="text-[11px] font-semibold uppercase tracking-wider"
