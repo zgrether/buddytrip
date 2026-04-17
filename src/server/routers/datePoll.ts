@@ -644,7 +644,19 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // setPollMode — Owner or Planner: flip trips.poll_mode on or off
+  // setPollMode — Owner or Planner: flip trips.poll_mode on or off.
+  //
+  // When pollMode = false (cancel poll):
+  //   1. Delete all date_poll_votes for this trip's windows (child rows first)
+  //   2. Delete all date_windows for this trip
+  //   3. Reset notify_sent = false on the date_polls record
+  //   4. Flip poll_mode = false on trips
+  //
+  // This matches the spec's cancelPoll semantics — all poll data is cleared
+  // so the owner starts fresh if they re-open a poll later.
+  //
+  // When pollMode = true (open poll): just flip the flag and ensure a
+  // date_polls row exists (no data to clear).
   // -----------------------------------------------------------------------
   setPollMode: authedProcedure
     .input(
@@ -655,6 +667,53 @@ export const datePollRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
+      if (!input.pollMode) {
+        // ── Cancel poll: clear all data, children before parents ──────────
+
+        // 1. Collect the window IDs for this trip so we can delete votes.
+        const { data: windows } = await ctx.supabase
+          .from("date_windows")
+          .select("id")
+          .eq("trip_id", ctx.tripId);
+
+        const windowIds = (windows ?? []).map((w) => w.id);
+
+        // 2. Delete all votes that reference those windows.
+        if (windowIds.length > 0) {
+          const { error: votesErr } = await ctx.supabase
+            .from("date_poll_votes")
+            .delete()
+            .in("window_id", windowIds);
+
+          if (votesErr) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to clear poll votes: ${votesErr.message}`,
+            });
+          }
+        }
+
+        // 3. Delete the date windows themselves.
+        const { error: windowsErr } = await ctx.supabase
+          .from("date_windows")
+          .delete()
+          .eq("trip_id", ctx.tripId);
+
+        if (windowsErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to clear date windows: ${windowsErr.message}`,
+          });
+        }
+
+        // 4. Reset notify_sent so the Notify button re-enables next time.
+        await ctx.supabase
+          .from("date_polls")
+          .update({ notify_sent: false, open: false })
+          .eq("trip_id", ctx.tripId);
+      }
+
+      // 5. Flip poll_mode on the trip (both open and cancel paths).
       const { error } = await ctx.supabase
         .from("trips")
         .update({ poll_mode: input.pollMode })
@@ -667,7 +726,8 @@ export const datePollRouter = router({
         });
       }
 
-      // Ensure a date_polls row exists so notify_sent can be read/written.
+      // When opening a poll, ensure a date_polls row exists so
+      // notify_sent can be read/written without a separate insert.
       if (input.pollMode) {
         await ctx.supabase
           .from("date_polls")
