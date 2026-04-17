@@ -142,201 +142,216 @@ export function DatePollGrid({
   const openPopoverId = openPopover?.id ?? null;
 
   const hasWindows = dateWindows.length > 0;
-  const gridMinWidth = NAME_COL_MIN_WIDTH + dateWindows.length * COLUMN_WIDTH;
+  const showAddColumn = isOwner && !!onAddDateWindow;
+  const gridMinWidth =
+    NAME_COL_MIN_WIDTH +
+    dateWindows.length * COLUMN_WIDTH +
+    (showAddColumn ? ADD_COL_WIDTH : 0);
 
-  // Empty-state short-circuit: when there are no date windows, rendering
-  // member rows inside the grid causes layout to jumble (the grid template
-  // has a placeholder column, but each row only contributes the name cell,
-  // so names flow across the extra column). Swap to a single-line empty
-  // banner until the first window is added.
+  // Empty-state short-circuit: no date windows yet. Keep a single-row
+  // banner layout so member rows don't flow across undefined columns.
   if (!hasWindows) {
     return (
-      <div className="flex">
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{ background: "var(--color-bt-card-raised)" }}
+      >
         <div
-          className="min-w-0 flex-1 rounded-xl px-4 py-6 text-center"
-          style={{ background: "var(--color-bt-card)" }}
+          className="grid"
+          style={{
+            gridTemplateColumns: showAddColumn
+              ? `1fr ${ADD_COL_WIDTH}px`
+              : "1fr",
+          }}
         >
-          <span
-            className="text-[13px] italic"
-            style={{ color: "var(--color-bt-text-dim)" }}
+          <div
+            className="flex items-center justify-center px-4 py-6 text-center"
           >
-            {isOwner
-              ? "No dates added yet — tap the + to propose a date option."
-              : "No dates added yet — the host hasn't proposed any options."}
-          </span>
+            <span
+              className="text-[13px] italic"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {isOwner
+                ? "No dates added yet — tap the + to propose a date option."
+                : "No dates added yet — the host hasn't proposed any options."}
+            </span>
+          </div>
+          {showAddColumn && (
+            <button
+              type="button"
+              onClick={onAddDateWindow}
+              className="flex items-center justify-center transition-colors hover:bg-[var(--color-bt-card)]"
+              style={{
+                background: "transparent",
+                borderLeft: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-accent)",
+              }}
+              aria-label="Add date option"
+            >
+              <CalendarPlus size={20} />
+            </button>
+          )}
         </div>
-        {isOwner && onAddDateWindow && (
-          <button
-            type="button"
-            onClick={onAddDateWindow}
-            className="group relative ml-2 flex flex-shrink-0 items-center justify-center self-stretch rounded-xl transition-colors hover:bg-[var(--color-bt-card-raised)]"
-            style={{
-              width: `${ADD_COL_WIDTH}px`,
-              background: "transparent",
-              border: "1.5px dashed var(--color-bt-border)",
-              color: "var(--color-bt-accent)",
-            }}
-            aria-label="Add date option"
-          >
-            <CalendarPlus size={22} />
-          </button>
-        )}
       </div>
     );
   }
 
   return (
-    <div className="flex">
-      {/* ── scrollable grid ────────────────────────────────────────────── */}
+    <div
+      className="overflow-x-auto rounded-xl"
+      style={{ background: "var(--color-bt-card-raised)" }}
+    >
       <div
-        className="min-w-0 flex-1 overflow-x-auto rounded-xl"
-        style={{ background: "var(--color-bt-card)" }}
+        className="grid"
+        style={{
+          minWidth: `${gridMinWidth}px`,
+          // Name column auto-fits content (no truncate) with a minimum width.
+          // Date columns flex. Trailing narrow column hosts the + button.
+          gridTemplateColumns: `minmax(${NAME_COL_MIN_WIDTH}px, max-content) repeat(${dateWindows.length}, minmax(${COLUMN_WIDTH}px, 1fr))${showAddColumn ? ` ${ADD_COL_WIDTH}px` : ""}`,
+        }}
       >
+        {/* Header: name column */}
         <div
-          className="grid"
+          className="sticky left-0 z-[3] flex items-center px-3 py-2.5"
           style={{
-            minWidth: `${gridMinWidth}px`,
-            // Name column auto-fits content (no truncate) with a minimum width.
-            // Date columns use a fixed min then flex to share space.
-            gridTemplateColumns: `minmax(${NAME_COL_MIN_WIDTH}px, max-content) repeat(${dateWindows.length}, minmax(${COLUMN_WIDTH}px, 1fr))`,
+            background: "var(--color-bt-card-raised)",
+            borderBottom: "1px solid var(--color-bt-border)",
           }}
         >
-          {/* Header: name column */}
-          <div
-            className="sticky left-0 z-[3] flex items-center px-3 py-2.5"
-            style={{
-              background: "var(--color-bt-card)",
-              borderBottom: "1px solid var(--color-bt-border)",
-            }}
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
-            <span
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Crew
-            </span>
-          </div>
-
-          {/* Header: per-window label + popover trigger */}
-          {dateWindows.map((w) => {
-            const isActive = openPopoverId === w.id;
-            return (
-              <ColumnHeader
-                key={w.id}
-                label={formatColumnLabel(w.start_date, w.end_date)}
-                isActive={isActive}
-                canEdit={isOwner}
-                onToggle={(btnRect) => {
-                  if (openPopoverId === w.id) {
-                    setOpenPopover(null);
-                    return;
-                  }
-                  setOpenPopover({
-                    id: w.id,
-                    anchorLeft: btnRect.left,
-                    anchorBottom: btnRect.bottom,
-                    anchorCenter: btnRect.left + btnRect.width / 2,
-                  });
-                }}
-              />
-            );
-          })}
-
-          {/* Member rows */}
-          {members.map((m, rowIdx) => {
-            const rowBg =
-              rowIdx % 2 === 0
-                ? "var(--color-bt-card)"
-                : "var(--color-bt-state-fill)";
-            const isMe = m.user_id === currentUserId;
-            // Only the owner can see / interact with other members' rows.
-            // Planners and Members see their own row clearly and others dimmed
-            // (and non-operational).
-            const rowDimmed = !isMe && !isOwner;
-            return (
-              <div key={m.user_id ?? rowIdx} className="contents">
-                <div
-                  className="sticky left-0 z-[2] flex items-center gap-2 whitespace-nowrap px-3 py-2"
-                  style={{ background: rowBg }}
-                >
-                  <UserAvatar name={m.displayName} avatarUrl={m.avatarUrl ?? null} size="sm" />
-                  <span
-                    className="text-[13px]"
-                    style={{ color: "var(--color-bt-text)" }}
-                  >
-                    {m.displayName}
-                    {isMe && (
-                      <span
-                        className="text-[11px]"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        {" "}
-                        (you)
-                      </span>
-                    )}
-                  </span>
-                </div>
-                {dateWindows.map((w) => {
-                  const vote = w.votes.find((v) => v.user_id === m.user_id);
-                  const answer = (vote?.answer ?? null) as VoteAnswer;
-                  const isColumnHighlighted = openPopoverId === w.id;
-                  const cellBg = isColumnHighlighted
-                    ? "rgba(45, 212, 191, 0.07)"
-                    : rowBg;
-                  const interactive = isMe || isOwner;
-                  const handleSet = (next: VoteAnswer) => {
-                    if (!m.user_id || !interactive) return;
-                    onVote(w.id, next, m.user_id);
-                  };
-                  return (
-                    <div
-                      key={w.id}
-                      className="flex items-center justify-center px-1 py-2"
-                      style={{ background: cellBg }}
-                    >
-                      {useTripletLayout ? (
-                        <VoteTriplet
-                          answer={answer}
-                          interactive={interactive}
-                          dimmed={rowDimmed}
-                          onSet={handleSet}
-                        />
-                      ) : (
-                        <VoteButton
-                          answer={answer}
-                          interactive={interactive}
-                          dimmed={rowDimmed}
-                          onClick={() => handleSet(cycleAnswer(answer))}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── add-column sibling (outside scroll) ───────────────────────── */}
-      {isOwner && onAddDateWindow && (
-        <button
-          type="button"
-          onClick={onAddDateWindow}
-          className="group relative ml-2 flex flex-shrink-0 items-center justify-center self-stretch rounded-xl transition-colors hover:bg-[var(--color-bt-card-raised)]"
-          style={{
-            width: `${ADD_COL_WIDTH}px`,
-            background: "transparent",
-            border: "1.5px dashed var(--color-bt-border)",
-            color: "var(--color-bt-accent)",
-          }}
-          aria-label="Add date option"
-        >
-          <span className="relative flex items-center justify-center">
-            <CalendarPlus size={22} />
+            Crew
           </span>
-        </button>
-      )}
+        </div>
+
+        {/* Header: per-window label + popover trigger */}
+        {dateWindows.map((w) => {
+          const isActive = openPopoverId === w.id;
+          return (
+            <ColumnHeader
+              key={w.id}
+              label={formatColumnLabel(w.start_date, w.end_date)}
+              isActive={isActive}
+              canEdit={isOwner}
+              onToggle={(btnRect) => {
+                if (openPopoverId === w.id) {
+                  setOpenPopover(null);
+                  return;
+                }
+                setOpenPopover({
+                  id: w.id,
+                  anchorLeft: btnRect.left,
+                  anchorBottom: btnRect.bottom,
+                  anchorCenter: btnRect.left + btnRect.width / 2,
+                });
+              }}
+            />
+          );
+        })}
+
+        {/* Header: add-date column (trailing narrow + button) */}
+        {showAddColumn && (
+          <button
+            type="button"
+            onClick={onAddDateWindow}
+            className="flex items-center justify-center transition-colors hover:bg-[var(--color-bt-card)]"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              borderLeft: "1px solid var(--color-bt-border)",
+              borderBottom: "1px solid var(--color-bt-border)",
+              color: "var(--color-bt-accent)",
+            }}
+            aria-label="Add date option"
+          >
+            <CalendarPlus size={20} />
+          </button>
+        )}
+
+        {/* Member rows */}
+        {members.map((m, rowIdx) => {
+          // Match DatesPanel row striping: state-fill on even, transparent
+          // on odd (revealing the card-raised container).
+          const rowBg =
+            rowIdx % 2 === 0 ? "var(--color-bt-state-fill)" : "transparent";
+          const isMe = m.user_id === currentUserId;
+          // Only the owner can see / interact with other members' rows.
+          // Planners and Members see their own row clearly and others dimmed
+          // (and non-operational).
+          const rowDimmed = !isMe && !isOwner;
+          return (
+            <div key={m.user_id ?? rowIdx} className="contents">
+              <div
+                className="sticky left-0 z-[2] flex items-center gap-2 whitespace-nowrap px-3 py-2"
+                style={{ background: rowBg }}
+              >
+                <UserAvatar name={m.displayName} avatarUrl={m.avatarUrl ?? null} size="sm" />
+                <span
+                  className="text-[13px]"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {m.displayName}
+                  {isMe && (
+                    <span
+                      className="text-[11px]"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      {" "}
+                      (you)
+                    </span>
+                  )}
+                </span>
+              </div>
+              {dateWindows.map((w) => {
+                const vote = w.votes.find((v) => v.user_id === m.user_id);
+                const answer = (vote?.answer ?? null) as VoteAnswer;
+                const isColumnHighlighted = openPopoverId === w.id;
+                const cellBg = isColumnHighlighted
+                  ? "rgba(45, 212, 191, 0.07)"
+                  : rowBg;
+                const interactive = isMe || isOwner;
+                const handleSet = (next: VoteAnswer) => {
+                  if (!m.user_id || !interactive) return;
+                  onVote(w.id, next, m.user_id);
+                };
+                return (
+                  <div
+                    key={w.id}
+                    className="flex items-center justify-center px-1 py-2"
+                    style={{ background: cellBg }}
+                  >
+                    {useTripletLayout ? (
+                      <VoteTriplet
+                        answer={answer}
+                        interactive={interactive}
+                        dimmed={rowDimmed}
+                        onSet={handleSet}
+                      />
+                    ) : (
+                      <VoteButton
+                        answer={answer}
+                        interactive={interactive}
+                        dimmed={rowDimmed}
+                        onClick={() => handleSet(cycleAnswer(answer))}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              {/* Empty cell under the add-date column — keeps grid aligned */}
+              {showAddColumn && (
+                <div
+                  style={{
+                    background: rowBg,
+                    borderLeft: "1px solid var(--color-bt-border)",
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {/* ── column header popover ─────────────────────────────────────── */}
       {openPopover && isOwner && (
@@ -564,32 +579,34 @@ function voteVisual(answer: VoteAnswer): {
   border: string;
   text: string;
 } {
+  // Solid-fill palette matching the DatesPanel pattern — easier to read
+  // at a glance than the translucent tint version.
   if (answer === "yes") {
     return {
-      background: "rgba(0, 212, 170, 0.18)",
-      color: "var(--color-bt-vote-yes)",
-      border: "1px solid rgba(0, 212, 170, 0.3)",
+      background: "var(--color-bt-vote-yes)",
+      color: "var(--color-bt-vote-yes-text)",
+      border: "none",
       text: "✓",
     };
   }
   if (answer === "maybe") {
     return {
-      background: "rgba(245, 158, 11, 0.18)",
-      color: "var(--color-bt-warning)",
-      border: "1px solid var(--color-bt-warning-border)",
+      background: "var(--color-bt-vote-maybe)",
+      color: "var(--color-bt-vote-yes-text)",
+      border: "none",
       text: "~",
     };
   }
   if (answer === "no") {
     return {
-      background: "rgba(239, 68, 68, 0.18)",
-      color: "var(--color-bt-danger)",
-      border: "1px solid var(--color-bt-danger-border)",
+      background: "var(--color-bt-vote-no)",
+      color: "var(--color-bt-vote-yes-text)",
+      border: "none",
       text: "✕",
     };
   }
   return {
-    background: "var(--color-bt-card-raised)",
+    background: "transparent",
     color: "var(--color-bt-text-dim)",
     border: "1px dashed var(--color-bt-border)",
     text: "?",

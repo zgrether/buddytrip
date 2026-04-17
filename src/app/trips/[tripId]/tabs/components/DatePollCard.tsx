@@ -1,13 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Calendar, Bell, RotateCcw, X } from "lucide-react";
+import { Bell, RotateCcw, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
-import { ActionCard } from "./ActionCard";
 import {
   DatePollGrid,
   type PollMember,
@@ -323,71 +322,73 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
 
   return (
     <>
-      <ActionCard
-        icon={<Calendar size={16} />}
-        title="Pick your dates"
-        subtitle={isOwner ? "Tap any cell to vote on behalf of a crew member" : "Tap your row to cast a vote"}
-        isResolved={false}
-      >
-        <div className="space-y-3">
-          <DatePollGrid
-            dateWindows={windows}
-            members={pollMembers}
-            currentUserId={currentUser?.id ?? ""}
-            isOwner={isOwner}
-            onVote={handleVote}
-            onAddDateWindow={isOwner ? () => setShowAddDateModal(true) : undefined}
-            onLockDateWindow={
-              isOwner
-                ? (windowId) => lockWindow.mutate({ tripId, windowId })
-                : undefined
-            }
-            onRemoveDateWindow={
-              isOwner ? (windowId) => setConfirmRemoveId(windowId) : undefined
-            }
-          />
+      {/* Panel-less container — sits directly under DatesPanel so we avoid
+          the "panel inside panel" visual nesting. Matches DatesPanel's
+          internal poll-grid pattern: small uppercase header + grid. */}
+      <div className="space-y-2">
+        <p
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Crew Availability
+        </p>
+        <DatePollGrid
+          dateWindows={windows}
+          members={pollMembers}
+          currentUserId={currentUser?.id ?? ""}
+          isOwner={isOwner}
+          onVote={handleVote}
+          onAddDateWindow={isOwner ? () => setShowAddDateModal(true) : undefined}
+          onLockDateWindow={
+            isOwner
+              ? (windowId) => lockWindow.mutate({ tripId, windowId })
+              : undefined
+          }
+          onRemoveDateWindow={
+            isOwner ? (windowId) => setConfirmRemoveId(windowId) : undefined
+          }
+        />
 
-          {isOwner && (
-            <div className="flex items-center gap-2">
+        {isOwner && (
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => notifyCrew.mutate({ tripId })}
+              disabled={notifySent || notifyCrew.isPending}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[13px] font-medium transition-opacity"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: notifySent
+                  ? "var(--color-bt-text-dim)"
+                  : "var(--color-bt-accent)",
+                border: "1px solid var(--color-bt-border)",
+                opacity: notifySent ? 0.6 : 1,
+                cursor: notifySent ? "default" : "pointer",
+              }}
+            >
+              <Bell size={13} />
+              {notifySent ? "Crew notified" : "Notify crew"}
+            </button>
+            {anyVotes && (
               <button
                 type="button"
-                onClick={() => notifyCrew.mutate({ tripId })}
-                disabled={notifySent || notifyCrew.isPending}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[13px] font-medium transition-opacity"
+                onClick={() => resetPoll.mutate({ tripId })}
+                disabled={resetPoll.isPending}
+                className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
                 style={{
                   background: "var(--color-bt-card-raised)",
-                  color: notifySent
-                    ? "var(--color-bt-text-dim)"
-                    : "var(--color-bt-accent)",
+                  color: "var(--color-bt-text-dim)",
                   border: "1px solid var(--color-bt-border)",
-                  opacity: notifySent ? 0.6 : 1,
-                  cursor: notifySent ? "default" : "pointer",
                 }}
+                aria-label="Reset votes"
               >
-                <Bell size={13} />
-                {notifySent ? "Crew notified" : "Notify crew"}
+                <RotateCcw size={13} />
+                Reset
               </button>
-              {anyVotes && (
-                <button
-                  type="button"
-                  onClick={() => resetPoll.mutate({ tripId })}
-                  disabled={resetPoll.isPending}
-                  className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text-dim)",
-                    border: "1px solid var(--color-bt-border)",
-                  }}
-                  aria-label="Reset votes"
-                >
-                  <RotateCcw size={13} />
-                  Reset
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </ActionCard>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Add date window modal */}
       {showAddDateModal && (

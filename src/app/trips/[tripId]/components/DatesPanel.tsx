@@ -1,11 +1,9 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Calendar, Plus, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { UserAvatar } from "@/components/UserAvatar";
 import { parseLocalDate, formatDateRangeCompact } from "@/lib/dates";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import type { TripData } from "../tabs/types";
@@ -20,8 +18,6 @@ interface DatesPanelProps {
   onToggle: () => void;
   onTabChange?: (tab: string) => void;
 }
-
-type Answer = "yes" | "no" | "maybe";
 
 interface PollWindow {
   id: string;
@@ -50,18 +46,6 @@ function formatLongDate(d: string): string {
   });
 }
 
-function formatGridLabel(start: string, end: string): string {
-  const s = parseLocalDate(start).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-  const e = parseLocalDate(end).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-  return `${s}–${e}`;
-}
-
 function sortWindows(ws: PollWindow[]): PollWindow[] {
   return ws.slice().sort((a, b) => {
     if (a.start_date !== b.start_date) return a.start_date < b.start_date ? -1 : 1;
@@ -77,15 +61,14 @@ function sortWindows(ws: PollWindow[]): PollWindow[] {
 
 export function DatesPanel({
   trip,
-  canEdit,
+  canEdit: _canEdit,
   isOwner,
   isOpen,
   onToggle: _onToggle,
-  onTabChange,
+  onTabChange: _onTabChange,
 }: DatesPanelProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
-  const currentUser = useCurrentUser();
 
   // Refresh votes every 30 s while the owner has the panel open and the poll
   // is active — lets them watch responses come in without a manual reload.
@@ -105,7 +88,6 @@ export function DatesPanel({
 
   const datesLocked = !!(trip.start_date && trip.end_date);
   const pollMode = !!trip.poll_mode;
-  const hasWindows = windows.length > 0;
 
   // Manual date picker state — shared between the empty/idle state and the
   // "Change dates" modal. The poll-builder uses the same state so typing a
@@ -219,137 +201,6 @@ export function DatesPanel({
     },
   });
 
-  const removeWindowM = trpc.datePoll.removeWindow.useMutation({
-    async onMutate(vars) {
-      await utils.datePoll.get.cancel({ tripId });
-      const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) =>
-        old
-          ? { ...old, windows: old.windows.filter((w) => w.id !== vars.windowId) }
-          : old
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
-  const voteSelf = trpc.datePoll.castDateVote.useMutation({
-    async onMutate(vars) {
-      await utils.datePoll.get.cancel({ tripId });
-      const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          windows: old.windows.map((w) => {
-            if (w.id !== vars.windowId) return w;
-            // Null answer = delete the vote
-            if (vars.answer === null) {
-              return {
-                ...w,
-                votes: w.votes.filter((v) => v.user_id !== currentUser?.id),
-              };
-            }
-            const existing = w.votes.find((v) => v.user_id === currentUser?.id);
-            if (existing?.answer === vars.answer) {
-              return {
-                ...w,
-                votes: w.votes.filter((v) => v.user_id !== currentUser?.id),
-              };
-            }
-            if (existing) {
-              return {
-                ...w,
-                votes: w.votes.map((v) =>
-                  v.user_id === currentUser?.id
-                    ? { ...v, answer: vars.answer as string }
-                    : v
-                ),
-              };
-            }
-            return {
-              ...w,
-              votes: [
-                ...w.votes,
-                {
-                  window_id: vars.windowId,
-                  user_id: currentUser?.id ?? "",
-                  answer: vars.answer,
-                  created_at: new Date().toISOString(),
-                },
-              ],
-            };
-          }),
-        };
-      });
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
-  const voteForMember = trpc.datePoll.castVoteForMember.useMutation({
-    async onMutate(vars) {
-      await utils.datePoll.get.cancel({ tripId });
-      const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          windows: old.windows.map((w) => {
-            if (w.id !== vars.windowId) return w;
-            // Null answer = clear this member's vote.
-            if (vars.answer === null) {
-              return {
-                ...w,
-                votes: w.votes.filter((v) => v.user_id !== vars.userId),
-              };
-            }
-            const existing = w.votes.find((v) => v.user_id === vars.userId);
-            if (existing) {
-              return {
-                ...w,
-                votes: w.votes.map((v) =>
-                  v.user_id === vars.userId
-                    ? { ...v, answer: vars.answer as string }
-                    : v
-                ),
-              };
-            }
-            return {
-              ...w,
-              votes: [
-                ...w.votes,
-                {
-                  window_id: vars.windowId,
-                  user_id: vars.userId,
-                  answer: vars.answer as string,
-                  created_at: new Date().toISOString(),
-                },
-              ],
-            };
-          }),
-        };
-      });
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
   const lockWindow = trpc.datePoll.lockDateWindow.useMutation({
     async onMutate(vars) {
       await utils.trips.getById.cancel({ tripId });
@@ -437,11 +288,6 @@ export function DatesPanel({
     return "";
   }, [datesLocked, isOwner, pollMode, windows.length, trip.start_date, trip.end_date]);
 
-  const anyVotes = useMemo(
-    () => windows.some((w) => w.votes.length > 0),
-    [windows]
-  );
-
   // ── Actions ────────────────────────────────────────────────────────────
 
   const handleSetDates = () => {
@@ -473,10 +319,6 @@ export function DatesPanel({
 
   const handlePollTheCrew = () => {
     setPollActive.mutate({ tripId, pollMode: true });
-  };
-
-  const handleNevermind = () => {
-    setPollActive.mutate({ tripId, pollMode: false });
   };
 
   // ── Body renderers ─────────────────────────────────────────────────────
@@ -534,429 +376,6 @@ export function DatesPanel({
     );
   }
 
-  function renderWindowTextRows() {
-    if (!hasWindows) return null;
-    return (
-      <div className="mb-2 space-y-1.5">
-        {windows.map((w) => {
-          const nights = nightsBetween(w.start_date, w.end_date);
-          return (
-            <div key={w.id} className="flex items-center gap-2">
-              <div
-                className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              >
-                {formatLongDate(w.start_date)} – {formatLongDate(w.end_date)}
-                <span style={{ color: "var(--color-bt-text-dim)" }}>
-                  {" "}
-                  · {nights} night{nights !== 1 ? "s" : ""}
-                </span>
-              </div>
-              {canEdit && !pollMode && (
-                <button
-                  onClick={() =>
-                    removeWindowM.mutate({ tripId, windowId: w.id })
-                  }
-                  disabled={removeWindowM.isPending}
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-colors"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text-dim)",
-                  }}
-                  aria-label="Remove date from poll"
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function handleGridVote(userId: string, windowId: string, next: Answer) {
-    if (!userId) return;
-    if (userId === currentUser?.id) {
-      voteSelf.mutate({ tripId, windowId, answer: next });
-    } else if (isOwner) {
-      voteForMember.mutate({ tripId, windowId, userId, answer: next });
-    }
-  }
-
-  function renderPollGrid() {
-    return (
-      <div className="mt-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <p
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Polling
-          </p>
-          <div className="flex items-center gap-3">
-            {isOwner && anyVotes && (
-              <button
-                onClick={() => setConfirmReset(true)}
-                className="text-xs font-medium"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Reset votes ↻
-              </button>
-            )}
-            <button
-              onClick={() => onTabChange?.("crew")}
-              className="text-xs font-medium"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              Manage crew →
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="overflow-hidden overflow-x-auto rounded-xl"
-          style={{ background: "var(--color-bt-card-raised)" }}
-        >
-          <div
-            className="grid"
-            style={{
-              minWidth: `${100 + windows.length * 96}px`,
-              gridTemplateColumns: hasWindows
-                ? `auto repeat(${windows.length}, 1fr)`
-                : "1fr",
-            }}
-          >
-            {/* Header row — Select date button (or empty message) + per-window date label */}
-            <div
-              className="sticky top-0 z-10 flex items-center justify-center px-2 py-2"
-              style={{ background: "var(--color-bt-card-raised)" }}
-            >
-              {hasWindows ? (
-                <span
-                  className="text-[11px] font-semibold uppercase tracking-wider"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Crew
-                </span>
-              ) : (
-                <span
-                  className="text-xs italic"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  No dates added yet
-                </span>
-              )}
-            </div>
-            {windows.map((w) => (
-              <div
-                key={w.id}
-                className="sticky top-0 z-10 flex items-center justify-center px-2 py-2 text-center"
-                style={{ background: "var(--color-bt-card-raised)" }}
-              >
-                <p
-                  className="text-[12px] font-semibold leading-none"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {formatGridLabel(w.start_date, w.end_date)}
-                </p>
-              </div>
-            ))}
-
-            {/* Member rows — always visible so the crew list appears immediately */}
-            {members.map((m, rowIdx) => {
-                const rowBg =
-                  rowIdx % 2 === 0
-                    ? "var(--color-bt-state-fill)"
-                    : "transparent";
-                const isMe = m.user_id === currentUser?.id;
-                const isInteractive =
-                  !!m.user_id && (isMe || isOwner);
-                return (
-                  <Fragment key={m.user_id ?? rowIdx}>
-                    <div
-                      className="flex min-w-0 items-center gap-2 px-3 py-2"
-                      style={{ background: rowBg }}
-                    >
-                      <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
-                      <span
-                        className="truncate text-[13px]"
-                        style={{ color: "var(--color-bt-text)" }}
-                      >
-                        {m.displayName}
-                        {isMe && (
-                          <span
-                            className="text-[11px]"
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                          >
-                            {" "}
-                            (you)
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    {windows.map((w) => {
-                      const vote = w.votes.find((v) => v.user_id === m.user_id);
-                      const answer = (vote?.answer ?? null) as Answer | null;
-                      return (
-                        <div
-                          key={w.id}
-                          className="flex items-center justify-center gap-0.5 px-1 py-2"
-                          style={{ background: rowBg }}
-                        >
-                          {(["yes", "maybe", "no"] as const).map((type) => {
-                            const active = answer === type;
-                            const bg =
-                              type === "yes"
-                                ? "var(--color-bt-vote-yes)"
-                                : type === "maybe"
-                                ? "var(--color-bt-vote-maybe)"
-                                : "var(--color-bt-vote-no)";
-                            const labels = { yes: "✓", maybe: "~", no: "✗" };
-                            return (
-                              <button
-                                key={type}
-                                disabled={!isInteractive}
-                                onClick={() =>
-                                  handleGridVote(m.user_id!, w.id, type)
-                                }
-                                className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
-                                style={
-                                  active
-                                    ? {
-                                        background: bg,
-                                        color: "var(--color-bt-vote-yes-text)",
-                                      }
-                                    : {
-                                        background: "transparent",
-                                        color: "var(--color-bt-text-dim)",
-                                        border:
-                                          "1px dashed var(--color-bt-border)",
-                                        cursor: isInteractive
-                                          ? "pointer"
-                                          : "default",
-                                      }
-                                }
-                              >
-                                {labels[type]}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </Fragment>
-                );
-              })}
-          </div>
-        </div>
-
-        {canEdit && (
-          <>
-            {/* Lifecycle buttons — open/close poll + reset */}
-            <div className="flex gap-2">
-              {(
-                [
-                  {
-                    label: "Open Poll",
-                    enabled: !pollMode && hasWindows,
-                    onClick: () => setPollActive.mutate({ tripId, pollMode: true }),
-                  },
-                  {
-                    label: "Close Poll",
-                    enabled: pollMode,
-                    onClick: () => setPollActive.mutate({ tripId, pollMode: false }),
-                  },
-                ] as const
-              ).map(({ label, enabled, onClick }) => (
-                <button
-                  key={label}
-                  onClick={enabled ? onClick : undefined}
-                  className="flex-1 rounded-xl py-2.5 text-sm font-medium transition-opacity"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text)",
-                    border: "1px solid var(--color-bt-border)",
-                    opacity: enabled ? 1 : 0.35,
-                    cursor: enabled ? "pointer" : "not-allowed",
-                    pointerEvents: enabled ? undefined : "none",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-
-              {/* Select date — always-on escape valve, far right */}
-              {hasWindows && (
-                <button
-                  onClick={() => setShowSelectDateModal(true)}
-                  className="flex-1 rounded-xl py-2.5 text-sm font-medium transition-opacity"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-accent)",
-                    border: "1px solid var(--color-bt-accent-border)",
-                  }}
-                >
-                  Select date
-                </button>
-              )}
-            </div>
-
-            <button
-              onClick={handleNevermind}
-              className="w-full rounded-xl py-3 text-sm font-medium transition-colors"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text-dim)",
-              }}
-            >
-              Nevermind, Set Dates Manually
-            </button>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  function renderMemberPollView() {
-    return (
-      <div className="space-y-4">
-        <p
-          className="text-[13px] leading-relaxed"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {ownerDisplayName} is asking for everyone&apos;s input — please
-          mark your availability for the dates below.
-        </p>
-
-        <div
-          className="overflow-hidden overflow-x-auto rounded-xl"
-          style={{ background: "var(--color-bt-card-raised)" }}
-        >
-          <div
-            className="grid"
-            style={{
-              minWidth: `${100 + windows.length * 96}px`,
-              gridTemplateColumns: `auto repeat(${windows.length}, 1fr)`,
-            }}
-          >
-            {/* Header row */}
-            <div
-              className="sticky top-0 z-10 flex items-center justify-center px-2 py-2"
-              style={{ background: "var(--color-bt-card-raised)" }}
-            />
-            {windows.map((w) => (
-              <div
-                key={w.id}
-                className="sticky top-0 z-10 flex items-center justify-center px-2 py-2 text-center"
-                style={{ background: "var(--color-bt-card-raised)" }}
-              >
-                <p
-                  className="text-[12px] font-semibold leading-none"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {formatGridLabel(w.start_date, w.end_date)}
-                </p>
-              </div>
-            ))}
-
-            {/* Member rows — only the current user's votes are interactive */}
-            {members.map((m, rowIdx) => {
-              const rowBg =
-                rowIdx % 2 === 0
-                  ? "var(--color-bt-state-fill)"
-                  : "transparent";
-              const isMe = m.user_id === currentUser?.id;
-              const rowOpacity = isMe ? 1 : 0.25;
-              return (
-                <Fragment key={m.user_id ?? rowIdx}>
-                  <div
-                    className="flex min-w-0 items-center gap-2 px-3 py-2"
-                    style={{ background: rowBg, opacity: isMe ? 1 : rowOpacity }}
-                  >
-                    <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
-                    <span
-                      className="truncate text-[13px]"
-                      style={{ color: "var(--color-bt-text)" }}
-                    >
-                      {m.displayName}
-                      {isMe && (
-                        <span
-                          className="text-[11px]"
-                          style={{ color: "var(--color-bt-text-dim)" }}
-                        >
-                          {" "}
-                          (you)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  {windows.map((w) => {
-                    const vote = w.votes.find((v) => v.user_id === m.user_id);
-                    const answer = (vote?.answer ?? null) as Answer | null;
-                    return (
-                      <div
-                        key={w.id}
-                        className="flex items-center justify-center gap-0.5 px-1 py-2"
-                        style={{ background: rowBg, opacity: isMe ? 1 : rowOpacity }}
-                      >
-                        {(["yes", "maybe", "no"] as const).map((type) => {
-                          const active = answer === type;
-                          const bg =
-                            type === "yes"
-                              ? "var(--color-bt-vote-yes)"
-                              : type === "maybe"
-                              ? "var(--color-bt-vote-maybe)"
-                              : "var(--color-bt-vote-no)";
-                          const labels = { yes: "✓", maybe: "~", no: "✗" };
-                          return (
-                            <button
-                              key={type}
-                              disabled={!isMe}
-                              onClick={() => {
-                                if (isMe && m.user_id) {
-                                  voteSelf.mutate({
-                                    tripId,
-                                    windowId: w.id,
-                                    answer: type,
-                                  });
-                                }
-                              }}
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all"
-                              style={
-                                active
-                                  ? {
-                                      background: bg,
-                                      color: "var(--color-bt-vote-yes-text)",
-                                    }
-                                  : {
-                                      background: "transparent",
-                                      color: "var(--color-bt-text-dim)",
-                                      border: "1px dashed var(--color-bt-border)",
-                                      cursor: isMe ? "pointer" : "default",
-                                    }
-                              }
-                            >
-                              {labels[type]}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </Fragment>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   function renderBody() {
     // Locked view: show the range and a Change dates → button.
     // For poll-set dates: go straight back to poll draft state (no modal needed).
@@ -978,11 +397,9 @@ export function DatesPanel({
       );
     }
 
-    // Non-owner view: simplified poll-only panel (Planners and Members alike)
-    if (!isOwner) {
-      if (pollMode && hasWindows) return renderMemberPollView();
-      return null;
-    }
+    // DatesPanel is owner-only (ActionCenter hides it from non-owners —
+    // they see DatePollCard directly). Defensive null for any other path.
+    if (!isOwner) return null;
 
     // Owner view — input row visible whenever poll is not yet open
     const showInputRow = !pollMode;
