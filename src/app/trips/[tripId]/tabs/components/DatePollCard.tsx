@@ -516,7 +516,7 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
               className="text-[12px] leading-snug"
               style={{ color: "var(--color-bt-text)" }}
             >
-              You&apos;ve voted on all date options — nice!
+              Thanks for the feedback, we&apos;ll be selecting a date soon!
             </p>
           </div>
         )}
