@@ -443,7 +443,13 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
             </div>
           </div>
         ) : (
-          <div className="flex items-start gap-1.5">
+          <div
+            className="flex items-start gap-2 rounded-xl px-3 py-2.5"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }}
+          >
             <p
               className="flex-1 text-[12px] leading-snug"
               style={{
@@ -458,7 +464,7 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
                 type="button"
                 onClick={handleStartEditNote}
                 className="flex-shrink-0 rounded-md p-1 transition-opacity hover:opacity-70"
-                style={{ color: "var(--color-bt-text-dim)" }}
+                style={{ color: "var(--color-bt-accent)" }}
                 aria-label="Edit note"
               >
                 <Pencil size={12} />
@@ -490,8 +496,8 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
           <div
             className="flex items-center gap-2 rounded-xl px-3 py-2.5"
             style={{
-              background: "var(--color-bt-accent-faint)",
-              border: "1px solid var(--color-bt-accent-border)",
+              background: "var(--color-bt-state-fill)",
+              border: "1px solid var(--color-bt-border)",
             }}
           >
             <ThumbsUp
