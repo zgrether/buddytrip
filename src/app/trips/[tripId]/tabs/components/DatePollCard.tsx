@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Pencil, RotateCcw, ThumbsUp, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -59,6 +59,8 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
   // fire (addWindow, resetPoll, or new members joined).
   const [hasFiredNotify, setHasFiredNotify] = useState(false);
   const [memberCountAtNotify, setMemberCountAtNotify] = useState<number | null>(null);
+  // Human-readable reason shown next to the button when it re-enables.
+  const [renotifyReason, setRenotifyReason] = useState<string | null>(null);
 
   // Poll note editor
   const [editingNote, setEditingNote] = useState(false);
@@ -83,6 +85,13 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
   const hasNewMembers =
     memberCountAtNotify !== null && members.length > memberCountAtNotify;
   const canNotify = !(notifySent || hasFiredNotify) || hasNewMembers;
+
+  // Set reason when new members trigger re-enable (server cases set it in onSuccess).
+  useEffect(() => {
+    if (hasNewMembers && !renotifyReason) {
+      setRenotifyReason("A new crew member joined since the last notification");
+    }
+  }, [hasNewMembers, renotifyReason]);
 
   const pollNote = poll?.pollNote ?? null;
   const displayNote = pollNote ?? DEFAULT_POLL_NOTE;
@@ -246,8 +255,8 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
     onSuccess() {
-      // Clear the notify latch so the button re-enables for the new date option.
       setHasFiredNotify(false);
+      setRenotifyReason("A new date option was added");
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -318,6 +327,7 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     onSuccess() {
       setHasFiredNotify(true);
       setMemberCountAtNotify(members.length);
+      setRenotifyReason(null);
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -345,6 +355,7 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     onSuccess() {
       setShowResetConfirm(false);
       setHasFiredNotify(false);
+      setRenotifyReason("Votes were reset");
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -519,6 +530,16 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
               Thanks for the feedback, we&apos;ll be selecting a date soon!
             </p>
           </div>
+        )}
+
+        {/* ── Re-notify reason ──────────────────────────────────────────── */}
+        {isOwner && canNotify && renotifyReason && (
+          <p
+            className="text-[11px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            ↻ {renotifyReason}
+          </p>
         )}
 
         {/* ── Owner footer: Notify + Reset ───────────────────────────────── */}
