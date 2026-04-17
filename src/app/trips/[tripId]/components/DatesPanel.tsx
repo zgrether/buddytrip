@@ -1104,6 +1104,107 @@ export function DatesPanel({
     );
   }
 
+  // ── Poll-active owner view — flat non-collapsible header row ────────────
+  // Matches the lodging empty-state pattern: icon · title/subtitle · action
+  // button inline on the right. No body, no chevron, no collapse handler.
+  if (pollMode && isOwner && !datesLocked) {
+    return (
+      <div
+        className="rounded-xl border"
+        style={{
+          background: "var(--color-bt-card)",
+          borderColor: "var(--color-bt-border)",
+          boxShadow: "var(--shadow-card)",
+        }}
+      >
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          {/* Icon */}
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "var(--color-bt-card-raised)" }}
+          >
+            <Calendar size={16} style={{ color: "var(--color-bt-accent)" }} />
+          </div>
+
+          {/* Title + subtitle */}
+          <div className="min-w-0 flex-1">
+            <div
+              className="text-sm font-semibold"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Poll Open
+            </div>
+            <div
+              className="mt-0.5 text-xs"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Poll open · {windows.length} option{windows.length !== 1 ? "s" : ""}
+            </div>
+          </div>
+
+          {/* Cancel button — hidden when confirm row is showing */}
+          {!showCancelConfirm && (
+            <button
+              type="button"
+              onClick={() => setShowCancelConfirm(true)}
+              className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold"
+              style={{
+                border: "1.5px dashed var(--color-bt-warning)",
+                color: "var(--color-bt-warning)",
+                background: "transparent",
+              }}
+            >
+              Nevermind — cancel poll
+            </button>
+          )}
+        </div>
+
+        {/* Inline confirmation — below header row, inside same card */}
+        {showCancelConfirm && (
+          <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-0">
+            <span
+              className="text-xs"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              This will clear all votes. Are you sure?
+            </span>
+            <div className="flex shrink-0 gap-2">
+              {/* Ghost small */}
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+                style={{
+                  background: "transparent",
+                  color: "var(--color-bt-text-dim)",
+                  border: "0.5px solid var(--color-bt-border)",
+                }}
+              >
+                Keep poll
+              </button>
+              {/* Danger small */}
+              <button
+                type="button"
+                onClick={() => {
+                  setPollActive.mutate({ tripId, pollMode: false });
+                  setShowCancelConfirm(false);
+                }}
+                disabled={setPollActive.isPending}
+                className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+                style={{
+                  background: "var(--color-bt-danger)",
+                  color: "var(--color-bt-base)",
+                }}
+              >
+                {setPollActive.isPending ? "Cancelling…" : "Yes, cancel"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
       <PlanningRow
