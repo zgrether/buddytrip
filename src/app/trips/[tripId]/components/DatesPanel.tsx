@@ -284,8 +284,14 @@ export function DatesPanel({
 
         {/* ── Set Dates content: pickers + two-stage confirm ─────────────── */}
         {mode === "set" && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Start date
+              </label>
               <input
                 type="date"
                 value={directStart}
@@ -293,13 +299,21 @@ export function DatesPanel({
                   setDirectStart(e.target.value);
                   setShowSetConfirm(false);
                 }}
-                className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+                className="w-full rounded-xl px-3 py-2.5 text-sm"
                 style={{
                   background: "var(--color-bt-card-raised)",
                   border: "1px solid var(--color-bt-border)",
                   color: "var(--color-bt-text)",
                 }}
               />
+            </div>
+            <div className="space-y-1">
+              <label
+                className="text-[11px] font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                End date
+              </label>
               <input
                 type="date"
                 value={directEnd}
@@ -307,33 +321,13 @@ export function DatesPanel({
                   setDirectEnd(e.target.value);
                   setShowSetConfirm(false);
                 }}
-                className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm"
+                className="w-full rounded-xl px-3 py-2.5 text-sm"
                 style={{
                   background: "var(--color-bt-card-raised)",
                   border: "1px solid var(--color-bt-border)",
                   color: "var(--color-bt-text)",
                 }}
               />
-              <button
-                type="button"
-                disabled={!valid || lockDates.isPending}
-                onClick={() => {
-                  if (!showSetConfirm) {
-                    setShowSetConfirm(true);
-                  } else {
-                    handleSetDatesConfirm();
-                  }
-                }}
-                className="flex-shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity"
-                style={{
-                  background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                  color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-                  opacity: valid ? 1 : 0.6,
-                  cursor: valid ? "pointer" : "not-allowed",
-                }}
-              >
-                {lockDates.isPending ? "Setting…" : "Set"}
-              </button>
             </div>
 
             {/* Two-stage confirm message */}
@@ -345,6 +339,27 @@ export function DatesPanel({
                 {confirmMessage}
               </p>
             )}
+
+            <button
+              type="button"
+              disabled={!valid || lockDates.isPending}
+              onClick={() => {
+                if (!showSetConfirm) {
+                  setShowSetConfirm(true);
+                } else {
+                  handleSetDatesConfirm();
+                }
+              }}
+              className="w-full rounded-xl py-2.5 text-sm font-semibold transition-opacity"
+              style={{
+                background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+                color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                opacity: valid ? 1 : 0.6,
+                cursor: valid ? "pointer" : "not-allowed",
+              }}
+            >
+              {lockDates.isPending ? "Setting…" : "Set dates"}
+            </button>
           </div>
         )}
 

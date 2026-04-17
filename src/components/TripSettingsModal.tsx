@@ -411,31 +411,47 @@ export function TripSettingsModal({
                       style={{ borderColor: "var(--color-bt-border)" }}
                     >
                       <>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="date"
-                              data-testid="settings-start-date-input"
-                              value={startDraft}
-                              onChange={(e) => setStartDraft(e.target.value)}
-                              className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-                              style={{
-                                background: "var(--color-bt-card-raised)",
-                                borderColor: "var(--color-bt-border)",
-                                color: "var(--color-bt-text)",
-                              }}
-                            />
-                            <input
-                              type="date"
-                              data-testid="settings-end-date-input"
-                              value={endDraft}
-                              onChange={(e) => setEndDraft(e.target.value)}
-                              className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-                              style={{
-                                background: "var(--color-bt-card-raised)",
-                                borderColor: "var(--color-bt-border)",
-                                color: "var(--color-bt-text)",
-                              }}
-                            />
+                          <div className="space-y-3">
+                            <div className="space-y-1">
+                              <label
+                                className="text-[11px] font-semibold uppercase tracking-wider"
+                                style={{ color: "var(--color-bt-text-dim)" }}
+                              >
+                                Start date
+                              </label>
+                              <input
+                                type="date"
+                                data-testid="settings-start-date-input"
+                                value={startDraft}
+                                onChange={(e) => setStartDraft(e.target.value)}
+                                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                                style={{
+                                  background: "var(--color-bt-card-raised)",
+                                  borderColor: "var(--color-bt-border)",
+                                  color: "var(--color-bt-text)",
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label
+                                className="text-[11px] font-semibold uppercase tracking-wider"
+                                style={{ color: "var(--color-bt-text-dim)" }}
+                              >
+                                End date
+                              </label>
+                              <input
+                                type="date"
+                                data-testid="settings-end-date-input"
+                                value={endDraft}
+                                onChange={(e) => setEndDraft(e.target.value)}
+                                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                                style={{
+                                  background: "var(--color-bt-card-raised)",
+                                  borderColor: "var(--color-bt-border)",
+                                  color: "var(--color-bt-text)",
+                                }}
+                              />
+                            </div>
                           </div>
                           <button
                             data-testid="settings-save-dates-btn"
