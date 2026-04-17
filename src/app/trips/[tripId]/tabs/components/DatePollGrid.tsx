@@ -400,7 +400,7 @@ function ColumnHeader({
   canEdit: boolean;
   onToggle: (anchorRect: DOMRect) => void;
 }) {
-  const headerBg = "var(--color-bt-card)";
+  const headerBg = isActive ? "var(--color-bt-state-fill)" : "var(--color-bt-card)";
   if (!canEdit) {
     return (
       <div
