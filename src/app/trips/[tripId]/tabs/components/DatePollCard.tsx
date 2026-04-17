@@ -534,66 +534,52 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
               <Bell size={13} />
               {notifySent && !hasNewMembers ? "Crew notified" : "Notify crew"}
             </button>
-            {anyVotes && !showResetConfirm && (
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(true)}
-                className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-                aria-label="Reset votes"
-              >
-                <RotateCcw size={13} />
-                Reset
-              </button>
+            {anyVotes && (
+              showResetConfirm ? (
+                /* Confirmation replaces the Reset button in-place */
+                <div className="flex flex-shrink-0 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirm(false)}
+                    className="rounded-xl px-3 py-2 text-[13px] font-medium"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => resetPoll.mutate({ tripId })}
+                    disabled={resetPoll.isPending}
+                    className="rounded-xl px-3 py-2 text-[13px] font-semibold"
+                    style={{
+                      background: "var(--color-bt-danger)",
+                      color: "var(--color-bt-base)",
+                    }}
+                  >
+                    {resetPoll.isPending ? "Clearing…" : "Clear votes?"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirm(true)}
+                  className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text-dim)",
+                    border: "1px solid var(--color-bt-border)",
+                  }}
+                  aria-label="Reset votes"
+                >
+                  <RotateCcw size={13} />
+                  Reset
+                </button>
+              )
             )}
-          </div>
-        )}
-
-        {/* ── Reset confirmation inline ──────────────────────────────────── */}
-        {isOwner && showResetConfirm && (
-          <div
-            className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5"
-            style={{
-              background: "var(--color-bt-state-fill)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <p
-              className="text-[12px] leading-snug"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              Clear everyone&apos;s date preferences?
-            </p>
-            <div className="flex flex-shrink-0 gap-2">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(false)}
-                className="rounded-lg px-3 py-1.5 text-[12px] font-medium"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => resetPoll.mutate({ tripId })}
-                disabled={resetPoll.isPending}
-                className="rounded-lg px-3 py-1.5 text-[12px] font-semibold"
-                style={{
-                  background: "var(--color-bt-danger)",
-                  color: "var(--color-bt-base)",
-                }}
-              >
-                {resetPoll.isPending ? "Clearing…" : "Yes, clear"}
-              </button>
-            </div>
           </div>
         )}
       </div>
