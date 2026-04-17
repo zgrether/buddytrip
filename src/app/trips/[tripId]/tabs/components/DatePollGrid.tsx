@@ -307,10 +307,7 @@ export function DatePollGrid({
               {dateWindows.map((w) => {
                 const vote = w.votes.find((v) => v.user_id === m.user_id);
                 const answer = (vote?.answer ?? null) as VoteAnswer;
-                const isColumnHighlighted = openPopoverId === w.id;
-                const cellBg = isColumnHighlighted
-                  ? "var(--color-bt-accent-faint)"
-                  : rowBg;
+                const cellBg = rowBg;
                 const interactive = isMe || isOwner;
                 const handleSet = (next: VoteAnswer) => {
                   if (!m.user_id || !interactive) return;
@@ -403,13 +400,13 @@ function ColumnHeader({
   canEdit: boolean;
   onToggle: (anchorRect: DOMRect) => void;
 }) {
-  const bg = isActive ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)";
+  const headerBg = "var(--color-bt-card)";
   if (!canEdit) {
     return (
       <div
         className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
         style={{
-          background: bg,
+          background: headerBg,
           borderBottom: "1px solid var(--color-bt-border)",
         }}
       >
@@ -426,7 +423,7 @@ function ColumnHeader({
     <div
       className="flex flex-col items-center justify-center gap-1 px-2 py-2 text-center"
       style={{
-        background: bg,
+        background: headerBg,
         borderBottom: "1px solid var(--color-bt-border)",
       }}
     >
@@ -436,8 +433,13 @@ function ColumnHeader({
       >
         {label}
       </span>
+      {/* onMouseDown stops the outside-click handler from firing before
+          this click, which would cause the popover to close then immediately
+          re-open (stale closure race). With propagation stopped, the click
+          alone drives the toggle: same column closes, different column switches. */}
       <button
         type="button"
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => onToggle(e.currentTarget.getBoundingClientRect())}
         className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider leading-none transition-colors"
         style={{
@@ -451,7 +453,7 @@ function ColumnHeader({
             ? "1px solid var(--color-bt-accent)"
             : "1px solid var(--color-bt-accent-border)",
         }}
-        aria-label="Select this date"
+        aria-label={isActive ? "Deselect this date" : "Select this date"}
       >
         Select
       </button>
