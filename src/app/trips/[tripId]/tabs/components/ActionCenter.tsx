@@ -13,7 +13,7 @@ export interface ActionCenterProps {
  * ActionCenter — member-facing "what needs your attention" surface shown
  * during the IDEA and PLANNING stages.
  *
- * Mirrors DatesPlanningRow's visibility contract: the date poll can be
+ * Mirrors DatesPanel's visibility contract: the date poll can be
  * open in either stage, so ActionCenter must surface DatePollCard in both
  * or non-owners would have no way to see / vote on the poll.
  *

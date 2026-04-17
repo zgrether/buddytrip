@@ -12,7 +12,7 @@ import type { TripData } from "../tabs/types";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-interface DatesPlanningRowProps {
+interface DatesPanelProps {
   trip: TripData;
   canEdit: boolean;
   isOwner: boolean;
@@ -75,14 +75,14 @@ function sortWindows(ws: PollWindow[]): PollWindow[] {
 
 // ── Component ────────────────────────────────────────────────────────────
 
-export function DatesPlanningRow({
+export function DatesPanel({
   trip,
   canEdit,
   isOwner,
   isOpen,
   onToggle: _onToggle,
   onTabChange,
-}: DatesPlanningRowProps) {
+}: DatesPanelProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
