@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, Plus, Trash2, Hotel, Pencil, Home, Clock } from "lucide-react";
+import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
@@ -334,6 +334,73 @@ export function LodgingPanel({
 
   const state: ArcCardState = confirmedCount > 0 ? "inProgress" : totalCount > 0 ? "inProgress" : "none";
 
+  // ── Empty state — flat non-collapsible header row ─────────────────────
+  if (lodgingItems.length === 0) {
+    return (
+      <>
+        <div
+          className="rounded-xl border"
+          style={{
+            background: "var(--color-bt-card)",
+            borderColor: "var(--color-bt-border)",
+            boxShadow: "var(--shadow-card)",
+          }}
+        >
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            {/* Icon */}
+            <div
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-card-raised)" }}
+            >
+              <Hotel size={16} style={{ color: "var(--color-bt-text-dim)" }} />
+            </div>
+
+            {/* Title + subtitle */}
+            <div className="min-w-0 flex-1">
+              <div
+                className="text-sm font-semibold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                Lodging
+              </div>
+              <div
+                className="mt-0.5 text-xs"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Where are you staying?
+              </div>
+            </div>
+
+            {/* Add button — secondary small, canEdit only */}
+            {canEdit && (
+              <button
+                onClick={() => setShowAddLodging(true)}
+                className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "0.5px solid var(--color-bt-border)",
+                }}
+              >
+                + Add property
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showAddLodging && (
+          <AddPropertySheet
+            showAddressAndDates
+            isPending={createItem.isPending}
+            onSubmit={handleCreate}
+            onClose={() => setShowAddLodging(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  // ── Has properties — collapsible PlanningRow ───────────────────────────
   return (
     <>
       <PlanningRow
@@ -345,46 +412,36 @@ export function LodgingPanel({
         onToggle={onToggle}
         noExpand={true}
       >
-        <div>
-          <p className="mb-3 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Add the places you&apos;re thinking of staying at. Once you decide on the
-            perfect one, lock it in and remove the others.
-          </p>
+        <div className="flex flex-col gap-2">
+          {lodgingItems.map((item) => (
+            <LodgingCard
+              key={item.id}
+              item={item}
+              canEdit={canEdit}
+              onEdit={() => setEditingItem(item)}
+              onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
+              onConfirmToggle={() =>
+                item.is_confirmed
+                  ? unconfirmItem.mutate({ tripId, itemId: item.id })
+                  : confirmItem.mutate({ tripId, itemId: item.id })
+              }
+              removing={removeItem.isPending}
+            />
+          ))}
 
+          {/* Add property — dashed/add style, bottom of list, canEdit only */}
           {canEdit && (
             <button
               onClick={() => setShowAddLodging(true)}
-              className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+              className="w-full rounded-xl py-2.5 text-sm font-medium"
               style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
+                border: "1.5px dashed var(--color-bt-accent)",
+                color: "var(--color-bt-accent)",
+                background: "transparent",
               }}
             >
-              <Home size={14} />
-              <Plus size={12} />
-              Add property
+              + Add property
             </button>
-          )}
-
-          {lodgingItems.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {lodgingItems.map((item) => (
-                <LodgingCard
-                  key={item.id}
-                  item={item}
-                  canEdit={canEdit}
-                  onEdit={() => setEditingItem(item)}
-                  onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
-                  onConfirmToggle={() =>
-                    item.is_confirmed
-                      ? unconfirmItem.mutate({ tripId, itemId: item.id })
-                      : confirmItem.mutate({ tripId, itemId: item.id })
-                  }
-                  removing={removeItem.isPending}
-                />
-              ))}
-            </div>
           )}
         </div>
       </PlanningRow>
