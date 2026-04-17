@@ -309,7 +309,7 @@ export function DatePollGrid({
                 const answer = (vote?.answer ?? null) as VoteAnswer;
                 const isColumnHighlighted = openPopoverId === w.id;
                 const cellBg = isColumnHighlighted
-                  ? "rgba(45, 212, 191, 0.07)"
+                  ? "var(--color-bt-accent-faint)"
                   : rowBg;
                 const interactive = isMe || isOwner;
                 const handleSet = (next: VoteAnswer) => {
@@ -403,7 +403,7 @@ function ColumnHeader({
   canEdit: boolean;
   onToggle: (anchorRect: DOMRect) => void;
 }) {
-  const bg = isActive ? "rgba(45, 212, 191, 0.07)" : "var(--color-bt-card)";
+  const bg = isActive ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)";
   if (!canEdit) {
     return (
       <div
