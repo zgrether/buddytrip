@@ -100,10 +100,14 @@ export const datePollRouter = router({
       }
 
       // Reset notify_sent so the owner can re-notify after adding a new option.
+      // Use upsert so the row is created here if setPollMode(true) hasn't run yet
+      // (first-window-activates-poll flow).
       await ctx.supabase
         .from("date_polls")
-        .update({ notify_sent: false })
-        .eq("trip_id", ctx.tripId);
+        .upsert(
+          { trip_id: ctx.tripId, notify_sent: false },
+          { onConflict: "trip_id" }
+        );
 
       return data;
     }),
@@ -799,6 +803,57 @@ export const datePollRouter = router({
           { trip_id: ctx.tripId, open: true, notify_sent: true },
           { onConflict: "trip_id" }
         );
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // notifyNewMembers — Owner or Planner: send a date_poll_started notification
+  // to a specific set of member user IDs (e.g. members who joined after the
+  // initial crew notification). Does NOT flip notify_sent — that flag tracks
+  // whether the whole crew has been notified; targeted re-sends don't change it.
+  // -----------------------------------------------------------------------
+  notifyNewMembers: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        userIds: z.array(z.string()).min(1),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { data: tripData } = await ctx.supabase
+          .from("trips")
+          .select("title")
+          .eq("id", ctx.tripId)
+          .single();
+
+        const { data: actorData } = await ctx.supabase
+          .from("users")
+          .select("name, nickname")
+          .eq("id", ctx.user!.id)
+          .single();
+
+        const { createNotification } = await import("./notifications");
+        for (const userId of input.userIds) {
+          // Skip the actor themselves just in case
+          if (userId === ctx.user!.id) continue;
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: userId,
+            type: "date_poll_started",
+            payload: {
+              owner_name: actorData?.nickname ?? actorData?.name ?? "The organizer",
+              trip_name: tripData?.title ?? "the trip",
+              trip_id: ctx.tripId,
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the response
+      }
 
       return { success: true };
     }),

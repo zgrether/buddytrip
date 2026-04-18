@@ -46,6 +46,8 @@ export interface DatePollGridProps {
   onAddDateWindow?: () => void;
   onRemoveDateWindow?: (id: string) => void;
   onLockDateWindow?: (id: string) => void;
+  /** Owner / planner only — navigates to the Crew tab when provided. */
+  onManageCrew?: () => void;
 }
 
 // Cycle: null → yes → maybe → no → null
@@ -100,6 +102,7 @@ export function DatePollGrid({
   onAddDateWindow,
   onRemoveDateWindow,
   onLockDateWindow,
+  onManageCrew,
 }: DatePollGridProps) {
   // On desktop with three or fewer date options the cell is wide enough to
   // render the three answer buttons side-by-side (yes / maybe / no) instead
@@ -156,42 +159,25 @@ export function DatePollGrid({
         className="overflow-hidden rounded-xl"
         style={{ background: "var(--color-bt-card-raised)" }}
       >
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: showAddColumn
-              ? `1fr ${ADD_COL_WIDTH}px`
-              : "1fr",
-          }}
-        >
-          <div
-            className="flex items-center justify-center px-4 py-6 text-center"
+        {showAddColumn ? (
+          <button
+            type="button"
+            onClick={onAddDateWindow}
+            className="flex w-full items-center justify-center gap-2 py-5 text-[13px] font-medium transition-colors hover:opacity-80"
+            style={{ color: "var(--color-bt-accent)" }}
+            aria-label="Add date option"
           >
-            <span
-              className="text-[13px] italic"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              {isOwner
-                ? "No dates added yet — tap the + to propose a date option."
-                : "No dates added yet — the host hasn't proposed any options."}
-            </span>
-          </div>
-          {showAddColumn && (
-            <button
-              type="button"
-              onClick={onAddDateWindow}
-              className="flex items-center justify-center transition-colors hover:bg-[var(--color-bt-card)]"
-              style={{
-                background: "transparent",
-                borderLeft: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-accent)",
-              }}
-              aria-label="Add date option"
-            >
-              <CalendarPlus size={20} />
-            </button>
-          )}
-        </div>
+            <CalendarPlus size={16} />
+            Add your first date option
+          </button>
+        ) : (
+          <p
+            className="px-4 py-5 text-center text-[13px] italic"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            No date options added yet.
+          </p>
+        )}
       </div>
     );
   }
@@ -212,7 +198,7 @@ export function DatePollGrid({
       >
         {/* Header: name column */}
         <div
-          className="sticky left-0 z-[3] flex items-center px-3 py-2.5"
+          className="sticky left-0 z-[3] flex items-center gap-2 px-3 py-2.5"
           style={{
             background: "var(--color-bt-card)",
             borderBottom: "1px solid var(--color-bt-border)",
@@ -224,6 +210,16 @@ export function DatePollGrid({
           >
             Crew
           </span>
+          {onManageCrew && (
+            <button
+              type="button"
+              onClick={onManageCrew}
+              className="text-[10px] font-semibold transition-opacity hover:opacity-70"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Manage →
+            </button>
+          )}
         </div>
 
         {/* Header: per-window label + popover trigger */}

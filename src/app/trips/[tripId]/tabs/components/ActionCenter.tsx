@@ -59,7 +59,11 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange }: ActionCent
       ) : pollMode ? (
         // Non-owner view: DatesPanel is hidden entirely — the DatePollCard
         // is the only surface they need to see / interact with.
-        <DatePollCard trip={trip} isOwner={isOwner} />
+        <DatePollCard
+          trip={trip}
+          isOwner={isOwner}
+          onManageCrew={canEdit && onTabChange ? () => onTabChange("crew") : undefined}
+        />
       ) : (
         // Non-owner, no poll yet — host hasn't started anything.
         <ActionCenterIdle isOwner={isOwner} />
