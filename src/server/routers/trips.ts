@@ -724,13 +724,14 @@ export const tripsRouter = router({
 
   // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
-  // Requires: at least one date is locked, aboutMessage provided
+  // Requires: at least one date is locked. aboutMessage is optional — when
+  // omitted, the existing about_message (if any) is preserved.
   // -----------------------------------------------------------------------
   advanceToGoing: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
-        aboutMessage: z.string().min(1, "A message for your crew is required."),
+        aboutMessage: z.string().optional(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -767,13 +768,22 @@ export const tripsRouter = router({
         });
       }
 
+      const trimmedAboutMessage = input.aboutMessage?.trim() ?? "";
+      const stageUpdate: {
+        stage: "going";
+        stage_advanced_to_going_at: string;
+        about_message?: string;
+      } = {
+        stage: "going",
+        stage_advanced_to_going_at: new Date().toISOString(),
+      };
+      if (trimmedAboutMessage) {
+        stageUpdate.about_message = trimmedAboutMessage;
+      }
+
       const { data, error } = await ctx.supabase
         .from("trips")
-        .update({
-          stage: "going",
-          stage_advanced_to_going_at: new Date().toISOString(),
-          about_message: input.aboutMessage.trim(),
-        })
+        .update(stageUpdate)
         .eq("id", ctx.tripId)
         .select("id, stage, about_message")
         .single();
@@ -851,7 +861,7 @@ export const tripsRouter = router({
                 tripName: tripDetails?.title ?? "the trip",
                 destination: tripDetails?.locked_destination_title ?? null,
                 lockedDate: lockedDateLabel,
-                rsvpMessage: input.aboutMessage.trim(),
+                rsvpMessage: trimmedAboutMessage,
                 token,
               });
             }
@@ -863,7 +873,7 @@ export const tripsRouter = router({
               tripId: ctx.tripId,
               destination: tripDetails?.locked_destination_title ?? null,
               lockedDate: lockedDateLabel,
-              rsvpMessage: input.aboutMessage.trim(),
+              rsvpMessage: trimmedAboutMessage,
             });
           }
         }
