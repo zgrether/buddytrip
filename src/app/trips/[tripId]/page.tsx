@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Settings, Lock, HelpCircle, X, MessageCircle, Send } from "lucide-react";
+import { Settings, Lock, HelpCircle, X, MessageCircle, Send, Info } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -26,6 +26,7 @@ import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TwoColumnLayout } from "./components/TwoColumnLayout";
 import { SidebarForStage } from "./components/SidebarForStage";
+import { QuickInfoDrawer } from "./components/QuickInfoSection";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ export default function TripDetailPage() {
   const [showInvitationModal, setShowInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [showQuickInfoDrawer, setShowQuickInfoDrawer] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -403,8 +405,10 @@ export default function TripDetailPage() {
         );
       })()}
 
-      {/* ── Planning mobile side rail (chat + invitation) ─────────────── */}
-      {stage === "planning" && (
+      {/* ── Mobile side rail ────────────────────────────────────────────
+          planning → chat + (owner) invitation FAB
+          going/now/past/saved → chat + quick-info FAB */}
+      {(stage === "planning" || stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
         <div className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 lg:hidden">
           <button
             onClick={() => setShowChatDrawer(true)}
@@ -420,7 +424,7 @@ export default function TripDetailPage() {
           >
             <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
-          {isOwner && (
+          {stage === "planning" && isOwner && (
             <button
               onClick={() => setShowInvitationModal(true)}
               data-testid="floating-invitation-btn"
@@ -436,6 +440,22 @@ export default function TripDetailPage() {
               <Send size={18} />
             </button>
           )}
+          {(stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
+            <button
+              onClick={() => setShowQuickInfoDrawer(true)}
+              data-testid="floating-quick-info-btn"
+              className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+                borderRadius: "1rem",
+                boxShadow: "var(--shadow-floating)",
+              }}
+              aria-label="Open quick info"
+            >
+              <Info size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          )}
         </div>
       )}
       <ChatDrawer
@@ -446,6 +466,15 @@ export default function TripDetailPage() {
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
         )}
       />
+
+      {/* ── Quick Info mobile drawer (going+ stages) ───────────────────── */}
+      {showQuickInfoDrawer && (
+        <QuickInfoDrawer
+          tripId={tripId}
+          isOwner={isOwner}
+          onClose={() => setShowQuickInfoDrawer(false)}
+        />
+      )}
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
       {toast && (
