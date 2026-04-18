@@ -23,7 +23,6 @@ import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ChatDrawer } from "./components/ChatDrawer";
 import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
-import { NextStepsPanel } from "./components/NextStepsPanel";
 import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
 import { SidebarChatPanel } from "./components/PlanningChatPanel";
 import { TripSummaryModal } from "./components/TripSummaryModal";
@@ -321,11 +320,6 @@ export default function TripDetailPage() {
                   Write Invitation
                 </button>
               )}
-              <NextStepsPanel
-                trip={trip}
-                crewCount={members.length}
-                isOwner={isOwner}
-              />
               <SidebarChatPanel
                 tripId={tripId}
                 memberNames={Object.fromEntries(
