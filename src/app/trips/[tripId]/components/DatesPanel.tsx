@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Calendar } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, formatDateRangeCompact } from "@/lib/dates";
@@ -80,20 +80,14 @@ export function DatesPanel({
     end_date: string;
   }>;
 
-  // Local UI state
+  // Local UI state — initialized from server pollMode so the correct tab is
+  // shown on mount. The server-derived ACTIVE badge and empty-state grid handle
+  // any external state changes (e.g. poll cancelled from another session)
+  // without needing a synchronization effect.
   const [mode, setMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
   const [showDatesModal, setShowDatesModal] = useState(false);
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
-
-  // Sync mode with server state during render (e.g. poll cancelled from another
-  // session). Calling setState during render is the React-recommended alternative
-  // to useEffect + setState for derived state that depends on a changing prop.
-  const prevPollModeRef = useRef(pollMode);
-  if (prevPollModeRef.current !== pollMode) {
-    prevPollModeRef.current = pollMode;
-    setMode(pollMode ? "poll" : "set");
-  }
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
