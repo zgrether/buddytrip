@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useRef, useMemo, useState } from "react";
 import { Calendar } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, formatDateRangeCompact } from "@/lib/dates";
@@ -74,7 +74,6 @@ export function DatesPanel({
     { tripId },
     { enabled: isOwner && !datesLocked }
   );
-  const windowCount = poll?.windows.length ?? 0;
   const pollWindows = (poll?.windows ?? []) as Array<{
     id: string;
     start_date: string;
@@ -87,10 +86,14 @@ export function DatesPanel({
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
 
-  // Sync mode with server state (e.g. poll cancelled from another session)
-  useEffect(() => {
+  // Sync mode with server state during render (e.g. poll cancelled from another
+  // session). Calling setState during render is the React-recommended alternative
+  // to useEffect + setState for derived state that depends on a changing prop.
+  const prevPollModeRef = useRef(pollMode);
+  if (prevPollModeRef.current !== pollMode) {
+    prevPollModeRef.current = pollMode;
     setMode(pollMode ? "poll" : "set");
-  }, [pollMode]);
+  }
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
