@@ -725,7 +725,8 @@ export const tripsRouter = router({
   // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
   // Requires: at least one date is locked. aboutMessage is optional — when
-  // omitted, the existing about_message (if any) is preserved.
+  // supplied, it's saved to trip.about_message; no email blast is sent.
+  // RSVPs are collected in-app via the going-stage Action Center.
   // -----------------------------------------------------------------------
   advanceToGoing: authedProcedure
     .input(
@@ -764,7 +765,7 @@ export const tripsRouter = router({
       if (!poll?.locked_window_id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Lock a date before sending the RSVP — your crew will want to know when.",
+          message: "Lock a date before advancing — your crew will want to know when.",
         });
       }
 
@@ -790,95 +791,6 @@ export const tripsRouter = router({
 
       if (error || !data) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to advance stage" });
-      }
-
-      // ── RSVP blast email ──────────────────────────────────────────────
-      const ghostsWithoutEmail: string[] = [];
-      try {
-        // Fetch trip details for email content
-        const { data: tripDetails } = await ctx.supabase
-          .from("trips")
-          .select("title, locked_destination_title")
-          .eq("id", ctx.tripId)
-          .single();
-
-        // Fetch locked date label
-        const { data: pollData } = await ctx.supabase
-          .from("date_polls")
-          .select("locked_window_id, date_windows(start_date, end_date)")
-          .eq("trip_id", ctx.tripId)
-          .single();
-
-        let lockedDateLabel: string | null = null;
-        if (pollData?.date_windows) {
-          const windows = pollData.date_windows as unknown as { start_date: string; end_date: string }[];
-          const lw = Array.isArray(windows) ? windows[0] : windows;
-          if (lw) {
-            const { formatDateRange } = await import("@/lib/dates");
-            lockedDateLabel = formatDateRange(lw.start_date, lw.end_date);
-          }
-        }
-
-        // Fetch inviter name
-        const { data: inviter } = await ctx.supabase
-          .from("users")
-          .select("name, nickname")
-          .eq("id", ctx.user!.id)
-          .single();
-        const inviterName = inviter?.nickname ?? inviter?.name ?? "Your trip organizer";
-
-        // Fetch all trip members
-        const { data: allMembers } = await ctx.supabase
-          .from("trip_members")
-          .select("user_id, users(name, email, is_guest)")
-          .eq("trip_id", ctx.tripId)
-          .neq("user_id", ctx.user!.id); // don't email the owner who just clicked send
-
-        const { sendRsvpBlastExistingUser, sendRsvpBlastNewUser } = await import("@/lib/email");
-
-        for (const m of allMembers ?? []) {
-          const u = m.users as unknown as { name: string | null; email: string | null; is_guest: boolean } | null;
-          if (!u?.email) {
-            ghostsWithoutEmail.push(u?.name ?? "Unknown");
-            continue;
-          }
-
-          if (u.is_guest) {
-            // Guest — find or create invite token
-            const { data: invite } = await ctx.supabase
-              .from("invites")
-              .select("token")
-              .eq("trip_id", ctx.tripId)
-              .eq("email", u.email)
-              .is("accepted_at", null)
-              .maybeSingle();
-
-            const token = invite?.token;
-            if (token) {
-              await sendRsvpBlastNewUser({
-                toEmail: u.email,
-                inviterName,
-                tripName: tripDetails?.title ?? "the trip",
-                destination: tripDetails?.locked_destination_title ?? null,
-                lockedDate: lockedDateLabel,
-                rsvpMessage: trimmedAboutMessage,
-                token,
-              });
-            }
-          } else {
-            await sendRsvpBlastExistingUser({
-              toEmail: u.email,
-              toName: u.name ?? u.email.split("@")[0],
-              tripName: tripDetails?.title ?? "the trip",
-              tripId: ctx.tripId,
-              destination: tripDetails?.locked_destination_title ?? null,
-              lockedDate: lockedDateLabel,
-              rsvpMessage: trimmedAboutMessage,
-            });
-          }
-        }
-      } catch {
-        // Email blast failure shouldn't block the stage advancement
       }
 
       // Notify all non-owner trip members about stage advancement
@@ -919,7 +831,7 @@ export const tripsRouter = router({
         // Notification failure shouldn't block the mutation
       }
 
-      return { ...data, ghostsWithoutEmail };
+      return data;
     }),
 
   // -----------------------------------------------------------------------

@@ -15,7 +15,7 @@ export interface TripSummaryModalProps {
     end_date?: string | null;
   };
   onClose: () => void;
-  onAdvanced: (ghostsWithoutEmail: string[]) => void;
+  onAdvanced: () => void;
 }
 
 /**
@@ -41,10 +41,10 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
   const hasLockedDate = !!poll?.lockedWindowId;
 
   const advance = trpc.trips.advanceToGoing.useMutation({
-    onSuccess(result) {
+    onSuccess() {
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
-      onAdvanced(result.ghostsWithoutEmail ?? []);
+      onAdvanced();
       onClose();
     },
   });

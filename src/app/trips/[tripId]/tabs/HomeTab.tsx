@@ -871,8 +871,7 @@ export function HomeTab({
   onTabChange,
   onEnableComp,
   onOpenChat,
-  onMakeOfficial,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onMakeOfficial?: (message: string) => void }) {
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
 
