@@ -4,6 +4,7 @@ import { Sparkles } from "lucide-react";
 import type { TripData } from "../types";
 import { DatePollCard } from "./DatePollCard";
 import { DatesPanel } from "../../components/DatesPanel";
+import { RsvpActionCard } from "./RsvpActionCard";
 
 export interface ActionCenterProps {
   trip: TripData;
@@ -28,10 +29,27 @@ export interface ActionCenterProps {
  */
 export function ActionCenter({ trip, isOwner, canEdit, onTabChange }: ActionCenterProps) {
   const stage = trip.stage ?? "idea";
-  if (stage !== "idea" && stage !== "planning") return null;
+  if (stage !== "idea" && stage !== "planning" && stage !== "going") return null;
 
   const datesLocked = !!(trip.start_date && trip.end_date);
   const pollMode = !!trip.poll_mode;
+
+  // ── GOING stage ────────────────────────────────────────────────────────
+  // In the going stage the Action Center's primary card is the RSVP prompt.
+  // Future cards (TravelCard, LodgingCard) slot in alongside.
+  if (stage === "going") {
+    return (
+      <section className="space-y-3">
+        <p
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Action Center
+        </p>
+        <RsvpActionCard tripId={trip.id} />
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3">

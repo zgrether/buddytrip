@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Settings, Lock, HelpCircle, X, MessageCircle, Send, Mail } from "lucide-react";
+import { Settings, Lock, HelpCircle, X, MessageCircle, Send } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -20,12 +20,12 @@ import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
-import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ChatDrawer } from "./components/ChatDrawer";
-import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
-import { NextStepsPanel } from "./components/NextStepsPanel";
+import { STAGE_CONTENT } from "./components/StageContextBar";
 import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
-import { SidebarChatPanel } from "./components/PlanningChatPanel";
+import { TripSummaryModal } from "./components/TripSummaryModal";
+import { TwoColumnLayout } from "./components/TwoColumnLayout";
+import { SidebarForStage } from "./components/SidebarForStage";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -35,8 +35,6 @@ export default function TripDetailPage() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
-  const [showAdvanceSheet, setShowAdvanceSheet] = useState<"going" | null>(null);
-  const [pendingRsvpMessage, setPendingRsvpMessage] = useState<string>("");
   const [showHelpSheet, setShowHelpSheet] = useState(false);
   const [showInvitationModal, setShowInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
@@ -259,7 +257,20 @@ export default function TripDetailPage() {
            sidebar share the same grid so the sidebar aligns with the tab bar
            top and persists across all tab switches. */
         <div className="mx-auto max-w-[1280px] px-4 mt-4">
-          <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+          <TwoColumnLayout
+            sidebar={
+              <SidebarForStage
+                stage="planning"
+                tripId={tripId}
+                isOwner={isOwner}
+                canEdit={effectiveCanEdit}
+                memberNames={Object.fromEntries(
+                  members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
+                )}
+                onWriteInvitation={() => setShowInvitationModal(true)}
+              />
+            }
+          >
             {/* Left: tab bar + all tab content */}
             <div>
               <TripTabBar
@@ -291,7 +302,6 @@ export default function TripDetailPage() {
                     onTabChange={(tab) => setActiveTab(tab as TabId)}
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                     onOpenChat={() => setShowChatDrawer(true)}
-                    onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
                   />
                 )}
                 {activeTab === "schedule" && (
@@ -308,31 +318,7 @@ export default function TripDetailPage() {
                 )}
               </div>
             </div>
-            {/* Right: persistent sidebar — desktop only */}
-            <div className="hidden lg:flex lg:flex-col gap-4">
-              {isOwner && (
-                <button
-                  onClick={() => setShowInvitationModal(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90"
-                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                >
-                  <Send size={15} />
-                  Write Invitation
-                </button>
-              )}
-              <NextStepsPanel
-                trip={trip}
-                crewCount={members.length}
-                isOwner={isOwner}
-              />
-              <SidebarChatPanel
-                tripId={tripId}
-                memberNames={Object.fromEntries(
-                  members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
-                )}
-              />
-            </div>
-          </div>
+          </TwoColumnLayout>
         </div>
       ) : (
         <>
@@ -377,7 +363,6 @@ export default function TripDetailPage() {
                 onTabChange={(tab) => setActiveTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                 onOpenChat={() => setShowChatDrawer(true)}
-                onMakeOfficial={isOwner ? (message) => { setPendingRsvpMessage(message); setShowAdvanceSheet("going"); } : undefined}
               />
             )}
             {activeTab === "schedule" && (
@@ -412,40 +397,13 @@ export default function TripDetailPage() {
         />
       )}
 
-      {/* ── Write Invitation modal ───────────────────────────────────────── */}
+      {/* ── Trip Summary modal ──────────────────────────────────────────── */}
       {showInvitationModal && trip && (
-        <WriteInvitationModal
+        <TripSummaryModal
           tripId={tripId}
           trip={trip}
           onClose={() => setShowInvitationModal(false)}
-          onAdvanced={(ghosts) => {
-            setShowInvitationModal(false);
-            if (ghosts.length > 0) {
-              setToast({
-                message: `No email on file for: ${ghosts.join(", ")}. They won't receive the RSVP blast.`,
-                variant: "warning",
-              });
-            }
-          }}
-        />
-      )}
-
-      {/* ── Stage advancement sheets ─────────────────────────────────────── */}
-      {showAdvanceSheet === "going" && (
-        <AdvanceToGoingSheet
-          tripId={tripId}
-          destination={trip.locked_destination_title ?? ""}
-          dateRange={formatDateRange(trip.start_date, trip.end_date)}
-          initialMessage={pendingRsvpMessage || trip.about_message || ""}
-          onClose={() => setShowAdvanceSheet(null)}
-          onAdvanced={(ghosts) => {
-            if (ghosts.length > 0) {
-              setToast({
-                message: `No email on file for: ${ghosts.join(", ")}. They won't receive the RSVP blast.`,
-                variant: "warning",
-              });
-            }
-          }}
+          onAdvanced={() => setShowInvitationModal(false)}
         />
       )}
 
@@ -545,246 +503,6 @@ export default function TripDetailPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── WriteInvitationModal ────────────────────────────────────────────────
-
-function WriteInvitationModal({
-  tripId,
-  trip,
-  onClose,
-  onAdvanced,
-}: {
-  tripId: string;
-  trip: { about_message?: string | null; locked_destination_title?: string | null; start_date?: string | null; end_date?: string | null };
-  onClose: () => void;
-  onAdvanced: (ghostsWithoutEmail: string[]) => void;
-}) {
-  const utils = trpc.useUtils();
-  const [message, setMessage] = useState(trip.about_message ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
-  const hasLockedDate = !!poll?.lockedWindowId;
-
-  const updateMessage = trpc.trips.updateAboutMessage.useMutation({
-    onSuccess() {
-      setSaving(false);
-      utils.trips.getById.invalidate({ tripId });
-    },
-    onError() { setSaving(false); },
-  });
-
-  const advance = trpc.trips.advanceToGoing.useMutation({
-    onSuccess(result) {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-      onAdvanced(result.ghostsWithoutEmail ?? []);
-    },
-  });
-
-  useModalBackButton(onClose);
-
-  const handleBlur = () => {
-    const trimmed = message.trim();
-    if (trimmed === (trip.about_message?.trim() ?? "")) return;
-    setSaving(true);
-    updateMessage.mutate({ tripId, aboutMessage: trimmed });
-  };
-
-  const destination = trip.locked_destination_title ?? "";
-  const dateRange = formatDateRange(trip.start_date, trip.end_date);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[560px] rounded-t-2xl p-6 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-1 flex items-center gap-2">
-          <Mail size={16} style={{ color: "var(--color-bt-accent)" }} />
-          <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Write your invitation
-          </h2>
-        </div>
-        <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Write a message to your crew — this goes out by email when you make the trip official.
-        </p>
-
-        {(destination || dateRange) && (
-          <div
-            className="mb-3 rounded-xl px-3 py-2 text-[13px]"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
-          >
-            {dateRange ? `${dateRange} · ${destination}` : destination}
-          </div>
-        )}
-
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="Hey crew, here's the plan..."
-          rows={4}
-          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        {saving && (
-          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Saving…</p>
-        )}
-
-        {!hasLockedDate && (
-          <div
-            className="mt-3 flex items-start gap-3 rounded-xl px-4 py-3"
-            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
-          >
-            <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
-            <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
-              Lock a date first — your crew will want to know when.
-            </p>
-          </div>
-        )}
-
-        <button
-          onClick={() => advance.mutate({ tripId, aboutMessage: message.trim() })}
-          disabled={advance.isPending || !hasLockedDate || !message.trim()}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          <Send size={15} />
-          {advance.isPending ? "Sending..." : "Let's Go! 🎉"}
-        </button>
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Save & close
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── AdvanceToGoingSheet ─────────────────────────────────────────────────
-
-function AdvanceToGoingSheet({
-  tripId,
-  destination,
-  dateRange,
-  initialMessage,
-  onClose,
-  onAdvanced,
-}: {
-  tripId: string;
-  destination: string;
-  dateRange: string;
-  initialMessage?: string;
-  onClose: () => void;
-  onAdvanced: (ghostsWithoutEmail: string[]) => void;
-}) {
-  const [message, setMessage] = useState(initialMessage ?? "");
-  const utils = trpc.useUtils();
-
-  // Check if a date is locked
-  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
-  const hasLockedDate = !!poll?.lockedWindowId;
-
-  const advance = trpc.trips.advanceToGoing.useMutation({
-    onSuccess(result) {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-      onAdvanced(result.ghostsWithoutEmail ?? []);
-      onClose();
-    },
-  });
-  useModalBackButton(onClose);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[560px] rounded-t-2xl p-6 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Let&apos;s Go! 🎉
-        </h2>
-        <p className="mt-2 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Write a message to your crew — this will appear on the home tab for everyone
-          and kick off the RSVP.
-        </p>
-
-        {hasLockedDate ? (
-          <>
-            {/* Preview chip */}
-            <div
-              className="mt-4 rounded-xl px-3 py-2 text-[13px]"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
-            >
-              {dateRange ? `${dateRange} · ${destination}` : destination}
-            </div>
-
-            {/* Message textarea */}
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="What do you want to share with your crew?"
-              rows={3}
-              className="mt-3 w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              This goes out by email to your crew. You can still edit it before sending.
-            </p>
-
-            <button
-              onClick={() => advance.mutate({ tripId, aboutMessage: message.trim() })}
-              disabled={advance.isPending || !message.trim()}
-              className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              {advance.isPending ? "Sending..." : "Send it"}
-            </button>
-            <button
-              onClick={onClose}
-              className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Not yet
-            </button>
-          </>
-        ) : (
-          <div
-            className="mt-4 flex items-start gap-3 rounded-xl px-4 py-3"
-            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
-          >
-            <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
-            <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
-              Lock a date first — your crew will want to know when.
-            </p>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

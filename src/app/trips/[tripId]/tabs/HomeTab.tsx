@@ -13,7 +13,6 @@ import {
   Trophy,
   Check,
   Loader2,
-  Minus,
   Edit2,
   Bell,
   Mail,
@@ -22,13 +21,11 @@ import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
 import { getTripStatus } from "@/components/StatusBadge";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ActionCenter } from "./components/ActionCenter";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TravelPanel } from "../components/TravelPanel";
-import { TravelEntryForm } from "../components/TravelEntryForm";
 import { ItineraryPanel } from "../components/ItineraryPanel";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
@@ -408,100 +405,8 @@ function CompetitionPreviewModal({
   );
 }
 
-// ── RSVP Panel (GOING/NOW stage Home tab) ────────────────────────────────
-
-const RSVP_OPTIONS = [
-  { value: "in" as const, label: "In", icon: Check, selectedBg: "var(--color-bt-vote-yes)", selectedText: "var(--color-bt-vote-yes-text)" },
-  { value: "maybe" as const, label: "Maybe", icon: Minus, selectedBg: "var(--color-bt-vote-maybe)", selectedText: "#ffffff" },
-  { value: "out" as const, label: "Can't make it", icon: X, selectedBg: "var(--color-bt-vote-no)", selectedText: "#ffffff" },
-];
-
-function RsvpPanel({
-  tripId,
-  members,
-  currentUserId,
-}: {
-  tripId: string;
-  members: { user_id: string | null; rsvp_status?: string | null }[];
-  currentUserId: string | null;
-}) {
-  const utils = trpc.useUtils();
-
-  const setRsvp = trpc.tripMembers.setRsvpStatus.useMutation({
-    async onMutate(vars) {
-      await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
-      utils.tripMembers.list.setData({ tripId }, (old) =>
-        old?.map((m) =>
-          m.user_id === currentUserId ? { ...m, rsvp_status: vars.rsvpStatus } : m
-        )
-      );
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev) utils.tripMembers.list.setData({ tripId }, context.prev);
-    },
-    onSettled() {
-      utils.tripMembers.list.invalidate({ tripId });
-    },
-  });
-
-  const myMember = members.find((m) => m.user_id === currentUserId);
-  const myRsvp = (myMember as { rsvp_status?: string | null } | undefined)?.rsvp_status ?? null;
-
-  const inCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "in").length;
-  const maybeCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "maybe").length;
-  const outCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status === "out").length;
-  const pendingCount = members.filter((m) => (m as { rsvp_status?: string | null }).rsvp_status == null).length;
-
-  return (
-    <div
-      className="mx-4 rounded-xl px-4 py-4 lg:mx-0"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-    >
-      <p className="mb-3 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-        Are you in?
-      </p>
-
-      <div className="flex gap-2">
-        {RSVP_OPTIONS.map((opt) => {
-          const isSelected = myRsvp === opt.value;
-          const Icon = opt.icon;
-          return (
-            <button
-              key={opt.value}
-              onClick={() => setRsvp.mutate({ tripId, rsvpStatus: opt.value })}
-              disabled={setRsvp.isPending}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-              style={{
-                background: isSelected ? opt.selectedBg : "var(--color-bt-card-raised)",
-                color: isSelected ? opt.selectedText : "var(--color-bt-text)",
-                border: isSelected ? "none" : "1px solid var(--color-bt-border)",
-              }}
-            >
-              <Icon size={14} />
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <p className="mt-3 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        {inCount} in · {maybeCount} maybe · {outCount} out · {pendingCount} pending
-      </p>
-
-      {/* Travel entry — only when RSVP is "in" */}
-      {myRsvp === "in" && (
-        <TravelEntryForm
-          tripId={tripId}
-          currentTravel={myMember as TravelEntryFormProps["currentTravel"]}
-        />
-      )}
-    </div>
-  );
-}
-
-type TravelEntryFormProps = Parameters<typeof TravelEntryForm>[0];
+// RsvpPanel was moved to ./components/RsvpActionCard.tsx and is now
+// rendered via ActionCenter for the going stage.
 
 // ── Competition Panel ─────────────────────────────────────────────────────
 
@@ -966,12 +871,9 @@ export function HomeTab({
   onTabChange,
   onEnableComp,
   onOpenChat,
-  onMakeOfficial,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onMakeOfficial?: (message: string) => void }) {
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
-  const currentUser = useCurrentUser();
 
   const status = getTripStatus(trip);
   const _isCompleted = status === "past";
@@ -1004,11 +906,6 @@ export function HomeTab({
             <AboutPanel tripId={trip.id} aboutMessage={trip.about_message} canEdit={canEditProp} isPast={status === "past"} />
           )}
 
-          {/* ── GOING / NOW stage: RSVP panel ──────────────────────── */}
-          {(stage === "going" || status === "now") && (
-            <RsvpPanel tripId={trip.id} members={members} currentUserId={currentUser?.id ?? null} />
-          )}
-
           {/* ── Itinerary panel — read-only confirmed-only timeline ── */}
           {stage !== "idea" && stage !== "planning" && (
             <ItineraryPanel
@@ -1020,9 +917,10 @@ export function HomeTab({
             />
           )}
 
-          {/* ── Action Center — everyone sees their active tasks in   ── */}
-          {/*    idea + planning stages (matches DatesPanel gate)        ── */}
-          {(stage === "idea" || stage === "planning") && (
+          {/* ── Action Center — unified "what needs your attention"   ── */}
+          {/*    surface: idea/planning show Dates cards, going shows    ── */}
+          {/*    the RSVP card.                                          ── */}
+          {(stage === "idea" || stage === "planning" || stage === "going") && (
             <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} />
           )}
 

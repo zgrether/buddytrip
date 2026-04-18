@@ -37,7 +37,7 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
   const [budgetFilter, setBudgetFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const LIMIT = 100;
-  const INITIAL_COUNT = 6;
+  const INITIAL_COUNT = 8;
 
   const { data: catalogIdeas = [], isLoading } =
     trpc.ideas.catalogList.useQuery({
@@ -165,9 +165,10 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
         </div>
       )}
 
-      {/* 2-column grid */}
+      {/* Responsive grid — 2 cols on mobile, 4 on desktop so cards stay
+          the compact mobile size and twice as many fit per row. */}
       {!isLoading && catalogIdeas.length > 0 && (
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
           {visibleIdeas.map((idea, index) => {
             const isSelected = selectedIds.has(idea.id);
             return (
