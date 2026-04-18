@@ -91,8 +91,9 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
           </h2>
         </div>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Here&apos;s where things stand. When you&apos;re ready, let&apos;s unlock the
-          rest of the trip planning stuff.
+          Here&apos;s where things stand. When you&apos;re ready, we&apos;ll open up the
+          next set of planning features — no rush if your dates aren&apos;t locked
+          in yet, and nothing you&apos;ve already set up goes away.
         </p>
 
         {/* ── Basics panel — destination, dates, crew ─────────────────── */}
@@ -140,11 +141,12 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
         <p className="mt-4 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
           Lodging and schedule don&apos;t have to be firm to continue — this is just
           your starting point as the trip gets closer.
-          <br />
-          <span className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        </p>
+        <p className="mt-2 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          <span className="block font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Pro Tip:
-          </span>{" "}
-          designate anyone in the crew to help plan and they can lock in any of
+          </span>
+          Designate anyone in the crew to help plan and they can lock in any of
           these items.
         </p>
 
