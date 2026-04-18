@@ -189,6 +189,37 @@ export default function TripDetailPage() {
     </button>
   ) : null;
 
+  // ── DEBUG: planning ↔ going stage toggle ─────────────────────────────
+  // Temporary helper so we can flip between stages without locking /
+  // unlocking dates. Owner-only. Remove before launch.
+  const devSetStage = trpc.trips.devSetStage.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+    },
+  });
+  const debugStageToggle = (isOwner && (stage === "planning" || stage === "going")) ? (
+    <button
+      onClick={() =>
+        devSetStage.mutate({
+          tripId,
+          stage: stage === "planning" ? "going" : "planning",
+        })
+      }
+      disabled={devSetStage.isPending}
+      className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-80 disabled:opacity-40"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: "1px dashed var(--color-bt-border)",
+        color: "var(--color-bt-text-dim)",
+      }}
+      aria-label={`Debug: switch to ${stage === "planning" ? "going" : "planning"} stage`}
+      title="Debug stage toggle"
+    >
+      {stage === "planning" ? "plan → going" : "going → plan"}
+    </button>
+  ) : null;
+
   const helpButton = (stage === "idea" || stage === "planning") ? (
     <button
       onClick={() => setShowHelpSheet(true)}
@@ -216,8 +247,9 @@ export default function TripDetailPage() {
         tripId={tripId}
         tripTitle={trip.title}
         rightSlot={
-          (helpButton || settingsButton) ? (
+          (helpButton || settingsButton || debugStageToggle) ? (
             <div className="flex items-center gap-1">
+              {debugStageToggle}
               {helpButton}
               {settingsButton}
             </div>
