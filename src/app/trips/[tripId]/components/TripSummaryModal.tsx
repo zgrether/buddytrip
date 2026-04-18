@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, MapPin, Send, Sparkles, Users } from "lucide-react";
+import { BedDouble, CalendarCheck, CalendarDays, MapPin, Send, Sparkles, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -20,21 +19,23 @@ export interface TripSummaryModalProps {
 }
 
 /**
- * TripSummaryModal — lightweight "you're ready to send it" confirmation that
- * replaces WriteInvitationModal. Shows a short recap of what the owner has
- * locked in (destination, dates, crew size), then offers an optional note
- * plus the "Let's go! 🎉" confirmation button.
+ * TripSummaryModal — "where you are, and what's up next" glimpse shown
+ * before the owner advances the trip from planning → going. Renders a
+ * read-only recap (destination, dates, crew, lodging, schedule) plus a
+ * soft nudge that partial info is fine for RSVPs but the crew may want
+ * more detail later. Actual planning — including any invitation message
+ * — happens elsewhere; this modal is just the confirmation.
  *
- * The owner can send with or without a message — `advanceToGoing` now treats
- * aboutMessage as optional. If the date isn't locked yet, we show an inline
- * warning and disable the send button.
+ * If no date is locked, a warning sits below the summary and the send
+ * button stays disabled.
  */
 export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSummaryModalProps) {
   const utils = trpc.useUtils();
-  const [message, setMessage] = useState(trip.about_message ?? "");
 
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: logistics = [] } = trpc.logistics.list.useQuery({ tripId });
+  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
   const hasLockedDate = !!poll?.lockedWindowId;
 
   const advance = trpc.trips.advanceToGoing.useMutation({
@@ -52,12 +53,14 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
   const dateRange = formatDateRange(trip.start_date, trip.end_date);
   const crewCount = members.length;
 
+  const lodgingItems = logistics.filter((l) => (l as { type?: string }).type === "lodging");
+  const lodgingConfirmed = lodgingItems.filter((l) => (l as { is_confirmed?: boolean }).is_confirmed).length;
+  const lodgingCount = lodgingItems.length;
+
+  const scheduleCount = reservations.length;
+
   const handleSend = () => {
-    const trimmed = message.trim();
-    advance.mutate({
-      tripId,
-      ...(trimmed ? { aboutMessage: trimmed } : {}),
-    });
+    advance.mutate({ tripId });
   };
 
   return (
@@ -74,16 +77,16 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
         <div className="mb-1 flex items-center gap-2">
           <Sparkles size={16} style={{ color: "var(--color-bt-accent)" }} />
           <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Ready to make it official?
+            Trip Summary
           </h2>
         </div>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Here&apos;s the plan you&apos;ve lined up. Send it to kick off RSVPs.
+          Here&apos;s where things stand. When you&apos;re ready, send it to kick off RSVPs.
         </p>
 
-        {/* ── Summary rows ─────────────────────────────────────────────── */}
+        {/* ── Summary panel ────────────────────────────────────────────── */}
         <div
-          className="mb-4 space-y-2 rounded-xl px-4 py-3 text-[13px]"
+          className="space-y-2 rounded-xl px-4 py-3 text-[13px]"
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
         >
           <SummaryRow
@@ -101,31 +104,27 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
             label="Crew"
             value={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
           />
+          <SummaryRow
+            icon={<BedDouble size={14} />}
+            label="Lodging"
+            value={
+              lodgingCount === 0
+                ? "Nothing added yet"
+                : `${lodgingConfirmed} confirmed · ${lodgingCount} total`
+            }
+          />
+          <SummaryRow
+            icon={<CalendarCheck size={14} />}
+            label="Schedule"
+            value={
+              scheduleCount === 0
+                ? "Nothing scheduled yet"
+                : `${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`
+            }
+          />
         </div>
 
-        {/* ── Optional message ─────────────────────────────────────────── */}
-        <label
-          className="mb-1 block text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          A note for the crew <span style={{ textTransform: "none" }}>(optional)</span>
-        </label>
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Hey crew, here's the plan..."
-          rows={3}
-          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          This goes out by email to your crew alongside the RSVP.
-        </p>
-
+        {/* ── Warning — only when a date isn't locked yet ─────────────── */}
         {!hasLockedDate && (
           <div
             className="mt-3 flex items-start gap-3 rounded-xl px-4 py-3"
@@ -137,6 +136,13 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
             </p>
           </div>
         )}
+
+        {/* ── Soft "partial info is okay" nudge ────────────────────────── */}
+        <p className="mt-3 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          Lodging and schedule don&apos;t have to be locked in to send this — RSVPs
+          just need a when and where. Your crew will probably start asking about
+          those soon, though, so plan to fill them in as they firm up.
+        </p>
 
         <button
           onClick={handleSend}
