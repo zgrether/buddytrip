@@ -252,15 +252,31 @@ export default function TripDetailPage() {
       </div>
 
       {/* ── Tab bar + content ────────────────────────────────────────────── */}
-      {stage === "planning" ? (
-        /* Planning: persistent two-column layout — tab bar, content, and
-           sidebar share the same grid so the sidebar aligns with the tab bar
-           top and persists across all tab switches. */
+      {stage === "idea" ? (
+        /* Idea stage: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
+        <main className="mx-auto max-w-[1280px] pt-4 pb-6">
+          {activeTab === "home" && (
+            <HomeTab
+              trip={trip}
+              role={role}
+              canEdit={effectiveCanEdit}
+              isOwner={isOwner}
+              displayStatus={status}
+              onTabChange={(tab) => setActiveTab(tab as TabId)}
+              onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+              onOpenChat={() => setShowChatDrawer(true)}
+            />
+          )}
+        </main>
+      ) : (
+        /* Planning / going / now / past / saved: persistent two-column layout —
+           tab bar, content, and sidebar share the same grid so the sidebar
+           aligns with the tab bar top and persists across all tab switches. */
         <div className="mx-auto max-w-[1280px] px-4 mt-4">
           <TwoColumnLayout
             sidebar={
               <SidebarForStage
-                stage="planning"
+                stage={stage as "planning" | "going" | "now" | "past" | "saved"}
                 tripId={tripId}
                 isOwner={isOwner}
                 canEdit={effectiveCanEdit}
@@ -271,8 +287,13 @@ export default function TripDetailPage() {
               />
             }
           >
-            {/* Left: tab bar + all tab content */}
+            {/* Left: owner alert (going only) + tab bar + all tab content */}
             <div>
+              {stage === "going" && (
+                <div className="mb-4">
+                  <OwnerAlertPanel trip={trip} isOwner={isOwner} />
+                </div>
+              )}
               <TripTabBar
                 activeTab={activeTab}
                 onTabChange={(tab) => setActiveTab(tab)}
@@ -280,7 +301,7 @@ export default function TripDetailPage() {
                 canEdit={canEdit}
                 stage={stage}
               />
-              <div className="pt-4 pb-6">
+              <div className="pt-4 pb-24">
                 {tripIsReadOnly && activeTab === "home" && (
                   <div
                     className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
@@ -320,65 +341,6 @@ export default function TripDetailPage() {
             </div>
           </TwoColumnLayout>
         </div>
-      ) : (
-        <>
-          {/* Owner alert — above tab bar in GOING/NOW */}
-          {(stage === "going") && (
-            <div className="mx-auto max-w-[1280px] px-4 mt-4">
-              <OwnerAlertPanel trip={trip} isOwner={isOwner} />
-            </div>
-          )}
-
-          {/* Non-planning: tab bar in its own row, hidden in IDEA stage */}
-          {stage !== "idea" && (
-            <div className="mx-auto max-w-[1280px] px-4 mt-4">
-              <TripTabBar
-                activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab)}
-                showComp={showComp}
-                canEdit={canEdit}
-                stage={stage}
-              />
-            </div>
-          )}
-          <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" ? "pb-6" : "pb-24"}`}>
-            {tripIsReadOnly && activeTab === "home" && (
-              <div
-                className="mx-4 mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
-                style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-              >
-                <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-                <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  This trip is read-only
-                </span>
-              </div>
-            )}
-            {activeTab === "home" && (
-              <HomeTab
-                trip={trip}
-                role={role}
-                canEdit={effectiveCanEdit}
-                isOwner={isOwner}
-                displayStatus={status}
-                onTabChange={(tab) => setActiveTab(tab as TabId)}
-                onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-                onOpenChat={() => setShowChatDrawer(true)}
-              />
-            )}
-            {activeTab === "schedule" && (
-              <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-            {activeTab === "crew" && (
-              <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-            {activeTab === "expenses" && (
-              <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-            {activeTab === "comp" && (
-              <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-          </main>
-        </>
       )}
 
       {/* ── Bottom navigation (READY+ stages only) ────────────────────────── */}
