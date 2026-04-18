@@ -22,10 +22,11 @@ import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ChatDrawer } from "./components/ChatDrawer";
-import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
+import { STAGE_CONTENT } from "./components/StageContextBar";
 import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
-import { SidebarChatPanel } from "./components/PlanningChatPanel";
 import { TripSummaryModal } from "./components/TripSummaryModal";
+import { TwoColumnLayout } from "./components/TwoColumnLayout";
+import { SidebarForStage } from "./components/SidebarForStage";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -259,7 +260,20 @@ export default function TripDetailPage() {
            sidebar share the same grid so the sidebar aligns with the tab bar
            top and persists across all tab switches. */
         <div className="mx-auto max-w-[1280px] px-4 mt-4">
-          <div className="lg:grid lg:grid-cols-[1fr_320px] lg:gap-6">
+          <TwoColumnLayout
+            sidebar={
+              <SidebarForStage
+                stage="planning"
+                tripId={tripId}
+                isOwner={isOwner}
+                canEdit={effectiveCanEdit}
+                memberNames={Object.fromEntries(
+                  members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
+                )}
+                onWriteInvitation={() => setShowInvitationModal(true)}
+              />
+            }
+          >
             {/* Left: tab bar + all tab content */}
             <div>
               <TripTabBar
@@ -308,26 +322,7 @@ export default function TripDetailPage() {
                 )}
               </div>
             </div>
-            {/* Right: persistent sidebar — desktop only */}
-            <div className="hidden lg:flex lg:flex-col gap-4">
-              {isOwner && (
-                <button
-                  onClick={() => setShowInvitationModal(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90"
-                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                >
-                  <Send size={15} />
-                  Write Invitation
-                </button>
-              )}
-              <SidebarChatPanel
-                tripId={tripId}
-                memberNames={Object.fromEntries(
-                  members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
-                )}
-              />
-            </div>
-          </div>
+          </TwoColumnLayout>
         </div>
       ) : (
         <>

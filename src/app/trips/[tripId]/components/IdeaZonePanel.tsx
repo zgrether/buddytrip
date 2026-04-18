@@ -26,8 +26,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
-import { SidebarChatPanel } from "./PlanningChatPanel";
-import { StageContextBar } from "./StageContextBar";
+import { SidebarForStage } from "./SidebarForStage";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
@@ -1530,7 +1529,7 @@ function SetDestinationSheet({
 
 // ── CoPlannerPanel (IDEA stage — enhanced co-planners mini panel) ─────────
 
-function CoPlannerPanel({
+export function CoPlannerPanel({
   tripId,
   members,
   isOwner,
@@ -1872,37 +1871,16 @@ export default function IdeaZonePanel({
           ))}
         </div>
 
-        {/* Right: sidebar */}
-        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start space-y-3">
-          <div className="hidden lg:block">
-            <StageContextBar tripId={tripId} stage="idea" displayStatus="idea" isOwner={isOwner} />
-          </div>
-          {canEdit && (
-            <button
-              data-testid="add-idea-btn"
-              onClick={() => setShowAddModal(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{
-                border: "1.5px dashed var(--color-bt-accent)",
-                color: "var(--color-bt-accent)",
-                background: "transparent",
-              }}
-            >
-              <Plus size={16} />
-              <MapPin size={15} />
-              Add destination idea
-            </button>
-          )}
-
-          <CoPlannerPanel
+        {/* Right: sidebar — shared stage-aware rail */}
+        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start flex flex-col gap-3">
+          <SidebarForStage
+            stage="idea"
             tripId={tripId}
-            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
             isOwner={isOwner}
+            canEdit={canEdit}
+            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
             allVoterIds={allVoterIds}
-          />
-
-          <SidebarChatPanel
-            tripId={tripId}
+            onAddIdea={() => setShowAddModal(true)}
             memberNames={Object.fromEntries(
               members.map((m) => [m.memberId, m.displayName])
             )}
