@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Settings, Lock, HelpCircle, X, MessageCircle, Send, Mail } from "lucide-react";
+import { Settings, Lock, HelpCircle, X, MessageCircle, Send } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -26,6 +26,7 @@ import { StageContextBar, STAGE_CONTENT } from "./components/StageContextBar";
 import { NextStepsPanel } from "./components/NextStepsPanel";
 import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
 import { SidebarChatPanel } from "./components/PlanningChatPanel";
+import { TripSummaryModal } from "./components/TripSummaryModal";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -412,9 +413,9 @@ export default function TripDetailPage() {
         />
       )}
 
-      {/* ── Write Invitation modal ───────────────────────────────────────── */}
+      {/* ── Trip Summary modal ──────────────────────────────────────────── */}
       {showInvitationModal && trip && (
-        <WriteInvitationModal
+        <TripSummaryModal
           tripId={tripId}
           trip={trip}
           onClose={() => setShowInvitationModal(false)}
@@ -545,134 +546,6 @@ export default function TripDetailPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── WriteInvitationModal ────────────────────────────────────────────────
-
-function WriteInvitationModal({
-  tripId,
-  trip,
-  onClose,
-  onAdvanced,
-}: {
-  tripId: string;
-  trip: { about_message?: string | null; locked_destination_title?: string | null; start_date?: string | null; end_date?: string | null };
-  onClose: () => void;
-  onAdvanced: (ghostsWithoutEmail: string[]) => void;
-}) {
-  const utils = trpc.useUtils();
-  const [message, setMessage] = useState(trip.about_message ?? "");
-  const [saving, setSaving] = useState(false);
-
-  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
-  const hasLockedDate = !!poll?.lockedWindowId;
-
-  const updateMessage = trpc.trips.updateAboutMessage.useMutation({
-    onSuccess() {
-      setSaving(false);
-      utils.trips.getById.invalidate({ tripId });
-    },
-    onError() { setSaving(false); },
-  });
-
-  const advance = trpc.trips.advanceToGoing.useMutation({
-    onSuccess(result) {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-      onAdvanced(result.ghostsWithoutEmail ?? []);
-    },
-  });
-
-  useModalBackButton(onClose);
-
-  const handleBlur = () => {
-    const trimmed = message.trim();
-    if (trimmed === (trip.about_message?.trim() ?? "")) return;
-    setSaving(true);
-    updateMessage.mutate({ tripId, aboutMessage: trimmed });
-  };
-
-  const destination = trip.locked_destination_title ?? "";
-  const dateRange = formatDateRange(trip.start_date, trip.end_date);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[560px] rounded-t-2xl p-6 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-1 flex items-center gap-2">
-          <Mail size={16} style={{ color: "var(--color-bt-accent)" }} />
-          <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Write your invitation
-          </h2>
-        </div>
-        <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Write a message to your crew — this goes out by email when you make the trip official.
-        </p>
-
-        {(destination || dateRange) && (
-          <div
-            className="mb-3 rounded-xl px-3 py-2 text-[13px]"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
-          >
-            {dateRange ? `${dateRange} · ${destination}` : destination}
-          </div>
-        )}
-
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="Hey crew, here's the plan..."
-          rows={4}
-          className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-        {saving && (
-          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Saving…</p>
-        )}
-
-        {!hasLockedDate && (
-          <div
-            className="mt-3 flex items-start gap-3 rounded-xl px-4 py-3"
-            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
-          >
-            <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
-            <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
-              Lock a date first — your crew will want to know when.
-            </p>
-          </div>
-        )}
-
-        <button
-          onClick={() => advance.mutate({ tripId, aboutMessage: message.trim() })}
-          disabled={advance.isPending || !hasLockedDate || !message.trim()}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          <Send size={15} />
-          {advance.isPending ? "Sending..." : "Let's Go! 🎉"}
-        </button>
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Save & close
-        </button>
-      </div>
     </div>
   );
 }
