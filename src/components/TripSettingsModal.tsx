@@ -74,6 +74,14 @@ export function TripSettingsModal({
   const [startDraft, setStartDraft] = useState(trip?.start_date ?? "");
   const [endDraft, setEndDraft] = useState(trip?.end_date ?? "");
 
+  // Lazy-fetch poll data when the dates section is open so we know whether
+  // there are existing windows to return to.
+  const { data: pollData } = trpc.datePoll.get.useQuery(
+    { tripId },
+    { enabled: datesExpanded && isOwner && datesLocked }
+  );
+  const hasPollWindows = (pollData?.windows.length ?? 0) > 0;
+
   const changeDestinationMutation = trpc.trips.changeDestination.useMutation({
     onSuccess: () => {
       utils.trips.getById.invalidate({ tripId });
@@ -107,6 +115,7 @@ export function TripSettingsModal({
       utils.trips.getById.invalidate({ tripId });
       utils.datePoll.get.invalidate({ tripId });
       setDatesExpanded(false);
+      onClose();
     },
   });
 
@@ -181,7 +190,7 @@ export function TripSettingsModal({
         onClick={onClose}
       />
       <div
-        className="relative w-[340px] max-h-[85vh] overflow-y-auto rounded-xl p-5"
+        className="relative w-full max-w-[480px] max-h-[85vh] overflow-y-auto rounded-xl p-5"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
         {/* ── Header ────────────────────────────────────────────────── */}
@@ -411,31 +420,47 @@ export function TripSettingsModal({
                       style={{ borderColor: "var(--color-bt-border)" }}
                     >
                       <>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="date"
-                              data-testid="settings-start-date-input"
-                              value={startDraft}
-                              onChange={(e) => setStartDraft(e.target.value)}
-                              className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-                              style={{
-                                background: "var(--color-bt-card-raised)",
-                                borderColor: "var(--color-bt-border)",
-                                color: "var(--color-bt-text)",
-                              }}
-                            />
-                            <input
-                              type="date"
-                              data-testid="settings-end-date-input"
-                              value={endDraft}
-                              onChange={(e) => setEndDraft(e.target.value)}
-                              className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-                              style={{
-                                background: "var(--color-bt-card-raised)",
-                                borderColor: "var(--color-bt-border)",
-                                color: "var(--color-bt-text)",
-                              }}
-                            />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label
+                                className="text-[11px] font-semibold uppercase tracking-wider"
+                                style={{ color: "var(--color-bt-text-dim)" }}
+                              >
+                                Start date
+                              </label>
+                              <input
+                                type="date"
+                                data-testid="settings-start-date-input"
+                                value={startDraft}
+                                onChange={(e) => setStartDraft(e.target.value)}
+                                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                                style={{
+                                  background: "var(--color-bt-card-raised)",
+                                  borderColor: "var(--color-bt-border)",
+                                  color: "var(--color-bt-text)",
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label
+                                className="text-[11px] font-semibold uppercase tracking-wider"
+                                style={{ color: "var(--color-bt-text-dim)" }}
+                              >
+                                End date
+                              </label>
+                              <input
+                                type="date"
+                                data-testid="settings-end-date-input"
+                                value={endDraft}
+                                onChange={(e) => setEndDraft(e.target.value)}
+                                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                                style={{
+                                  background: "var(--color-bt-card-raised)",
+                                  borderColor: "var(--color-bt-border)",
+                                  color: "var(--color-bt-text)",
+                                }}
+                              />
+                            </div>
                           </div>
                           <button
                             data-testid="settings-save-dates-btn"
@@ -455,18 +480,20 @@ export function TripSettingsModal({
                           >
                             {lockDatesMutation.isPending ? "Updating…" : "Update dates"}
                           </button>
-                          <button
-                            data-testid="settings-return-to-poll-btn"
-                            disabled={returnToPollPending || lockDatesMutation.isPending}
-                            onClick={handleReturnToPoll}
-                            className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
-                            style={{
-                              borderColor: "var(--color-bt-accent-border)",
-                              color: "var(--color-bt-accent)",
-                            }}
-                          >
-                            {returnToPollPending ? "Returning…" : "Return to poll"}
-                          </button>
+                          {hasPollWindows && (
+                            <button
+                              data-testid="settings-reopen-poll-btn"
+                              disabled={returnToPollPending || lockDatesMutation.isPending}
+                              onClick={handleReturnToPoll}
+                              className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
+                              style={{
+                                borderColor: "var(--color-bt-accent-border)",
+                                color: "var(--color-bt-accent)",
+                              }}
+                            >
+                              {returnToPollPending ? "Reopening…" : "Reopen poll"}
+                            </button>
+                          )}
                           <button
                             data-testid="settings-clear-dates-btn"
                             disabled={unlockDatesMutation.isPending || lockDatesMutation.isPending || returnToPollMutation.isPending}

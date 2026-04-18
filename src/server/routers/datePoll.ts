@@ -41,10 +41,10 @@ export const datePollRouter = router({
         votesByWindow.set(v.window_id, arr);
       }
 
-      // Fetch locked_window_id + notify_sent from date_polls
+      // Fetch locked_window_id + notify_sent + poll_note from date_polls
       const { data: poll } = await ctx.supabase
         .from("date_polls")
-        .select("locked_window_id, notify_sent")
+        .select("locked_window_id, notify_sent, poll_note")
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
 
@@ -58,6 +58,7 @@ export const datePollRouter = router({
       return {
         lockedWindowId: poll?.locked_window_id ?? null,
         notifySent: poll?.notify_sent ?? false,
+        pollNote: poll?.poll_note ?? null,
         pollMode: trip?.poll_mode ?? false,
         windows: (windows ?? []).map((w) => ({
           ...w,
@@ -97,6 +98,16 @@ export const datePollRouter = router({
           message: `Failed to add date window: ${error.message}`,
         });
       }
+
+      // Reset notify_sent so the owner can re-notify after adding a new option.
+      // Use upsert so the row is created here if setPollMode(true) hasn't run yet
+      // (first-window-activates-poll flow).
+      await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          { trip_id: ctx.tripId, notify_sent: false },
+          { onConflict: "trip_id" }
+        );
 
       return data;
     }),
@@ -644,7 +655,19 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // setPollMode — Owner or Planner: flip trips.poll_mode on or off
+  // setPollMode — Owner or Planner: flip trips.poll_mode on or off.
+  //
+  // When pollMode = false (cancel poll):
+  //   1. Delete all date_poll_votes for this trip's windows (child rows first)
+  //   2. Delete all date_windows for this trip
+  //   3. Reset notify_sent = false on the date_polls record
+  //   4. Flip poll_mode = false on trips
+  //
+  // This matches the spec's cancelPoll semantics — all poll data is cleared
+  // so the owner starts fresh if they re-open a poll later.
+  //
+  // When pollMode = true (open poll): just flip the flag and ensure a
+  // date_polls row exists (no data to clear).
   // -----------------------------------------------------------------------
   setPollMode: authedProcedure
     .input(
@@ -655,6 +678,53 @@ export const datePollRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
+      if (!input.pollMode) {
+        // ── Cancel poll: clear all data, children before parents ──────────
+
+        // 1. Collect the window IDs for this trip so we can delete votes.
+        const { data: windows } = await ctx.supabase
+          .from("date_windows")
+          .select("id")
+          .eq("trip_id", ctx.tripId);
+
+        const windowIds = (windows ?? []).map((w) => w.id);
+
+        // 2. Delete all votes that reference those windows.
+        if (windowIds.length > 0) {
+          const { error: votesErr } = await ctx.supabase
+            .from("date_poll_votes")
+            .delete()
+            .in("window_id", windowIds);
+
+          if (votesErr) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to clear poll votes: ${votesErr.message}`,
+            });
+          }
+        }
+
+        // 3. Delete the date windows themselves.
+        const { error: windowsErr } = await ctx.supabase
+          .from("date_windows")
+          .delete()
+          .eq("trip_id", ctx.tripId);
+
+        if (windowsErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to clear date windows: ${windowsErr.message}`,
+          });
+        }
+
+        // 4. Reset notify_sent so the Notify button re-enables next time.
+        await ctx.supabase
+          .from("date_polls")
+          .update({ notify_sent: false, open: false })
+          .eq("trip_id", ctx.tripId);
+      }
+
+      // 5. Flip poll_mode on the trip (both open and cancel paths).
       const { error } = await ctx.supabase
         .from("trips")
         .update({ poll_mode: input.pollMode })
@@ -667,7 +737,8 @@ export const datePollRouter = router({
         });
       }
 
-      // Ensure a date_polls row exists so notify_sent can be read/written.
+      // When opening a poll, ensure a date_polls row exists so
+      // notify_sent can be read/written without a separate insert.
       if (input.pollMode) {
         await ctx.supabase
           .from("date_polls")
@@ -732,6 +803,87 @@ export const datePollRouter = router({
           { trip_id: ctx.tripId, open: true, notify_sent: true },
           { onConflict: "trip_id" }
         );
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // notifyNewMembers — Owner or Planner: send a date_poll_started notification
+  // to a specific set of member user IDs (e.g. members who joined after the
+  // initial crew notification). Does NOT flip notify_sent — that flag tracks
+  // whether the whole crew has been notified; targeted re-sends don't change it.
+  // -----------------------------------------------------------------------
+  notifyNewMembers: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        userIds: z.array(z.string()).min(1),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { data: tripData } = await ctx.supabase
+          .from("trips")
+          .select("title")
+          .eq("id", ctx.tripId)
+          .single();
+
+        const { data: actorData } = await ctx.supabase
+          .from("users")
+          .select("name, nickname")
+          .eq("id", ctx.user!.id)
+          .single();
+
+        const { createNotification } = await import("./notifications");
+        for (const userId of input.userIds) {
+          // Skip the actor themselves just in case
+          if (userId === ctx.user!.id) continue;
+          await createNotification(ctx.supabase, {
+            tripId: ctx.tripId,
+            actorId: ctx.user!.id,
+            recipientId: userId,
+            type: "date_poll_started",
+            payload: {
+              owner_name: actorData?.nickname ?? actorData?.name ?? "The organizer",
+              trip_name: tripData?.title ?? "the trip",
+              trip_id: ctx.tripId,
+            },
+          });
+        }
+      } catch {
+        // Notification failure shouldn't block the response
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // updatePollNote — Owner: set the free-text note shown to crew at the top
+  // of the date poll. Pass null to clear it (UI falls back to default text).
+  // -----------------------------------------------------------------------
+  updatePollNote: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        note: z.string().max(500).nullable(),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("date_polls")
+        .upsert(
+          { trip_id: ctx.tripId, open: true, poll_note: input.note },
+          { onConflict: "trip_id" }
+        );
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update poll note: ${error.message}`,
+        });
+      }
 
       return { success: true };
     }),

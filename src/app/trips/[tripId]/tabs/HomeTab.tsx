@@ -25,7 +25,6 @@ import { getTripStatus } from "@/components/StatusBadge";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import IdeaZonePanel from "../components/IdeaZonePanel";
-import { DatesPlanningRow } from "../components/DatesPlanningRow";
 import { ActionCenter } from "./components/ActionCenter";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TravelPanel } from "../components/TravelPanel";
@@ -766,18 +765,6 @@ function PlanningSection({
         Planning
       </p>
 
-      {/* ── Dates — Owner-only admin surface. Non-owners use the  ── */}
-      {/*    DatePollCard in ActionCenter. Hidden once locked.     ── */}
-      {!(trip.start_date && trip.end_date) && isOwner && (
-        <DatesPlanningRow
-          trip={trip}
-          canEdit={canEdit}
-          isOwner={isOwner}
-          isOpen={true}
-          onToggle={() => {}}
-          onTabChange={onTabChange}
-        />
-      )}
       {/* ── Lodging — always expanded ── */}
       <LodgingPanel
         tripId={trip.id}
@@ -1034,9 +1021,9 @@ export function HomeTab({
           )}
 
           {/* ── Action Center — everyone sees their active tasks in   ── */}
-          {/*    idea + planning stages (matches DatesPlanningRow gate) ── */}
+          {/*    idea + planning stages (matches DatesPanel gate)        ── */}
           {(stage === "idea" || stage === "planning") && (
-            <ActionCenter trip={trip} isOwner={!!isOwner} />
+            <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} />
           )}
 
           {/* ── Planning rows — gated by stage + canEdit ──────────── */}

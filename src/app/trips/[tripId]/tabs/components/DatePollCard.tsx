@@ -1,24 +1,29 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Calendar, Bell, RotateCcw, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Bell, Pencil, RotateCcw, ThumbsUp, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
-import { ActionCard } from "./ActionCard";
 import {
   DatePollGrid,
   type PollMember,
   type PollWindow,
   type VoteAnswer,
 } from "./DatePollGrid";
+import { ConfirmDatesModal } from "../../components/ConfirmDatesModal";
 
 export interface DatePollCardProps {
   trip: TripData;
   isOwner: boolean;
+  /** Owner / planner only — shown as "Manage →" in the Crew column header. */
+  onManageCrew?: () => void;
 }
+
+const DEFAULT_POLL_NOTE =
+  "We're trying to get a feel for everyone's availability before locking in a date — let us know what you think about these options.";
 
 function sortWindows(ws: PollWindow[]): PollWindow[] {
   return ws.slice().sort((a, b) => {
@@ -33,18 +38,41 @@ function sortWindows(ws: PollWindow[]): PollWindow[] {
 
 /**
  * DatePollCard — the member-facing (and owner-operable) surface for the
- * date poll. Wraps ActionCard + DatePollGrid. Shows resolved chip when
- * dates are locked. Footer actions (Notify crew / Reset) are owner-only;
- * non-owners see a read-only poll with interactive cells only on their
- * own row.
+ * date poll. Footer actions (Notify crew / Reset) are owner-only.
+ *
+ * Features:
+ * - Poll note: owner-editable instructional text shown to all crew above the grid.
+ * - Reset confirmation: two-step confirm before clearing all votes.
+ * - Smart re-notify: Notify button re-enables after a new date is added,
+ *   a reset is performed, or new members have joined since the last notify.
+ * - All-voted banner: thumbs-up shown to any user once they've responded to every window.
  */
-export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
+export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
 
   const [showAddDateModal, setShowAddDateModal] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  // Pending window to lock — set when owner clicks "Select this date";
+  // cleared when the ConfirmDatesModal is confirmed or cancelled.
+  const [pendingLockWindowId, setPendingLockWindowId] = useState<string | null>(null);
+
+  // Re-notify state:
+  // hasFiredNotify latches true on success so refetch races can't re-enable
+  // the button. Cleared only when a re-enable event fires (new date / reset).
+  const [hasFiredNotify, setHasFiredNotify] = useState(false);
+  // Track the member IDs present at the time of last notification so we can
+  // identify newly-added members for targeted re-notification.
+  const [memberIdsAtNotify, setMemberIdsAtNotify] = useState<string[] | null>(null);
+  // "new-date" | "reset" | null — drives the button label copy.
+  const [renotifyReason, setRenotifyReason] = useState<"new-date" | "reset" | null>(null);
+
+  // Poll note editor
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteValue, setNoteValue] = useState<string>("");
+  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -57,6 +85,35 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
   const datesLocked = !!(trip.start_date && trip.end_date);
   const notifySent = !!poll?.notifySent;
 
+  // Identify members who joined after the last crew-wide notification.
+  // newMemberIds is non-empty only after at least one full notify has been sent.
+  const newMemberIds: string[] = memberIdsAtNotify !== null
+    ? members
+        .filter((m) => m.user_id && !memberIdsAtNotify.includes(m.user_id))
+        .map((m) => m.user_id!)
+    : [];
+  const hasNewMembers = newMemberIds.length > 0;
+
+  // Button is disabled when notifySent (server) OR hasFiredNotify (local latch).
+  // Re-enabled explicitly when: addWindow fires, resetPoll fires, or new members joined.
+  const canNotify = !(notifySent || hasFiredNotify) || hasNewMembers || renotifyReason !== null;
+
+  // Derive the button label from the current re-notify context.
+  // renotifyReason (new date / reset) takes priority over new members because
+  // those events mean we want to notify everyone, not just the new members.
+  const notifyButtonLabel = !canNotify
+    ? "Crew notified"
+    : renotifyReason === "new-date"
+    ? "Notify crew about the new date"
+    : renotifyReason === "reset"
+    ? "Notify crew again"
+    : hasNewMembers
+    ? "Notify new crew members"
+    : "Notify crew";
+
+  const pollNote = poll?.pollNote ?? null;
+  const displayNote = pollNote ?? DEFAULT_POLL_NOTE;
+
   const pollMembers: PollMember[] = useMemo(
     () =>
       members.map((m) => ({
@@ -66,6 +123,13 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
       })),
     [members]
   );
+
+  // Has the current user voted on every available window?
+  const allWindowsVoted =
+    windows.length > 0 &&
+    windows.every((w) =>
+      w.votes.some((v) => v.user_id === currentUser?.id && v.answer != null)
+    );
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
@@ -131,7 +195,6 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
           ...old,
           windows: old.windows.map((w) => {
             if (w.id !== vars.windowId) return w;
-            // Null answer = clear that member's vote.
             if (vars.answer === null) {
               return {
                 ...w,
@@ -196,16 +259,27 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
           return {
             lockedWindowId: null,
             notifySent: false,
+            pollNote: null,
             pollMode: true,
             windows: [newWindow],
           };
         }
-        return { ...old, windows: [...old.windows, newWindow] };
+        // Optimistically reset notifySent so the button re-enables immediately.
+        return { ...old, notifySent: false, windows: [...old.windows, newWindow] };
       });
       return { prev };
     },
     onError(_e, _v, ctx) {
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
+    },
+    onSuccess() {
+      setHasFiredNotify(false);
+      if (notifySent || hasFiredNotify) {
+        setRenotifyReason("new-date");
+      }
+      if (!trip.poll_mode) {
+        activatePoll.mutate({ tripId, pollMode: true });
+      }
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -273,6 +347,13 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     onError(_e, _v, ctx) {
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
+    onSuccess() {
+      setHasFiredNotify(true);
+      setMemberIdsAtNotify(
+        members.map((m) => m.user_id!).filter(Boolean)
+      );
+      setRenotifyReason(null);
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -284,7 +365,11 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
       const prev = utils.datePoll.get.getData({ tripId });
       utils.datePoll.get.setData({ tripId }, (old) =>
         old
-          ? { ...old, windows: old.windows.map((w) => ({ ...w, votes: [] })) }
+          ? {
+              ...old,
+              notifySent: false,
+              windows: old.windows.map((w) => ({ ...w, votes: [] })),
+            }
           : old
       );
       return { prev };
@@ -292,15 +377,87 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     onError(_e, _v, ctx) {
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
+    onSuccess() {
+      setShowResetConfirm(false);
+      setHasFiredNotify(false);
+      setRenotifyReason("reset");
+    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
   });
 
-  // When dates are locked, the date poll is not an action surface — the
-  // ActionCenter renders its own "nothing needed right now" placeholder
-  // (which will also cover future resolved-stage cards like RSVP / travel).
-  // Returning null here keeps DatePollCard a pure poll-mode component.
+  // Ends (kills) the poll — clears all windows + votes, sets poll_mode = false.
+  const endPoll = trpc.datePoll.setPollMode.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prevTrip = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, poll_mode: false } : old
+      );
+      return { prevTrip };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prevTrip !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prevTrip);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  // Activates the poll (poll_mode = true) the first time a date window is added.
+  const activatePoll = trpc.datePoll.setPollMode.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prevTrip = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, poll_mode: true } : old
+      );
+      return { prevTrip };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prevTrip !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prevTrip);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+    },
+  });
+
+  const notifyNewMembersM = trpc.datePoll.notifyNewMembers.useMutation({
+    onSuccess() {
+      // Absorb notified members into the tracked set so they're no longer "new"
+      setMemberIdsAtNotify(
+        members.map((m) => m.user_id!).filter(Boolean)
+      );
+    },
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  const updatePollNote = trpc.datePoll.updatePollNote.useMutation({
+    async onMutate(vars) {
+      await utils.datePoll.get.cancel({ tripId });
+      const prev = utils.datePoll.get.getData({ tripId });
+      utils.datePoll.get.setData({ tripId }, (old) =>
+        old ? { ...old, pollNote: vars.note } : old
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
+    },
+    onSuccess() {
+      setEditingNote(false);
+    },
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
   if (datesLocked) return null;
 
   // ── Poll-open view ─────────────────────────────────────────────────────
@@ -309,10 +466,8 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     if (userId === currentUser?.id) {
       castVote.mutate({ tripId, windowId, answer });
     } else if (isOwner) {
-      // Owner voting on behalf of another crew member.
       voteForMember.mutate({ tripId, windowId, userId, answer });
     }
-    // Non-owner clicks on another member's cell are blocked at the grid level.
   };
 
   const anyVotes = windows.some((w) => w.votes.length > 0);
@@ -321,73 +476,246 @@ export function DatePollCard({ trip, isOwner }: DatePollCardProps) {
     ? windows.find((w) => w.id === confirmRemoveId) ?? null
     : null;
 
+  const handleSaveNote = () => {
+    const trimmed = noteValue.trim();
+    updatePollNote.mutate({ tripId, note: trimmed || null });
+  };
+
+  const handleStartEditNote = () => {
+    setNoteValue(pollNote ?? "");
+    setEditingNote(true);
+    setTimeout(() => {
+      noteTextareaRef.current?.focus();
+      noteTextareaRef.current?.select();
+    }, 0);
+  };
+
   return (
     <>
-      <ActionCard
-        icon={<Calendar size={16} />}
-        title="Pick your dates"
-        subtitle={isOwner ? "Tap any cell to vote on behalf of a crew member" : "Tap your row to cast a vote"}
-        isResolved={false}
-      >
-        <div className="space-y-3">
-          <DatePollGrid
-            dateWindows={windows}
-            members={pollMembers}
-            currentUserId={currentUser?.id ?? ""}
-            isOwner={isOwner}
-            onVote={handleVote}
-            onAddDateWindow={isOwner ? () => setShowAddDateModal(true) : undefined}
-            onLockDateWindow={
-              isOwner
-                ? (windowId) => lockWindow.mutate({ tripId, windowId })
-                : undefined
-            }
-            onRemoveDateWindow={
-              isOwner ? (windowId) => setConfirmRemoveId(windowId) : undefined
-            }
-          />
-
-          {isOwner && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => notifyCrew.mutate({ tripId })}
-                disabled={notifySent || notifyCrew.isPending}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[13px] font-medium transition-opacity"
+      <div className="space-y-2">
+        {/* ── Poll note: only shown once at least one date has been added ── */}
+        {windows.length > 0 && (
+          editingNote ? (
+            <div className="space-y-1.5">
+              <textarea
+                ref={noteTextareaRef}
+                value={noteValue}
+                onChange={(e) => setNoteValue(e.target.value)}
+                rows={3}
+                maxLength={500}
+                placeholder={DEFAULT_POLL_NOTE}
+                className="w-full resize-none rounded-xl px-3 py-2.5 text-[13px] leading-snug"
                 style={{
                   background: "var(--color-bt-card-raised)",
-                  color: notifySent
-                    ? "var(--color-bt-text-dim)"
-                    : "var(--color-bt-accent)",
-                  border: "1px solid var(--color-bt-border)",
-                  opacity: notifySent ? 0.6 : 1,
-                  cursor: notifySent ? "default" : "pointer",
+                  border: "1px solid var(--color-bt-accent)",
+                  color: "var(--color-bt-text)",
                 }}
-              >
-                <Bell size={13} />
-                {notifySent ? "Crew notified" : "Notify crew"}
-              </button>
-              {anyVotes && (
+              />
+              <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => resetPoll.mutate({ tripId })}
-                  disabled={resetPoll.isPending}
-                  className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
+                  onClick={() => setEditingNote(false)}
+                  className="flex-1 rounded-xl py-2 text-[13px] font-medium"
                   style={{
                     background: "var(--color-bt-card-raised)",
                     color: "var(--color-bt-text-dim)",
                     border: "1px solid var(--color-bt-border)",
                   }}
-                  aria-label="Reset votes"
                 >
-                  <RotateCcw size={13} />
-                  Reset
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveNote}
+                  disabled={updatePollNote.isPending}
+                  className="flex-1 rounded-xl py-2 text-[13px] font-semibold"
+                  style={{
+                    background: "var(--color-bt-accent)",
+                    color: "var(--color-bt-base)",
+                  }}
+                >
+                  {updatePollNote.isPending ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="flex items-start gap-2 rounded-xl px-3 py-2.5"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+              }}
+            >
+              <p
+                className="flex-1 text-[12px] leading-snug"
+                style={{
+                  color: pollNote ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                  fontStyle: pollNote ? "normal" : "italic",
+                }}
+              >
+                {displayNote}
+              </p>
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={handleStartEditNote}
+                  className="flex-shrink-0 rounded-md p-1 transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-accent)" }}
+                  aria-label="Edit note"
+                >
+                  <Pencil size={12} />
                 </button>
               )}
             </div>
-          )}
-        </div>
-      </ActionCard>
+          )
+        )}
+
+        {/* ── Date poll grid ─────────────────────────────────────────────── */}
+        <DatePollGrid
+          dateWindows={windows}
+          members={pollMembers}
+          currentUserId={currentUser?.id ?? ""}
+          isOwner={isOwner}
+          onVote={handleVote}
+          onAddDateWindow={isOwner ? () => setShowAddDateModal(true) : undefined}
+          onLockDateWindow={
+            isOwner
+              ? (windowId) => setPendingLockWindowId(windowId)
+              : undefined
+          }
+          onRemoveDateWindow={
+            isOwner ? (windowId) => setConfirmRemoveId(windowId) : undefined
+          }
+          onManageCrew={onManageCrew}
+        />
+
+        {/* ── All-voted confirmation (non-owners only) ──────────────────── */}
+        {allWindowsVoted && !isOwner && (
+          <div
+            className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+            style={{
+              background: "var(--color-bt-state-fill)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <ThumbsUp
+              size={14}
+              style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
+            />
+            <p
+              className="text-[12px] leading-snug"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Thanks for the feedback, we&apos;ll be selecting a date soon!
+            </p>
+          </div>
+        )}
+
+        {/* ── Owner footer: Notify + Reset (only once dates exist) ─────── */}
+        {windows.length > 0 && isOwner && (
+          <div className="flex items-center gap-2 pt-1">
+            {showResetConfirm ? (
+              /* Notify hides; three confirm buttons fill the row */
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirm(false)}
+                  className="flex-1 rounded-xl py-2 text-[13px] font-medium"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text-dim)",
+                    border: "1px solid var(--color-bt-border)",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resetPoll.mutate({ tripId })}
+                  disabled={resetPoll.isPending}
+                  className="flex-1 rounded-xl py-2 text-[13px] font-semibold"
+                  style={{ background: "var(--color-bt-danger)", color: "var(--color-bt-base)" }}
+                >
+                  {resetPoll.isPending ? "Clearing…" : "Clear votes?"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => endPoll.mutate({ tripId, pollMode: false })}
+                  disabled={endPoll.isPending}
+                  className="flex-1 rounded-xl py-2 text-[13px] font-semibold"
+                  style={{ background: "var(--color-bt-danger)", color: "var(--color-bt-base)" }}
+                >
+                  {endPoll.isPending ? "Clearing…" : "Clear poll?"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!canNotify) return;
+                    if (hasNewMembers && !renotifyReason) {
+                      notifyNewMembersM.mutate({ tripId, userIds: newMemberIds });
+                    } else {
+                      notifyCrew.mutate({ tripId });
+                    }
+                  }}
+                  disabled={!canNotify || notifyCrew.isPending || notifyNewMembersM.isPending}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[13px] font-medium transition-opacity"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: canNotify ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                    border: "1px solid var(--color-bt-border)",
+                    opacity: canNotify ? 1 : 0.6,
+                    cursor: canNotify ? "pointer" : "default",
+                  }}
+                >
+                  <Bell size={13} />
+                  {notifyButtonLabel}
+                </button>
+                {anyVotes && (
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirm(true)}
+                    className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                    aria-label="Reset votes"
+                  >
+                    <RotateCcw size={13} />
+                    Reset
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Confirm dates modal — shown when owner clicks "Select this date" */}
+      {(() => {
+        const win = pendingLockWindowId
+          ? windows.find((w) => w.id === pendingLockWindowId) ?? null
+          : null;
+        if (!win) return null;
+        return (
+          <ConfirmDatesModal
+            startDate={win.start_date}
+            endDate={win.end_date}
+            fromPollWindow={true}
+            hasPoll={true}
+            isPending={lockWindow.isPending}
+            onConfirm={() => {
+              lockWindow.mutate({ tripId, windowId: win.id });
+              setPendingLockWindowId(null);
+            }}
+            onCancel={() => setPendingLockWindowId(null)}
+          />
+        );
+      })()}
 
       {/* Add date window modal */}
       {showAddDateModal && (
@@ -475,35 +803,45 @@ function AddDateWindowModal({
             <X size={16} />
           </button>
         </div>
-        <p
-          className="mb-4 text-xs"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Pick a start and end date for a new window the crew can vote on.
-        </p>
-        <div className="space-y-2">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full rounded-xl px-3 py-2.5 text-sm"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-full rounded-xl px-3 py-2.5 text-sm"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label
+              className="text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Start date
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <label
+              className="text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              End date
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-sm"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
         </div>
         <div className="mt-4 flex gap-2">
           <button

@@ -3,34 +3,35 @@
 import { Sparkles } from "lucide-react";
 import type { TripData } from "../types";
 import { DatePollCard } from "./DatePollCard";
+import { DatesPanel } from "../../components/DatesPanel";
 
 export interface ActionCenterProps {
   trip: TripData;
   isOwner: boolean;
+  canEdit: boolean;
+  onTabChange?: (tab: string) => void;
 }
 
 /**
- * ActionCenter — member-facing "what needs your attention" surface shown
- * during the IDEA and PLANNING stages.
+ * ActionCenter — the single "what needs your attention" surface shown
+ * during the PLANNING stage. Three clean states:
  *
- * Mirrors DatesPlanningRow's visibility contract: the date poll can be
- * open in either stage, so ActionCenter must surface DatePollCard in both
- * or non-owners would have no way to see / vote on the poll.
+ * 1. datesLocked = true  → "You're all set" idle state
+ * 2. datesLocked = false, pollMode = false
+ *      → DatesPanel (date pickers + Poll the crew button)
+ * 3. datesLocked = false, pollMode = true
+ *      → DatesPanel (collapsed flat row + cancel button)
+ *        + DatePollCard below it
  *
- * When no card has anything actionable to surface (e.g. dates are locked
- * and there's no poll in progress), we render a soft placeholder instead
- * of unmounting the whole section — the user asked us to avoid the
- * "panels vanish" transition whiplash.
- *
- * Future cards (RsvpCard, TravelCard) slot in alongside DatePollCard.
+ * DatesPanel is removed from PlanningSection; it lives here exclusively.
+ * Future cards (RsvpCard, TravelCard) slot in alongside the dates surface.
  */
-export function ActionCenter({ trip, isOwner }: ActionCenterProps) {
+export function ActionCenter({ trip, isOwner, canEdit, onTabChange }: ActionCenterProps) {
   const stage = trip.stage ?? "idea";
   if (stage !== "idea" && stage !== "planning") return null;
 
+  const datesLocked = !!(trip.start_date && trip.end_date);
   const pollMode = !!trip.poll_mode;
-  // Future: also roll up RsvpCard / TravelCard "has action?" flags here.
-  const hasActionableCard = pollMode;
 
   return (
     <section className="space-y-3">
@@ -40,8 +41,34 @@ export function ActionCenter({ trip, isOwner }: ActionCenterProps) {
       >
         Action Center
       </p>
-      {pollMode && <DatePollCard trip={trip} isOwner={isOwner} />}
-      {!hasActionableCard && <ActionCenterIdle isOwner={isOwner} />}
+
+      {datesLocked ? (
+        // Dates locked — nothing to do
+        <ActionCenterIdle isOwner={isOwner} />
+      ) : isOwner ? (
+        // Owner view: DatesPanel is a two-button state machine that
+        // internally expands to embed DatePollCard when the poll is active.
+        <DatesPanel
+          trip={trip}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          isOpen={true}
+          onToggle={() => {}}
+          onTabChange={onTabChange}
+        />
+      ) : pollMode ? (
+        // Non-owner view: DatesPanel is hidden entirely — the DatePollCard
+        // is the only surface they need to see / interact with.
+        <DatePollCard
+          trip={trip}
+          isOwner={isOwner}
+          onManageCrew={canEdit && onTabChange ? () => onTabChange("crew") : undefined}
+        />
+      ) : (
+        // Non-owner, no poll yet — host hasn't started anything.
+        <ActionCenterIdle isOwner={isOwner} />
+      )}
+
       {/* TODO: RsvpCard + TravelCard slot in here in later phases */}
     </section>
   );

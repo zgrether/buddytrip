@@ -439,6 +439,67 @@ describe("datePoll router — setPollMode", () => {
       caller.datePoll.setPollMode({ tripId: pollTripId, pollMode: true })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("setPollMode(false) — clears date windows, votes, and resets notify_sent", async () => {
+    // Fresh trip so we don't collide with other tests in this describe block.
+    const clearTripId = `test-poll-cancel-${Date.now()}`;
+    const caller = ctx.caller();
+    await caller.trips.create({ id: clearTripId, title: "Cancel Poll Test" });
+    ctx.trackTrip(clearTripId);
+    await ctx.admin
+      .from("trips")
+      .update({ stage: "planning", locked_destination_title: "Test Dest" })
+      .eq("id", clearTripId);
+
+    // Open the poll.
+    await caller.datePoll.setPollMode({ tripId: clearTripId, pollMode: true });
+
+    // Add 2 date windows.
+    const w1 = `w1-${Date.now()}`;
+    const w2 = `w2-${Date.now()}`;
+    await caller.datePoll.addWindow({ tripId: clearTripId, id: w1, startDate: "2026-10-01", endDate: "2026-10-04" });
+    await caller.datePoll.addWindow({ tripId: clearTripId, id: w2, startDate: "2026-11-01", endDate: "2026-11-05" });
+
+    // Add the shared member user to this trip so they can vote.
+    await ctx.addTripMember(clearTripId, "member", "Member");
+
+    // Cast 3 votes (owner votes on both windows; member votes on one).
+    await caller.datePoll.castDateVote({ tripId: clearTripId, windowId: w1, answer: "yes" });
+    await caller.datePoll.castDateVote({ tripId: clearTripId, windowId: w2, answer: "maybe" });
+    const memberCaller = ctx.callerAs("member");
+    await memberCaller.datePoll.castDateVote({ tripId: clearTripId, windowId: w1, answer: "no" });
+
+    // Confirm data exists before cancel.
+    let poll = await caller.datePoll.get({ tripId: clearTripId });
+    expect(poll.windows.length).toBe(2);
+    const totalVotesBefore = poll.windows.reduce((sum, w) => sum + w.votes.length, 0);
+    expect(totalVotesBefore).toBe(3);
+
+    // Cancel the poll — setPollMode(false) should clear everything.
+    await caller.datePoll.setPollMode({ tripId: clearTripId, pollMode: false });
+
+    // Verify windows are gone.
+    poll = await caller.datePoll.get({ tripId: clearTripId });
+    expect(poll.windows.length).toBe(0);
+
+    // Verify votes are gone (direct DB check via admin).
+    const { count: voteCount } = await ctx.admin
+      .from("date_poll_votes")
+      .select("window_id", { count: "exact", head: true })
+      .in("window_id", [w1, w2]);
+    expect(voteCount).toBe(0);
+
+    // Verify notify_sent was reset.
+    expect(poll.notifySent).toBe(false);
+
+    // Verify poll_mode is false on the trip.
+    const { data: tripRow } = await ctx.admin
+      .from("trips")
+      .select("poll_mode")
+      .eq("id", clearTripId)
+      .single();
+    expect(tripRow?.poll_mode).toBe(false);
+  });
 });
 
 // ── setOwnerAlert ──────────────────────────────────────────────────────
