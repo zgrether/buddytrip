@@ -122,6 +122,16 @@ export default function TripDetailPage() {
     },
   });
 
+  // ── DEBUG: planning ↔ going stage toggle ─────────────────────────────
+  // Must be declared before any early returns so hook order stays stable
+  // across render passes. Remove before launch.
+  const devSetStage = trpc.trips.devSetStage.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+    },
+  });
+
   // ── Toast auto-dismiss ────────────────────────────────────────────────────
   useEffect(() => {
     if (!toast) return;
@@ -189,15 +199,9 @@ export default function TripDetailPage() {
     </button>
   ) : null;
 
-  // ── DEBUG: planning ↔ going stage toggle ─────────────────────────────
-  // Temporary helper so we can flip between stages without locking /
-  // unlocking dates. Owner-only. Remove before launch.
-  const devSetStage = trpc.trips.devSetStage.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-    },
-  });
+  // ── DEBUG: planning ↔ going stage toggle button ─────────────────────
+  // (Mutation is declared above with the other hooks so hook order stays
+  // stable across the loading → loaded transition.) Remove before launch.
   const debugStageToggle = (isOwner && (stage === "planning" || stage === "going")) ? (
     <button
       onClick={() =>
