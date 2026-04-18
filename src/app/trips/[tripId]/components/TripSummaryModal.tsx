@@ -1,6 +1,6 @@
 "use client";
 
-import { BedDouble, CalendarCheck, CalendarDays, MapPin, Send, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, BedDouble, CalendarCheck, CalendarDays, MapPin, Send, Sparkles, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -19,15 +19,17 @@ export interface TripSummaryModalProps {
 }
 
 /**
- * TripSummaryModal — "where you are, and what's up next" glimpse shown
- * before the owner advances the trip from planning → going. Renders a
- * read-only recap (destination, dates, crew, lodging, schedule) plus a
- * soft nudge that partial info is fine for RSVPs but the crew may want
- * more detail later. Actual planning — including any invitation message
- * — happens elsewhere; this modal is just the confirmation.
+ * TripSummaryModal — "where you are, what's up next" glimpse shown before
+ * the owner advances the trip from planning → going. Two panels:
  *
- * If no date is locked, a warning sits below the summary and the send
- * button stays disabled.
+ *   1. Basics (destination · dates · crew) — the bits that gate the
+ *      transition. Unset destination or unlocked dates show warning
+ *      styling to tie back to the warning callout below.
+ *   2. Lodging + Schedule — broken out separately because they're
+ *      optional context, not a gate.
+ *
+ * Crafting any invitation message happens elsewhere; this modal is
+ * read-only recap + confirmation.
  */
 export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSummaryModalProps) {
   const utils = trpc.useUtils();
@@ -50,14 +52,22 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
   useModalBackButton(onClose);
 
   const destination = trip.locked_destination_title ?? "";
+  const hasDestination = destination.trim().length > 0;
   const dateRange = formatDateRange(trip.start_date, trip.end_date);
   const crewCount = members.length;
 
+  // Lodging — logistics_items with type='lodging', split by is_confirmed.
   const lodgingItems = logistics.filter((l) => (l as { type?: string }).type === "lodging");
-  const lodgingConfirmed = lodgingItems.filter((l) => (l as { is_confirmed?: boolean }).is_confirmed).length;
-  const lodgingCount = lodgingItems.length;
+  const lodgingConfirmed = lodgingItems.filter(
+    (l) => (l as { is_confirmed?: boolean }).is_confirmed
+  ).length;
+  const lodgingUnconfirmed = lodgingItems.length - lodgingConfirmed;
 
-  const scheduleCount = reservations.length;
+  // Schedule — reservations. "Confirmed" = has a confirmation_number.
+  const scheduleConfirmed = reservations.filter(
+    (r) => ((r as { confirmation_number?: string }).confirmation_number ?? "").trim().length > 0
+  ).length;
+  const scheduleUnconfirmed = reservations.length - scheduleConfirmed;
 
   const handleSend = () => {
     advance.mutate({ tripId });
@@ -81,10 +91,11 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
           </h2>
         </div>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Here&apos;s where things stand. When you&apos;re ready, send it to kick off RSVPs.
+          Here&apos;s where things stand. When you&apos;re ready, let&apos;s unlock the
+          rest of the trip planning stuff.
         </p>
 
-        {/* ── Summary panel ────────────────────────────────────────────── */}
+        {/* ── Basics panel — destination, dates, crew ─────────────────── */}
         <div
           className="space-y-2 rounded-xl px-4 py-3 text-[13px]"
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
@@ -92,57 +103,69 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
           <SummaryRow
             icon={<MapPin size={14} />}
             label="Destination"
-            value={destination || "—"}
+            value={hasDestination ? destination : "Not set yet"}
+            needsAttention={!hasDestination}
           />
           <SummaryRow
             icon={<CalendarDays size={14} />}
             label="Dates"
-            value={dateRange || "Not locked yet"}
+            value={hasLockedDate && dateRange ? dateRange : "Not locked yet"}
+            needsAttention={!hasLockedDate}
           />
           <SummaryRow
             icon={<Users size={14} />}
             label="Crew"
             value={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
           />
-          <SummaryRow
-            icon={<BedDouble size={14} />}
-            label="Lodging"
-            value={
-              lodgingCount === 0
-                ? "Nothing added yet"
-                : `${lodgingConfirmed} confirmed · ${lodgingCount} total`
-            }
-          />
-          <SummaryRow
-            icon={<CalendarCheck size={14} />}
-            label="Schedule"
-            value={
-              scheduleCount === 0
-                ? "Nothing scheduled yet"
-                : `${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`
-            }
-          />
         </div>
 
-        {/* ── Warning — only when a date isn't locked yet ─────────────── */}
-        {!hasLockedDate && (
+        {/* ── Warning — wired back to the rows that need attention ────── */}
+        {(!hasLockedDate || !hasDestination) && (
           <div
-            className="mt-3 flex items-start gap-3 rounded-xl px-4 py-3"
+            className="mt-2 flex items-start gap-3 rounded-xl px-4 py-3"
             style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
           >
-            <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
+            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-warning)" }} />
             <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
-              Lock a date first — your crew will want to know when.
+              {!hasLockedDate && !hasDestination
+                ? "Lock a destination and a date first — your crew will want to know where and when."
+                : !hasLockedDate
+                  ? "Lock a date first — your crew will want to know when."
+                  : "Lock a destination first — your crew will want to know where."}
             </p>
           </div>
         )}
 
-        {/* ── Soft "partial info is okay" nudge ────────────────────────── */}
-        <p className="mt-3 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          Lodging and schedule don&apos;t have to be locked in to send this — RSVPs
-          just need a when and where. Your crew will probably start asking about
-          those soon, though, so plan to fill them in as they firm up.
+        {/* ── Soft nudge + Pro Tip ─────────────────────────────────────── */}
+        <p className="mt-4 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          Lodging and schedule don&apos;t have to be firm to continue — this is just
+          your starting point as the trip gets closer.
+          <br />
+          <span className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Pro Tip:
+          </span>{" "}
+          designate anyone in the crew to help plan and they can lock in any of
+          these items.
         </p>
+
+        {/* ── Lodging + Schedule panel ─────────────────────────────────── */}
+        <div
+          className="mt-3 space-y-2 rounded-xl px-4 py-3 text-[13px]"
+          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+        >
+          <CountRow
+            icon={<BedDouble size={14} />}
+            label="Lodging"
+            confirmed={lodgingConfirmed}
+            unconfirmed={lodgingUnconfirmed}
+          />
+          <CountRow
+            icon={<CalendarCheck size={14} />}
+            label="Schedule"
+            confirmed={scheduleConfirmed}
+            unconfirmed={scheduleUnconfirmed}
+          />
+        </div>
 
         <button
           onClick={handleSend}
@@ -170,11 +193,56 @@ function SummaryRow({
   icon,
   label,
   value,
+  needsAttention = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  needsAttention?: boolean;
 }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
+        style={{
+          background: needsAttention
+            ? "var(--color-bt-warning-bg, rgba(217,119,6,0.15))"
+            : "var(--color-bt-card)",
+          color: needsAttention ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
+        }}
+      >
+        {icon}
+      </span>
+      <span
+        className="w-20 flex-shrink-0 text-[11px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        {label}
+      </span>
+      <span
+        className="flex flex-1 items-center gap-1.5 truncate"
+        style={{ color: needsAttention ? "var(--color-bt-warning)" : "var(--color-bt-text)" }}
+      >
+        {needsAttention && <AlertTriangle size={12} className="flex-shrink-0" />}
+        <span className="truncate">{value}</span>
+      </span>
+    </div>
+  );
+}
+
+function CountRow({
+  icon,
+  label,
+  confirmed,
+  unconfirmed,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  confirmed: number;
+  unconfirmed: number;
+}) {
+  const total = confirmed + unconfirmed;
+
   return (
     <div className="flex items-center gap-3">
       <span
@@ -192,9 +260,57 @@ function SummaryRow({
       >
         {label}
       </span>
-      <span className="flex-1 truncate" style={{ color: "var(--color-bt-text)" }}>
-        {value}
+      <span className="flex flex-1 flex-wrap items-center gap-1.5">
+        {total === 0 ? (
+          <span style={{ color: "var(--color-bt-text-dim)" }}>Nothing added yet</span>
+        ) : (
+          <>
+            <CountChip count={confirmed} label="confirmed" tone="confirmed" />
+            <CountChip count={unconfirmed} label="unconfirmed" tone="unconfirmed" />
+          </>
+        )}
       </span>
     </div>
+  );
+}
+
+function CountChip({
+  count,
+  label,
+  tone,
+}: {
+  count: number;
+  label: string;
+  tone: "confirmed" | "unconfirmed";
+}) {
+  if (count === 0) {
+    return (
+      <span
+        className="text-[12px]"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        0 {label}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-medium"
+      style={
+        tone === "confirmed"
+          ? {
+              background: "var(--color-bt-tag-bg)",
+              color: "var(--color-bt-accent)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }
+          : {
+              background: "var(--color-bt-card)",
+              color: "var(--color-bt-text-dim)",
+              border: "1px solid var(--color-bt-border)",
+            }
+      }
+    >
+      {count} {label}
+    </span>
   );
 }
