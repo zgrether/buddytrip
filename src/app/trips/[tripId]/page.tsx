@@ -345,8 +345,12 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* ── Bottom navigation (READY+ stages only) ────────────────────────── */}
-      {stage !== "idea" && stage !== "planning" && (
+      {/* ── Bottom navigation ─────────────────────────────────────────────
+          Only surfaces once a competition exists (or has been unlocked) —
+          that's the point where leaderboard / messages / expenses start
+          carrying their own weight. Until then the trip lives entirely
+          inside the home tab + stage-aware sidebar. */}
+      {showComp && (
         <TripBottomNav tripId={tripId} eventId={trip.event_id} />
       )}
 
