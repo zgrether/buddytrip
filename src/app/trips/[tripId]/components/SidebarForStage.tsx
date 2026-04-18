@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin, Plus, Send } from "lucide-react";
+import { MapPin, Plus, Sparkles } from "lucide-react";
 import { SidebarChatPanel } from "./PlanningChatPanel";
 import { StageContextBar } from "./StageContextBar";
 import { CoPlannerPanel } from "./IdeaZonePanel";
@@ -94,8 +94,8 @@ export function SidebarForStage({
           className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90"
           style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
-          <Send size={15} />
-          Make it official
+          <Sparkles size={15} />
+          Trip Summary
         </button>
       )}
 
