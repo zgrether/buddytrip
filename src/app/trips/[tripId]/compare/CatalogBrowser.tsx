@@ -68,23 +68,9 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-3">
-        <h3
-          className="text-sm font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          Browse destination ideas
-        </h3>
-        <p
-          className="text-xs mt-0.5"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Tap any card to add it to your comparison list
-        </p>
-      </div>
-
-      {/* Filter chips */}
+      {/* Filter chips — the intro heading and helper copy live in the
+          parent (EmptyStateOnboarding) so the catalog imagery stays near
+          the top of the modal. */}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-3">
         {ACTIVITY_FILTERS.map((f) => (
           <button

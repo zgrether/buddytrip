@@ -880,7 +880,6 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
   const [destInput, setDestInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(true);
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
 
   const createIdea = trpc.ideas.create.useMutation();
@@ -971,35 +970,11 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </>
       )}
 
-      {/* ── 1. Catalog browser — hero, shown by default ── */}
-      {showCatalog ? (
-        <div className="mb-4">
-          <CatalogBrowser
-            onSelect={handleCatalogSelect}
-            selectedIds={selectedCatalogIds}
-          />
-          <button
-            onClick={() => setShowCatalog(false)}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Hide catalog
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowCatalog(true)}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors"
-          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-        >
-          Browse destination ideas
-        </button>
-      )}
-
-      {/* ── 2. Manual add ── */}
-      <div className="mt-5">
+      {/* ── 1. Manual add — top so people who already know where they
+             want to go can drop it in without scrolling past the catalog ── */}
+      <div>
         <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-          or add your own idea
+          Add your own idea
         </p>
         <div className="flex gap-2">
           <input
@@ -1028,7 +1003,22 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </div>
       </div>
 
-      {/* ── 3. Sticky compare bar ── */}
+      {/* ── 2. "or" divider — signals the catalog as the alternate path ── */}
+      <div className="my-4 flex items-center gap-3">
+        <div className="flex-1" style={{ height: 1, background: "var(--color-bt-border)" }} />
+        <span className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          or pick from the catalog
+        </span>
+        <div className="flex-1" style={{ height: 1, background: "var(--color-bt-border)" }} />
+      </div>
+
+      {/* ── 3. Catalog browser ── */}
+      <CatalogBrowser
+        onSelect={handleCatalogSelect}
+        selectedIds={selectedCatalogIds}
+      />
+
+      {/* ── 4. Sticky compare bar ── */}
       {localIdeas.length > 0 && (
         <div
           className="fixed bottom-0 left-0 right-0 px-4 pt-3"
