@@ -878,21 +878,35 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   const utils = trpc.useUtils();
 
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
-  const [destInput, setDestInput] = useState("");
+  const [titleInput, setTitleInput] = useState("");
+  const [locationInput, setLocationInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(true);
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
 
   const createIdea = trpc.ideas.create.useMutation();
 
   const handleAddManual = () => {
-    const t = destInput.trim();
-    if (!t) return;
+    const title = titleInput.trim();
+    const location = locationInput.trim();
+    if (!title) return;
     setLocalIdeas((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), title: t, location: t, source: "manual" },
+      { id: crypto.randomUUID(), title, location: location || title, source: "manual" },
     ]);
-    setDestInput("");
+    setTitleInput("");
+    setLocationInput("");
+  };
+
+  const handleRemoveStaged = (id: string) => {
+    setLocalIdeas((prev) => prev.filter((i) => i.id !== id));
+    if (id.startsWith("cat-")) {
+      const catalogId = id.slice(4);
+      setSelectedCatalogIds((prev) => {
+        const s = new Set(prev);
+        s.delete(catalogId);
+        return s;
+      });
+    }
   };
 
   const handleCatalogSelect = (catalogIdea: CatalogIdea) => {
@@ -959,105 +973,175 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   };
 
   return (
-    <div className={`mx-auto max-w-[896px] px-4 py-8 ${localIdeas.length > 0 ? "pb-24" : ""}`}>
+    <div className="mx-auto max-w-[896px] px-4 py-8">
       {!onClose && (
-        <>
-          <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-            Idea zone
-          </h2>
-          <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            Build a list of options, then the crew can discuss and vote.
-          </p>
-        </>
+        <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Destination Ideas
+        </h2>
       )}
+      <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+        Build a list of options, then the crew can discuss and vote. Enter your own ideas here or select as many as you want from the catalog below and we&apos;ll help you compare them.
+      </p>
 
-      {/* ── 1. Catalog browser — hero, shown by default ── */}
-      {showCatalog ? (
-        <div className="mb-4">
-          <CatalogBrowser
-            onSelect={handleCatalogSelect}
-            selectedIds={selectedCatalogIds}
-          />
-          <button
-            onClick={() => setShowCatalog(false)}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm"
+      {/* ── 1. Manual entry — single row: [Name] [Location] [Add]. Labels
+             sit above the inputs; the Add button aligns with the inputs
+             so the whole form collapses to a single functional line. ── */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div className="flex-1 min-w-0">
+          <label
+            htmlFor="manual-title"
+            className="mb-1.5 block text-xs font-medium"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Hide catalog
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowCatalog(true)}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors"
-          style={{ background: "var(--color-bt-tag-bg)", color: "var(--color-bt-accent)" }}
-        >
-          Browse destination ideas
-        </button>
-      )}
-
-      {/* ── 2. Manual add ── */}
-      <div className="mt-5">
-        <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-          or add your own idea
-        </p>
-        <div className="flex gap-2">
+            Name
+          </label>
           <input
-            value={destInput}
-            onChange={(e) => setDestInput(e.target.value)}
+            id="manual-title"
+            value={titleInput}
+            onChange={(e) => setTitleInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); handleAddManual(); }
             }}
-            placeholder="Destination name"
+            placeholder="Trip Down Magnolia Lane"
             maxLength={500}
-            className="flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
             style={{
               background: "var(--color-bt-card)",
               borderColor: "var(--color-bt-border)",
               color: "var(--color-bt-text)",
             }}
           />
-          <button
-            onClick={handleAddManual}
-            disabled={!destInput.trim()}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            Add
-          </button>
         </div>
+        <div className="flex-1 min-w-0">
+          <label
+            htmlFor="manual-location"
+            className="mb-1.5 block text-xs font-medium"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Location
+          </label>
+          <input
+            id="manual-location"
+            value={locationInput}
+            onChange={(e) => setLocationInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); handleAddManual(); }
+            }}
+            placeholder="Augusta, GA"
+            maxLength={500}
+            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+            style={{
+              background: "var(--color-bt-card)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+          />
+        </div>
+        <button
+          onClick={handleAddManual}
+          disabled={!titleInput.trim()}
+          className="rounded-lg px-5 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          Add
+        </button>
       </div>
 
-      {/* ── 3. Sticky compare bar ── */}
+      {/* ── 2. Staged ideas — full-width 2-col grid below the form so
+             entries fill right-then-down. The columns match the form's
+             default full-width sizing. ── */}
       {localIdeas.length > 0 && (
-        <div
-          className="fixed bottom-0 left-0 right-0 px-4 pt-3"
-          style={{
-            zIndex: 60,
-            paddingBottom: "4.5rem",
-            background: "var(--color-bt-card)",
-            borderTop: "1px solid var(--color-bt-accent-border)",
-            boxShadow: "0 -4px 12px rgba(0,0,0,.08)",
-          }}
-        >
+        <div className="mt-5">
+          <p
+            className="mb-1.5 text-xs font-medium"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Your ideas
+          </p>
+          <ul className="grid gap-1.5 sm:grid-cols-2">
+            {localIdeas.map((idea) => (
+              <li
+                key={idea.id}
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+                style={{
+                  background: "var(--color-bt-card)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                {idea.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={idea.imageUrl}
+                    alt=""
+                    className="h-8 w-8 flex-shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <div
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded"
+                    style={{ background: "var(--color-bt-dim-faint)" }}
+                  >
+                    <MapPin size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-sm font-medium"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {idea.title}
+                  </p>
+                  {idea.location && idea.location !== idea.title && (
+                    <p
+                      className="truncate text-[11px]"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      {idea.location}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveStaged(idea.id)}
+                  className="flex-shrink-0 rounded p-1 transition-opacity hover:opacity-70"
+                  aria-label={`Remove ${idea.title}`}
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  <X size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {/* Compare / confirm button — lives right under the staged list. */}
           <button
             onClick={handleCompare}
             disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold shadow-lg transition-opacity disabled:opacity-40"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
             style={{
               background: "var(--color-bt-accent)",
               color: "var(--color-bt-base)",
-              ...(onClose ? {} : { maxWidth: 896, margin: "0 auto" }),
             }}
           >
             {isSubmitting ? (
               <><Loader2 size={16} className="animate-spin" /> Saving...</>
+            ) : onClose ? (
+              <>Add to comparison</>
             ) : (
-              <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} &rarr;</>
+              <>Start comparing &rarr;</>
             )}
           </button>
         </div>
       )}
+
+      {/* ── 2. Catalog browser — renders its own "Destination catalog"
+             header inline with the filter pill (right-justified). ── */}
+      <div className="mt-6">
+        <CatalogBrowser
+          title="Destination catalog"
+          onSelect={handleCatalogSelect}
+          selectedIds={selectedCatalogIds}
+        />
+      </div>
     </div>
   );
 }

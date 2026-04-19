@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Settings, Lock, HelpCircle, X, MessageCircle, Send } from "lucide-react";
+import { Settings, Lock, HelpCircle, X, MessageCircle, Send, Info } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -26,6 +26,7 @@ import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TwoColumnLayout } from "./components/TwoColumnLayout";
 import { SidebarForStage } from "./components/SidebarForStage";
+import { QuickInfoDrawer } from "./components/QuickInfoSection";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ export default function TripDetailPage() {
   const [showInvitationModal, setShowInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [showQuickInfoDrawer, setShowQuickInfoDrawer] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -120,6 +122,16 @@ export default function TripDetailPage() {
     },
   });
 
+  // ── DEBUG: planning ↔ going stage toggle ─────────────────────────────
+  // Must be declared before any early returns so hook order stays stable
+  // across render passes. Remove before launch.
+  const devSetStage = trpc.trips.devSetStage.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+    },
+  });
+
   // ── Toast auto-dismiss ────────────────────────────────────────────────────
   useEffect(() => {
     if (!toast) return;
@@ -187,6 +199,31 @@ export default function TripDetailPage() {
     </button>
   ) : null;
 
+  // ── DEBUG: planning ↔ going stage toggle button ─────────────────────
+  // (Mutation is declared above with the other hooks so hook order stays
+  // stable across the loading → loaded transition.) Remove before launch.
+  const debugStageToggle = (isOwner && (stage === "planning" || stage === "going")) ? (
+    <button
+      onClick={() =>
+        devSetStage.mutate({
+          tripId,
+          stage: stage === "planning" ? "going" : "planning",
+        })
+      }
+      disabled={devSetStage.isPending}
+      className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-80 disabled:opacity-40"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: "1px dashed var(--color-bt-border)",
+        color: "var(--color-bt-text-dim)",
+      }}
+      aria-label={`Debug: switch to ${stage === "planning" ? "going" : "planning"} stage`}
+      title="Debug stage toggle"
+    >
+      {stage === "planning" ? "plan → going" : "going → plan"}
+    </button>
+  ) : null;
+
   const helpButton = (stage === "idea" || stage === "planning") ? (
     <button
       onClick={() => setShowHelpSheet(true)}
@@ -214,8 +251,9 @@ export default function TripDetailPage() {
         tripId={tripId}
         tripTitle={trip.title}
         rightSlot={
-          (helpButton || settingsButton) ? (
+          (helpButton || settingsButton || debugStageToggle) ? (
             <div className="flex items-center gap-1">
+              {debugStageToggle}
               {helpButton}
               {settingsButton}
             </div>
@@ -252,15 +290,31 @@ export default function TripDetailPage() {
       </div>
 
       {/* ── Tab bar + content ────────────────────────────────────────────── */}
-      {stage === "planning" ? (
-        /* Planning: persistent two-column layout — tab bar, content, and
-           sidebar share the same grid so the sidebar aligns with the tab bar
-           top and persists across all tab switches. */
+      {stage === "idea" ? (
+        /* Idea stage: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
+        <main className="mx-auto max-w-[1280px] pt-4 pb-6">
+          {activeTab === "home" && (
+            <HomeTab
+              trip={trip}
+              role={role}
+              canEdit={effectiveCanEdit}
+              isOwner={isOwner}
+              displayStatus={status}
+              onTabChange={(tab) => setActiveTab(tab as TabId)}
+              onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+              onOpenChat={() => setShowChatDrawer(true)}
+            />
+          )}
+        </main>
+      ) : (
+        /* Planning / going / now / past / saved: persistent two-column layout —
+           tab bar, content, and sidebar share the same grid so the sidebar
+           aligns with the tab bar top and persists across all tab switches. */
         <div className="mx-auto max-w-[1280px] px-4 mt-4">
           <TwoColumnLayout
             sidebar={
               <SidebarForStage
-                stage="planning"
+                stage={stage as "planning" | "going" | "now" | "past" | "saved"}
                 tripId={tripId}
                 isOwner={isOwner}
                 canEdit={effectiveCanEdit}
@@ -271,8 +325,13 @@ export default function TripDetailPage() {
               />
             }
           >
-            {/* Left: tab bar + all tab content */}
+            {/* Left: owner alert (going only) + tab bar + all tab content */}
             <div>
+              {stage === "going" && (
+                <div className="mb-4">
+                  <OwnerAlertPanel trip={trip} isOwner={isOwner} />
+                </div>
+              )}
               <TripTabBar
                 activeTab={activeTab}
                 onTabChange={(tab) => setActiveTab(tab)}
@@ -280,7 +339,7 @@ export default function TripDetailPage() {
                 canEdit={canEdit}
                 stage={stage}
               />
-              <div className="pt-4 pb-6">
+              <div className="pt-4 pb-24">
                 {tripIsReadOnly && activeTab === "home" && (
                   <div
                     className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
@@ -320,69 +379,14 @@ export default function TripDetailPage() {
             </div>
           </TwoColumnLayout>
         </div>
-      ) : (
-        <>
-          {/* Owner alert — above tab bar in GOING/NOW */}
-          {(stage === "going") && (
-            <div className="mx-auto max-w-[1280px] px-4 mt-4">
-              <OwnerAlertPanel trip={trip} isOwner={isOwner} />
-            </div>
-          )}
-
-          {/* Non-planning: tab bar in its own row, hidden in IDEA stage */}
-          {stage !== "idea" && (
-            <div className="mx-auto max-w-[1280px] px-4 mt-4">
-              <TripTabBar
-                activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab)}
-                showComp={showComp}
-                canEdit={canEdit}
-                stage={stage}
-              />
-            </div>
-          )}
-          <main className={`mx-auto max-w-[1280px] pt-4 ${stage === "idea" ? "pb-6" : "pb-24"}`}>
-            {tripIsReadOnly && activeTab === "home" && (
-              <div
-                className="mx-4 mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
-                style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
-              >
-                <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-                <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  This trip is read-only
-                </span>
-              </div>
-            )}
-            {activeTab === "home" && (
-              <HomeTab
-                trip={trip}
-                role={role}
-                canEdit={effectiveCanEdit}
-                isOwner={isOwner}
-                displayStatus={status}
-                onTabChange={(tab) => setActiveTab(tab as TabId)}
-                onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-                onOpenChat={() => setShowChatDrawer(true)}
-              />
-            )}
-            {activeTab === "schedule" && (
-              <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-            {activeTab === "crew" && (
-              <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-            {activeTab === "expenses" && (
-              <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-            {activeTab === "comp" && (
-              <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
-            )}
-          </main>
-        </>
       )}
 
-      {/* ── Bottom navigation (READY+ stages only) ────────────────────────── */}
-      {stage !== "idea" && stage !== "planning" && (
+      {/* ── Bottom navigation ─────────────────────────────────────────────
+          Only surfaces once a competition exists (or has been unlocked) —
+          that's the point where leaderboard / messages / expenses start
+          carrying their own weight. Until then the trip lives entirely
+          inside the home tab + stage-aware sidebar. */}
+      {showComp && (
         <TripBottomNav tripId={tripId} eventId={trip.event_id} />
       )}
 
@@ -441,8 +445,10 @@ export default function TripDetailPage() {
         );
       })()}
 
-      {/* ── Planning mobile side rail (chat + invitation) ─────────────── */}
-      {stage === "planning" && (
+      {/* ── Mobile side rail ────────────────────────────────────────────
+          planning → chat + (owner) invitation FAB
+          going/now/past/saved → chat + quick-info FAB */}
+      {(stage === "planning" || stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
         <div className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 lg:hidden">
           <button
             onClick={() => setShowChatDrawer(true)}
@@ -458,7 +464,7 @@ export default function TripDetailPage() {
           >
             <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
-          {isOwner && (
+          {stage === "planning" && isOwner && (
             <button
               onClick={() => setShowInvitationModal(true)}
               data-testid="floating-invitation-btn"
@@ -474,6 +480,22 @@ export default function TripDetailPage() {
               <Send size={18} />
             </button>
           )}
+          {(stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
+            <button
+              onClick={() => setShowQuickInfoDrawer(true)}
+              data-testid="floating-quick-info-btn"
+              className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+                borderRadius: "1rem",
+                boxShadow: "var(--shadow-floating)",
+              }}
+              aria-label="Open quick info"
+            >
+              <Info size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+            </button>
+          )}
         </div>
       )}
       <ChatDrawer
@@ -484,6 +506,15 @@ export default function TripDetailPage() {
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
         )}
       />
+
+      {/* ── Quick Info mobile drawer (going+ stages) ───────────────────── */}
+      {showQuickInfoDrawer && (
+        <QuickInfoDrawer
+          tripId={tripId}
+          isOwner={isOwner}
+          onClose={() => setShowQuickInfoDrawer(false)}
+        />
+      )}
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
       {toast && (

@@ -1,9 +1,9 @@
 // TODO: Move this file to src/app/trips/[tripId]/components/ when compare/ directory is cleaned up.
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { MapPin, Flag, Check, Plus, Loader2 } from "lucide-react";
+import { MapPin, Flag, Check, Plus, Loader2, SlidersHorizontal, X, ArrowUpDown } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ideaGradient } from "@/lib/temporalGradient";
 import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
@@ -11,6 +11,8 @@ import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
 interface CatalogBrowserProps {
   onSelect: (idea: CatalogIdea) => void;
   selectedIds: Set<string>;
+  /** Optional header title rendered inline on the same row as the filter pill (right-justified). */
+  title?: string;
 }
 
 const ACTIVITY_FILTERS = [
@@ -29,17 +31,89 @@ const BUDGET_FILTERS = [
   { label: "$$$$", value: "$$$$" },
 ];
 
-export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
+type SortKey = "name" | "state";
+type SortDir = "asc" | "desc";
+const SORT_OPTIONS: { key: SortKey; dir: SortDir; label: string }[] = [
+  { key: "name", dir: "asc", label: "Name (A–Z)" },
+  { key: "name", dir: "desc", label: "Name (Z–A)" },
+  { key: "state", dir: "asc", label: "State (A–Z)" },
+  { key: "state", dir: "desc", label: "State (Z–A)" },
+];
+
+/**
+ * Parse the trailing state/region segment from a "City, ST" location string.
+ * If there's no comma (e.g. "Southeast", "Pacific Northwest"), fall back
+ * to the trimmed whole string so the entry still sorts cleanly — it just
+ * ranks by its own name among the real state codes.
+ */
+function extractState(location: string): string {
+  const parts = location.split(",").map((s) => s.trim()).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : location.trim();
+}
+
+export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
   const [activityFilter, setActivityFilter] = useState<string | null>(null);
   const [budgetFilter, setBudgetFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const LIMIT = 100;
-  const INITIAL_COUNT = 8;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const { data: catalogIdeas = [], isLoading } =
+  // Close the sort menu on outside click.
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setSortOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [sortOpen]);
+  const LIMIT = 100;
+  const TILE_WIDTH = 160;
+  const GAP = 10; // gap-2.5 = 0.625rem = 10px
+  const INITIAL_ROWS = 2;
+  const INITIAL_FALLBACK = 8;
+
+  // Measure the grid container so we only ever show full rows —
+  // `repeat(auto-fill, 160px)` can leave trailing blank cells if the
+  // raw slice count doesn't match the actual column count.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [columns, setColumns] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const compute = () => {
+      const width = el.clientWidth;
+      if (width <= 0) return;
+      const cols = Math.max(1, Math.floor((width + GAP) / (TILE_WIDTH + GAP)));
+      setColumns(cols);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const hasActiveFilter = activityFilter !== null || budgetFilter !== null;
+  const activeFilterSummary = (() => {
+    const parts: string[] = [];
+    if (activityFilter) {
+      const label = ACTIVITY_FILTERS.find((f) => f.value === activityFilter)?.label;
+      if (label) parts.push(label);
+    }
+    if (budgetFilter) parts.push(budgetFilter);
+    return parts.length > 0 ? parts.join(" · ") : "All destinations";
+  })();
+
+  const { data: rawCatalogIdeas = [], isLoading } =
     trpc.ideas.catalogList.useQuery({
       categories: activityFilter ? [activityFilter] : undefined,
       costTier: budgetFilter ?? undefined,
@@ -47,8 +121,45 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
       offset: 0,
     });
 
-  const visibleIdeas = expanded ? catalogIdeas : catalogIdeas.slice(0, INITIAL_COUNT);
-  const hasMore = catalogIdeas.length > INITIAL_COUNT;
+  // Sort client-side — dataset is bounded (≤ LIMIT) and sort keys are
+  // cheap strings, so no need to push this down to the server.
+  const catalogIdeas = (() => {
+    const sorted = [...rawCatalogIdeas].sort((a, b) => {
+      const av = sortKey === "name" ? a.title : extractState(a.location);
+      const bv = sortKey === "name" ? b.title : extractState(b.location);
+      const cmp = av.localeCompare(bv, undefined, { sensitivity: "base" });
+      // Tiebreak state sort by title so in-state destinations stay grouped alphabetically.
+      if (cmp === 0 && sortKey === "state") {
+        return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+      }
+      return cmp;
+    });
+    return sortDir === "desc" ? sorted.reverse() : sorted;
+  })();
+
+  const currentSortLabel =
+    SORT_OPTIONS.find((o) => o.key === sortKey && o.dir === sortDir)?.label ?? "Sort";
+
+  // Visible count = full rows only. The bug we're avoiding: with
+  // auto-fill, column count varies by width, so a hard-coded slice can
+  // leave a partial trailing row right above "Show all" that looks like
+  // missing tiles. Always floor the collapsed count to a multiple of
+  // columns; expanded view shows the full dataset (the real last row
+  // may be partial, but that's expected when you've asked for all).
+  let visibleCount: number;
+  if (expanded) {
+    visibleCount = catalogIdeas.length;
+  } else if (columns != null) {
+    const target = Math.min(columns * INITIAL_ROWS, catalogIdeas.length);
+    // Floor to whole rows. If we don't even have one full row, just show what's there.
+    visibleCount =
+      target < columns ? target : Math.floor(target / columns) * columns;
+  } else {
+    // Pre-measurement fallback — intentionally small; resnaps on first RO tick.
+    visibleCount = Math.min(INITIAL_FALLBACK, catalogIdeas.length);
+  }
+  const visibleIdeas = catalogIdeas.slice(0, visibleCount);
+  const hasMore = catalogIdeas.length > visibleCount;
 
   const resetFilters = () => {
     setActivityFilter(null);
@@ -68,72 +179,152 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-3">
-        <h3
-          className="text-sm font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
+      {/* Header row — optional title on the left, filter pill right-justified. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {title && (
+          <h3
+            className="text-base font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {title}
+          </h3>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+        {/* Sort dropdown — compact pill with a popover menu. */}
+        <div className="relative" ref={sortMenuRef}>
+          <button
+            type="button"
+            onClick={() => setSortOpen((v) => !v)}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+            style={{
+              background: "var(--color-bt-dim-faint)",
+              color: "var(--color-bt-text-dim)",
+            }}
+            aria-expanded={sortOpen}
+            aria-haspopup="menu"
+          >
+            <ArrowUpDown size={12} />
+            <span>{currentSortLabel}</span>
+          </button>
+          {sortOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 z-20 mt-1 min-w-[160px] overflow-hidden rounded-lg shadow-lg"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              {SORT_OPTIONS.map((opt) => {
+                const active = opt.key === sortKey && opt.dir === sortDir;
+                return (
+                  <button
+                    key={`${opt.key}-${opt.dir}`}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => {
+                      setSortKey(opt.key);
+                      setSortDir(opt.dir);
+                      setSortOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors"
+                    style={{
+                      background: active ? "var(--color-bt-dim-faint)" : "transparent",
+                      color: active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                      fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                    {active && <Check size={12} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((v) => !v)}
+          className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+          style={{
+            background: hasActiveFilter
+              ? "var(--color-bt-accent)"
+              : "var(--color-bt-dim-faint)",
+            color: hasActiveFilter
+              ? "var(--color-bt-base)"
+              : "var(--color-bt-text-dim)",
+          }}
+          aria-expanded={filtersOpen}
         >
-          Browse destination ideas
-        </h3>
-        <p
-          className="text-xs mt-0.5"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Tap any card to add it to your comparison list
-        </p>
+          <SlidersHorizontal size={12} />
+          <span>{activeFilterSummary}</span>
+        </button>
+        {hasActiveFilter && (
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="flex items-center gap-1 text-xs"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Clear filters"
+          >
+            <X size={12} /> Clear
+          </button>
+        )}
+        </div>
       </div>
 
-      {/* Filter chips */}
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-3">
-        {ACTIVITY_FILTERS.map((f) => (
-          <button
-            key={f.label}
-            onClick={() => handleFilterActivity(f.value)}
-            className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
-            style={{
-              background:
-                activityFilter === f.value
-                  ? "var(--color-bt-accent)"
-                  : "var(--color-bt-dim-faint)",
-              color:
-                activityFilter === f.value
-                  ? "var(--color-bt-base)"
-                  : "var(--color-bt-text-dim)",
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
+      {filtersOpen && (
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-3">
+          {ACTIVITY_FILTERS.map((f) => (
+            <button
+              key={f.label}
+              onClick={() => handleFilterActivity(f.value)}
+              className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+              style={{
+                background:
+                  activityFilter === f.value
+                    ? "var(--color-bt-accent)"
+                    : "var(--color-bt-dim-faint)",
+                color:
+                  activityFilter === f.value
+                    ? "var(--color-bt-base)"
+                    : "var(--color-bt-text-dim)",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
 
-        {/* Divider */}
-        <span
-          className="shrink-0 self-center text-xs"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          ·
-        </span>
-
-        {BUDGET_FILTERS.map((f) => (
-          <button
-            key={f.label}
-            onClick={() => handleFilterBudget(f.value)}
-            className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
-            style={{
-              background:
-                budgetFilter === f.value
-                  ? "var(--color-bt-accent)"
-                  : "var(--color-bt-dim-faint)",
-              color:
-                budgetFilter === f.value
-                  ? "var(--color-bt-base)"
-                  : "var(--color-bt-text-dim)",
-            }}
+          {/* Divider */}
+          <span
+            className="shrink-0 self-center text-xs"
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
-            {f.label}
-          </button>
-        ))}
-      </div>
+            ·
+          </span>
+
+          {BUDGET_FILTERS.map((f) => (
+            <button
+              key={f.label}
+              onClick={() => handleFilterBudget(f.value)}
+              className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+              style={{
+                background:
+                  budgetFilter === f.value
+                    ? "var(--color-bt-accent)"
+                    : "var(--color-bt-dim-faint)",
+                color:
+                  budgetFilter === f.value
+                    ? "var(--color-bt-base)"
+                    : "var(--color-bt-text-dim)",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Loading */}
       {isLoading && (
@@ -168,7 +359,11 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
       {/* Responsive grid — 2 cols on mobile, 4 on desktop so cards stay
           the compact mobile size and twice as many fit per row. */}
       {!isLoading && catalogIdeas.length > 0 && (
-        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <div
+          ref={gridRef}
+          className="grid gap-2.5 justify-center"
+          style={{ gridTemplateColumns: `repeat(auto-fill, ${TILE_WIDTH}px)` }}
+        >
           {visibleIdeas.map((idea, index) => {
             const isSelected = selectedIds.has(idea.id);
             return (
@@ -275,32 +470,19 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
         </div>
       )}
 
-      {/* Expand / collapse */}
-      {!isLoading && hasMore && (
+      {/* Expand — once opened, stays open (no "show less") */}
+      {!isLoading && hasMore && !expanded && (
         <div className="mt-3 flex justify-center">
-          {!expanded ? (
-            <button
-              onClick={() => setExpanded(true)}
-              className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-              style={{
-                background: "var(--color-bt-dim-faint)",
-                color: "var(--color-bt-text)",
-              }}
-            >
-              Show all {catalogIdeas.length} destinations ↓
-            </button>
-          ) : (
-            <button
-              onClick={() => setExpanded(false)}
-              className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-              style={{
-                background: "var(--color-bt-dim-faint)",
-                color: "var(--color-bt-text)",
-              }}
-            >
-              Show less ↑
-            </button>
-          )}
+          <button
+            onClick={() => setExpanded(true)}
+            className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+            style={{
+              background: "var(--color-bt-dim-faint)",
+              color: "var(--color-bt-text)",
+            }}
+          >
+            Show all {catalogIdeas.length} destinations ↓
+          </button>
         </div>
       )}
     </div>

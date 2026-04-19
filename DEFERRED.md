@@ -60,13 +60,6 @@ creation, backfill existing trips, accept both slug and UUID in route
 
 ---
 
-### Amelia Island catalog photo broken
-
-One of the 20 seeded catalog ideas ("Amelia Island Getaway") has a broken
-or missing `image_url`. Fix with a SQL UPDATE before next demo.
-
----
-
 ### Preserve polling data on Nevermind → Set dates
 
 When the owner clicks "Nevermind, Set Dates Manually" and then locks

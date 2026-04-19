@@ -976,4 +976,34 @@ export const tripsRouter = router({
 
       return data;
     }),
+
+  // -----------------------------------------------------------------------
+  // devSetStage — DEBUG ONLY. Owner-only shortcut that flips the stage
+  // directly, skipping the validation gates on advanceToPlanning /
+  // advanceToGoing. Used by the temporary stage-toggle button next to the
+  // trip settings icon so we can flip between planning and going without
+  // having to lock/unlock a date every time. Remove before launch.
+  // -----------------------------------------------------------------------
+  devSetStage: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        stage: z.enum(["idea", "planning", "going", "now", "past", "saved"]),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({ stage: input.stage })
+        .eq("id", ctx.tripId)
+        .select("id, stage")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to set stage" });
+      }
+
+      return data;
+    }),
 });
