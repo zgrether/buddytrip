@@ -974,11 +974,9 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
 
   return (
     <div className="mx-auto max-w-[896px] px-4 py-8">
-      {!onClose && (
-        <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-          Destination Ideas
-        </h2>
-      )}
+      <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+        Add Destination Ideas
+      </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
         Build a list of options, then the crew can discuss and vote. Enter your own ideas here or select as many as you want from the catalog below and we&apos;ll help you compare them.
       </p>
@@ -1160,7 +1158,7 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
         onClick={onClose}
       >
         <div
-          className="flex w-full max-h-[90vh] flex-col rounded-t-2xl overflow-hidden"
+          className="relative flex w-full max-h-[90vh] flex-col rounded-t-2xl overflow-hidden"
           style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1168,18 +1166,14 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
           <div className="flex justify-center pt-3 pb-2 shrink-0">
             <div className="h-1 w-8 rounded-full" style={{ background: "var(--color-bt-border)" }} />
           </div>
-          <div className="flex items-center justify-between px-5 pb-0 shrink-0">
-            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Add destination ideas
-            </p>
-            <button
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <X size={16} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={16} />
+          </button>
           <div className="overflow-y-auto">
             <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
           </div>
@@ -1193,22 +1187,18 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
         onClick={onClose}
       >
         <div
-          className="w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
+          className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
           style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-5 pt-4 pb-0">
-            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Add destination ideas
-            </p>
-            <button
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <X size={16} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={16} />
+          </button>
           <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
         </div>
       </div>
