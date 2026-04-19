@@ -49,7 +49,7 @@ export function SidebarForStage({
   stage,
   tripId,
   isOwner,
-  canEdit,
+  canEdit: _canEdit,
   memberNames,
   members,
   allVoterIds,
@@ -61,7 +61,7 @@ export function SidebarForStage({
       {stage === "idea" && (
         <>
           <StageContextBar tripId={tripId} stage="idea" displayStatus="idea" isOwner={isOwner} />
-          {canEdit && onAddIdea && (
+          {isOwner && onAddIdea && (
             <button
               data-testid="add-idea-btn"
               onClick={onAddIdea}

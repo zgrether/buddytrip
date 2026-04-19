@@ -51,8 +51,8 @@
 
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
-| Add idea / destination option | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab, IdeaComparison |
-| Remove idea | ✓ | ✓ | — | `canEdit` | IdeaComparison |
+| Add idea / destination option | ✓ | — | — | `isOwner` | TripDetail HomeTab, IdeaComparison |
+| Remove idea | ✓ | — | — | `isOwner` | IdeaComparison |
 | Edit idea description | ✓ | ✓ | — | `canEdit` | IdeaComparison |
 | Edit idea pros / cons | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab, IdeaComparison |
 | Remove golf course from idea | ✓ | ✓ | — | `canEdit` | IdeaComparison |
@@ -143,6 +143,7 @@ These are implemented in production via Supabase RLS policies.
 RLS checks `trip_members.role = 'owner'` for the requesting user:
 
 - Destination lock / unlock / override
+- Idea creation and removal
 - Crew role management (promote, demote, remove)
 - Trip settings (series link, ownership transfer, archive, delete)
 - Expense split modification
@@ -151,7 +152,7 @@ RLS checks `trip_members.role = 'owner'` for the requesting user:
 RLS checks `trip_members.role IN ('owner', 'planner')`:
 
 - Trip description edit
-- Idea / destination addition and detail editing
+- Idea detail editing (description, pros/cons, golf, activities, lodging)
 - Date setup, poll management, and date locking
 - Quick info tile CRUD
 - Competition setup (enable, disable, teams, rounds, sides)
@@ -185,6 +186,7 @@ These were open questions during development. Documented here for reference.
 |----------|---------|
 | Score entry gating | Any trip member can enter scores — no role restriction |
 | Expense editing scope | Owner-only for split modification |
+| Idea creation | Owner-only (simplifies idea-stage flow) |
 | Idea removal | Owner-only |
 | Self-service RSVP | Implemented — members change their own status |
 | Trip creation | Any logged-in user can create |

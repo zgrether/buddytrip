@@ -759,34 +759,28 @@ function IdeaCard({
             />
           )}
 
-          {/* Footer actions */}
-          {(isOwner || canEdit) && (
+          {/* Footer actions — owner only (set destination + remove) */}
+          {isOwner && (
             <div
               className="flex items-center justify-between pt-3"
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
             >
-              {isOwner ? (
-                <button
-                  data-testid={`set-destination-${idea.id}`}
-                  onClick={() => onSetDestination(idea)}
-                  className="text-sm font-medium transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-accent)" }}
-                >
-                  Set as destination
-                </button>
-              ) : (
-                <span />
-              )}
-              {canEdit && (
-                <button
-                  data-testid={`remove-idea-${idea.id}`}
-                  onClick={() => onDelete(idea)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
+              <button
+                data-testid={`set-destination-${idea.id}`}
+                onClick={() => onSetDestination(idea)}
+                className="text-sm font-medium transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                Set as destination
+              </button>
+              <button
+                data-testid={`remove-idea-${idea.id}`}
+                onClick={() => onDelete(idea)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           )}
         </div>
@@ -1735,15 +1729,17 @@ export default function IdeaZonePanel({
   ).length;
 
   if (ideasTyped.length === 0) {
-    if (!canEdit) {
+    if (!isOwner) {
+      const ownerName =
+        members.find((m) => m.role === "owner")?.displayName ?? "The owner";
       return (
         <div className="flex flex-col items-center justify-center py-20 text-center px-4">
           <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
           <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             No destination ideas yet
           </p>
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Waiting for a planner to add ideas.
+          <p className="max-w-xs text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {ownerName} is going to add some ideas for you all to discuss — check back later.
           </p>
         </div>
       );
@@ -1846,9 +1842,9 @@ export default function IdeaZonePanel({
           width: "3rem",
         }}
       >
-        {canEdit ? (
+        {isOwner ? (
           <>
-            {/* Add idea — top */}
+            {/* Add idea — top (owner only) */}
             <button
               onClick={() => setShowAddModal(true)}
               className="flex h-12 w-12 items-center justify-center gap-0.5 transition-colors active:scale-95"
@@ -1868,7 +1864,7 @@ export default function IdeaZonePanel({
           onClick={onOpenChat}
           data-testid="floating-chat-btn"
           className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-          style={{ borderRadius: canEdit ? "0" : "1rem 1rem 0 0" }}
+          style={{ borderRadius: isOwner ? "0" : "1rem 1rem 0 0" }}
           aria-label="Open crew chat"
         >
           <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />

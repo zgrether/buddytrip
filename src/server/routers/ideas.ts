@@ -56,7 +56,7 @@ export const ideasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // create — Owner or Planner (canEdit)
+  // create — Owner only
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
@@ -81,7 +81,7 @@ export const ideasRouter = router({
         sourceIdeaId: z.string().nullable().optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("ideas")
@@ -182,11 +182,11 @@ export const ideasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner or Planner (canEdit)
+  // remove — Owner only
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), ideaId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // Delete votes first
       await ctx.supabase

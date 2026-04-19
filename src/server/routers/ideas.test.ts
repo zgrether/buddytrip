@@ -17,8 +17,8 @@ describe("ideas router", () => {
     await ctx.cleanup();
   });
 
-  it("create — planner can create an idea", async () => {
-    const caller = ctx.callerAs("planner");
+  it("create — owner can create an idea", async () => {
+    const caller = ctx.callerAs("owner");
     const idea = await caller.ideas.create({
       tripId,
       id: genId("idea"),
@@ -27,6 +27,18 @@ describe("ideas router", () => {
     });
     ideaId = idea.id;
     expect(idea.title).toBe("Scottsdale");
+  });
+
+  it("create — planner cannot create", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.ideas.create({
+        tripId,
+        id: genId("idea"),
+        title: "Nope",
+        location: "Nowhere",
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("create — member cannot create", async () => {
@@ -70,8 +82,15 @@ describe("ideas router", () => {
     expect(result.voted).toBe(false);
   });
 
-  it("remove — planner can remove", async () => {
+  it("remove — planner cannot remove", async () => {
     const caller = ctx.callerAs("planner");
+    await expect(
+      caller.ideas.remove({ tripId, ideaId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("remove — owner can remove", async () => {
+    const caller = ctx.callerAs("owner");
     const result = await caller.ideas.remove({ tripId, ideaId });
     expect(result.success).toBe(true);
   });
