@@ -857,7 +857,7 @@ function DeleteConfirmModal({
 
 // ── LocalIdea ─────────────────────────────────────────────────────────────
 
-interface LocalIdea {
+export interface LocalIdea {
   id: string;
   title: string;
   location: string;
@@ -874,7 +874,31 @@ interface LocalIdea {
 
 // ── EmptyStateOnboarding ─────────────────────────────────────────────────
 
-function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: () => void }) {
+/**
+ * The Add-Destination-Ideas screen. Works in two modes:
+ *  - Existing trip (default): takes `tripId` and writes each staged idea via
+ *    `ideas.create`, then invalidates `ideas.list`.
+ *  - Trip-less (new-trip flow): pass `onSubmit` — the component won't call
+ *    any mutations; it hands the staged list back to the parent which owns
+ *    trip creation + navigation. `tripId` may be omitted in this mode.
+ */
+export function EmptyStateOnboarding({
+  tripId,
+  onClose,
+  onSubmit,
+  className,
+  submitDisabled,
+}: {
+  tripId?: string;
+  onClose?: () => void;
+  onSubmit?: (ideas: LocalIdea[]) => Promise<void> | void;
+  /** Override the default standalone wrapper (`mx-auto max-w-[896px] px-4 py-8`). */
+  className?: string;
+  /** When true, the final "Start comparing / Add to comparison" button is
+   *  disabled even if there are staged ideas. Used by the new-trip flow to
+   *  block submission until the parent trip name is entered. */
+  submitDisabled?: boolean;
+}) {
   const utils = trpc.useUtils();
 
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
@@ -944,6 +968,15 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
     if (localIdeas.length === 0) return;
     setIsSubmitting(true);
     try {
+      // Trip-less mode — hand off the staged list; parent owns trip creation,
+      // idea writes, and navigation. No mutations from here.
+      if (onSubmit) {
+        await onSubmit(localIdeas);
+        return;
+      }
+      if (!tripId) {
+        throw new Error("EmptyStateOnboarding: tripId required when onSubmit is not provided");
+      }
       await Promise.all(
         localIdeas.map((idea) =>
           createIdea.mutateAsync({
@@ -977,12 +1010,12 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   };
 
   return (
-    <div className="mx-auto max-w-[896px] px-4 py-8">
-      <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+    <div className={className ?? "mx-auto max-w-[896px] px-4 py-8"}>
+      <h2 className="mb-1 text-lg font-bold" style={{ color: "var(--color-bt-text)" }}>
         Add Destination Ideas
       </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-        Where are you thinking? Add options from the catalog or enter your own, compare them side by side, and let the crew pick their favorite.
+        Add options from the catalog or enter your own, compare them side by side, and let the crew pick their favorite.
       </p>
 
       {/* ── 1. Manual entry — single row: [Name] [Location] [Add]. Labels
@@ -1041,7 +1074,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </div>
         <button
           onClick={handleAddManual}
-          disabled={!titleInput.trim()}
+          disabled={!titleInput.trim() || !locationInput.trim()}
           className="rounded-lg px-5 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
           style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
@@ -1117,7 +1150,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           {/* Compare / confirm button — lives right under the staged list. */}
           <button
             onClick={handleCompare}
-            disabled={isSubmitting}
+            disabled={isSubmitting || submitDisabled}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
             style={{
               background: "var(--color-bt-accent)",

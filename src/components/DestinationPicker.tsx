@@ -1,98 +1,127 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { MapPin, Sparkles } from "lucide-react";
 
 export type DestinationMode = null | "known" | "exploring";
 
 interface DestinationPickerProps {
-  /** When true, hides the "(optional)" label — used in edit mode */
-  required?: boolean;
+  /** When true, the whole picker is greyed out and non-interactive */
+  disabled?: boolean;
   mode: DestinationMode;
   onModeChange: (mode: DestinationMode) => void;
   destinationText: string;
   onDestinationTextChange: (text: string) => void;
+  /** Optional element rendered inline to the right of the "known" destination input
+   *  (e.g. a Create Trip button so it lives with the location field instead of
+   *  as a separate full-width action below the form). */
+  knownTrailing?: ReactNode;
+  /** Optional element rendered below the "exploring" tab when selected
+   *  (e.g. an inline Add Destination Ideas component in the new-trip flow). */
+  exploringContent?: ReactNode;
 }
 
 export function DestinationPicker({
-  required,
+  disabled,
   mode,
   onModeChange,
   destinationText,
   onDestinationTextChange,
+  knownTrailing,
+  exploringContent,
 }: DestinationPickerProps) {
   return (
-    <div>
+    <div
+      aria-disabled={disabled || undefined}
+      style={disabled ? { opacity: 0.4, pointerEvents: "none" } : undefined}
+    >
       <label
-        className="mb-1.5 block text-sm font-medium"
+        className="mb-1.5 block text-xl font-bold"
         style={{ color: "var(--color-bt-text)" }}
       >
         Where are you headed?
-        {!required && (
-          <>
-            {" "}
-            <span style={{ color: "var(--color-bt-text-dim)" }}>(optional)</span>
-          </>
-        )}
       </label>
 
-      <div className="flex flex-col gap-2">
-        {/* Known destination */}
-        <button
-          type="button"
-          onClick={() => onModeChange(mode === "known" ? null : "known")}
-          className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all"
-          style={{
-            background: mode === "known" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-            borderColor: mode === "known" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-          }}
+      <div className="space-y-3">
+        {/* ── Segmented control: I Know Where | Compare Ideas ─────────── */}
+        <div
+          className="flex overflow-hidden rounded-xl"
+          style={{ border: "1px solid var(--color-bt-border)" }}
         >
-          <MapPin size={18} style={{ color: mode === "known" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", flexShrink: 0 }} />
-          <div>
-            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              I know where we&apos;re going
-            </p>
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Lock in a destination now
-            </p>
-          </div>
-        </button>
-
-        {mode === "known" && (
-          <input
-            autoFocus
-            type="text"
-            value={destinationText}
-            onChange={(e) => onDestinationTextChange(e.target.value)}
-            placeholder="Bandon Dunes, OR"
-            className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
-            style={{
-              background: "var(--color-bt-card)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
+          <button
+            type="button"
+            onClick={() => onModeChange("known")}
+            className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors"
+            style={
+              mode === "known"
+                ? {
+                    background: "var(--color-bt-card-float)",
+                    color: "var(--color-bt-text)",
+                  }
+                : {
+                    background: "transparent",
+                    color: "var(--color-bt-text-dim)",
+                  }
+            }
+          >
+            <MapPin size={16} />
+            I Know Where
+          </button>
+          <div
+            className="w-px self-stretch"
+            style={{ background: "var(--color-bt-border)" }}
           />
+          <button
+            type="button"
+            onClick={() => onModeChange("exploring")}
+            className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors"
+            style={
+              mode === "exploring"
+                ? {
+                    background: "var(--color-bt-card-float)",
+                    color: "var(--color-bt-text)",
+                  }
+                : {
+                    background: "transparent",
+                    color: "var(--color-bt-text-dim)",
+                  }
+            }
+          >
+            <Sparkles size={16} />
+            Compare Ideas
+          </button>
+        </div>
+
+        {/* ── Known content: header + location input + trailing slot ── */}
+        {mode === "known" && (
+          <>
+            <h2
+              className="mb-1 text-lg font-bold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Destination
+            </h2>
+            <div className="flex items-stretch gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={destinationText}
+              onChange={(e) => onDestinationTextChange(e.target.value)}
+              placeholder="Bandon Dunes, OR"
+              className="flex-1 min-w-0 rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
+              style={{
+                background: "var(--color-bt-card)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+            {knownTrailing}
+            </div>
+          </>
         )}
 
-        {/* Exploring */}
-        <button
-          type="button"
-          onClick={() => onModeChange(mode === "exploring" ? null : "exploring")}
-          className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all"
-          style={{
-            background: mode === "exploring" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-            borderColor: mode === "exploring" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-          }}
-        >
-          <Sparkles size={18} style={{ color: mode === "exploring" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)", flexShrink: 0 }} />
-          <div>
-            <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              Not sure yet — let&apos;s figure it out
-            </p>
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Browse ideas and vote with the crew
-            </p>
-          </div>
-        </button>
+        {/* ── Exploring content slot ────────────────────────────────── */}
+        {mode === "exploring" && exploringContent}
       </div>
     </div>
   );

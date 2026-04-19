@@ -123,7 +123,6 @@ export default function ChangeDestinationPage() {
         </div>
 
         <DestinationPicker
-          required
           mode={mode}
           onModeChange={setMode}
           destinationText={destinationText}

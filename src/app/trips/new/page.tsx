@@ -6,28 +6,27 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { UserMenu } from "@/components/UserMenu";
 import { DestinationPicker, type DestinationMode } from "@/components/DestinationPicker";
+import { EmptyStateOnboarding, type LocalIdea } from "@/app/trips/[tripId]/components/IdeaZonePanel";
 
 export default function TripNewPage() {
   const router = useRouter();
   const utils = trpc.useUtils();
 
   const [tripName, setTripName] = useState("");
-  const [nameError, setNameError] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [destinationMode, setDestinationMode] = useState<DestinationMode>(null);
+  const [destinationMode, setDestinationMode] = useState<DestinationMode>("known");
   const [destinationText, setDestinationText] = useState("");
+
+  const hasName = tripName.trim().length > 0;
 
   const createTrip = trpc.trips.create.useMutation({
     onSuccess: () => utils.trips.list.invalidate(),
   });
+  const createIdea = trpc.ideas.create.useMutation();
 
   const handleCreate = async () => {
-    if (!tripName.trim()) {
-      setNameError("Trip needs a name");
-      return;
-    }
-    setNameError("");
+    if (!hasName) return;
     setError("");
     setIsSubmitting(true);
     const tripId = crypto.randomUUID();
@@ -52,6 +51,47 @@ export default function TripNewPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
       setIsSubmitting(false);
+    }
+  };
+
+  // "Not sure yet" path — EmptyStateOnboarding hands us the staged list; we
+  // create the trip with comparisonMode, seed the ideas into it, and land the
+  // user on the trip page already populated. Rethrow on failure so the
+  // component's `isSubmitting` resets and the user can retry.
+  const handleExploringSubmit = async (ideas: LocalIdea[]) => {
+    if (!hasName) {
+      throw new Error("Trip needs a name");
+    }
+    setError("");
+    const tripId = crypto.randomUUID();
+    try {
+      await createTrip.mutateAsync({
+        id: tripId,
+        title: tripName.trim(),
+        comparisonMode: true,
+      });
+      await Promise.all(
+        ideas.map((idea) =>
+          createIdea.mutateAsync({
+            tripId,
+            id: crypto.randomUUID(),
+            title: idea.title,
+            location: idea.location,
+            description: idea.description,
+            costTier: idea.costTier,
+            imageUrl: idea.imageUrl,
+            golfCourses: idea.golfCourses,
+            activities: idea.activities,
+            accommodation: idea.accommodation,
+            notes: idea.tips,
+            source: idea.source,
+          })
+        )
+      );
+      router.replace(`/trips/${tripId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create trip");
+      throw err;
     }
   };
 
@@ -95,19 +135,15 @@ export default function TripNewPage() {
         </div>
       )}
 
-      <main className="mx-auto max-w-[896px] space-y-6 px-4 pb-16 pt-6">
-        <h2 className="text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-          Let&apos;s get started
-        </h2>
-
+      <main className="mx-auto max-w-[896px] space-y-10 px-4 pb-16 pt-6">
         {/* Trip name */}
         <div>
           <label
             htmlFor="trip-name"
-            className="mb-1.5 block text-sm font-medium"
+            className="mb-1.5 block text-xl font-bold"
             style={{ color: "var(--color-bt-text)" }}
           >
-            Trip name *
+            Trip name
           </label>
           <input
             id="trip-name"
@@ -116,31 +152,17 @@ export default function TripNewPage() {
             required
             autoFocus
             value={tripName}
-            onChange={(e) => {
-              setTripName(e.target.value);
-              if (e.target.value.trim()) setNameError("");
-            }}
-            onBlur={() => {
-              if (!tripName.trim()) setNameError("Trip needs a name");
-              else setNameError("");
-            }}
+            onChange={(e) => setTripName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             placeholder="BBMI 2027, Tyler's Bachelor Party..."
             maxLength={200}
             className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
             style={{
               background: "var(--color-bt-card)",
-              borderColor: nameError
-                ? "var(--color-bt-danger)"
-                : "var(--color-bt-border)",
+              borderColor: "var(--color-bt-border)",
               color: "var(--color-bt-text)",
             }}
           />
-          {nameError && (
-            <p className="mt-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>
-              {nameError}
-            </p>
-          )}
         </div>
 
         <DestinationPicker
@@ -148,28 +170,35 @@ export default function TripNewPage() {
           onModeChange={setDestinationMode}
           destinationText={destinationText}
           onDestinationTextChange={setDestinationText}
+          knownTrailing={
+            <button
+              data-testid="create-trip-btn"
+              onClick={handleCreate}
+              disabled={isSubmitting || !hasName || !destinationText.trim()}
+              className="flex shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
+              style={{
+                background: "var(--color-bt-accent)",
+                color: "var(--color-bt-base)",
+              }}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Trip"
+              )}
+            </button>
+          }
+          exploringContent={
+            <EmptyStateOnboarding
+              onSubmit={handleExploringSubmit}
+              submitDisabled={!hasName}
+              className="mt-3"
+            />
+          }
         />
-
-        {/* Create */}
-        <button
-          data-testid="create-trip-btn"
-          onClick={handleCreate}
-          disabled={isSubmitting || !tripName.trim()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
-          style={{
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-          }}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Creating trip...
-            </>
-          ) : (
-            "Create Trip"
-          )}
-        </button>
       </main>
     </div>
   );
