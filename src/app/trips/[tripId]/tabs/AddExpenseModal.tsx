@@ -134,7 +134,7 @@ export function AddExpenseModal({
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Add Expense
+            Add Receipt
           </h2>
           <button
             onClick={onClose}
@@ -149,7 +149,7 @@ export function AddExpenseModal({
           {/* Side-by-side Description + Amount */}
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Expense</label>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Receipt</label>
               <input
                 data-testid="expense-title-input"
                 placeholder="Description (e.g. Dinner)"
@@ -281,7 +281,7 @@ export function AddExpenseModal({
               className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
-              Add Expense
+              Add Receipt
             </button>
           </div>
         </div>

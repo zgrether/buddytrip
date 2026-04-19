@@ -4,13 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { UserMenu } from "@/components/UserMenu";
+import { TopNav } from "@/components/TopNav";
+import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 import { DestinationPicker, type DestinationMode } from "@/components/DestinationPicker";
 import { EmptyStateOnboarding, type LocalIdea } from "@/app/trips/[tripId]/components/IdeaZonePanel";
 
 export default function TripNewPage() {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const { notifications, unreadCount, markAllRead } = useGlobalNotifications();
 
   const [tripName, setTripName] = useState("");
   const [error, setError] = useState("");
@@ -96,27 +98,14 @@ export default function TripNewPage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Header */}
-      <header
-        className="sticky top-0 z-40 flex h-14 items-center gap-3 px-4"
-        style={{
-          background: "var(--color-bt-base)",
-          borderBottom: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <button
-          onClick={() => router.back()}
-          className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text)" }}
-          aria-label="Back"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <h1 className="text-base font-semibold">New Trip</h1>
-        <div className="ml-auto">
-          <UserMenu />
-        </div>
-      </header>
+      {/* App-wide top nav — matches dashboard, profile, and trip pages so
+          the new-trip flow doesn't feel like a separate surface. The
+          in-body "Back" link below replaces the old header back button. */}
+      <TopNav
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkAllRead={markAllRead}
+      />
 
       {error && (
         <div
@@ -132,6 +121,14 @@ export default function TripNewPage() {
       )}
 
       <main className="mx-auto max-w-[896px] space-y-10 px-4 pb-16 pt-6">
+        <button
+          onClick={() => router.back()}
+          className="-mt-2 inline-flex items-center gap-1.5 text-sm transition-opacity hover:opacity-70"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <ArrowLeft size={14} /> Back
+        </button>
+
         {/* Trip name */}
         <div>
           <label

@@ -480,7 +480,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         {isOwner && (
           <>
             <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Invite friends who are good at planning to join the early conversations — they&apos;ll be able to add ideas, vote, and help shape the trip before it&apos;s official.
+              Invite people who want to help plan. Planners can add destination ideas, vote, and weigh in before the trip is official — everyone else gets added when it&apos;s time to go.
             </p>
             <div className="mb-2">
               <CrewSearchInput
@@ -532,7 +532,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         {canEdit && (
           <div className="mb-2">
             <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Start adding the names and emails of everyone you&apos;re planning to invite. Nothing is set in stone — you can always add, remove, or update people later.
+              Start building your crew list. Add names and emails as you think of them — invites go out later when you&apos;re ready.
             </p>
             <div className="flex gap-2">
               <input

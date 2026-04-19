@@ -16,13 +16,14 @@ import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
+import { LodgingTab } from "./tabs/LodgingTab";
 import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { ChatDrawer } from "./components/ChatDrawer";
 import { STAGE_CONTENT } from "./components/StageContextBar";
-import { OwnerAlertPanel } from "./components/OwnerAlertPanel";
+import { QuickInfoSection } from "./components/QuickInfoSection";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TwoColumnLayout } from "./components/TwoColumnLayout";
 import { SidebarForStage } from "./components/SidebarForStage";
@@ -325,11 +326,11 @@ export default function TripDetailPage() {
               />
             }
           >
-            {/* Left: owner alert (going only) + tab bar + all tab content */}
+            {/* Left: quick info (post-planning only) + tab bar + all tab content */}
             <div>
-              {stage === "going" && (
+              {(stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
                 <div className="mb-4">
-                  <OwnerAlertPanel trip={trip} isOwner={isOwner} />
+                  <QuickInfoSection tripId={tripId} isOwner={isOwner} />
                 </div>
               )}
               <TripTabBar
@@ -368,6 +369,9 @@ export default function TripDetailPage() {
                 )}
                 {activeTab === "crew" && (
                   <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                )}
+                {activeTab === "lodging" && (
+                  <LodgingTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
                 )}
                 {activeTab === "expenses" && (
                   <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />

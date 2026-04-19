@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, type FC } from "react";
-import { House, Users, Calendar, DollarSign, Trophy, type LucideIcon } from "lucide-react";
+import { House, Users, Hotel, Calendar, DollarSign, Trophy, type LucideIcon } from "lucide-react";
 import type { TabId } from "./BottomNav";
 
 interface TabDef {
@@ -13,8 +13,9 @@ interface TabDef {
 const ALL_TABS: TabDef[] = [
   { id: "home",     label: "Home",        Icon: House       },
   { id: "crew",     label: "Crew",        Icon: Users       },
+  { id: "lodging",  label: "Lodging",     Icon: Hotel       },
   { id: "schedule", label: "Schedule",    Icon: Calendar    },
-  { id: "expenses", label: "Expenses",    Icon: DollarSign  },
+  { id: "expenses", label: "Receipts",    Icon: DollarSign  },
   { id: "comp",     label: "Competition", Icon: Trophy      },
 ];
 
@@ -44,6 +45,10 @@ export const TripTabBar: FC<TripTabBarProps> = ({
     }
     // Hide Expenses in PLANNING stage
     if (t.id === "expenses" && stage === "planning") return false;
+    // Lodging is only meaningful once a destination is locked in —
+    // keep it out of the IDEA stage where the IdeaZonePanel owns the
+    // surface and there's nothing to book against yet.
+    if (t.id === "lodging" && stage === "idea") return false;
     return true;
   });
 

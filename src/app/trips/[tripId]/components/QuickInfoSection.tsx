@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Flag, Hotel, Pencil, Plus, X, Zap } from "lucide-react";
+import { AlertTriangle, FileText, Flag, Hotel, Pencil, Plus, X, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
@@ -13,11 +13,12 @@ export interface QuickTile {
   value: string;
   icon?: string | null;
   sort_order?: number | null;
+  is_alert?: boolean | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function TileIcon({ icon }: { icon?: string | null }) {
+function TileIcon({ icon, tone = "accent" }: { icon?: string | null; tone?: "accent" | "warning" }) {
   const icons: Record<string, React.ReactNode> = {
     hotel: <Hotel size={16} />,
     golf: <Flag size={16} />,
@@ -25,9 +26,50 @@ function TileIcon({ icon }: { icon?: string | null }) {
     file: <FileText size={16} />,
   };
   return (
-    <span style={{ color: "var(--color-bt-accent)" }}>
+    <span style={{ color: tone === "warning" ? "var(--color-bt-warning)" : "var(--color-bt-accent)" }}>
       {icons[icon ?? "file"] ?? <FileText size={16} />}
     </span>
+  );
+}
+
+// ── AlertToggle ──────────────────────────────────────────────────────────
+// Shared control for "mark this as a crew alert" in Add/Edit modals. When
+// on, the tile renders in warning-yellow and is slightly larger, so it
+// stands out among the neutral info tiles.
+
+function AlertToggle({ value, onChange }: { value: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left"
+      style={{
+        borderColor: value ? "var(--color-bt-warning-border)" : "var(--color-bt-border)",
+        background: value ? "var(--color-bt-warning-faint)" : "var(--color-bt-base)",
+      }}
+    >
+      <span className="flex items-center gap-2">
+        <AlertTriangle
+          size={14}
+          style={{ color: value ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
+        />
+        <span
+          className="text-sm"
+          style={{ color: value ? "var(--color-bt-warning)" : "var(--color-bt-text)" }}
+        >
+          Mark as crew alert
+        </span>
+      </span>
+      <span
+        className="inline-flex h-5 w-9 items-center rounded-full p-0.5 transition-colors"
+        style={{ background: value ? "var(--color-bt-warning)" : "var(--color-bt-border)" }}
+      >
+        <span
+          className="h-4 w-4 rounded-full bg-white transition-transform"
+          style={{ transform: value ? "translateX(16px)" : "translateX(0)" }}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -44,6 +86,7 @@ function AddTileModal({
   const utils = trpc.useUtils();
   const [label, setLabel] = useState("");
   const [value, setValue] = useState("");
+  const [isAlert, setIsAlert] = useState(false);
 
   const create = trpc.quickInfoTiles.create.useMutation({
     async onMutate(vars) {
@@ -58,6 +101,7 @@ function AddTileModal({
           value: vars.value,
           icon: null,
           sort_order: vars.sortOrder ?? 0,
+          is_alert: vars.isAlert ?? false,
           created_by: null,
           created_at: new Date().toISOString(),
         },
@@ -112,6 +156,7 @@ function AddTileModal({
           className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
           style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
         />
+        <AlertToggle value={isAlert} onChange={setIsAlert} />
         <div className="flex gap-3">
           <button
             onClick={onClose}
@@ -128,6 +173,7 @@ function AddTileModal({
                 id: crypto.randomUUID(),
                 label: label.trim(),
                 value: value.trim(),
+                isAlert,
               })
             }
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
@@ -156,6 +202,7 @@ function EditTileModal({
   const utils = trpc.useUtils();
   const [label, setLabel] = useState(tile.label);
   const [value, setValue] = useState(tile.value);
+  const [isAlert, setIsAlert] = useState(!!tile.is_alert);
 
   const update = trpc.quickInfoTiles.update.useMutation({
     onSuccess() { onClose(); },
@@ -204,6 +251,7 @@ function EditTileModal({
           className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
           style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
         />
+        <AlertToggle value={isAlert} onChange={setIsAlert} />
         <div className="flex gap-3">
           <button
             onClick={() => remove.mutate({ tripId, tileId: tile.id })}
@@ -222,7 +270,15 @@ function EditTileModal({
           </button>
           <button
             disabled={!label.trim() || !value.trim() || update.isPending}
-            onClick={() => update.mutate({ tripId, tileId: tile.id, label: label.trim(), value: value.trim() })}
+            onClick={() =>
+              update.mutate({
+                tripId,
+                tileId: tile.id,
+                label: label.trim(),
+                value: value.trim(),
+                isAlert,
+              })
+            }
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
@@ -236,8 +292,10 @@ function EditTileModal({
 
 // ── QuickInfoSection ─────────────────────────────────────────────────────
 // Owner-configured grab-bag of going-stage details (door codes, check-in
-// times, street addresses). Crew reads; owner edits via Add/Edit tile
-// modals. Renders nothing for non-owners when no tiles exist.
+// times, street addresses, crew alerts). Crew reads; owner edits via
+// Add/Edit tile modals. Tiles flagged as alerts render in warning-yellow
+// and slightly larger to draw attention. Renders nothing for non-owners
+// when no tiles exist.
 
 export function QuickInfoSection({
   tripId,
@@ -252,6 +310,13 @@ export function QuickInfoSection({
   const { data: tiles = [] } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
   if (tiles.length === 0 && !isOwner) return null;
+
+  // Sort: alerts first, then by existing sort_order / created_at (server-ordered).
+  const sortedTiles = [...(tiles as QuickTile[])].sort((a, b) => {
+    const aAlert = a.is_alert ? 1 : 0;
+    const bAlert = b.is_alert ? 1 : 0;
+    return bAlert - aAlert;
+  });
 
   return (
     <section>
@@ -301,39 +366,66 @@ export function QuickInfoSection({
             Add Quick Info
           </p>
           <p className="text-xs mt-0.5" style={{ color: "var(--color-bt-text-dim)" }}>
-            Door codes, check-in times, street addresses — the stuff everyone always asks about.
+            Door codes, check-in times, street addresses, and crew alerts — the stuff everyone always asks about.
           </p>
         </button>
       ) : (
         <div className="grid grid-cols-3 gap-2">
-          {(tiles as QuickTile[]).map((tile) => (
-            <div
-              key={tile.id}
-              data-testid={`tile-${tile.id}`}
-              className="group relative rounded-xl p-3"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <div className="mb-1 flex items-center gap-1.5">
-                <TileIcon icon={tile.icon} />
-                <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {tile.label}
-                </span>
-              </div>
-              <p className="text-xs font-medium pr-4" style={{ color: "var(--color-bt-text)" }}>
-                {tile.value}
-              </p>
-              {isOwner && (
-                <button
-                  data-testid={`tile-edit-${tile.id}`}
-                  onClick={() => setEditingTile(tile)}
-                  className="absolute right-1.5 top-1.5 rounded p-0.5"
-                  style={{ color: "var(--color-bt-text-dim)" }}
+          {sortedTiles.map((tile) => {
+            const alert = !!tile.is_alert;
+            // Alert tiles span two columns on the 3-col grid so they read
+            // bigger without breaking the layout. They also use warning
+            // tokens + left border stripe to match the prior OwnerAlertPanel.
+            return (
+              <div
+                key={tile.id}
+                data-testid={`tile-${tile.id}`}
+                className={`group relative rounded-xl ${alert ? "col-span-2 p-4" : "p-3"}`}
+                style={
+                  alert
+                    ? {
+                        background: "var(--color-bt-warning-faint)",
+                        border: "1px solid var(--color-bt-warning-border)",
+                        borderLeft: "3px solid var(--color-bt-warning)",
+                      }
+                    : {
+                        background: "var(--color-bt-card)",
+                        border: "1px solid var(--color-bt-border)",
+                      }
+                }
+              >
+                <div className="mb-1 flex items-center gap-1.5">
+                  {alert ? (
+                    <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)" }} />
+                  ) : (
+                    <TileIcon icon={tile.icon} />
+                  )}
+                  <span
+                    className={alert ? "text-[11px] font-semibold uppercase tracking-wider" : "text-[10px]"}
+                    style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
+                  >
+                    {alert ? `Alert · ${tile.label}` : tile.label}
+                  </span>
+                </div>
+                <p
+                  className={`${alert ? "text-sm" : "text-xs"} font-medium pr-4`}
+                  style={{ color: "var(--color-bt-text)" }}
                 >
-                  <Pencil size={10} />
-                </button>
-              )}
-            </div>
-          ))}
+                  {tile.value}
+                </p>
+                {isOwner && (
+                  <button
+                    data-testid={`tile-edit-${tile.id}`}
+                    onClick={() => setEditingTile(tile)}
+                    className="absolute right-1.5 top-1.5 rounded p-0.5"
+                    style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
+                  >
+                    <Pencil size={10} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

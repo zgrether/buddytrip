@@ -24,6 +24,7 @@ import { logisticsRouter } from "./routers/logistics";
 import { scheduleRouter } from "./routers/schedule";
 import { golfCoursesRouter } from "./routers/golfCourses";
 import { ideaLodgingRouter } from "./routers/ideaLodging";
+import { archivedIdeasRouter } from "./routers/archivedIdeas";
 
 export const appRouter = router({
   health: publicProcedure.query(() => {
@@ -54,6 +55,7 @@ export const appRouter = router({
   schedule: scheduleRouter,
   golfCourses: golfCoursesRouter,
   ideaLodging: ideaLodgingRouter,
+  archivedIdeas: archivedIdeasRouter,
 });
 
 export type AppRouter = typeof appRouter;

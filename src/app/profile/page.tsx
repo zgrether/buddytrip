@@ -2,17 +2,20 @@
 
 import { useState, useEffect, useRef, startTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, LogOut, Save } from "lucide-react";
+import Link from "next/link";
+import { Camera, LogOut, Save, Archive, ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
 import { TopNav } from "@/components/TopNav";
 import { UserAvatar } from "@/components/UserAvatar";
+import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 
 // ── ProfilePage ───────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const { notifications, unreadCount, markAllRead } = useGlobalNotifications();
 
   const { data: me, isLoading } = trpc.users.getMe.useQuery();
 
@@ -108,7 +111,11 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav />
+      <TopNav
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkAllRead={markAllRead}
+      />
 
       <main className="mx-auto max-w-2xl px-4 pb-24 pt-8">
         {isLoading ? (
@@ -266,6 +273,25 @@ export default function ProfilePage() {
                 <Save size={14} />
                 {updateMe.isPending ? "Saving…" : "Save Changes"}
               </button>
+            </div>
+
+            {/* Destination idea archive — per-user snapshots the owner keeps
+                to reuse across trips. Managed on a dedicated page so this
+                card stays scannable. */}
+            <div
+              className="rounded-xl p-5"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <Link
+                href="/profile/archived-ideas"
+                data-testid="manage-archived-ideas-link"
+                className="flex w-full items-center gap-3 rounded-lg border py-2.5 px-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              >
+                <Archive size={14} />
+                <span>Manage destination idea archive</span>
+                <ChevronRight size={14} className="ml-auto" style={{ color: "var(--color-bt-text-dim)" }} />
+              </Link>
             </div>
 
             {/* Sign out */}
