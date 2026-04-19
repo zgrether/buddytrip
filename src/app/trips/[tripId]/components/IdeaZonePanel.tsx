@@ -24,6 +24,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
+import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { SidebarForStage } from "./SidebarForStage";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
@@ -789,9 +790,15 @@ function IdeaCard({
   );
 }
 
-// ── DeleteConfirmModal ────────────────────────────────────────────────────
+// ── RemoveIdeaModal ──────────────────────────────────────────────────────
+//
+// Owners can either permanently delete an idea or archive it for reuse on a
+// future trip. Archiving snapshots the idea into `archived_ideas` (scoped to
+// the current user) and then removes it from the trip, which matches the
+// user-visible behavior of plain delete — the idea disappears from the trip
+// either way.
 
-function DeleteConfirmModal({
+function RemoveIdeaModal({
   tripId,
   idea,
   onClose,
@@ -802,12 +809,30 @@ function DeleteConfirmModal({
 }) {
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
-  const removeIdea = trpc.ideas.remove.useMutation({
-    onSuccess() {
-      utils.ideas.list.invalidate({ tripId });
-      onClose();
-    },
-  });
+  const removeIdea = trpc.ideas.remove.useMutation();
+  const archiveIdea = trpc.archivedIdeas.archive.useMutation();
+
+  const isPending = removeIdea.isPending || archiveIdea.isPending;
+
+  const handleDelete = async () => {
+    await removeIdea.mutateAsync({ tripId, ideaId: idea.id });
+    await Promise.all([
+      utils.ideas.list.invalidate({ tripId }),
+    ]);
+    onClose();
+  };
+
+  const handleArchive = async () => {
+    // Archive-then-remove: snapshot first so we don't lose the row if the
+    // delete succeeds but archiving fails.
+    await archiveIdea.mutateAsync({ tripId, ideaId: idea.id });
+    await removeIdea.mutateAsync({ tripId, ideaId: idea.id });
+    await Promise.all([
+      utils.ideas.list.invalidate({ tripId }),
+      utils.archivedIdeas.list.invalidate(),
+    ]);
+    onClose();
+  };
 
   return (
     <div
@@ -824,24 +849,34 @@ function DeleteConfirmModal({
           Remove {idea.title}?
         </p>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          This will permanently delete this idea and all its votes.
+          Delete it permanently, or archive it so you can reuse it when planning a future trip.
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <button
-            onClick={onClose}
-            className="flex-1 rounded-lg border py-2.5 text-sm"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+            data-testid="archive-idea-btn"
+            disabled={isPending}
+            onClick={handleArchive}
+            className="rounded-lg py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            Cancel
+            {archiveIdea.isPending ? "Archiving..." : "Archive for future trips"}
           </button>
           <button
             data-testid="confirm-remove-idea-btn"
-            disabled={removeIdea.isPending}
-            onClick={() => removeIdea.mutate({ tripId, ideaId: idea.id })}
-            className="flex-1 rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
+            disabled={isPending}
+            onClick={handleDelete}
+            className="rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
             style={{ background: "var(--color-bt-danger)", color: "#fff" }}
           >
-            {removeIdea.isPending ? "Removing..." : "Yes, remove it"}
+            {removeIdea.isPending && !archiveIdea.isPending ? "Removing..." : "Delete permanently"}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={isPending}
+            className="rounded-lg border py-2.5 text-sm disabled:opacity-40"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Cancel
           </button>
         </div>
       </div>
@@ -900,6 +935,10 @@ export function EmptyStateOnboarding({
   const [locationInput, setLocationInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
+  // Archive-staged IDs are tracked as `arch-<archiveRowId>` (matching the
+  // convention catalog uses — `cat-<catalogId>`). Same Set drives both the
+  // tile checkmark and the "already staged" guard.
+  const [stagedArchivedIds, setStagedArchivedIds] = useState<Set<string>>(new Set());
 
   const createIdea = trpc.ideas.create.useMutation();
 
@@ -924,6 +963,48 @@ export function EmptyStateOnboarding({
         s.delete(catalogId);
         return s;
       });
+    }
+    if (id.startsWith("arch-")) {
+      setStagedArchivedIds((prev) => {
+        const s = new Set(prev);
+        s.delete(id);
+        return s;
+      });
+    }
+  };
+
+  const handleArchivedSelect = (archived: ArchivedIdea) => {
+    const stagedId = `arch-${archived.id}`;
+    const alreadyStaged = localIdeas.some((i) => i.id === stagedId);
+    if (alreadyStaged) {
+      setLocalIdeas((prev) => prev.filter((i) => i.id !== stagedId));
+      setStagedArchivedIds((prev) => {
+        const s = new Set(prev);
+        s.delete(stagedId);
+        return s;
+      });
+    } else {
+      // Importing is a copy — per product spec, archiving creates a
+      // personal snapshot and import clones it into the new trip. The
+      // original archive row stays intact so the user can reuse it on
+      // future trips too.
+      setLocalIdeas((prev) => [
+        ...prev,
+        {
+          id: stagedId,
+          title: archived.title,
+          location: archived.location,
+          description: archived.description,
+          costTier: archived.cost_tier ?? undefined,
+          source: "manual" as const,
+          imageUrl: archived.image_url ?? undefined,
+          golfCourses: archived.golf_courses?.length ? archived.golf_courses : undefined,
+          activities: archived.activities?.length ? archived.activities : undefined,
+          accommodation: archived.accommodation ?? undefined,
+          tips: archived.notes ?? undefined,
+        },
+      ]);
+      setStagedArchivedIds((prev) => new Set([...prev, stagedId]));
     }
   };
 
@@ -1162,7 +1243,17 @@ export function EmptyStateOnboarding({
         </div>
       )}
 
-      {/* ── 2. Catalog browser — renders its own "Destination catalog"
+      {/* ── 2. My archived ideas — rendered only when the user has any.
+             Sits between their own staged list and the shared catalog so
+             the personal archive is the first reuse source they see. ── */}
+      <div className="mt-6">
+        <ArchivedIdeasBrowser
+          onSelect={handleArchivedSelect}
+          selectedIds={stagedArchivedIds}
+        />
+      </div>
+
+      {/* ── 3. Catalog browser — renders its own "Destination catalog"
              header inline with the filter pill (right-justified). ── */}
       <div className="mt-6">
         <CatalogBrowser
@@ -1258,10 +1349,24 @@ function SetDestinationSheet({
     { staleTime: 30_000 }
   );
 
+  // All other ideas on this trip — candidates to archive alongside the
+  // destination lock. The winning idea itself is filtered out.
+  const { data: allIdeas = [] } = trpc.ideas.list.useQuery({ tripId });
+  const otherIdeas = allIdeas.filter((i) => i.id !== idea.id);
+
   // Default: all options checked
   const [checkedIds, setCheckedIds] = useState<Set<string>>(
     () => new Set(lodgingOptions.map((o) => o.id))
   );
+
+  // Archive candidates — default all checked when they first load, matching
+  // the "opt-out" pattern used by lodging carry-over above.
+  const [archiveIds, setArchiveIds] = useState<Set<string>>(new Set());
+  const [archiveInitialised, setArchiveInitialised] = useState(false);
+  if (!archiveInitialised && otherIdeas.length > 0) {
+    setArchiveIds(new Set(otherIdeas.map((i) => i.id)));
+    setArchiveInitialised(true);
+  }
 
   // Update checkedIds when options load (initialises after query resolves)
   const [initialised, setInitialised] = useState(false);
@@ -1274,9 +1379,22 @@ function SetDestinationSheet({
   const advanceToPlanning = trpc.trips.advanceToPlanning.useMutation();
   const unlockDestination = trpc.trips.unlockDestination.useMutation();
   const createLogistics = trpc.logistics.create.useMutation();
+  const archiveIdea = trpc.archivedIdeas.archive.useMutation();
 
   const toggleCheck = (id: string) => {
     setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleArchive = (id: string) => {
+    setArchiveIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -1322,7 +1440,20 @@ function SetDestinationSheet({
         }
       }
 
-      // 3. Advance to planning
+      // 3. Archive losing ideas the owner chose to keep for future trips.
+      //    Best-effort: a failed archive doesn't block the stage advance —
+      //    the losing ideas just won't appear in the archive (they remain
+      //    on the trip, which is the safer default).
+      const toArchive = otherIdeas.filter((i) => archiveIds.has(i.id));
+      if (toArchive.length > 0) {
+        await Promise.allSettled(
+          toArchive.map((i) =>
+            archiveIdea.mutateAsync({ tripId, ideaId: i.id })
+          )
+        );
+      }
+
+      // 4. Advance to planning
       try {
         await advanceToPlanning.mutateAsync({ tripId });
       } catch {
@@ -1334,6 +1465,7 @@ function SetDestinationSheet({
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
       utils.ideas.list.invalidate({ tripId });
+      utils.archivedIdeas.list.invalidate();
       onClose();
     } catch (err) {
       console.error("Failed to set destination:", err);
@@ -1364,6 +1496,59 @@ function SetDestinationSheet({
           <strong style={{ color: "var(--color-bt-text)" }}>{idea.location}</strong>{" "}
           and move the trip to Planning. The crew can start on dates and logistics.
         </p>
+
+        {/* Archive-other-ideas section — same opt-out pattern as lodging
+            carry-over below. Rendered first because archiving is about the
+            trip-level ideas the owner is leaving behind, while lodging is
+            about what rides along to Planning. */}
+        {otherIdeas.length > 0 && (
+          <>
+            <div className="my-4" style={{ borderTop: "1px solid var(--color-bt-border)" }} />
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Archive Ideas
+            </p>
+            <p className="mb-3 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+              Save these for a future trip?
+            </p>
+            <div className="space-y-2 mb-3">
+              {otherIdeas.map((other) => {
+                const isChecked = archiveIds.has(other.id);
+                return (
+                  <button
+                    key={other.id}
+                    type="button"
+                    onClick={() => toggleArchive(other.id)}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                    style={{ background: "var(--color-bt-card-raised)" }}
+                  >
+                    <div
+                      className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded"
+                      style={{
+                        background: isChecked ? "var(--color-bt-accent)" : "transparent",
+                        border: isChecked ? "none" : "1.5px solid var(--color-bt-border)",
+                      }}
+                    >
+                      {isChecked && <Check size={10} color="var(--color-bt-base)" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {other.title}
+                      </p>
+                      {other.location && other.location !== other.title && (
+                        <p className="truncate text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {other.location}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mb-4 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Checked ideas will be saved to your personal archive for future trips.
+            </p>
+          </>
+        )}
 
         {/* Lodging carry-over section */}
         {lodgingOptions.length > 0 && (
@@ -1817,7 +2002,7 @@ export default function IdeaZonePanel({
         <AddIdeasModal tripId={tripId} onClose={() => setShowAddModal(false)} />
       )}
       {deleteIdea && (
-        <DeleteConfirmModal
+        <RemoveIdeaModal
           tripId={tripId}
           idea={deleteIdea}
           onClose={() => setDeleteIdea(null)}
