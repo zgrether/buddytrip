@@ -25,26 +25,22 @@ export default function TripNewPage() {
   });
   const createIdea = trpc.ideas.create.useMutation();
 
+  // "I Know Where" path — wired to the inline Create Trip button (only
+  // rendered in known mode) and Enter-key on the name input. The exploring
+  // path goes through handleExploringSubmit below, not here.
   const handleCreate = async () => {
-    if (!hasName) return;
+    if (destinationMode !== "known") return;
+    const destination = destinationText.trim();
+    if (!hasName || !destination) return;
     setError("");
     setIsSubmitting(true);
     const tripId = crypto.randomUUID();
-
-    const isKnown = destinationMode === "known" && destinationText.trim();
-    const isExploring = destinationMode === "exploring";
 
     try {
       await createTrip.mutateAsync({
         id: tripId,
         title: tripName.trim(),
-        ...(isKnown && {
-          lockedDestination: {
-            title: destinationText.trim(),
-            location: destinationText.trim(),
-          },
-        }),
-        comparisonMode: isExploring,
+        lockedDestination: { title: destination, location: destination },
       });
 
       router.replace(`/trips/${tripId}`);
