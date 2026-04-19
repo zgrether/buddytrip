@@ -1,7 +1,7 @@
 // TODO: Move this file to src/app/trips/[tripId]/components/ when compare/ directory is cleaned up.
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Flag, Check, Plus, Loader2, SlidersHorizontal, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -40,7 +40,31 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
   const [expanded, setExpanded] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const LIMIT = 100;
-  const INITIAL_COUNT = 8;
+  const TILE_WIDTH = 160;
+  const GAP = 10; // gap-2.5 = 0.625rem = 10px
+  const INITIAL_ROWS = 2;
+  const INITIAL_FALLBACK = 8;
+
+  // Measure the grid container so we only ever show full rows —
+  // `repeat(auto-fill, 160px)` can leave trailing blank cells if the
+  // raw slice count doesn't match the actual column count.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [columns, setColumns] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const compute = () => {
+      const width = el.clientWidth;
+      if (width <= 0) return;
+      const cols = Math.max(1, Math.floor((width + GAP) / (TILE_WIDTH + GAP)));
+      setColumns(cols);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const hasActiveFilter = activityFilter !== null || budgetFilter !== null;
   const activeFilterSummary = (() => {
@@ -61,8 +85,18 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
       offset: 0,
     });
 
-  const visibleIdeas = expanded ? catalogIdeas : catalogIdeas.slice(0, INITIAL_COUNT);
-  const hasMore = catalogIdeas.length > INITIAL_COUNT;
+  // Initial visible count = full rows only. Before the grid is measured,
+  // fall back to a sensible default; once measured, snap to columns * rows,
+  // further clamped to whole rows of the available dataset so we never
+  // render a half-empty trailing row.
+  const initialCount = columns != null ? columns * INITIAL_ROWS : INITIAL_FALLBACK;
+  const visibleCount = expanded
+    ? columns != null
+      ? Math.floor(catalogIdeas.length / columns) * columns
+      : catalogIdeas.length
+    : Math.min(initialCount, catalogIdeas.length);
+  const visibleIdeas = catalogIdeas.slice(0, visibleCount);
+  const hasMore = catalogIdeas.length > visibleCount;
 
   const resetFilters = () => {
     setActivityFilter(null);
@@ -210,8 +244,9 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
           the compact mobile size and twice as many fit per row. */}
       {!isLoading && catalogIdeas.length > 0 && (
         <div
+          ref={gridRef}
           className="grid gap-2.5 justify-center"
-          style={{ gridTemplateColumns: "repeat(auto-fill, 160px)" }}
+          style={{ gridTemplateColumns: `repeat(auto-fill, ${TILE_WIDTH}px)` }}
         >
           {visibleIdeas.map((idea, index) => {
             const isSelected = selectedIds.has(idea.id);
