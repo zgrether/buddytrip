@@ -973,10 +973,10 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   };
 
   return (
-    <div className={`mx-auto max-w-[896px] px-4 py-8 ${localIdeas.length > 0 ? "pb-24" : ""}`}>
+    <div className="mx-auto max-w-[896px] px-4 py-8">
       {!onClose && (
         <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-          Idea zone
+          Destination Ideas
         </h2>
       )}
       <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -995,7 +995,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
                 className="mb-1.5 block text-xs font-medium"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                Destination name
+                Name
               </label>
               <input
                 id="manual-title"
@@ -1046,7 +1046,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
             className="mt-3 w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            Add idea
+            Add
           </button>
         </div>
 
@@ -1057,7 +1057,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
               className="mb-1.5 text-xs font-medium"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
-              Your list ({localIdeas.length})
+              Your ideas
             </p>
             <ul className="flex flex-col gap-1.5">
               {localIdeas.map((idea) => (
@@ -1112,6 +1112,27 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
                 </li>
               ))}
             </ul>
+
+            {/* Compare / confirm button — lives right under the staged list
+                so it feels like the natural next step instead of floating
+                at the bottom of the screen. */}
+            <button
+              onClick={handleCompare}
+              disabled={isSubmitting}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
+              style={{
+                background: "var(--color-bt-accent)",
+                color: "var(--color-bt-base)",
+              }}
+            >
+              {isSubmitting ? (
+                <><Loader2 size={16} className="animate-spin" /> Saving...</>
+              ) : onClose ? (
+                <>Add to comparison</>
+              ) : (
+                <>Start comparing &rarr;</>
+              )}
+            </button>
           </div>
         ) : (
           <div
@@ -1127,51 +1148,15 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         )}
       </div>
 
-      {/* ── 2. Divider — labels the catalog below ── */}
-      <div className="my-4 flex items-center gap-3">
-        <div className="flex-1" style={{ height: 1, background: "var(--color-bt-border)" }} />
-        <span className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          Destination catalog
-        </span>
-        <div className="flex-1" style={{ height: 1, background: "var(--color-bt-border)" }} />
+      {/* ── 2. Catalog browser — renders its own "Destination catalog"
+             header inline with the filter pill (right-justified). ── */}
+      <div className="mt-6">
+        <CatalogBrowser
+          title="Destination catalog"
+          onSelect={handleCatalogSelect}
+          selectedIds={selectedCatalogIds}
+        />
       </div>
-
-      {/* ── 3. Catalog browser ── */}
-      <CatalogBrowser
-        onSelect={handleCatalogSelect}
-        selectedIds={selectedCatalogIds}
-      />
-
-      {/* ── 4. Sticky compare bar ── */}
-      {localIdeas.length > 0 && (
-        <div
-          className="fixed bottom-0 left-0 right-0 px-4 pt-3"
-          style={{
-            zIndex: 60,
-            paddingBottom: "4.5rem",
-            background: "var(--color-bt-card)",
-            borderTop: "1px solid var(--color-bt-accent-border)",
-            boxShadow: "0 -4px 12px rgba(0,0,0,.08)",
-          }}
-        >
-          <button
-            onClick={handleCompare}
-            disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold shadow-lg transition-opacity disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-              ...(onClose ? {} : { maxWidth: 896, margin: "0 auto" }),
-            }}
-          >
-            {isSubmitting ? (
-              <><Loader2 size={16} className="animate-spin" /> Saving...</>
-            ) : (
-              <>Compare {localIdeas.length} idea{localIdeas.length !== 1 ? "s" : ""} &rarr;</>
-            )}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

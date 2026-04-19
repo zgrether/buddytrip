@@ -11,6 +11,8 @@ import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
 interface CatalogBrowserProps {
   onSelect: (idea: CatalogIdea) => void;
   selectedIds: Set<string>;
+  /** Optional header title rendered inline on the same row as the filter pill (right-justified). */
+  title?: string;
 }
 
 const ACTIVITY_FILTERS = [
@@ -29,7 +31,7 @@ const BUDGET_FILTERS = [
   { label: "$$$$", value: "$$$$" },
 ];
 
-export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
+export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
@@ -80,9 +82,17 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
 
   return (
     <div>
-      {/* Filter summary pill — collapsed by default. Click to expand the
-          chip row so users can drill in without visual clutter. */}
+      {/* Header row — optional title on the left, filter pill right-justified. */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        {title && (
+          <h3
+            className="text-base font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {title}
+          </h3>
+        )}
+        <div className="ml-auto flex items-center gap-2">
         <button
           type="button"
           onClick={() => setFiltersOpen((v) => !v)}
@@ -111,6 +121,7 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
             <X size={12} /> Clear
           </button>
         )}
+        </div>
       </div>
 
       {filtersOpen && (
