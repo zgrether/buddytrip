@@ -978,7 +978,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         Add Destination Ideas
       </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-        Build a list of options, then the crew can discuss and vote. Enter your own ideas here or select as many as you want from the catalog below and we&apos;ll help you compare them.
+        Where are you thinking? Add options from the catalog or enter your own — then poll the crew and compare.
       </p>
 
       {/* ── 1. Manual entry — single row: [Name] [Location] [Add]. Labels
