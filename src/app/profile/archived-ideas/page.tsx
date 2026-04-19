@@ -5,6 +5,7 @@ import { ArrowLeft, Trash2, MapPin, Flag, Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { TopNav } from "@/components/TopNav";
+import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 import { ideaGradient } from "@/lib/temporalGradient";
 
 /**
@@ -18,6 +19,7 @@ export default function ArchivedIdeasPage() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
+  const { notifications, unreadCount, markAllRead } = useGlobalNotifications();
 
   const { data: ideas = [], isLoading } = trpc.archivedIdeas.list.useQuery();
   const removeArchived = trpc.archivedIdeas.remove.useMutation({
@@ -36,7 +38,11 @@ export default function ArchivedIdeasPage() {
 
   return (
     <div className="min-h-screen" style={{ background: "var(--color-bt-base)" }}>
-      <TopNav />
+      <TopNav
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkAllRead={markAllRead}
+      />
       <main className="mx-auto max-w-4xl px-4 py-6">
         <Link
           href="/profile"

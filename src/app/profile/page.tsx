@@ -8,12 +8,14 @@ import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
 import { TopNav } from "@/components/TopNav";
 import { UserAvatar } from "@/components/UserAvatar";
+import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 
 // ── ProfilePage ───────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const { notifications, unreadCount, markAllRead } = useGlobalNotifications();
 
   const { data: me, isLoading } = trpc.users.getMe.useQuery();
 
@@ -109,7 +111,11 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav />
+      <TopNav
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkAllRead={markAllRead}
+      />
 
       <main className="mx-auto max-w-2xl px-4 pb-24 pt-8">
         {isLoading ? (
