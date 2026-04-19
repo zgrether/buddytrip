@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock } from "lucide-react";
+import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { EmptyState } from "@/components/EmptyState";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
 
@@ -213,6 +214,15 @@ interface LodgingPanelProps {
   canEdit: boolean;
   isOpen: boolean;
   onToggle: () => void;
+  /**
+   * When true, renders as a flat Schedule-tab-style section — own
+   * `LODGING` header, explanatory blurb, `+ Add property` button at the
+   * top, no collapsible PlanningRow wrapper. Used during the planning
+   * stage in HomeTab so lodging reads as a primary section rather than
+   * a nested accordion. Non-inline mode (default) keeps the original
+   * PlanningRow behaviour for going/now/past.
+   */
+  inline?: boolean;
 }
 
 export function LodgingPanel({
@@ -220,6 +230,7 @@ export function LodgingPanel({
   canEdit,
   isOpen,
   onToggle,
+  inline = false,
 }: LodgingPanelProps) {
   const utils = trpc.useUtils();
 
@@ -333,6 +344,111 @@ export function LodgingPanel({
   }
 
   const state: ArcCardState = confirmedCount > 0 ? "inProgress" : totalCount > 0 ? "inProgress" : "none";
+
+  // ── Inline variant — Schedule-tab-style section ──────────────────────
+  // Used during the planning stage: no collapsible wrapper, section
+  // header + blurb + add-button-on-top, then the list of properties.
+  if (inline) {
+    return (
+      <>
+        <section>
+          <h2
+            className="mb-2 text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Lodging
+          </h2>
+
+          <p
+            className="mb-3 text-[13px] leading-relaxed"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Drop in the places you&apos;re considering so the crew can
+            compare — links, prices, sleep counts, anything helpful.
+            Confirm the winner once it&apos;s booked and it&apos;ll lock
+            onto the official trip details.
+          </p>
+
+          {canEdit && (
+            <button
+              onClick={() => setShowAddLodging(true)}
+              className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Hotel size={15} />
+              <Plus size={12} /> Property
+            </button>
+          )}
+
+          {lodgingItems.length === 0 ? (
+            <EmptyState
+              icon={<Hotel className="h-10 w-10" />}
+              headline="No properties yet"
+              subtext={
+                canEdit
+                  ? "Add properties to compare places the crew is considering — confirm the winner once it's booked."
+                  : "The organizer hasn't added any properties yet."
+              }
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {lodgingItems.map((item) => (
+                <LodgingCard
+                  key={item.id}
+                  item={item}
+                  canEdit={canEdit}
+                  onEdit={() => setEditingItem(item)}
+                  onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
+                  onConfirmToggle={() =>
+                    item.is_confirmed
+                      ? unconfirmItem.mutate({ tripId, itemId: item.id })
+                      : confirmItem.mutate({ tripId, itemId: item.id })
+                  }
+                  removing={removeItem.isPending}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {showAddLodging && (
+          <AddPropertySheet
+            showAddressAndDates
+            isPending={createItem.isPending}
+            onSubmit={handleCreate}
+            onClose={() => setShowAddLodging(false)}
+          />
+        )}
+
+        {editingItem && (
+          <AddPropertySheet
+            isEditing
+            showAddressAndDates
+            initialValues={{
+              url: editingItem.detail?.startsWith("http") ? editingItem.detail : "",
+              name: (() => {
+                const domain = editingItem.detail?.startsWith("http") ? extractDomainNullable(editingItem.detail) : "";
+                return editingItem.label && editingItem.label !== domain ? editingItem.label : "";
+              })(),
+              sleeps: editingItem.property_name ?? "",
+              price: editingItem.total_price ?? "",
+              notes: editingItem.notes ?? "",
+              address: editingItem.address ?? "",
+              checkIn: editingItem.check_in_time ?? "",
+              checkOut: editingItem.check_out_time ?? "",
+            }}
+            isPending={updateItem.isPending}
+            onSubmit={handleUpdate}
+            onClose={() => setEditingItem(null)}
+          />
+        )}
+      </>
+    );
+  }
 
   // ── Empty state — flat non-collapsible header row ─────────────────────
   if (lodgingItems.length === 0) {

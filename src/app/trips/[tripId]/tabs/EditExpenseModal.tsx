@@ -149,7 +149,7 @@ export function EditExpenseModal({
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Edit Expense
+            Edit Receipt
           </h2>
           <button
             onClick={onClose}
@@ -164,7 +164,7 @@ export function EditExpenseModal({
         <div className="mb-4 space-y-2">
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Expense</label>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Receipt</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}

@@ -39,6 +39,7 @@ export const quickInfoTilesRouter = router({
         label: z.string().min(1).max(100),
         value: z.string().min(1).max(500),
         sortOrder: z.number().int().default(0),
+        isAlert: z.boolean().default(false),
       })
     )
     .use(requireTripRole("Owner"))
@@ -52,6 +53,7 @@ export const quickInfoTilesRouter = router({
           value: input.value,
           created_by: ctx.user!.id,
           sort_order: input.sortOrder,
+          is_alert: input.isAlert,
         })
         .select()
         .single();
@@ -77,6 +79,7 @@ export const quickInfoTilesRouter = router({
         label: z.string().min(1).max(100).optional(),
         value: z.string().min(1).max(500).optional(),
         sortOrder: z.number().int().optional(),
+        isAlert: z.boolean().optional(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -85,6 +88,7 @@ export const quickInfoTilesRouter = router({
       if (input.label !== undefined) update.label = input.label;
       if (input.value !== undefined) update.value = input.value;
       if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
+      if (input.isAlert !== undefined) update.is_alert = input.isAlert;
 
       if (Object.keys(update).length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });

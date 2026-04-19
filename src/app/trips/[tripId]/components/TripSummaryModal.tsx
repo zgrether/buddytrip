@@ -13,6 +13,7 @@ export interface TripSummaryModalProps {
     locked_destination_title?: string | null;
     start_date?: string | null;
     end_date?: string | null;
+    stage?: string | null;
   };
   onClose: () => void;
   onAdvanced: () => void;
@@ -55,6 +56,11 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
   const hasDestination = destination.trim().length > 0;
   const dateRange = formatDateRange(trip.start_date, trip.end_date);
   const crewCount = members.length;
+  // In going stage the modal is a view-only recap — the advance CTA
+  // doesn't apply anymore, and the "lock destination/date" warning is
+  // irrelevant because both are definitionally true by the time we're
+  // here (advanceToGoing enforces them).
+  const alreadyGoing = trip.stage === "going";
 
   // Lodging — logistics_items with type='lodging', split by is_confirmed.
   const lodgingItems = logistics.filter((l) => (l as { type?: string }).type === "lodging");
@@ -121,7 +127,7 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
         </div>
 
         {/* ── Warning — wired back to the rows that need attention ────── */}
-        {(!hasLockedDate || !hasDestination) && (
+        {!alreadyGoing && (!hasLockedDate || !hasDestination) && (
           <div
             className="mt-2 flex items-start gap-3 rounded-xl px-4 py-3"
             style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
@@ -169,22 +175,24 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
           />
         </div>
 
-        <button
-          onClick={handleSend}
-          disabled={advance.isPending || !hasLockedDate}
-          data-testid="trip-summary-send-btn"
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          <Send size={15} />
-          {advance.isPending ? "Sending..." : "Let's Go! 🎉"}
-        </button>
+        {!alreadyGoing && (
+          <button
+            onClick={handleSend}
+            disabled={advance.isPending || !hasLockedDate}
+            data-testid="trip-summary-send-btn"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            <Send size={15} />
+            {advance.isPending ? "Sending..." : "Let's Go! 🎉"}
+          </button>
+        )}
         <button
           onClick={onClose}
           className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Not yet
+          {alreadyGoing ? "Close" : "Not yet"}
         </button>
       </div>
     </div>

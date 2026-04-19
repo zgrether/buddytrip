@@ -988,22 +988,31 @@ export const tripsRouter = router({
     .input(
       z.object({
         tripId: z.string(),
-        stage: z.enum(["idea", "planning", "going", "now", "past", "saved"]),
+        stage: z.enum(["idea", "planning", "going"]),
       })
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({ stage: input.stage })
-        .eq("id", ctx.tripId)
-        .select("id, stage")
-        .single();
+      // Go through the dev_set_trip_stage RPC rather than a direct
+      // UPDATE: migration 029's `enforce_stage_transition` trigger
+      // rejects backward transitions (going → planning, planning →
+      // idea) with an exception, which is what made the reverse
+      // direction of the dev toggle button silently fail. The RPC
+      // bypasses the trigger for this call and also clears the
+      // matching stage_advanced_to_*_at timestamp so downstream UI
+      // (RSVP nudge, etc.) doesn't see stale going-stage state.
+      const { data, error } = await ctx.supabase.rpc("dev_set_trip_stage", {
+        p_trip_id: ctx.tripId,
+        p_stage: input.stage,
+      });
 
       if (error || !data) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to set stage" });
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: error?.message ?? "Failed to set stage",
+        });
       }
 
-      return data;
+      return { id: ctx.tripId, stage: input.stage };
     }),
 });
