@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Calendar } from "lucide-react";
+import { Calendar, CalendarCheck, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, formatDateRangeCompact } from "@/lib/dates";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
@@ -242,7 +242,7 @@ export function DatesPanel({
             <button
               type="button"
               onClick={handleSelectSetSegment}
-              className="flex flex-1 items-center justify-center py-2.5 text-sm font-medium transition-colors"
+              className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors"
               style={
                 mode === "set"
                   ? {
@@ -255,6 +255,7 @@ export function DatesPanel({
                     }
               }
             >
+              <CalendarCheck size={16} />
               Pick your Dates
             </button>
             <div
@@ -278,6 +279,7 @@ export function DatesPanel({
                     }
               }
             >
+              <Users size={16} />
               Poll the Crew
               {pollMode && (
                 <span

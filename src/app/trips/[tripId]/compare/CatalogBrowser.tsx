@@ -1,7 +1,7 @@
 // TODO: Move this file to src/app/trips/[tripId]/components/ when compare/ directory is cleaned up.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Flag, Check, Plus, Loader2, SlidersHorizontal, X, ArrowUpDown } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -87,17 +87,31 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [columns, setColumns] = useState<number | null>(null);
 
+  // Initial measurement runs in useLayoutEffect — React synchronously
+  // re-renders after the setState inside this hook, so the correct
+  // column count is applied before the browser paints. Without this the
+  // modal flashed the 8-tile fallback for one frame at non-standalone
+  // widths (e.g. 5-col modal showing 5 + 3 partial).
+  useLayoutEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const width = el.clientWidth;
+    if (width <= 0) return;
+    const cols = Math.max(1, Math.floor((width + GAP) / (TILE_WIDTH + GAP)));
+    setColumns((prev) => (prev === cols ? prev : cols));
+  });
+
+  // Subscribe to subsequent size changes (window resize, modal open,
+  // sidebar toggle) so we re-snap without remount.
   useEffect(() => {
     const el = gridRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const compute = () => {
+    const ro = new ResizeObserver(() => {
       const width = el.clientWidth;
       if (width <= 0) return;
       const cols = Math.max(1, Math.floor((width + GAP) / (TILE_WIDTH + GAP)));
-      setColumns(cols);
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
+      setColumns((prev) => (prev === cols ? prev : cols));
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);

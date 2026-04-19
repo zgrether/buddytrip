@@ -759,34 +759,28 @@ function IdeaCard({
             />
           )}
 
-          {/* Footer actions */}
-          {(isOwner || canEdit) && (
+          {/* Footer actions — owner only (set destination + remove) */}
+          {isOwner && (
             <div
               className="flex items-center justify-between pt-3"
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
             >
-              {isOwner ? (
-                <button
-                  data-testid={`set-destination-${idea.id}`}
-                  onClick={() => onSetDestination(idea)}
-                  className="text-sm font-medium transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-accent)" }}
-                >
-                  Set as destination
-                </button>
-              ) : (
-                <span />
-              )}
-              {canEdit && (
-                <button
-                  data-testid={`remove-idea-${idea.id}`}
-                  onClick={() => onDelete(idea)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
+              <button
+                data-testid={`set-destination-${idea.id}`}
+                onClick={() => onSetDestination(idea)}
+                className="text-sm font-medium transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                Set as destination
+              </button>
+              <button
+                data-testid={`remove-idea-${idea.id}`}
+                onClick={() => onDelete(idea)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           )}
         </div>
@@ -857,7 +851,7 @@ function DeleteConfirmModal({
 
 // ── LocalIdea ─────────────────────────────────────────────────────────────
 
-interface LocalIdea {
+export interface LocalIdea {
   id: string;
   title: string;
   location: string;
@@ -874,7 +868,31 @@ interface LocalIdea {
 
 // ── EmptyStateOnboarding ─────────────────────────────────────────────────
 
-function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: () => void }) {
+/**
+ * The Add-Destination-Ideas screen. Works in two modes:
+ *  - Existing trip (default): takes `tripId` and writes each staged idea via
+ *    `ideas.create`, then invalidates `ideas.list`.
+ *  - Trip-less (new-trip flow): pass `onSubmit` — the component won't call
+ *    any mutations; it hands the staged list back to the parent which owns
+ *    trip creation + navigation. `tripId` may be omitted in this mode.
+ */
+export function EmptyStateOnboarding({
+  tripId,
+  onClose,
+  onSubmit,
+  className,
+  submitDisabled,
+}: {
+  tripId?: string;
+  onClose?: () => void;
+  onSubmit?: (ideas: LocalIdea[]) => Promise<void> | void;
+  /** Override the default standalone wrapper (`mx-auto max-w-[896px] px-4 py-8`). */
+  className?: string;
+  /** When true, the final "Start comparing / Add to comparison" button is
+   *  disabled even if there are staged ideas. Used by the new-trip flow to
+   *  block submission until the parent trip name is entered. */
+  submitDisabled?: boolean;
+}) {
   const utils = trpc.useUtils();
 
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
@@ -944,6 +962,15 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
     if (localIdeas.length === 0) return;
     setIsSubmitting(true);
     try {
+      // Trip-less mode — hand off the staged list; parent owns trip creation,
+      // idea writes, and navigation. No mutations from here.
+      if (onSubmit) {
+        await onSubmit(localIdeas);
+        return;
+      }
+      if (!tripId) {
+        throw new Error("EmptyStateOnboarding: tripId required when onSubmit is not provided");
+      }
       await Promise.all(
         localIdeas.map((idea) =>
           createIdea.mutateAsync({
@@ -962,7 +989,11 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           })
         )
       );
-      utils.ideas.list.invalidate({ tripId });
+      // Await the refetch before clearing local state. Otherwise the parent's
+      // `ideas.list` query is still returning the stale empty array while we
+      // unmount the staged list, which flashes the empty-state onboarding for
+      // a moment before the populated idea-phase view takes over.
+      await utils.ideas.list.invalidate({ tripId });
       setLocalIdeas([]);
       onClose?.();
     } catch (err) {
@@ -973,14 +1004,12 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   };
 
   return (
-    <div className="mx-auto max-w-[896px] px-4 py-8">
-      {!onClose && (
-        <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-          Destination Ideas
-        </h2>
-      )}
+    <div className={className ?? "mx-auto max-w-[896px] px-4 py-8"}>
+      <h2 className="mb-1 text-lg font-bold" style={{ color: "var(--color-bt-text)" }}>
+        Add Destination Ideas
+      </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-        Build a list of options, then the crew can discuss and vote. Enter your own ideas here or select as many as you want from the catalog below and we&apos;ll help you compare them.
+        Add options from the catalog or enter your own, compare them side by side, and let the crew pick their favorite.
       </p>
 
       {/* ── 1. Manual entry — single row: [Name] [Location] [Add]. Labels
@@ -1039,7 +1068,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
         </div>
         <button
           onClick={handleAddManual}
-          disabled={!titleInput.trim()}
+          disabled={!titleInput.trim() || !locationInput.trim()}
           className="rounded-lg px-5 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
           style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
@@ -1115,7 +1144,7 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           {/* Compare / confirm button — lives right under the staged list. */}
           <button
             onClick={handleCompare}
-            disabled={isSubmitting}
+            disabled={isSubmitting || submitDisabled}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity disabled:opacity-40"
             style={{
               background: "var(--color-bt-accent)",
@@ -1160,7 +1189,7 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
         onClick={onClose}
       >
         <div
-          className="flex w-full max-h-[90vh] flex-col rounded-t-2xl overflow-hidden"
+          className="relative flex w-full max-h-[90vh] flex-col rounded-t-2xl overflow-hidden"
           style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1168,18 +1197,14 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
           <div className="flex justify-center pt-3 pb-2 shrink-0">
             <div className="h-1 w-8 rounded-full" style={{ background: "var(--color-bt-border)" }} />
           </div>
-          <div className="flex items-center justify-between px-5 pb-0 shrink-0">
-            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Add destination ideas
-            </p>
-            <button
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <X size={16} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={16} />
+          </button>
           <div className="overflow-y-auto">
             <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
           </div>
@@ -1193,22 +1218,18 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
         onClick={onClose}
       >
         <div
-          className="w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
+          className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl"
           style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-5 pt-4 pb-0">
-            <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Add destination ideas
-            </p>
-            <button
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <X size={16} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={16} />
+          </button>
           <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
         </div>
       </div>
@@ -1708,15 +1729,17 @@ export default function IdeaZonePanel({
   ).length;
 
   if (ideasTyped.length === 0) {
-    if (!canEdit) {
+    if (!isOwner) {
+      const ownerName =
+        members.find((m) => m.role === "owner")?.displayName ?? "The owner";
       return (
         <div className="flex flex-col items-center justify-center py-20 text-center px-4">
           <MapPin size={36} className="mb-4" style={{ color: "var(--color-bt-border)" }} />
           <p className="mb-1 text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
             No destination ideas yet
           </p>
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            Waiting for a planner to add ideas.
+          <p className="max-w-xs text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {ownerName} is going to add some ideas for you all to discuss — check back later.
           </p>
         </div>
       );
@@ -1819,9 +1842,9 @@ export default function IdeaZonePanel({
           width: "3rem",
         }}
       >
-        {canEdit ? (
+        {isOwner ? (
           <>
-            {/* Add idea — top */}
+            {/* Add idea — top (owner only) */}
             <button
               onClick={() => setShowAddModal(true)}
               className="flex h-12 w-12 items-center justify-center gap-0.5 transition-colors active:scale-95"
@@ -1841,7 +1864,7 @@ export default function IdeaZonePanel({
           onClick={onOpenChat}
           data-testid="floating-chat-btn"
           className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-          style={{ borderRadius: canEdit ? "0" : "1rem 1rem 0 0" }}
+          style={{ borderRadius: isOwner ? "0" : "1rem 1rem 0 0" }}
           aria-label="Open crew chat"
         >
           <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
