@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useTheme } from "next-themes";
-import { MapPin, Flag, Check, Plus, Loader2 } from "lucide-react";
+import { MapPin, Flag, Check, Plus, Loader2, SlidersHorizontal, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ideaGradient } from "@/lib/temporalGradient";
 import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
@@ -36,8 +36,20 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
   const [activityFilter, setActivityFilter] = useState<string | null>(null);
   const [budgetFilter, setBudgetFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const LIMIT = 100;
   const INITIAL_COUNT = 8;
+
+  const hasActiveFilter = activityFilter !== null || budgetFilter !== null;
+  const activeFilterSummary = (() => {
+    const parts: string[] = [];
+    if (activityFilter) {
+      const label = ACTIVITY_FILTERS.find((f) => f.value === activityFilter)?.label;
+      if (label) parts.push(label);
+    }
+    if (budgetFilter) parts.push(budgetFilter);
+    return parts.length > 0 ? parts.join(" · ") : "All destinations";
+  })();
 
   const { data: catalogIdeas = [], isLoading } =
     trpc.ideas.catalogList.useQuery({
@@ -68,58 +80,90 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
 
   return (
     <div>
-      {/* Filter chips — the intro heading and helper copy live in the
-          parent (EmptyStateOnboarding) so the catalog imagery stays near
-          the top of the modal. */}
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-3">
-        {ACTIVITY_FILTERS.map((f) => (
-          <button
-            key={f.label}
-            onClick={() => handleFilterActivity(f.value)}
-            className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
-            style={{
-              background:
-                activityFilter === f.value
-                  ? "var(--color-bt-accent)"
-                  : "var(--color-bt-dim-faint)",
-              color:
-                activityFilter === f.value
-                  ? "var(--color-bt-base)"
-                  : "var(--color-bt-text-dim)",
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-
-        {/* Divider */}
-        <span
-          className="shrink-0 self-center text-xs"
-          style={{ color: "var(--color-bt-text-dim)" }}
+      {/* Filter summary pill — collapsed by default. Click to expand the
+          chip row so users can drill in without visual clutter. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((v) => !v)}
+          className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+          style={{
+            background: hasActiveFilter
+              ? "var(--color-bt-accent)"
+              : "var(--color-bt-dim-faint)",
+            color: hasActiveFilter
+              ? "var(--color-bt-base)"
+              : "var(--color-bt-text-dim)",
+          }}
+          aria-expanded={filtersOpen}
         >
-          ·
-        </span>
-
-        {BUDGET_FILTERS.map((f) => (
+          <SlidersHorizontal size={12} />
+          <span>{activeFilterSummary}</span>
+        </button>
+        {hasActiveFilter && (
           <button
-            key={f.label}
-            onClick={() => handleFilterBudget(f.value)}
-            className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
-            style={{
-              background:
-                budgetFilter === f.value
-                  ? "var(--color-bt-accent)"
-                  : "var(--color-bt-dim-faint)",
-              color:
-                budgetFilter === f.value
-                  ? "var(--color-bt-base)"
-                  : "var(--color-bt-text-dim)",
-            }}
+            type="button"
+            onClick={resetFilters}
+            className="flex items-center gap-1 text-xs"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Clear filters"
           >
-            {f.label}
+            <X size={12} /> Clear
           </button>
-        ))}
+        )}
       </div>
+
+      {filtersOpen && (
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-3">
+          {ACTIVITY_FILTERS.map((f) => (
+            <button
+              key={f.label}
+              onClick={() => handleFilterActivity(f.value)}
+              className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+              style={{
+                background:
+                  activityFilter === f.value
+                    ? "var(--color-bt-accent)"
+                    : "var(--color-bt-dim-faint)",
+                color:
+                  activityFilter === f.value
+                    ? "var(--color-bt-base)"
+                    : "var(--color-bt-text-dim)",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+
+          {/* Divider */}
+          <span
+            className="shrink-0 self-center text-xs"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            ·
+          </span>
+
+          {BUDGET_FILTERS.map((f) => (
+            <button
+              key={f.label}
+              onClick={() => handleFilterBudget(f.value)}
+              className="flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+              style={{
+                background:
+                  budgetFilter === f.value
+                    ? "var(--color-bt-accent)"
+                    : "var(--color-bt-dim-faint)",
+                color:
+                  budgetFilter === f.value
+                    ? "var(--color-bt-base)"
+                    : "var(--color-bt-text-dim)",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Loading */}
       {isLoading && (
@@ -154,7 +198,10 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
       {/* Responsive grid — 2 cols on mobile, 4 on desktop so cards stay
           the compact mobile size and twice as many fit per row. */}
       {!isLoading && catalogIdeas.length > 0 && (
-        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <div
+          className="grid gap-2.5 justify-center"
+          style={{ gridTemplateColumns: "repeat(auto-fill, 160px)" }}
+        >
           {visibleIdeas.map((idea, index) => {
             const isSelected = selectedIds.has(idea.id);
             return (
@@ -261,32 +308,19 @@ export function CatalogBrowser({ onSelect, selectedIds }: CatalogBrowserProps) {
         </div>
       )}
 
-      {/* Expand / collapse */}
-      {!isLoading && hasMore && (
+      {/* Expand — once opened, stays open (no "show less") */}
+      {!isLoading && hasMore && !expanded && (
         <div className="mt-3 flex justify-center">
-          {!expanded ? (
-            <button
-              onClick={() => setExpanded(true)}
-              className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-              style={{
-                background: "var(--color-bt-dim-faint)",
-                color: "var(--color-bt-text)",
-              }}
-            >
-              Show all {catalogIdeas.length} destinations ↓
-            </button>
-          ) : (
-            <button
-              onClick={() => setExpanded(false)}
-              className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-              style={{
-                background: "var(--color-bt-dim-faint)",
-                color: "var(--color-bt-text)",
-              }}
-            >
-              Show less ↑
-            </button>
-          )}
+          <button
+            onClick={() => setExpanded(true)}
+            className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+            style={{
+              background: "var(--color-bt-dim-faint)",
+              color: "var(--color-bt-text)",
+            }}
+          >
+            Show all {catalogIdeas.length} destinations ↓
+          </button>
         </div>
       )}
     </div>

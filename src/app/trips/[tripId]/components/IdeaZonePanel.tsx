@@ -878,20 +878,35 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   const utils = trpc.useUtils();
 
   const [localIdeas, setLocalIdeas] = useState<LocalIdea[]>([]);
-  const [destInput, setDestInput] = useState("");
+  const [titleInput, setTitleInput] = useState("");
+  const [locationInput, setLocationInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
 
   const createIdea = trpc.ideas.create.useMutation();
 
   const handleAddManual = () => {
-    const t = destInput.trim();
-    if (!t) return;
+    const title = titleInput.trim();
+    const location = locationInput.trim();
+    if (!title) return;
     setLocalIdeas((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), title: t, location: t, source: "manual" },
+      { id: crypto.randomUUID(), title, location: location || title, source: "manual" },
     ]);
-    setDestInput("");
+    setTitleInput("");
+    setLocationInput("");
+  };
+
+  const handleRemoveStaged = (id: string) => {
+    setLocalIdeas((prev) => prev.filter((i) => i.id !== id));
+    if (id.startsWith("cat-")) {
+      const catalogId = id.slice(4);
+      setSelectedCatalogIds((prev) => {
+        const s = new Set(prev);
+        s.delete(catalogId);
+        return s;
+      });
+    }
   };
 
   const handleCatalogSelect = (catalogIdea: CatalogIdea) => {
@@ -960,54 +975,163 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
   return (
     <div className={`mx-auto max-w-[896px] px-4 py-8 ${localIdeas.length > 0 ? "pb-24" : ""}`}>
       {!onClose && (
-        <>
-          <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-            Idea zone
-          </h2>
-          <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            Build a list of options, then the crew can discuss and vote.
-          </p>
-        </>
+        <h2 className="mb-1 text-xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Idea zone
+        </h2>
       )}
+      <p className="mb-6 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+        Build a list of options, then the crew can discuss and vote. Enter your own ideas here or select as many as you want from the catalog below and we&apos;ll help you compare them.
+      </p>
 
-      {/* ── 1. Manual add — top so people who already know where they
-             want to go can drop it in without scrolling past the catalog ── */}
-      <div>
-        <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-          Add your own idea
-        </p>
-        <div className="flex gap-2">
-          <input
-            value={destInput}
-            onChange={(e) => setDestInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); handleAddManual(); }
-            }}
-            placeholder="Destination name"
-            maxLength={500}
-            className="flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
-            style={{
-              background: "var(--color-bt-card)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
+      {/* ── 1. Top section: manual entry (left) + staged ideas list (right).
+             Stacks on mobile, 2 cols on lg+. ── */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Manual add form */}
+        <div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="manual-title"
+                className="mb-1.5 block text-xs font-medium"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Destination name
+              </label>
+              <input
+                id="manual-title"
+                value={titleInput}
+                onChange={(e) => setTitleInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); handleAddManual(); }
+                }}
+                placeholder="Trip Down Magnolia Lane"
+                maxLength={500}
+                className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                style={{
+                  background: "var(--color-bt-card)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="manual-location"
+                className="mb-1.5 block text-xs font-medium"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                City, State
+              </label>
+              <input
+                id="manual-location"
+                value={locationInput}
+                onChange={(e) => setLocationInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); handleAddManual(); }
+                }}
+                placeholder="Augusta, GA"
+                maxLength={500}
+                className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-1"
+                style={{
+                  background: "var(--color-bt-card)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+            </div>
+          </div>
           <button
             onClick={handleAddManual}
-            disabled={!destInput.trim()}
-            className="rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
+            disabled={!titleInput.trim()}
+            className="mt-3 w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            Add
+            Add idea
           </button>
         </div>
+
+        {/* Staged ideas list */}
+        {localIdeas.length > 0 ? (
+          <div>
+            <p
+              className="mb-1.5 text-xs font-medium"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Your list ({localIdeas.length})
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {localIdeas.map((idea) => (
+                <li
+                  key={idea.id}
+                  className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    border: "1px solid var(--color-bt-border)",
+                  }}
+                >
+                  {idea.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={idea.imageUrl}
+                      alt=""
+                      className="h-8 w-8 flex-shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded"
+                      style={{ background: "var(--color-bt-dim-faint)" }}
+                    >
+                      <MapPin size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="truncate text-sm font-medium"
+                      style={{ color: "var(--color-bt-text)" }}
+                    >
+                      {idea.title}
+                    </p>
+                    {idea.location && idea.location !== idea.title && (
+                      <p
+                        className="truncate text-[11px]"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        {idea.location}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveStaged(idea.id)}
+                    className="flex-shrink-0 rounded p-1 transition-opacity hover:opacity-70"
+                    aria-label={`Remove ${idea.title}`}
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    <X size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div
+            className="hidden lg:flex items-center justify-center rounded-lg border border-dashed text-xs"
+            style={{
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text-dim)",
+              minHeight: 120,
+            }}
+          >
+            Your added ideas will appear here.
+          </div>
+        )}
       </div>
 
-      {/* ── 2. "or" divider — signals the catalog as the alternate path ── */}
+      {/* ── 2. Divider — labels the catalog below ── */}
       <div className="my-4 flex items-center gap-3">
         <div className="flex-1" style={{ height: 1, background: "var(--color-bt-border)" }} />
         <span className="text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          or pick from the catalog
+          Destination catalog
         </span>
         <div className="flex-1" style={{ height: 1, background: "var(--color-bt-border)" }} />
       </div>
