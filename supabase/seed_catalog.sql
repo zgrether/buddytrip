@@ -114,7 +114,7 @@ VALUES
     'Amelia Island Getaway',
     'Amelia Island, FL',
     'A Florida barrier island with a real small-town feel, excellent golf, and none of the crowded tourist traps. The Ritz-Carlton courses are top-tier, and the Fernandina Beach historic district is charming. Florida weather makes this a great winter escape.',
-    'https://images.unsplash.com/photo-1661793275924-0fad016a273?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80',
     '$$$',
     ARRAY['golf', 'beach'],
     ARRAY['guys_trip', 'any'],

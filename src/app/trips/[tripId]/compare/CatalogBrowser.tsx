@@ -85,16 +85,24 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
       offset: 0,
     });
 
-  // Initial visible count = full rows only. Before the grid is measured,
-  // fall back to a sensible default; once measured, snap to columns * rows,
-  // further clamped to whole rows of the available dataset so we never
-  // render a half-empty trailing row.
-  const initialCount = columns != null ? columns * INITIAL_ROWS : INITIAL_FALLBACK;
-  const visibleCount = expanded
-    ? columns != null
-      ? Math.floor(catalogIdeas.length / columns) * columns
-      : catalogIdeas.length
-    : Math.min(initialCount, catalogIdeas.length);
+  // Visible count = full rows only. The bug we're avoiding: with
+  // auto-fill, column count varies by width, so a hard-coded slice can
+  // leave a partial trailing row right above "Show all" that looks like
+  // missing tiles. Always floor the collapsed count to a multiple of
+  // columns; expanded view shows the full dataset (the real last row
+  // may be partial, but that's expected when you've asked for all).
+  let visibleCount: number;
+  if (expanded) {
+    visibleCount = catalogIdeas.length;
+  } else if (columns != null) {
+    const target = Math.min(columns * INITIAL_ROWS, catalogIdeas.length);
+    // Floor to whole rows. If we don't even have one full row, just show what's there.
+    visibleCount =
+      target < columns ? target : Math.floor(target / columns) * columns;
+  } else {
+    // Pre-measurement fallback — intentionally small; resnaps on first RO tick.
+    visibleCount = Math.min(INITIAL_FALLBACK, catalogIdeas.length);
+  }
   const visibleIdeas = catalogIdeas.slice(0, visibleCount);
   const hasMore = catalogIdeas.length > visibleCount;
 
