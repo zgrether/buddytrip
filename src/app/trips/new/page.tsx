@@ -143,7 +143,7 @@ export default function TripNewPage() {
             className="mb-1.5 block text-xl font-bold"
             style={{ color: "var(--color-bt-text)" }}
           >
-            Trip name
+            Name your trip:
           </label>
           <input
             id="trip-name"
