@@ -962,7 +962,11 @@ function EmptyStateOnboarding({ tripId, onClose }: { tripId: string; onClose?: (
           })
         )
       );
-      utils.ideas.list.invalidate({ tripId });
+      // Await the refetch before clearing local state. Otherwise the parent's
+      // `ideas.list` query is still returning the stale empty array while we
+      // unmount the staged list, which flashes the empty-state onboarding for
+      // a moment before the populated idea-phase view takes over.
+      await utils.ideas.list.invalidate({ tripId });
       setLocalIdeas([]);
       onClose?.();
     } catch (err) {
