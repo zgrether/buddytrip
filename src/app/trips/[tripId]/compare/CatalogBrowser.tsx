@@ -40,7 +40,12 @@ const SORT_OPTIONS: { key: SortKey; dir: SortDir; label: string }[] = [
   { key: "state", dir: "desc", label: "State (Z–A)" },
 ];
 
-/** Parse the trailing state/region segment from a "City, ST" location string. */
+/**
+ * Parse the trailing state/region segment from a "City, ST" location string.
+ * If there's no comma (e.g. "Southeast", "Pacific Northwest"), fall back
+ * to the trimmed whole string so the entry still sorts cleanly — it just
+ * ranks by its own name among the real state codes.
+ */
 function extractState(location: string): string {
   const parts = location.split(",").map((s) => s.trim()).filter(Boolean);
   return parts.length > 1 ? parts[parts.length - 1] : location.trim();
