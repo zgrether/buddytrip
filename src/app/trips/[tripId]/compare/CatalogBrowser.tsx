@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { MapPin, Flag, Check, Plus, Loader2, SlidersHorizontal, X } from "lucide-react";
+import { MapPin, Flag, Check, Plus, Loader2, SlidersHorizontal, X, ArrowUpDown } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ideaGradient } from "@/lib/temporalGradient";
 import type { CatalogIdea } from "@/app/trips/[tripId]/tabs/types";
@@ -31,6 +31,21 @@ const BUDGET_FILTERS = [
   { label: "$$$$", value: "$$$$" },
 ];
 
+type SortKey = "name" | "state";
+type SortDir = "asc" | "desc";
+const SORT_OPTIONS: { key: SortKey; dir: SortDir; label: string }[] = [
+  { key: "name", dir: "asc", label: "Name (A–Z)" },
+  { key: "name", dir: "desc", label: "Name (Z–A)" },
+  { key: "state", dir: "asc", label: "State (A–Z)" },
+  { key: "state", dir: "desc", label: "State (Z–A)" },
+];
+
+/** Parse the trailing state/region segment from a "City, ST" location string. */
+function extractState(location: string): string {
+  const parts = location.split(",").map((s) => s.trim()).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : location.trim();
+}
+
 export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -39,6 +54,22 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
   const [budgetFilter, setBudgetFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the sort menu on outside click.
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setSortOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [sortOpen]);
   const LIMIT = 100;
   const TILE_WIDTH = 160;
   const GAP = 10; // gap-2.5 = 0.625rem = 10px
@@ -77,13 +108,32 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
     return parts.length > 0 ? parts.join(" · ") : "All destinations";
   })();
 
-  const { data: catalogIdeas = [], isLoading } =
+  const { data: rawCatalogIdeas = [], isLoading } =
     trpc.ideas.catalogList.useQuery({
       categories: activityFilter ? [activityFilter] : undefined,
       costTier: budgetFilter ?? undefined,
       limit: LIMIT,
       offset: 0,
     });
+
+  // Sort client-side — dataset is bounded (≤ LIMIT) and sort keys are
+  // cheap strings, so no need to push this down to the server.
+  const catalogIdeas = (() => {
+    const sorted = [...rawCatalogIdeas].sort((a, b) => {
+      const av = sortKey === "name" ? a.title : extractState(a.location);
+      const bv = sortKey === "name" ? b.title : extractState(b.location);
+      const cmp = av.localeCompare(bv, undefined, { sensitivity: "base" });
+      // Tiebreak state sort by title so in-state destinations stay grouped alphabetically.
+      if (cmp === 0 && sortKey === "state") {
+        return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+      }
+      return cmp;
+    });
+    return sortDir === "desc" ? sorted.reverse() : sorted;
+  })();
+
+  const currentSortLabel =
+    SORT_OPTIONS.find((o) => o.key === sortKey && o.dir === sortDir)?.label ?? "Sort";
 
   // Visible count = full rows only. The bug we're avoiding: with
   // auto-fill, column count varies by width, so a hard-coded slice can
@@ -135,6 +185,59 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
           </h3>
         )}
         <div className="ml-auto flex items-center gap-2">
+        {/* Sort dropdown — compact pill with a popover menu. */}
+        <div className="relative" ref={sortMenuRef}>
+          <button
+            type="button"
+            onClick={() => setSortOpen((v) => !v)}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors"
+            style={{
+              background: "var(--color-bt-dim-faint)",
+              color: "var(--color-bt-text-dim)",
+            }}
+            aria-expanded={sortOpen}
+            aria-haspopup="menu"
+          >
+            <ArrowUpDown size={12} />
+            <span>{currentSortLabel}</span>
+          </button>
+          {sortOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 z-20 mt-1 min-w-[160px] overflow-hidden rounded-lg shadow-lg"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              {SORT_OPTIONS.map((opt) => {
+                const active = opt.key === sortKey && opt.dir === sortDir;
+                return (
+                  <button
+                    key={`${opt.key}-${opt.dir}`}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => {
+                      setSortKey(opt.key);
+                      setSortDir(opt.dir);
+                      setSortOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors"
+                    style={{
+                      background: active ? "var(--color-bt-dim-faint)" : "transparent",
+                      color: active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                      fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    <span>{opt.label}</span>
+                    {active && <Check size={12} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => setFiltersOpen((v) => !v)}
