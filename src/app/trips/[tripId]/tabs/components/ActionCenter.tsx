@@ -11,6 +11,7 @@ export interface ActionCenterProps {
   isOwner: boolean;
   canEdit: boolean;
   onTabChange?: (tab: string) => void;
+  onWriteInvitation?: () => void;
 }
 
 /**
@@ -27,7 +28,7 @@ export interface ActionCenterProps {
  * DatesPanel is removed from PlanningSection; it lives here exclusively.
  * Future cards (RsvpCard, TravelCard) slot in alongside the dates surface.
  */
-export function ActionCenter({ trip, isOwner, canEdit, onTabChange }: ActionCenterProps) {
+export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvitation }: ActionCenterProps) {
   const stage = trip.stage ?? "idea";
   if (stage !== "idea" && stage !== "planning" && stage !== "going") return null;
 
@@ -46,7 +47,7 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange }: ActionCent
         >
           Action Center
         </p>
-        <RsvpActionCard tripId={trip.id} />
+        <RsvpActionCard trip={trip} isOwner={isOwner} onWriteInvitation={onWriteInvitation} />
       </section>
     );
   }

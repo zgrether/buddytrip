@@ -25,6 +25,7 @@ import { ChatDrawer } from "./components/ChatDrawer";
 import { STAGE_CONTENT } from "./components/StageContextBar";
 import { QuickInfoSection } from "./components/QuickInfoSection";
 import { TripSummaryModal } from "./components/TripSummaryModal";
+import { TripInvitationModal } from "./components/TripInvitationModal";
 import { TwoColumnLayout } from "./components/TwoColumnLayout";
 import { SidebarForStage } from "./components/SidebarForStage";
 import { QuickInfoDrawer } from "./components/QuickInfoSection";
@@ -39,6 +40,7 @@ export default function TripDetailPage() {
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showHelpSheet, setShowHelpSheet] = useState(false);
   const [showInvitationModal, setShowInvitationModal] = useState(false);
+  const [showWriteInvitationModal, setShowWriteInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const [showQuickInfoDrawer, setShowQuickInfoDrawer] = useState(false);
@@ -362,6 +364,7 @@ export default function TripDetailPage() {
                     onTabChange={(tab) => setActiveTab(tab as TabId)}
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                     onOpenChat={() => setShowChatDrawer(true)}
+                    onWriteInvitation={() => setShowWriteInvitationModal(true)}
                   />
                 )}
                 {activeTab === "schedule" && (
@@ -412,6 +415,15 @@ export default function TripDetailPage() {
           trip={trip}
           onClose={() => setShowInvitationModal(false)}
           onAdvanced={() => setShowInvitationModal(false)}
+        />
+      )}
+
+      {/* ── Trip Invitation modal (going-stage owner write-invitation CTA) ── */}
+      {showWriteInvitationModal && trip && (
+        <TripInvitationModal
+          tripId={tripId}
+          trip={trip}
+          onClose={() => setShowWriteInvitationModal(false)}
         />
       )}
 

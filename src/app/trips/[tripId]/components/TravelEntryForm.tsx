@@ -97,7 +97,7 @@ export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFo
     }
 
     return (
-      <div className="mt-3 flex items-center gap-2">
+      <div className="flex items-center gap-2">
         {currentTravel?.travel_mode === "flying" ? (
           <Plane size={14} style={{ color: "var(--color-bt-accent)" }} />
         ) : (
@@ -120,19 +120,7 @@ export function TravelEntryForm({ tripId, currentTravel, onSave }: TravelEntryFo
 
   // Edit form
   return (
-    <div className="mt-4">
-      <div
-        className="mb-3"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
-      />
-      <p
-        className="mb-2 text-[13px] leading-relaxed"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        You said you&apos;re in — can you share your travel plans so the crew
-        can coordinate?
-      </p>
-
+    <div>
       {/* Travel mode pills */}
       <p
         className="mb-1.5 text-xs font-medium"

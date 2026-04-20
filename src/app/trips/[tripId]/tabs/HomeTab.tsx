@@ -12,7 +12,6 @@ import { getTripStatus } from "@/components/StatusBadge";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ActionCenter } from "./components/ActionCenter";
-import { TravelPanel } from "../components/TravelPanel";
 import { ItineraryPanel } from "../components/ItineraryPanel";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
@@ -288,33 +287,6 @@ function CompetitionPanel({
   return null;
 }
 
-// ── Travel Section ───────────────────────────────────────────────────────
-// Was PlanningSection, used to hold Lodging + Travel. Lodging moved to
-// its own tab; this now just wraps the Travel panel with a section
-// header. Only rendered in going/now/past.
-
-function TravelSection({ trip }: { trip: TripData }) {
-  const [travelOpen, setTravelOpen] = useState(false);
-
-  return (
-    <section className="space-y-2">
-      <p
-        className="text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Travel
-      </p>
-
-      <TravelPanel
-        tripId={trip.id}
-        isOpen={travelOpen}
-        onToggle={() => setTravelOpen((v) => !v)}
-      />
-    </section>
-  );
-}
-
-
 // ── HomeTab ──────────────────────────────────────────────────────────────
 
 export function HomeTab({
@@ -324,15 +296,13 @@ export function HomeTab({
   onTabChange,
   onEnableComp,
   onOpenChat,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void }) {
+  onWriteInvitation,
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onWriteInvitation?: () => void }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
 
   const status = getTripStatus(trip);
   const _isCompleted = status === "past";
-  const isLocked = !!trip.locked_destination_title;
-  const _isExploring = !!trip.comparison_mode && !isLocked;
-  const isBlank = !trip.comparison_mode && !isLocked;
   const stage = trip.stage ?? "idea";
 
   // IDEA stage: render IdeaZonePanel only — no planning rows
@@ -355,7 +325,7 @@ export function HomeTab({
       {/*    the RSVP card. Rendered first so it stays visible        ── */}
       {/*    above the itinerary once the trip is going.              ── */}
       {(stage === "idea" || stage === "planning" || stage === "going") && (
-        <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} />
+        <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} onWriteInvitation={onWriteInvitation} />
       )}
 
       {/* ── Itinerary panel — read-only confirmed-only timeline ── */}
@@ -373,12 +343,7 @@ export function HomeTab({
       {/*    Schedule). Home deliberately doesn't render it anymore so ── */}
       {/*    the main flow stays focused on status + itinerary.        ── */}
 
-      {/* ── GOING/NOW: Travel section — logistics stays editable ── */}
-      {(stage === "going" || status === "now" || status === "past") && (isBlank || isLocked) && (
-        <TravelSection trip={trip} />
-      )}
-
-      {/* Competition panel — only in READY stage and beyond */}
+{/* Competition panel — only in READY stage and beyond */}
       {stage !== "idea" && stage !== "planning" && (
         <CompetitionPanel
           trip={trip}

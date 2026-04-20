@@ -4,8 +4,8 @@ import { Check, Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 
 export interface ActionCardProps {
-  icon: ReactNode;
-  title: string;
+  icon?: ReactNode;
+  title?: string;
   subtitle?: string;
   isResolved: boolean;
   resolvedSummary?: string;
@@ -94,37 +94,41 @@ export function ActionCard({
         boxShadow: "var(--shadow-raised)",
       }}
     >
-      <div
-        className="flex items-center gap-2.5 px-4 py-3.5"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <span
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            color: "var(--color-bt-accent)",
-          }}
+      {title && (
+        <div
+          className="flex items-center gap-2.5 px-4 py-3.5"
+          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
         >
-          {icon}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-[14px] font-semibold leading-tight"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {title}
-          </p>
-          {subtitle && (
-            <p
-              className="truncate text-[12px]"
-              style={{ color: "var(--color-bt-text-dim)" }}
+          {icon && (
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-accent)",
+              }}
             >
-              {subtitle}
-            </p>
+              {icon}
+            </span>
           )}
+          <div className="min-w-0 flex-1">
+            <p
+              className="text-[14px] font-semibold leading-tight"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {title}
+            </p>
+            {subtitle && (
+              <p
+                className="truncate text-[12px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {subtitle}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="px-4 pb-4 pt-3">{children}</div>
+      )}
+      <div className="px-4 pb-4 pt-4">{children}</div>
     </div>
   );
 }
