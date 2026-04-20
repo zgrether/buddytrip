@@ -835,6 +835,46 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // updateActionCenterSettings — Owner/Planner toggles RSVP / Travel collection
+  // on the going-stage Action Center. Each toggle is an opt-in: false means
+  // the corresponding section doesn't render at all.
+  // -----------------------------------------------------------------------
+  updateActionCenterSettings: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        rsvpEnabled: z.boolean().optional(),
+        travelEnabled: z.boolean().optional(),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const update: Record<string, unknown> = {};
+      if (input.rsvpEnabled !== undefined) update.rsvp_enabled = input.rsvpEnabled;
+      if (input.travelEnabled !== undefined) update.travel_enabled = input.travelEnabled;
+
+      if (Object.keys(update).length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No settings to update" });
+      }
+
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update(update)
+        .eq("id", ctx.tripId)
+        .select("id, rsvp_enabled, travel_enabled")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update Action Center settings",
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
   // updateAboutMessage — Owner/Planner can update about_message on a GOING+ trip
   // -----------------------------------------------------------------------
   updateAboutMessage: authedProcedure
