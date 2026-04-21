@@ -30,6 +30,8 @@ export interface SidebarForStageProps {
   /** Called when the user clicks "Add destination idea" (idea stage only). */
   onAddIdea?: () => void;
 
+  /** Opens the full-width ChatDrawer from the sidebar's expand icon. */
+  onExpandChat?: () => void;
 }
 
 /**
@@ -49,6 +51,7 @@ export function SidebarForStage({
   members,
   allVoterIds,
   onAddIdea,
+  onExpandChat,
 }: SidebarForStageProps) {
   return (
     <>
@@ -82,7 +85,7 @@ export function SidebarForStage({
       )}
 
       {/* Chat is universal across stages. */}
-      <SidebarChatPanel tripId={tripId} memberNames={memberNames} />
+      <SidebarChatPanel tripId={tripId} memberNames={memberNames} onExpand={onExpandChat} />
     </>
   );
 }

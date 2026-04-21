@@ -224,67 +224,69 @@ export default function TripDetailPage() {
         onMarkAllRead={() => markAllRead.mutate({ tripId })}
       />
 
-      {/* ── Trip header card ──────────────────────────────────────────────── */}
-      <div className="mx-auto max-w-[1280px] px-4 pt-4">
-        {/* ── Owner toolbar: progress stepper + summary + settings ────── */}
-        {isOwner && (
-          <div className="mb-3 flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <ProgressStepper
-                stage={stage}
-                displayStatus={status}
-                countdownText={countdownLabel(trip)}
-              />
-            </div>
-            {summaryButton}
-            {settingsButton}
-          </div>
-        )}
-
-        <TripHeader
-          tripName={trip.title}
-          status={status}
-          location={destLocation}
-          lockedTitle={trip.locked_destination_title}
-          dateRange={formatDateRange(trip.start_date, trip.end_date)}
-          isLocked={isLocked}
-          canEdit={canEdit}
-          myRole={role}
-          tripStartDate={trip.start_date}
-          onDestinationChange={(value) => {
-            lockDestination.mutate({
-              tripId: trip.id,
-              title: value,
-              location: value,
-            });
-          }}
-          onDatesTap={() => setActiveTab("schedule")}
-        />
-      </div>
-
-      {/* ── Tab bar + content ────────────────────────────────────────────── */}
+      {/* ── Trip content ────────────────────────────────────────────────── */}
       {stage === "idea" ? (
         /* Idea stage: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
-        <main className="mx-auto max-w-[1280px] pt-4 pb-6">
-          {activeTab === "home" && (
-            <HomeTab
-              trip={trip}
-              role={role}
-              canEdit={effectiveCanEdit}
-              isOwner={isOwner}
-              displayStatus={status}
-              onTabChange={(tab) => setActiveTab(tab as TabId)}
-              onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-              onOpenChat={() => setShowChatDrawer(true)}
+        <>
+          <div className="mx-auto max-w-[1280px] px-4 pt-4">
+            {/* ── Owner toolbar: progress stepper + summary + settings ────── */}
+            {isOwner && (
+              <div className="mb-3 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <ProgressStepper
+                    stage={stage}
+                    displayStatus={status}
+                    countdownText={countdownLabel(trip)}
+                  />
+                </div>
+                {summaryButton}
+                {settingsButton}
+              </div>
+            )}
+
+            <TripHeader
+              tripName={trip.title}
+              status={status}
+              location={destLocation}
+              lockedTitle={trip.locked_destination_title}
+              dateRange={formatDateRange(trip.start_date, trip.end_date)}
+              isLocked={isLocked}
+              canEdit={canEdit}
+              myRole={role}
+              tripStartDate={trip.start_date}
+              onDestinationChange={(value) => {
+                lockDestination.mutate({
+                  tripId: trip.id,
+                  title: value,
+                  location: value,
+                });
+              }}
+              onDatesTap={() => setActiveTab("schedule")}
             />
-          )}
-        </main>
+          </div>
+          <main className="mx-auto max-w-[1280px] pt-4 pb-6">
+            {activeTab === "home" && (
+              <HomeTab
+                trip={trip}
+                role={role}
+                canEdit={effectiveCanEdit}
+                isOwner={isOwner}
+                displayStatus={status}
+                onTabChange={(tab) => setActiveTab(tab as TabId)}
+                onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                onOpenChat={() => setShowChatDrawer(true)}
+              />
+            )}
+          </main>
+        </>
       ) : (
         /* Planning / going / now / past / saved: persistent two-column layout —
-           tab bar, content, and sidebar share the same grid so the sidebar
-           aligns with the tab bar top and persists across all tab switches. */
-        <div className="mx-auto max-w-[1280px] px-4 mt-4">
+           owner toolbar, header, quick info, tab bar, and tab content live in
+           the main column so the sidebar column can sticky-fill the viewport
+           from the top of the content area. */
+        <div className="mx-auto max-w-[1280px] px-4 pt-4">
           <TwoColumnLayout
+            stickySidebar
             sidebar={
               <SidebarForStage
                 stage={stage as "planning" | "going" | "now" | "past" | "saved"}
@@ -294,11 +296,47 @@ export default function TripDetailPage() {
                 memberNames={Object.fromEntries(
                   members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
                 )}
+                onExpandChat={() => setShowChatDrawer(true)}
               />
             }
           >
-            {/* Left: quick info (post-planning only) + tab bar + all tab content */}
             <div>
+              {/* ── Owner toolbar: progress stepper + summary + settings ── */}
+              {isOwner && (
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <ProgressStepper
+                      stage={stage}
+                      displayStatus={status}
+                      countdownText={countdownLabel(trip)}
+                    />
+                  </div>
+                  {summaryButton}
+                  {settingsButton}
+                </div>
+              )}
+
+              <TripHeader
+                tripName={trip.title}
+                status={status}
+                location={destLocation}
+                lockedTitle={trip.locked_destination_title}
+                dateRange={formatDateRange(trip.start_date, trip.end_date)}
+                isLocked={isLocked}
+                canEdit={canEdit}
+                myRole={role}
+                tripStartDate={trip.start_date}
+                onDestinationChange={(value) => {
+                  lockDestination.mutate({
+                    tripId: trip.id,
+                    title: value,
+                    location: value,
+                  });
+                }}
+                onDatesTap={() => setActiveTab("schedule")}
+              />
+
+              <div className="mt-4">
               {(stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
                 <div className="mb-4">
                   <QuickInfoSection tripId={tripId} isOwner={isOwner} />
@@ -351,6 +389,7 @@ export default function TripDetailPage() {
                 {activeTab === "comp" && (
                   <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
                 )}
+              </div>
               </div>
             </div>
           </TwoColumnLayout>

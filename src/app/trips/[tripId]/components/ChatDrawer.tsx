@@ -106,7 +106,7 @@ function ChatDrawerInner({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end lg:hidden"
+      className="fixed inset-0 z-50 flex items-end"
       style={{ background: "var(--color-bt-overlay)" }}
       onClick={onClose}
     >
