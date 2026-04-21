@@ -31,7 +31,11 @@ export function TwoColumnLayout({
     <div className={`lg:grid lg:grid-cols-[1fr_320px] lg:gap-6 ${className}`}>
       <div className="min-w-0">{children}</div>
       <div
-        className={`hidden lg:flex lg:flex-col lg:gap-4 ${stickySidebar ? "lg:sticky lg:top-4 lg:self-start" : ""}`}
+        className={`hidden lg:flex lg:flex-col lg:gap-4 ${
+          stickySidebar
+            ? "lg:sticky lg:top-[4.5rem] lg:self-start lg:h-[calc(100vh-5rem)]"
+            : ""
+        }`}
       >
         {sidebar}
       </div>
