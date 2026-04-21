@@ -1016,43 +1016,4 @@ export const tripsRouter = router({
 
       return data;
     }),
-
-  // -----------------------------------------------------------------------
-  // devSetStage — DEBUG ONLY. Owner-only shortcut that flips the stage
-  // directly, skipping the validation gates on advanceToPlanning /
-  // advanceToGoing. Used by the temporary stage-toggle button next to the
-  // trip settings icon so we can flip between planning and going without
-  // having to lock/unlock a date every time. Remove before launch.
-  // -----------------------------------------------------------------------
-  devSetStage: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        stage: z.enum(["idea", "planning", "going"]),
-      })
-    )
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx, input }) => {
-      // Go through the dev_set_trip_stage RPC rather than a direct
-      // UPDATE: migration 029's `enforce_stage_transition` trigger
-      // rejects backward transitions (going → planning, planning →
-      // idea) with an exception, which is what made the reverse
-      // direction of the dev toggle button silently fail. The RPC
-      // bypasses the trigger for this call and also clears the
-      // matching stage_advanced_to_*_at timestamp so downstream UI
-      // (RSVP nudge, etc.) doesn't see stale going-stage state.
-      const { data, error } = await ctx.supabase.rpc("dev_set_trip_stage", {
-        p_trip_id: ctx.tripId,
-        p_stage: input.stage,
-      });
-
-      if (error || !data) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: error?.message ?? "Failed to set stage",
-        });
-      }
-
-      return { id: ctx.tripId, stage: input.stage };
-    }),
 });

@@ -1,9 +1,7 @@
 "use client";
 
-import { MapPin, Plus, Sparkles } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
+import { MapPin, Plus } from "lucide-react";
 import { SidebarChatPanel } from "./PlanningChatPanel";
-import { StageContextBar } from "./StageContextBar";
 import { CoPlannerPanel } from "./IdeaZonePanel";
 
 export type SidebarStage = "idea" | "planning" | "going" | "now" | "past" | "saved";
@@ -32,9 +30,6 @@ export interface SidebarForStageProps {
   /** Called when the user clicks "Add destination idea" (idea stage only). */
   onAddIdea?: () => void;
 
-  // ── Planning-stage specific ─────────────────────────────────────────
-  /** Opens the TripSummaryModal (planning + owner only). */
-  onWriteInvitation?: () => void;
 }
 
 /**
@@ -54,13 +49,11 @@ export function SidebarForStage({
   members,
   allVoterIds,
   onAddIdea,
-  onWriteInvitation,
 }: SidebarForStageProps) {
   return (
     <>
       {stage === "idea" && (
         <>
-          <StageContextBar tripId={tripId} stage="idea" displayStatus="idea" isOwner={isOwner} />
           {isOwner && onAddIdea && (
             <button
               data-testid="add-idea-btn"
@@ -88,68 +81,8 @@ export function SidebarForStage({
         </>
       )}
 
-      {(stage === "planning" || stage === "going") && isOwner && onWriteInvitation && (
-        <TripSummaryButton tripId={tripId} onClick={onWriteInvitation} stage={stage} />
-      )}
-
       {/* Chat is universal across stages. */}
       <SidebarChatPanel tripId={tripId} memberNames={memberNames} />
     </>
-  );
-}
-
-// ── TripSummaryButton ────────────────────────────────────────────────────
-// Planning-stage owner button that opens the Trip Summary modal. Shows a
-// filled/accent state once the prerequisites to advance the trip are
-// satisfied (destination locked + dates locked, matching the gates the
-// modal itself enforces) and a subtler outlined state while there's
-// still something outstanding. The button stays clickable either way so
-// the owner can open the modal to see exactly what's missing.
-
-function TripSummaryButton({
-  tripId,
-  onClick,
-  stage,
-}: {
-  tripId: string;
-  onClick: () => void;
-  stage: SidebarStage;
-}) {
-  // These queries are already prefetched by the trip page, so they hit
-  // the cache instead of firing fresh network requests.
-  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
-  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
-
-  const hasDestination = !!trip?.locked_destination_title?.trim();
-  const hasLockedDate = !!poll?.lockedWindowId;
-  // In planning, readiness means "prereqs met to advance to going". Once
-  // the trip is going those prereqs are already satisfied by definition,
-  // so the button always shows its filled state — it's a view-only
-  // recap at that point.
-  const ready = stage === "going" || (hasDestination && hasLockedDate);
-
-  return (
-    <button
-      onClick={onClick}
-      data-testid="sidebar-write-invitation-btn"
-      aria-label={ready ? "Open trip summary" : "Open trip summary (some items still incomplete)"}
-      className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90"
-      style={
-        ready
-          ? {
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-              border: "1px solid var(--color-bt-accent)",
-            }
-          : {
-              background: "transparent",
-              color: "var(--color-bt-accent)",
-              border: "1px solid var(--color-bt-accent)",
-            }
-      }
-    >
-      <Sparkles size={15} />
-      Trip Summary
-    </button>
   );
 }

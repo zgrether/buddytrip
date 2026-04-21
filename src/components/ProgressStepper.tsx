@@ -37,9 +37,9 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
   const currentIndex = getCurrentIndex(stage, displayStatus);
 
   return (
-    <div className="pt-3">
-      {/* Stepper row — items-start so labels below circles don't shift the line */}
-      <div className="flex items-start">
+    <div>
+      {/* Stepper row — circles + labels flow inline with connecting lines. */}
+      <div className="flex items-center">
         {STEPS.map((step, i) => {
           const state = getStepState(i, currentIndex);
           const isLast = i === STEPS.length - 1;
@@ -53,9 +53,9 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
               : { background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" };
 
           return (
-            <div key={step.key} className={`flex items-start ${isLast ? "" : "flex-1"}`}>
-              {/* Circle + label */}
-              <div className="flex flex-col items-center">
+            <div key={step.key} className={`flex items-center ${isLast ? "" : "flex-1"}`}>
+              {/* Circle + inline label */}
+              <div className="flex flex-shrink-0 items-center gap-1.5">
                 <div
                   onClick={isTappable ? () => onStepClick(step.key) : undefined}
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold lg:h-7 lg:w-7${isTappable ? " cursor-pointer transition-opacity hover:opacity-80" : ""}`}
@@ -70,7 +70,7 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
 
                 {/* Label — always shown for current step, desktop-only for others */}
                 <span
-                  className={`mt-1 text-xs${state === "current" ? " block" : " hidden lg:block"}`}
+                  className={`whitespace-nowrap text-xs${state === "current" ? " inline" : " hidden lg:inline"}`}
                   style={{
                     color: state === "current" ? step.color : "var(--color-bt-text-dim)",
                     fontWeight: state === "current" ? 500 : 400,
@@ -80,10 +80,10 @@ export function ProgressStepper({ stage, displayStatus, countdownText, onStepCli
                 </span>
               </div>
 
-              {/* Connecting line — offset by half circle height to stay centered on circles */}
+              {/* Connecting line */}
               {!isLast && (
                 <div
-                  className="mt-3 mx-1 h-0.5 flex-1 rounded-full lg:mt-3.5 lg:mx-2"
+                  className="mx-2 h-0.5 flex-1 rounded-full"
                   style={{ background: "var(--color-bt-border)" }}
                 />
               )}

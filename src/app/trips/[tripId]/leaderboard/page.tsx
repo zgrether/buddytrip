@@ -17,7 +17,6 @@ import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav } from "@/components/BottomNav";
 import { TopNav } from "@/components/TopNav";
-import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
   computeScores,
   computeRemaining,
@@ -246,7 +245,6 @@ export default function LeaderboardPage() {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}>
         <TopNav />
-        <TripBreadcrumb tripId={tripId} tripTitle={trip?.title ?? "…"} pageName="Competition" />
         <p className="px-4 pt-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
           No competition set up yet.
         </p>
@@ -279,16 +277,14 @@ export default function LeaderboardPage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Top nav + breadcrumb */}
+      {/* Top nav */}
       <TopNav />
-      <TripBreadcrumb
-        tripId={tripId}
-        tripTitle={trip?.title ?? "…"}
-        pageName="Competition"
-        rightSlot={shareButton}
-      />
 
       <div className="mx-auto max-w-[896px] pb-24">
+      {/* Share action row */}
+      <div className="flex justify-end px-4 pt-3">
+        {shareButton}
+      </div>
       {/* Tab bar */}
       <div
         className="flex border-b px-2"
