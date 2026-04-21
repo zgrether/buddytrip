@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { UserAvatar } from "@/components/UserAvatar";
 import { TopNav } from "@/components/TopNav";
-import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import {
   Flag,
   Pencil,
@@ -1166,11 +1165,6 @@ export default function CompetitionSetupPage() {
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
       <TopNav />
-      <TripBreadcrumb
-        tripId={tripId}
-        tripTitle={trip?.title ?? "Trip"}
-        pageName="Competition Setup"
-      />
 
       {/* Tab bar */}
       <div

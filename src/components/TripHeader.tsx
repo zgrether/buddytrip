@@ -3,7 +3,6 @@
 import type { FC } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Calendar } from "lucide-react";
-import { ProgressStepper } from "@/components/ProgressStepper";
 import { RoleBadge } from "@/components/RoleBadge";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
@@ -12,16 +11,12 @@ import type { TripRole } from "@/server/middleware";
 interface TripHeaderProps {
   tripName: string;
   status: TripDisplayStatus;
-  stage: string;
-  countdownText?: string | null;
   location?: string | null;
   lockedTitle?: string | null;
   dateRange?: string;
   isLocked: boolean;
   /** owner/planner can edit destination & dates inline */
   canEdit?: boolean;
-  /** Show settings gear (owner only) */
-  settingsSlot?: React.ReactNode;
   /** Called when destination is edited inline */
   onDestinationChange?: (value: string) => void;
   /** Called when dates are tapped (navigate to date poll or open picker) */
@@ -30,10 +25,6 @@ interface TripHeaderProps {
   tripStartDate?: string | null;
   /** Current user's role in this trip */
   myRole?: TripRole | null;
-  /** Called when a future stepper step is tapped */
-  onStepClick?: (stepKey: string) => void;
-  /** Hide progress stepper for non-owners */
-  isOwner?: boolean;
 }
 
 // ── Plain card (no locked destination) ───────────────────────────────────
@@ -41,14 +32,9 @@ interface TripHeaderProps {
 const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   tripName,
   status,
-  stage,
-  countdownText,
   location,
   dateRange,
-  settingsSlot,
   myRole,
-  onStepClick,
-  isOwner,
 }) => (
   <div
     className="rounded-2xl border p-5"
@@ -63,19 +49,16 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
     }}
     data-testid="trip-header-plain"
   >
-    {/* Row 1: trip name + settings + role */}
-    <div className="flex items-start justify-between">
+    {/* Row 1: role + trip name */}
+    <div className="flex min-w-0 items-center gap-2">
+      {myRole && <RoleBadge role={myRole} />}
       <h1
         data-testid="trip-title"
-        className="text-xl font-bold"
+        className="truncate text-xl font-bold"
         style={{ color: "var(--color-bt-text)" }}
       >
         {tripName}
       </h1>
-      <div className="flex items-center gap-2">
-        {myRole && <RoleBadge role={myRole} />}
-        {settingsSlot}
-      </div>
     </div>
 
     {location && (
@@ -97,9 +80,6 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
         <span>{dateRange}</span>
       </div>
     )}
-
-    {/* Progress stepper — owners only */}
-    {isOwner && <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />}
   </div>
 );
 
@@ -108,19 +88,14 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
 const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   tripName,
   status,
-  stage,
-  countdownText,
   location,
   lockedTitle,
   dateRange,
   canEdit: _canEdit,
-  settingsSlot,
   onDestinationChange: _onDestinationChange,
   onDatesTap: _onDatesTap,
   tripStartDate,
   myRole,
-  onStepClick,
-  isOwner,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -135,45 +110,42 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked">> = ({
   const displayLocation = location || lockedTitle || "";
 
   return (
-    <LocationHero location={displayLocation || tripName} tripName={tripName} tripStartDate={status === "past" ? tripStartDate : null}>
-      {/* Row 1: trip name + settings + badge */}
-      <div className="flex items-start justify-between">
-        <h1
-          data-testid="trip-title"
-          className="text-2xl font-bold"
-          style={{ color: titleColor }}
-        >
-          {tripName}
-        </h1>
-        <div className="flex items-center gap-2">
-          {myRole && <RoleBadge role={myRole} />}
-          {settingsSlot && (
-            <span style={{ color: subColor }}>
-              {settingsSlot}
-            </span>
+    <LocationHero
+      location={displayLocation || tripName}
+      tripName={tripName}
+      tripStartDate={status === "past" ? tripStartDate : null}
+      topContent={
+        <>
+          {/* Row 1: role + trip name */}
+          <div className="flex min-w-0 items-center gap-2">
+            {myRole && <RoleBadge role={myRole} />}
+            <h1
+              data-testid="trip-title"
+              className="truncate text-2xl font-bold"
+              style={{ color: titleColor }}
+            >
+              {tripName}
+            </h1>
+          </div>
+
+          {/* Destination */}
+          {displayLocation && (
+            <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
+              <MapPin size={13} className="shrink-0" />
+              <span>{displayLocation}</span>
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Destination */}
-      {displayLocation && (
-        <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
-          <MapPin size={13} className="shrink-0" />
-          <span>{displayLocation}</span>
-        </div>
-      )}
-
-      {/* Dates — only show when set */}
-      {dateRange && dateRange !== "Dates TBD" && (
-        <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
-          <Calendar size={11} className="shrink-0" />
-          <span>{dateRange}</span>
-        </div>
-      )}
-
-      {/* Progress stepper — owners only */}
-      {isOwner && <ProgressStepper stage={stage} displayStatus={status} countdownText={countdownText} onStepClick={onStepClick} />}
-    </LocationHero>
+          {/* Dates — only show when set */}
+          {dateRange && dateRange !== "Dates TBD" && (
+            <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
+              <Calendar size={11} className="shrink-0" />
+              <span>{dateRange}</span>
+            </div>
+          )}
+        </>
+      }
+    />
   );
 };
 

@@ -145,7 +145,6 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       {/* Badges — absolute top right, above silhouette */}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
         <StatusBadge status={status} />
-        {trip.myRole && <RoleBadge role={trip.myRole} />}
         {unreadCount > 0 && (
           <span
             className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
@@ -156,13 +155,16 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         )}
       </div>
 
-      {/* Title — right padding keeps text clear of badge cluster */}
-      <h3
-        className="pr-24 text-base font-semibold leading-tight"
-        style={{ color: titleColor }}
-      >
-        {trip.title}
-      </h3>
+      {/* Role + Title — right padding keeps text clear of badge cluster */}
+      <div className="flex min-w-0 items-center gap-2 pr-24">
+        {trip.myRole && <RoleBadge role={trip.myRole} />}
+        <h3
+          className="truncate text-base font-semibold leading-tight"
+          style={{ color: titleColor }}
+        >
+          {trip.title}
+        </h3>
+      </div>
 
       {/* Destination — own row, only when present */}
       {displayDest && (

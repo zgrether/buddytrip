@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Settings, Lock, HelpCircle, X, MessageCircle, Send, Info } from "lucide-react";
+import { Settings, Lock, MessageCircle, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
+import { ProgressStepper } from "@/components/ProgressStepper";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
-import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
@@ -22,13 +22,11 @@ import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
 import { ChatDrawer } from "./components/ChatDrawer";
-import { STAGE_CONTENT } from "./components/StageContextBar";
 import { QuickInfoSection } from "./components/QuickInfoSection";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
 import { TwoColumnLayout } from "./components/TwoColumnLayout";
 import { SidebarForStage } from "./components/SidebarForStage";
-import { QuickInfoDrawer } from "./components/QuickInfoSection";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -38,12 +36,10 @@ export default function TripDetailPage() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
-  const [showHelpSheet, setShowHelpSheet] = useState(false);
   const [showInvitationModal, setShowInvitationModal] = useState(false);
   const [showWriteInvitationModal, setShowWriteInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
-  const [showQuickInfoDrawer, setShowQuickInfoDrawer] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -59,7 +55,7 @@ export default function TripDetailPage() {
   // they fire on first render alongside trips.getById. We track their loading
   // states so the page waits for ALL data before rendering — no 2-phase pop-in.
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
-  const { isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
+  const { data: poll, isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
   const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
   const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
@@ -125,16 +121,6 @@ export default function TripDetailPage() {
     },
   });
 
-  // ── DEBUG: planning ↔ going stage toggle ─────────────────────────────
-  // Must be declared before any early returns so hook order stays stable
-  // across render passes. Remove before launch.
-  const devSetStage = trpc.trips.devSetStage.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-    },
-  });
-
   // ── Toast auto-dismiss ────────────────────────────────────────────────────
   useEffect(() => {
     if (!toast) return;
@@ -190,7 +176,7 @@ export default function TripDetailPage() {
   // Effective canEdit: forced false when read-only
   const effectiveCanEdit = tripIsReadOnly ? false : canEdit;
 
-  const settingsButton = (canEdit && !tripIsReadOnly) ? (
+  const settingsButton = (isOwner && !tripIsReadOnly) ? (
     <button
       data-testid="trip-settings-btn"
       onClick={() => setShowSettings(true)}
@@ -202,39 +188,26 @@ export default function TripDetailPage() {
     </button>
   ) : null;
 
-  // ── DEBUG: planning ↔ going stage toggle button ─────────────────────
-  // (Mutation is declared above with the other hooks so hook order stays
-  // stable across the loading → loaded transition.) Remove before launch.
-  const debugStageToggle = (isOwner && (stage === "planning" || stage === "going")) ? (
+  // Trip summary — compact labelled pill for the owner once the trip is past
+  // idea stage. Filled when the prereqs to advance (destination + dates locked)
+  // are satisfied; outlined while something is still outstanding. Once the
+  // trip is going, those prereqs are definitionally met, so the button stays
+  // filled as a view-only recap.
+  const summaryReady = stage === "going" || (!!trip.locked_destination_title?.trim() && !!poll?.lockedWindowId);
+  const summaryButton = (isOwner && (stage === "planning" || stage === "going")) ? (
     <button
-      onClick={() =>
-        devSetStage.mutate({
-          tripId,
-          stage: stage === "planning" ? "going" : "planning",
-        })
+      data-testid="trip-summary-btn"
+      onClick={() => setShowInvitationModal(true)}
+      className="flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-opacity hover:opacity-80"
+      style={
+        summaryReady
+          ? { background: "var(--color-bt-accent)", color: "var(--color-bt-base)", border: "1px solid var(--color-bt-accent)" }
+          : { background: "transparent", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent)" }
       }
-      disabled={devSetStage.isPending}
-      className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-80 disabled:opacity-40"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px dashed var(--color-bt-border)",
-        color: "var(--color-bt-text-dim)",
-      }}
-      aria-label={`Debug: switch to ${stage === "planning" ? "going" : "planning"} stage`}
-      title="Debug stage toggle"
+      aria-label={summaryReady ? "Open trip summary" : "Open trip summary (some items still incomplete)"}
     >
-      {stage === "planning" ? "plan → going" : "going → plan"}
-    </button>
-  ) : null;
-
-  const helpButton = (stage === "idea" || stage === "planning") ? (
-    <button
-      onClick={() => setShowHelpSheet(true)}
-      className="lg:hidden flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-      style={{ color: "var(--color-bt-text-dim)" }}
-      aria-label="What to do here"
-    >
-      <HelpCircle size={18} />
+      <Sparkles size={13} />
+      Summary
     </button>
   ) : null;
 
@@ -244,40 +217,39 @@ export default function TripDetailPage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* ── Top nav + breadcrumb ──────────────────────────────────────────── */}
+      {/* ── Top nav ────────────────────────────────────────────────────────── */}
       <TopNav
         notifications={notifications}
         unreadCount={unreadCount}
         onMarkAllRead={() => markAllRead.mutate({ tripId })}
       />
-      <TripBreadcrumb
-        tripId={tripId}
-        tripTitle={trip.title}
-        rightSlot={
-          (helpButton || settingsButton || debugStageToggle) ? (
-            <div className="flex items-center gap-1">
-              {debugStageToggle}
-              {helpButton}
-              {settingsButton}
-            </div>
-          ) : null
-        }
-      />
 
       {/* ── Trip header card ──────────────────────────────────────────────── */}
       <div className="mx-auto max-w-[1280px] px-4 pt-4">
+        {/* ── Owner toolbar: progress stepper + summary + settings ────── */}
+        {isOwner && (
+          <div className="mb-3 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <ProgressStepper
+                stage={stage}
+                displayStatus={status}
+                countdownText={countdownLabel(trip)}
+              />
+            </div>
+            {summaryButton}
+            {settingsButton}
+          </div>
+        )}
+
         <TripHeader
           tripName={trip.title}
           status={status}
-          stage={stage}
-          countdownText={countdownLabel(trip)}
           location={destLocation}
           lockedTitle={trip.locked_destination_title}
           dateRange={formatDateRange(trip.start_date, trip.end_date)}
           isLocked={isLocked}
           canEdit={canEdit}
           myRole={role}
-          isOwner={isOwner}
           tripStartDate={trip.start_date}
           onDestinationChange={(value) => {
             lockDestination.mutate({
@@ -287,9 +259,7 @@ export default function TripDetailPage() {
             });
           }}
           onDatesTap={() => setActiveTab("schedule")}
-          onStepClick={undefined}
         />
-
       </div>
 
       {/* ── Tab bar + content ────────────────────────────────────────────── */}
@@ -324,7 +294,6 @@ export default function TripDetailPage() {
                 memberNames={Object.fromEntries(
                   members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
                 )}
-                onWriteInvitation={() => setShowInvitationModal(true)}
               />
             }
           >
@@ -427,43 +396,7 @@ export default function TripDetailPage() {
         />
       )}
 
-      {/* ── Mobile help sheet ─────────────────────────────────────────── */}
-      {showHelpSheet && (() => {
-        const content = STAGE_CONTENT[status] ?? STAGE_CONTENT[stage];
-        if (!content) return null;
-        return (
-          <div
-            className="fixed inset-0 z-50 flex items-end lg:hidden"
-            style={{ background: "var(--color-bt-overlay)" }}
-            onClick={() => setShowHelpSheet(false)}
-          >
-            <div
-              className="w-full rounded-t-2xl px-5 py-6 space-y-3"
-              style={{ background: "var(--color-bt-card)" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start gap-3">
-                <span className="flex-shrink-0 mt-0.5">{content.icon}</span>
-                <p className="flex-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
-                  {content.text}
-                </p>
-                <button
-                  onClick={() => setShowHelpSheet(false)}
-                  className="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full"
-                  style={{ color: "var(--color-bt-text-dim)", background: "var(--color-bt-card-raised)" }}
-                  aria-label="Close"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Mobile side rail ────────────────────────────────────────────
-          planning → chat + (owner) invitation FAB
-          going/now/past/saved → chat + quick-info FAB */}
+      {/* ── Mobile crew chat FAB ────────────────────────────────────── */}
       {(stage === "planning" || stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
         <div className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 lg:hidden">
           <button
@@ -480,38 +413,6 @@ export default function TripDetailPage() {
           >
             <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
-          {stage === "planning" && isOwner && (
-            <button
-              onClick={() => setShowInvitationModal(true)}
-              data-testid="floating-invitation-btn"
-              className="flex h-12 w-12 items-center justify-center transition-opacity active:scale-95 hover:opacity-90"
-              style={{
-                background: "var(--color-bt-accent)",
-                color: "var(--color-bt-base)",
-                borderRadius: "1rem",
-                boxShadow: "var(--shadow-floating)",
-              }}
-              aria-label="Write invitation"
-            >
-              <Send size={18} />
-            </button>
-          )}
-          {(stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
-            <button
-              onClick={() => setShowQuickInfoDrawer(true)}
-              data-testid="floating-quick-info-btn"
-              className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-              style={{
-                background: "var(--color-bt-card)",
-                border: "1px solid var(--color-bt-border)",
-                borderRadius: "1rem",
-                boxShadow: "var(--shadow-floating)",
-              }}
-              aria-label="Open quick info"
-            >
-              <Info size={18} style={{ color: "var(--color-bt-text-dim)" }} />
-            </button>
-          )}
         </div>
       )}
       <ChatDrawer
@@ -522,15 +423,6 @@ export default function TripDetailPage() {
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
         )}
       />
-
-      {/* ── Quick Info mobile drawer (going+ stages) ───────────────────── */}
-      {showQuickInfoDrawer && (
-        <QuickInfoDrawer
-          tripId={tripId}
-          isOwner={isOwner}
-          onClose={() => setShowQuickInfoDrawer(false)}
-        />
-      )}
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
       {toast && (

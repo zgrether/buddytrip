@@ -9,7 +9,6 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import { TripBottomNav } from "@/components/BottomNav";
 import { TopNav } from "@/components/TopNav";
-import { TripBreadcrumb } from "@/components/TripBreadcrumb";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -279,13 +278,8 @@ export default function TripMessagesPage() {
       className="mx-auto flex h-dvh w-full max-w-[896px] flex-col"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      {/* Top nav + breadcrumb */}
+      {/* Top nav */}
       <TopNav />
-      <TripBreadcrumb
-        tripId={tripId}
-        tripTitle={trip?.title ?? "…"}
-        pageName="Messages"
-      />
 
       {/* Page title + Channel selector */}
       <div className="flex-shrink-0 px-4 pt-3 pb-2">
