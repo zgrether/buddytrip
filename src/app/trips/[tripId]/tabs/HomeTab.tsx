@@ -162,9 +162,6 @@ function CompetitionPreviewModal({
   );
 }
 
-// RsvpPanel was moved to ./components/RsvpActionCard.tsx and is now
-// rendered via ActionCenter for the going stage.
-
 // ── Competition Panel ─────────────────────────────────────────────────────
 
 function CompetitionPanel({

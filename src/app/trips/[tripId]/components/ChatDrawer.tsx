@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, X } from "lucide-react";
+import { Send, X, PanelRightOpen } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -23,21 +23,33 @@ interface ChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   memberNames: Record<string, string>;
+  /** When provided (desktop-only usage), a "dock to sidebar" button appears in
+   *  the drawer header — clicking it restores the sidebar chat. */
+  onDockToSidebar?: () => void;
 }
 
-export function ChatDrawer({ tripId, isOpen, onClose, memberNames }: ChatDrawerProps) {
+export function ChatDrawer({ tripId, isOpen, onClose, memberNames, onDockToSidebar }: ChatDrawerProps) {
   if (!isOpen) return null;
-  return <ChatDrawerInner tripId={tripId} onClose={onClose} memberNames={memberNames} />;
+  return (
+    <ChatDrawerInner
+      tripId={tripId}
+      onClose={onClose}
+      memberNames={memberNames}
+      onDockToSidebar={onDockToSidebar}
+    />
+  );
 }
 
 function ChatDrawerInner({
   tripId,
   onClose,
   memberNames,
+  onDockToSidebar,
 }: {
   tripId: string;
   onClose: () => void;
   memberNames: Record<string, string>;
+  onDockToSidebar?: () => void;
 }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
@@ -137,14 +149,27 @@ function ChatDrawerInner({
           >
             Crew Chat
           </p>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-            aria-label="Close chat"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            {onDockToSidebar && (
+              <button
+                onClick={onDockToSidebar}
+                className="hidden lg:flex h-8 w-8 items-center justify-center rounded-full"
+                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+                aria-label="Dock chat to sidebar"
+                title="Dock to sidebar"
+              >
+                <PanelRightOpen size={16} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-full"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+              aria-label="Close chat"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Messages */}

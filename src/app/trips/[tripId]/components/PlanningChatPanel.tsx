@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Maximize2 } from "lucide-react";
+import { Send, Maximize2, Minimize2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -22,10 +22,12 @@ interface SidebarChatPanelProps {
   memberNames?: Record<string, string>;
   /** When provided, an expand icon is shown in the header and fires this callback. */
   onExpand?: () => void;
+  /** When provided, a minimize icon is shown on the left of the header and fires this callback. */
+  onMinimize?: () => void;
 }
 
 /** Shared desktop sidebar chat — used in both IDEA and PLANNING stages */
-export function SidebarChatPanel({ tripId, memberNames = {}, onExpand }: SidebarChatPanelProps) {
+export function SidebarChatPanel({ tripId, memberNames = {}, onExpand, onMinimize }: SidebarChatPanelProps) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -92,15 +94,28 @@ export function SidebarChatPanel({ tripId, memberNames = {}, onExpand }: Sidebar
     >
       {/* Header */}
       <div
-        className="flex flex-shrink-0 items-center justify-between px-3 py-2"
+        className="flex flex-shrink-0 items-center justify-between gap-2 px-3 py-2"
         style={{ borderBottom: "1px solid var(--color-bt-border)" }}
       >
-        <p
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Crew Chat
-        </p>
+        <div className="flex items-center gap-1.5">
+          {onMinimize && (
+            <button
+              onClick={onMinimize}
+              className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              aria-label="Minimize crew chat"
+              title="Minimize"
+            >
+              <Minimize2 size={12} />
+            </button>
+          )}
+          <p
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Crew Chat
+          </p>
+        </div>
         {onExpand && (
           <button
             onClick={onExpand}

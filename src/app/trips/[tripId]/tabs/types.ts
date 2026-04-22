@@ -10,7 +10,6 @@ export interface TripData {
   start_date?: string | null;
   end_date?: string | null;
   poll_mode?: boolean | null;
-  rsvp_enabled?: boolean | null;
   travel_enabled?: boolean | null;
   accommodation?: string | null;
   notes?: string | null;

@@ -11,6 +11,9 @@ export interface TwoColumnLayoutProps {
   className?: string;
   /** When true, the sidebar sticks to the top while the main column scrolls. */
   stickySidebar?: boolean;
+  /** When true, the sidebar column is hidden on desktop and the main column
+   *  expands to full width (matching mobile). */
+  collapseSidebar?: boolean;
 }
 
 /**
@@ -26,19 +29,25 @@ export function TwoColumnLayout({
   sidebar,
   className = "",
   stickySidebar = false,
+  collapseSidebar = false,
 }: TwoColumnLayoutProps) {
+  const gridClasses = collapseSidebar
+    ? ""
+    : "lg:grid lg:grid-cols-[1fr_320px] lg:gap-6";
   return (
-    <div className={`lg:grid lg:grid-cols-[1fr_320px] lg:gap-6 ${className}`}>
+    <div className={`${gridClasses} ${className}`}>
       <div className="min-w-0">{children}</div>
-      <div
-        className={`hidden lg:flex lg:flex-col lg:gap-4 ${
-          stickySidebar
-            ? "lg:sticky lg:top-[4.5rem] lg:self-start lg:h-[calc(100vh-5rem)]"
-            : ""
-        }`}
-      >
-        {sidebar}
-      </div>
+      {!collapseSidebar && (
+        <div
+          className={`hidden lg:flex lg:flex-col lg:gap-4 ${
+            stickySidebar
+              ? "lg:sticky lg:top-[4.5rem] lg:self-start lg:h-[calc(100vh-5rem)]"
+              : ""
+          }`}
+        >
+          {sidebar}
+        </div>
+      )}
     </div>
   );
 }

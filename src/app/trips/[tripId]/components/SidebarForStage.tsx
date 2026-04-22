@@ -32,6 +32,11 @@ export interface SidebarForStageProps {
 
   /** Opens the full-width ChatDrawer from the sidebar's expand icon. */
   onExpandChat?: () => void;
+  /** When true, the embedded sidebar chat is hidden — the floating chat button
+   *  takes over on desktop (matching the mobile experience). */
+  chatMinimized?: boolean;
+  /** Fired when the user clicks the minimize icon in the sidebar chat header. */
+  onMinimizeChat?: () => void;
 }
 
 /**
@@ -52,6 +57,8 @@ export function SidebarForStage({
   allVoterIds,
   onAddIdea,
   onExpandChat,
+  chatMinimized,
+  onMinimizeChat,
 }: SidebarForStageProps) {
   return (
     <>
@@ -84,8 +91,16 @@ export function SidebarForStage({
         </>
       )}
 
-      {/* Chat is universal across stages. */}
-      <SidebarChatPanel tripId={tripId} memberNames={memberNames} onExpand={onExpandChat} />
+      {/* Chat is universal across stages — hidden when the user has minimized
+          it to the floating button (handled by the page wrapper). */}
+      {!chatMinimized && (
+        <SidebarChatPanel
+          tripId={tripId}
+          memberNames={memberNames}
+          onExpand={onExpandChat}
+          onMinimize={onMinimizeChat}
+        />
+      )}
     </>
   );
 }
