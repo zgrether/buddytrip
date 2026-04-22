@@ -67,7 +67,7 @@ export function LocationHero({ location, tripName, tripStartDate, topContent, ch
       style={isDark ? darkStyle : lightStyle}
       data-testid="location-hero"
     >
-      <div className="relative z-10 px-5 pb-3 pt-5">
+      <div className="relative z-10 px-5 py-4">
         {/* Top block: title / location / dates. The state watermark is
             vertically centered within this block so it doesn't shift based on
             whether the progress stepper is rendered below. */}
