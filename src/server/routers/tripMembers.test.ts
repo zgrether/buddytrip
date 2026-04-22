@@ -79,16 +79,6 @@ describe("tripMembers router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // updateRsvp
-  it("updateRsvp — member can update own RSVP", async () => {
-    const caller = ctx.callerAs("member");
-    const updated = await caller.tripMembers.updateRsvp({
-      tripId,
-      status: "in",
-    });
-    expect(updated.status).toBe("in");
-  });
-
   // inviteByEmail
   it("inviteByEmail — planner can invite a new email", async () => {
     const caller = ctx.callerAs("planner");
@@ -145,16 +135,16 @@ describe("tripMembers router", () => {
   });
 });
 
-// ── RSVP tests ──────────────────────────────────────────────────────────
+// ── Travel tests ─────────────────────────────────────────────────────────
 
-describe("tripMembers router — RSVP", () => {
+describe("tripMembers router — travel", () => {
   let ctx: TestContext;
   let tripId: string;
 
   beforeAll(async () => {
     ctx = await TestContext.create();
-    // Create trip and advance to going stage for RSVP testing
-    tripId = await ctx.createTrip("RSVP Test Trip");
+    // Create trip and advance to going stage so travel fields are in play
+    tripId = await ctx.createTrip("Travel Test Trip");
     await ctx.addTripMember(tripId, "planner", "Planner");
     await ctx.addTripMember(tripId, "member", "Member");
 
@@ -174,71 +164,6 @@ describe("tripMembers router — RSVP", () => {
   afterAll(async () => {
     await ctx.cleanup();
   });
-
-  it("setRsvpStatus — member can set own status", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.tripMembers.setRsvpStatus({
-      tripId,
-      rsvpStatus: "in",
-    });
-    expect(result.rsvp_status).toBe("in");
-  });
-
-  it("setRsvpStatus — member can change status", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.tripMembers.setRsvpStatus({
-      tripId,
-      rsvpStatus: "maybe",
-    });
-    expect(result.rsvp_status).toBe("maybe");
-  });
-
-  it("setRsvpStatus — cannot set in non-going stage", async () => {
-    // Create a fresh trip in idea stage
-    const ideaTripId = await ctx.createTrip("Idea RSVP Test");
-    await ctx.addTripMember(ideaTripId, "member", "Member");
-
-    const caller = ctx.callerAs("member");
-    await expect(
-      caller.tripMembers.setRsvpStatus({ tripId: ideaTripId, rsvpStatus: "in" })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-  });
-
-  it("setRsvpStatusForMember — planner can set for any member", async () => {
-    const member = ctx.getUser("member");
-    const caller = ctx.callerAs("planner");
-    const result = await caller.tripMembers.setRsvpStatusForMember({
-      tripId,
-      userId: member.id,
-      rsvpStatus: "out",
-    });
-    expect(result.rsvp_status).toBe("out");
-  });
-
-  it("setRsvpStatusForMember — null clears status", async () => {
-    const member = ctx.getUser("member");
-    const caller = ctx.callerAs("planner");
-    const result = await caller.tripMembers.setRsvpStatusForMember({
-      tripId,
-      userId: member.id,
-      rsvpStatus: null,
-    });
-    expect(result.rsvp_status).toBeNull();
-  });
-
-  it("setRsvpStatusForMember — member cannot set for others", async () => {
-    const planner = ctx.getUser("planner");
-    const caller = ctx.callerAs("member");
-    await expect(
-      caller.tripMembers.setRsvpStatusForMember({
-        tripId,
-        userId: planner.id,
-        rsvpStatus: "in",
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  // ── updateTravel ──────────────────────────────────────────────────────
 
   it("updateTravel — member can update own travel (flying)", async () => {
     const caller = ctx.callerAs("member");
