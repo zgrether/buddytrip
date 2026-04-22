@@ -40,6 +40,7 @@ export default function TripDetailPage() {
   const [showWriteInvitationModal, setShowWriteInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [sidebarChatMinimized, setSidebarChatMinimized] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -287,6 +288,7 @@ export default function TripDetailPage() {
         <div className="mx-auto max-w-[1280px] px-4 pt-4">
           <TwoColumnLayout
             stickySidebar
+            collapseSidebar={sidebarChatMinimized}
             sidebar={
               <SidebarForStage
                 stage={stage as "planning" | "going" | "now" | "past" | "saved"}
@@ -297,6 +299,8 @@ export default function TripDetailPage() {
                   members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
                 )}
                 onExpandChat={() => setShowChatDrawer(true)}
+                chatMinimized={sidebarChatMinimized}
+                onMinimizeChat={() => setSidebarChatMinimized(true)}
               />
             }
           >
@@ -435,9 +439,12 @@ export default function TripDetailPage() {
         />
       )}
 
-      {/* ── Mobile crew chat FAB ────────────────────────────────────── */}
+      {/* ── Mobile crew chat FAB ──────────────────────────────────────
+          Always rendered on mobile. On desktop, it's hidden unless the user
+          has minimized the sidebar chat — in which case it stands in for the
+          collapsed sidebar panel. */}
       {(stage === "planning" || stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
-        <div className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 lg:hidden">
+        <div className={`fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 ${sidebarChatMinimized ? "" : "lg:hidden"}`}>
           <button
             onClick={() => setShowChatDrawer(true)}
             data-testid="floating-chat-btn"
@@ -461,6 +468,10 @@ export default function TripDetailPage() {
         memberNames={Object.fromEntries(
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
         )}
+        onDockToSidebar={sidebarChatMinimized ? () => {
+          setSidebarChatMinimized(false);
+          setShowChatDrawer(false);
+        } : undefined}
       />
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
