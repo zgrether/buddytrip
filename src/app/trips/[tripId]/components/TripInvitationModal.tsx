@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { RotateCcw, Send, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { buildCannedInvitation } from "@/lib/invitationDefault";
 
 export interface TripInvitationModalProps {
   tripId: string;
   trip: {
     title?: string | null;
     about_message?: string | null;
+    location?: string | null;
     locked_destination_title?: string | null;
     start_date?: string | null;
     end_date?: string | null;
@@ -18,16 +20,25 @@ export interface TripInvitationModalProps {
 }
 
 /**
- * TripInvitationModal — opened from the going-stage Action Center "Write
- * invitation" button. Lets the owner compose / edit the invitation message
- * the crew sees on their RSVP surface. Distinct from TripSummaryModal,
- * which is the planning→going recap/advance gate.
+ * TripInvitationModal — opened from the going-stage Action Center
+ * invitation pencil. Lets the owner compose / edit the invitation message
+ * the crew sees on their Home tab. Distinct from TripSummaryModal, which
+ * is the planning→going recap/advance gate.
  */
 export function TripInvitationModal({ tripId, trip, onClose }: TripInvitationModalProps) {
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
 
-  const [message, setMessage] = useState(trip.about_message ?? "");
+  // Preload with the message the crew currently sees: saved custom message
+  // if one exists, otherwise the canned default. That way the owner can edit
+  // from a real starting point instead of a blank page.
+  const cannedDefault = buildCannedInvitation(trip);
+  const initialMessage = trip.about_message?.trim() || cannedDefault;
+  const [message, setMessage] = useState(initialMessage);
+
+  // Reset only makes sense when the textarea is showing something other than
+  // the canned default — i.e. there's actually something to reset back from.
+  const canReset = message.trim() !== cannedDefault;
 
   const update = trpc.trips.updateAboutMessage.useMutation({
     onSuccess() {
@@ -37,7 +48,17 @@ export function TripInvitationModal({ tripId, trip, onClose }: TripInvitationMod
   });
 
   const handleSave = () => {
-    update.mutate({ tripId, aboutMessage: message.trim() || null });
+    const trimmed = message.trim();
+    // If the owner saved back to the canned default (verbatim), persist
+    // `null` so we keep the "using default" state instead of pinning the
+    // literal string forever.
+    const aboutMessage =
+      !trimmed || trimmed === cannedDefault ? null : trimmed;
+    update.mutate({ tripId, aboutMessage });
+  };
+
+  const handleReset = () => {
+    update.mutate({ tripId, aboutMessage: null });
   };
 
   return (
@@ -58,8 +79,7 @@ export function TripInvitationModal({ tripId, trip, onClose }: TripInvitationMod
           </h2>
         </div>
         <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Tell the crew what this trip is about. This message shows up alongside
-          their RSVP so they know what they&apos;re saying yes to.
+          Tell the crew what this trip is about.
         </p>
 
         <textarea
@@ -76,7 +96,24 @@ export function TripInvitationModal({ tripId, trip, onClose }: TripInvitationMod
           data-testid="trip-invitation-message-input"
         />
 
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {canReset && (
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={update.isPending}
+              data-testid="trip-invitation-reset-btn"
+              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-3 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{
+                background: "transparent",
+                color: "var(--color-bt-text-dim)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <RotateCcw size={13} />
+              Reset to Default
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

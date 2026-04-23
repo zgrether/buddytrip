@@ -230,7 +230,7 @@ export default function TripDetailPage() {
         /* Idea stage: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
         <>
           <div className="mx-auto max-w-[1280px] px-4 pt-4">
-            {/* ── Owner toolbar: progress stepper + summary + settings ────── */}
+            {/* ── Owner toolbar: progress stepper + settings ── */}
             {isOwner && (
               <div className="mb-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
@@ -240,7 +240,6 @@ export default function TripDetailPage() {
                     countdownText={countdownLabel(trip)}
                   />
                 </div>
-                {summaryButton}
                 {settingsButton}
               </div>
             )}
@@ -305,7 +304,9 @@ export default function TripDetailPage() {
             }
           >
             <div>
-              {/* ── Owner toolbar: progress stepper + summary + settings ── */}
+              {/* ── Owner toolbar: progress stepper + settings ──
+                  The Trip Summary button lives inline with the Action
+                  Center title; see HomeTab below. */}
               {isOwner && (
                 <div className="mb-3 flex items-center gap-3">
                   <div className="min-w-0 flex-1">
@@ -315,7 +316,6 @@ export default function TripDetailPage() {
                       countdownText={countdownLabel(trip)}
                     />
                   </div>
-                  {summaryButton}
                   {settingsButton}
                 </div>
               )}
@@ -376,6 +376,7 @@ export default function TripDetailPage() {
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                     onOpenChat={() => setShowChatDrawer(true)}
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
+                    actionCenterTitleAction={summaryButton}
                   />
                 )}
                 {activeTab === "schedule" && (

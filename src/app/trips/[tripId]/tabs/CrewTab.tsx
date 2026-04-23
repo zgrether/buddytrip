@@ -324,7 +324,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
       {/* ── PLANNERS section ── */}
       <div>
         <h2
-          className="mb-1 text-xs font-semibold uppercase tracking-wider"
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Planners

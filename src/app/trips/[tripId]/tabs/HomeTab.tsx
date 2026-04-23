@@ -294,7 +294,8 @@ export function HomeTab({
   onEnableComp,
   onOpenChat,
   onWriteInvitation,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onWriteInvitation?: () => void }) {
+  actionCenterTitleAction,
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onWriteInvitation?: () => void; actionCenterTitleAction?: React.ReactNode }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
 
@@ -322,7 +323,7 @@ export function HomeTab({
       {/*    the RSVP card. Rendered first so it stays visible        ── */}
       {/*    above the itinerary once the trip is going.              ── */}
       {(stage === "idea" || stage === "planning" || stage === "going") && (
-        <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} onWriteInvitation={onWriteInvitation} />
+        <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} onWriteInvitation={onWriteInvitation} titleAction={actionCenterTitleAction} />
       )}
 
       {/* ── Itinerary panel — read-only confirmed-only timeline ── */}

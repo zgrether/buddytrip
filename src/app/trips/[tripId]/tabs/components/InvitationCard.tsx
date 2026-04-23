@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Ghost, Pencil, Plus, RotateCcw, Send, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CheckSquare, Ghost, Pencil, Plus, Send, Square, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { formatDateRange } from "@/lib/dates";
+import { buildCannedInvitation } from "@/lib/invitationDefault";
 import { RoleBadge } from "@/components/RoleBadge";
 import type { TripRole } from "@/server/middleware";
 import type { TripData } from "../types";
@@ -14,12 +14,41 @@ import { ActionCard } from "./ActionCard";
 // Same sort order as the Crew tab: Owner → Planner → Member, real before
 // guests within a role, then by display name.
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+
+type RecipientMember = {
+  memberId: string;
+  user_id: string | null;
+  role: string;
+  displayName: string;
+  isGuest: boolean;
+  last_invited_at?: string | null;
+  user: { email: string | null; is_guest?: boolean } | null;
+};
+
 function recipientSort(a: RecipientMember, b: RecipientMember) {
   const aOrder = ROLE_ORDER[a.role] ?? 2;
   const bOrder = ROLE_ORDER[b.role] ?? 2;
   if (aOrder !== bOrder) return aOrder - bOrder;
   if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
   return a.displayName.localeCompare(b.displayName);
+}
+
+// Members sent in the last blast (last_invited_at >= last_blast_sent_at) are
+// unchecked by default so the owner sees "new" people pre-selected on re-blast.
+function computeDefaultChecked(
+  withEmail: RecipientMember[],
+  lastBlastSentAt: string | null
+): Set<string> {
+  return new Set(
+    withEmail
+      .filter((m) => {
+        if (!lastBlastSentAt) return true;
+        const inv = m.last_invited_at ?? null;
+        if (!inv) return true;
+        return inv < lastBlastSentAt;
+      })
+      .map((m) => m.memberId)
+  );
 }
 
 export interface InvitationCardProps {
@@ -29,18 +58,15 @@ export interface InvitationCardProps {
 }
 
 /**
- * InvitationCard — the going-stage Action Center body.
+ * InvitationCard — going-stage Action Center card.
  *
- * Structure (owner view, top → bottom):
- *   1. Owner travel toggle — gates the travel section for everyone.
- *   2. Invitation text + Edit / Default-invite buttons (message controls).
- *   3. Recipients — grid of crew who'll receive the email, plus inline
- *      chips for crew still missing an email (tap to fill in).
- *   4. Send Invitation — full-width primary, tied to the recipient list.
- *   5. Travel section — only when trip.travel_enabled.
+ * Owner view (top → bottom):
+ *   1. Travel toggle
+ *   2. Invitation text with pencil → TripInvitationModal
+ *   3. BlastSection: checkbox recipient list + Send button
+ *   4. Travel section (when travel_enabled)
  *
- * Member view is slimmer: just the invitation text and (if enabled)
- * the travel form.
+ * Member view: invitation text only + travel section.
  */
 export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: InvitationCardProps) {
   const tripId = trip.id;
@@ -49,20 +75,13 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
   const travelEnabled = !!trip.travel_enabled;
+  const lastBlastSentAt = trip.last_blast_sent_at ?? null;
 
-  // ── Canned invitation default ────────────────────────────────────────
-  const destination = trip.locked_destination_title?.trim() || trip.location?.trim() || "";
-  const dateRange = formatDateRange(trip.start_date, trip.end_date);
-  const cannedInvitation = buildCannedInvitation({
-    title: trip.title,
-    destination,
-    dateRange,
-  });
+  const cannedInvitation = buildCannedInvitation(trip);
   const savedMessage = trip.about_message?.trim() || "";
   const invitationText = savedMessage || cannedInvitation;
   const isUsingDefault = !savedMessage;
 
-  // ── Mutations ────────────────────────────────────────────────────────
   const updateSettings = trpc.trips.updateActionCenterSettings.useMutation({
     async onMutate(vars) {
       await utils.trips.getById.cancel({ tripId });
@@ -85,25 +104,16 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
     },
   });
 
-  const resetInvitation = trpc.trips.updateAboutMessage.useMutation({
-    onSettled() {
-      utils.trips.getById.invalidate({ tripId });
-    },
-  });
-
   const myMember = members.find((m) => m.user_id === currentUser?.id);
 
-  // ── Recipient lists ──────────────────────────────────────────────────
-  // Split non-self crew into "has an email" (grid) vs "missing" (chips).
-  // Sort each list the same way the Crew tab does.
   type Member = typeof members[number];
   const others: Member[] = members.filter((m) => m.user_id !== currentUser?.id);
   const withEmail = others
     .filter((m) => !!m.user?.email)
-    .sort(recipientSort);
+    .sort(recipientSort) as RecipientMember[];
   const withoutEmail = others
     .filter((m) => !m.user?.email && m.isGuest)
-    .sort(recipientSort);
+    .sort(recipientSort) as RecipientMember[];
 
   return (
     <ActionCard isResolved={false}>
@@ -151,7 +161,7 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
       )}
 
       <div
-        className="rounded-xl px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap"
+        className="relative rounded-xl px-4 py-3 text-[13px] leading-relaxed whitespace-pre-wrap"
         style={{
           background: "var(--color-bt-card-raised)",
           border: "1px solid var(--color-bt-border)",
@@ -159,74 +169,36 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
         }}
         data-testid="invitation-message"
       >
-        {invitationText}
-      </div>
-
-      {/* Message controls — Edit + Default invite (Send lives below, next
-          to the recipient list). */}
-      {isOwner && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        {isOwner && onWriteInvitation && (
           <button
             type="button"
             onClick={onWriteInvitation}
-            disabled={!onWriteInvitation}
             data-testid="invitation-edit-btn"
-            className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-accent)",
-              border: "1px solid var(--color-bt-accent)",
-            }}
+            aria-label="Edit invitation"
+            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded"
           >
-            <Pencil size={13} />
-            Edit
+            <Pencil size={13} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
-          {!isUsingDefault && (
-            <button
-              type="button"
-              onClick={() => resetInvitation.mutate({ tripId, aboutMessage: null })}
-              disabled={resetInvitation.isPending}
-              data-testid="invitation-reset-btn"
-              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{
-                background: "transparent",
-                color: "var(--color-bt-text-dim)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <RotateCcw size={13} />
-              Default invite
-            </button>
-          )}
+        )}
+        <div className={isOwner && onWriteInvitation ? "pr-8" : undefined}>
+          {invitationText}
         </div>
-      )}
+      </div>
 
-      {/* ── Recipients (owner only) ─────────────────────────────────── */}
+      {/* ── Blast section (owner only) ───────────────────────────────── */}
       {isOwner && (
-        <RecipientsSection
+        <BlastSection
+          key={lastBlastSentAt ?? "never"}
           tripId={tripId}
           withEmail={withEmail}
           withoutEmail={withoutEmail}
+          lastBlastSentAt={lastBlastSentAt}
+          onSuccess={() => {
+            utils.tripMembers.list.invalidate({ tripId });
+            utils.trips.getById.invalidate({ tripId });
+          }}
           onInvalidateMembers={() => utils.tripMembers.list.invalidate({ tripId })}
         />
-      )}
-
-      {/* ── Send invitation (owner only) ─────────────────────────────── */}
-      {isOwner && (
-        <button
-          type="button"
-          data-testid="invitation-send-btn"
-          disabled={withEmail.length === 0}
-          className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
-          style={{
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-            border: "1px solid var(--color-bt-accent)",
-          }}
-        >
-          <Send size={13} />
-          Send invitation{withEmail.length > 0 ? ` (${withEmail.length})` : ""}
-        </button>
       )}
 
       {/* ── Travel section (opt-in) ─────────────────────────────────── */}
@@ -258,28 +230,38 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
   );
 }
 
-// ── Recipient list ───────────────────────────────────────────────────────
+// ── Blast section ────────────────────────────────────────────────────────────
 
-type RecipientMember = {
-  memberId: string;
-  user_id: string | null;
-  role: string;
-  displayName: string;
-  isGuest: boolean;
-  user: { email: string | null; is_guest?: boolean } | null;
-};
-
-function RecipientsSection({
+function BlastSection({
   tripId,
   withEmail,
   withoutEmail,
+  lastBlastSentAt,
+  onSuccess,
   onInvalidateMembers,
 }: {
   tripId: string;
   withEmail: RecipientMember[];
   withoutEmail: RecipientMember[];
+  lastBlastSentAt: string | null;
+  onSuccess: () => void;
   onInvalidateMembers: () => void;
 }) {
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() =>
+    computeDefaultChecked(withEmail, lastBlastSentAt)
+  );
+  const [initialized, setInitialized] = useState(withEmail.length > 0);
+  const [lastSentCount, setLastSentCount] = useState<number | null>(null);
+
+  // Members load asynchronously — initialize once they arrive
+  useEffect(() => {
+    if (!initialized && withEmail.length > 0) {
+      setCheckedIds(computeDefaultChecked(withEmail, lastBlastSentAt));
+      setInitialized(true);
+    }
+  }, [withEmail.length, lastBlastSentAt, initialized]);
+
+  // Ghost email inline editing
   const [editingId, setEditingId] = useState<string | null>(null);
   const [emailDraft, setEmailDraft] = useState("");
 
@@ -291,15 +273,23 @@ function RecipientsSection({
     },
   });
 
-  const startEdit = (memberId: string) => {
-    setEditingId(memberId);
-    setEmailDraft("");
+  const blast = trpc.tripMembers.sendInvitationBlast.useMutation({
+    onSuccess(data) {
+      setLastSentCount(data.sent);
+      onSuccess();
+    },
+  });
+
+  const toggleMember = (memberId: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) next.delete(memberId);
+      else next.add(memberId);
+      return next;
+    });
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEmailDraft("");
-  };
+  const selectedMembers = withEmail.filter((m) => checkedIds.has(m.memberId));
 
   const saveEmail = (guestUserId: string) => {
     const email = emailDraft.trim();
@@ -316,37 +306,82 @@ function RecipientsSection({
         Going out to
       </p>
 
-      {withEmail.length === 0 ? (
-        <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          No one on your crew has an email yet — add one below to send the
-          invite.
-        </p>
-      ) : (
-        <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
-          {withEmail.map((m) => (
-            <div key={m.memberId} className="flex min-w-0 flex-col">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <RoleBadge role={m.role as TripRole} />
-                <span
-                  className="truncate text-[13px] font-medium"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {m.displayName}
-                </span>
-              </div>
-              <span
-                className="truncate text-xs"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {m.user?.email}
-              </span>
-            </div>
-          ))}
+      {/* Success flash */}
+      {lastSentCount !== null && (
+        <div
+          className="mb-3 rounded-lg px-3 py-2 text-[13px] font-medium"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+            border: "1px solid var(--color-bt-accent-border)",
+          }}
+        >
+          Invitation sent to {lastSentCount} {lastSentCount === 1 ? "person" : "people"}
         </div>
       )}
 
+      {/* Checkbox rows — members with email */}
+      {withEmail.length === 0 ? (
+        <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          No one on your crew has an email yet — add one below to send the invite.
+        </p>
+      ) : (
+        <div className="mb-3 space-y-0.5">
+          {withEmail.map((m) => {
+            const checked = checkedIds.has(m.memberId);
+            const alreadySent =
+              !!m.last_invited_at &&
+              !!lastBlastSentAt &&
+              m.last_invited_at >= lastBlastSentAt;
+            return (
+              <div
+                key={m.memberId}
+                onClick={() => toggleMember(m.memberId)}
+                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
+              >
+                {checked ? (
+                  <CheckSquare
+                    size={16}
+                    style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
+                  />
+                ) : (
+                  <Square
+                    size={16}
+                    style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
+                  />
+                )}
+                <RoleBadge role={m.role as TripRole} />
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="truncate text-[13px] font-medium"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {m.displayName}
+                  </div>
+                  <div
+                    className="truncate text-xs"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    {m.user?.email}
+                  </div>
+                </div>
+                {alreadySent && (
+                  <span
+                    className="flex-shrink-0 text-[11px]"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Sent
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Ghost chips — members missing an email */}
       {withoutEmail.length > 0 && (
-        <div className="mt-2">
+        <div className="mb-3">
           <p
             className="mb-1.5 text-[11px]"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -384,7 +419,8 @@ function RecipientsSection({
                           e.preventDefault();
                           saveEmail(guestUserId);
                         } else if (e.key === "Escape") {
-                          cancelEdit();
+                          setEditingId(null);
+                          setEmailDraft("");
                         }
                       }}
                       placeholder="email@…"
@@ -410,7 +446,10 @@ function RecipientsSection({
                     </button>
                     <button
                       type="button"
-                      onClick={cancelEdit}
+                      onClick={() => {
+                        setEditingId(null);
+                        setEmailDraft("");
+                      }}
                       aria-label="Cancel"
                       className="flex h-5 w-5 items-center justify-center rounded-full"
                       style={{ color: "var(--color-bt-text-dim)" }}
@@ -425,7 +464,10 @@ function RecipientsSection({
                 <button
                   key={m.memberId}
                   type="button"
-                  onClick={() => startEdit(m.memberId)}
+                  onClick={() => {
+                    setEditingId(m.memberId);
+                    setEmailDraft("");
+                  }}
                   className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors hover:bg-[var(--color-bt-hover)]"
                   style={{
                     background: "var(--color-bt-card-raised)",
@@ -442,32 +484,37 @@ function RecipientsSection({
           </div>
         </div>
       )}
+
+      {/* Send button */}
+      <button
+        type="button"
+        data-testid="invitation-send-btn"
+        disabled={selectedMembers.length === 0 || blast.isPending}
+        onClick={() => {
+          if (selectedMembers.length === 0) return;
+          blast.mutate({
+            tripId,
+            memberUserIds: selectedMembers.map((m) => m.memberId),
+          });
+        }}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+        style={{
+          background: "var(--color-bt-accent)",
+          color: "var(--color-bt-base)",
+          border: "1px solid var(--color-bt-accent)",
+        }}
+      >
+        <Send size={13} />
+        {blast.isPending
+          ? "Sending…"
+          : `Send invitation${selectedMembers.length > 0 ? ` (${selectedMembers.length})` : ""}`}
+      </button>
     </div>
   );
 }
 
-// ── Canned invitation builder ────────────────────────────────────────────
-// Short-and-sweet single-paragraph message built from the bits we already
-// know. Falls back gracefully when a field is missing.
-function buildCannedInvitation({
-  title,
-  destination,
-  dateRange,
-}: {
-  title: string;
-  destination: string;
-  dateRange: string;
-}): string {
-  const headline = title || destination || "Our trip";
-  const where = destination && destination !== title ? ` in ${destination}` : "";
-  const when = dateRange ? ` ${dateRange}` : "";
-  if (!where && !when) {
-    return `${headline} is on. Let me know if you're in.`;
-  }
-  return `${headline}${where}${when}. Let me know if you're in.`;
-}
+// ── Small inline toggle row ──────────────────────────────────────────────────
 
-// ── Small inline toggle row ──────────────────────────────────────────────
 function ToggleRow({
   label,
   checked,

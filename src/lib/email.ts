@@ -61,6 +61,48 @@ export async function sendInviteExistingUser({
   });
 }
 
+// ── Invitation blast — owner sends trip invitation to selected crew ─────
+
+export async function sendInvitationBlast({
+  toEmail,
+  toName,
+  ownerName,
+  tripTitle,
+  invitationMessage,
+  tripId,
+}: {
+  toEmail: string;
+  toName: string;
+  ownerName: string;
+  tripTitle: string;
+  invitationMessage: string;
+  tripId: string;
+}) {
+  const tripUrl = `${BASE_URL}/trips/${tripId}`;
+
+  return resend.emails.send({
+    from: FROM,
+    to: resolveRecipient(toEmail),
+    subject: `${ownerName} invited you to ${tripTitle}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <p style="margin:0 0 16px">Hey ${toName},</p>
+        <p style="margin:0 0 16px;white-space:pre-wrap">${invitationMessage}</p>
+        <p style="margin:0 0 24px">
+          Tap below to check it out &mdash; see what&apos;s planned so far.
+        </p>
+        <a href="${tripUrl}"
+           style="display:inline-block;background:#2dd4bf;color:#0d1f1a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">
+          View Trip
+        </a>
+        <p style="margin:24px 0 0;color:#94a3b8;font-size:14px">
+          See you there,<br/>${ownerName}
+        </p>
+      </div>
+    `,
+  });
+}
+
 // ── Email for new users (no BuddyTrip account yet) ─────────────────────
 
 export async function sendInviteNewUser({

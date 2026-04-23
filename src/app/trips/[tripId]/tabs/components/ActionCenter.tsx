@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 import type { TripData } from "../types";
 import { DatePollCard } from "./DatePollCard";
@@ -12,6 +13,9 @@ export interface ActionCenterProps {
   canEdit: boolean;
   onTabChange?: (tab: string) => void;
   onWriteInvitation?: () => void;
+  /** Optional right-aligned node rendered inline with the "Action Center"
+   *  title — e.g. the Trip Summary button. */
+  titleAction?: ReactNode;
 }
 
 /**
@@ -28,7 +32,7 @@ export interface ActionCenterProps {
  * DatesPanel is removed from PlanningSection; it lives here exclusively.
  * Future cards (RsvpCard, TravelCard) slot in alongside the dates surface.
  */
-export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvitation }: ActionCenterProps) {
+export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvitation, titleAction }: ActionCenterProps) {
   const stage = trip.stage ?? "idea";
   if (stage !== "idea" && stage !== "planning" && stage !== "going") return null;
 
@@ -41,12 +45,7 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
   if (stage === "going") {
     return (
       <section className="space-y-3">
-        <p
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Action Center
-        </p>
+        <ActionCenterHeader titleAction={titleAction} />
         <InvitationCard trip={trip} isOwner={isOwner} onWriteInvitation={onWriteInvitation} />
       </section>
     );
@@ -54,12 +53,7 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
 
   return (
     <section className="space-y-3">
-      <p
-        className="text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Action Center
-      </p>
+      <ActionCenterHeader titleAction={titleAction} />
 
       {datesLocked ? (
         // Dates locked — nothing to do
@@ -90,6 +84,25 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
 
       {/* TODO: RsvpCard + TravelCard slot in here in later phases */}
     </section>
+  );
+}
+
+/**
+ * Header row — "Action Center" label on the left, optional action slot
+ * (Trip Summary button) right-aligned. Slot stays out of the card panel
+ * so the title stays visually distinct from the card chrome.
+ */
+function ActionCenterHeader({ titleAction }: { titleAction?: ReactNode }) {
+  return (
+    <div className="flex min-h-[2rem] items-center justify-between gap-2">
+      <p
+        className="text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Action Center
+      </p>
+      {titleAction}
+    </div>
   );
 }
 
