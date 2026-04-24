@@ -13,10 +13,12 @@ import {
   Send,
   ThumbsUp,
   FileText,
+  MessageCircle,
 } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 import { getNotificationText, relativeTime } from "@/lib/notificationText";
+import { useChatUnreadCount } from "./FloatingChatPanel";
 
 interface Notification {
   id: string;
@@ -32,6 +34,12 @@ interface TopNavProps {
   notifications?: Notification[];
   onMarkAllRead?: () => void;
   unreadCount?: number;
+  /** When present, renders the crew-chat button with an unread badge driven
+   *  by useChatUnreadCount(tripId). */
+  tripId?: string;
+  /** Opens the FloatingChatPanel. Required alongside tripId to show the chat
+   *  button. */
+  onOpenChat?: () => void;
 }
 
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
@@ -52,6 +60,8 @@ export const TopNav: FC<TopNavProps> = ({
   notifications = [],
   onMarkAllRead,
   unreadCount = 0,
+  tripId,
+  onOpenChat,
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -112,6 +122,9 @@ export const TopNav: FC<TopNavProps> = ({
       </button>
 
       <div className="flex items-center gap-2">
+        {tripId && onOpenChat && (
+          <ChatButton tripId={tripId} onClick={onOpenChat} />
+        )}
         <div ref={ref} className="relative">
           <button
             aria-label="Notifications"
@@ -261,3 +274,32 @@ export const TopNav: FC<TopNavProps> = ({
     </header>
   );
 };
+
+// ── ChatButton ───────────────────────────────────────────────────────────────
+// Isolated sub-component so the useChatUnreadCount hook only mounts on trip
+// pages where a tripId is present. Mirrors the notification bell's shape,
+// hover, and badge treatment.
+
+function ChatButton({ tripId, onClick }: { tripId: string; onClick: () => void }) {
+  const unread = useChatUnreadCount(tripId);
+  return (
+    <button
+      aria-label="Open crew chat"
+      data-testid="chat-button"
+      onClick={onClick}
+      className="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+      style={{ color: "var(--color-bt-text-dim)" }}
+    >
+      <MessageCircle size={20} strokeWidth={1.5} />
+      {unread > 0 && (
+        <span
+          data-testid="chat-unread-badge"
+          className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-0.5 text-[10px] font-bold"
+          style={{ background: "var(--color-bt-warning)", color: "#fff" }}
+        >
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
+    </button>
+  );
+}
