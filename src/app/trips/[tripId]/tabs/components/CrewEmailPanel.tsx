@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckSquare, Ghost, Mail, Plus, Send, Square, X } from "lucide-react";
+import { CheckSquare, Ghost, Mail, Plus, RotateCcw, Send, Square, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
@@ -85,6 +85,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lastSentCount, setLastSentCount] = useState<number | null>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   const toggleMember = (memberId: string) => {
     setCheckedIds((prev) => {
@@ -124,14 +125,13 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
     },
   });
 
-  if (!isOwner) return null;
+  if (!isOwner || others.length === 0) return null;
 
-  const sendLabel = lastBlastSentAt ? "Send reminder" : "Send invite";
-  const subtitle = `${selectedMembers.length} ${selectedMembers.length === 1 ? "person" : "people"} will receive an email`;
+  const isDefaultMessage = messageDraft.trim() === cannedInvitation.trim();
 
   return (
     <div
-      className="rounded-xl p-4 @[640px]:h-full @[640px]:overflow-y-auto"
+      className="rounded-xl p-4"
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
@@ -139,24 +139,61 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
       data-testid="crew-email-panel"
     >
       {/* Header */}
-      <div className="mb-3 flex items-start gap-2.5">
-        <span
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-          }}
-        >
-          <Mail size={14} />
-        </span>
-        <div className="min-w-0">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              color: "var(--color-bt-accent)",
+            }}
+          >
+            <Mail size={14} />
+          </span>
           <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Crew Email
           </p>
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {subtitle}
-          </p>
         </div>
+
+        {confirmingReset ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Replace message?
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setMessageDraft(cannedInvitation);
+                setConfirmingReset(false);
+                updateAbout.mutate({ tripId, aboutMessage: cannedInvitation });
+              }}
+              className="text-xs font-semibold"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Yes
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingReset(false)}
+              className="text-xs"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={isDefaultMessage}
+            onClick={() => setConfirmingReset(true)}
+            className="flex items-center gap-1 text-xs disabled:opacity-30"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            title="Reset to default invitation"
+          >
+            <RotateCcw size={11} />
+            Reset
+          </button>
+        )}
       </div>
 
       {/* Editable message */}
@@ -421,7 +458,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
         <Send size={13} />
         {blast.isPending
           ? "Sending…"
-          : `${sendLabel}${selectedMembers.length > 0 ? ` (${selectedMembers.length})` : ""}`}
+          : `Send message${selectedMembers.length > 0 ? ` (${selectedMembers.length})` : ""}`}
       </button>
     </div>
   );

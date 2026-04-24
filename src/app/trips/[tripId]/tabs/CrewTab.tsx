@@ -113,9 +113,9 @@ function CrewMemberRow({
       <div
         className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
         style={{
-          cursor: editable && !isPlannerRow ? "pointer" : undefined,
+          cursor: editable ? "pointer" : undefined,
         }}
-        onClick={editable && !isPlannerRow ? onToggle : undefined}
+        onClick={editable ? onToggle : undefined}
       >
         {/* Avatar */}
         {m.isGuest ? (
@@ -151,16 +151,35 @@ function CrewMemberRow({
         {/* ── Right side: actions ──────────────────────────────────────────── */}
         <div className="flex flex-shrink-0 items-center">
           <div className="flex flex-shrink-0 items-center gap-1">
-            {/* Planner row: move to rest of crew */}
-            {isPlannerRow && canActOnPlanner && (
-              <button
-                onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
-                disabled={updateRole.isPending}
-                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
-                style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-              >
-                Remove as planner
-              </button>
+            {/* Planner badge with remove × */}
+            {isPlannerRow && (
+              canActOnPlanner ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
+                  disabled={updateRole.isPending}
+                  aria-label={`Remove ${display} as planner`}
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 hover:opacity-75 transition-opacity"
+                  style={{
+                    background: "var(--color-bt-accent-faint)",
+                    color: "var(--color-bt-accent)",
+                    border: "1px solid var(--color-bt-accent-border)",
+                  }}
+                >
+                  Planner
+                  <X size={10} strokeWidth={2.5} />
+                </button>
+              ) : (
+                <span
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                  style={{
+                    background: "var(--color-bt-accent-faint)",
+                    color: "var(--color-bt-accent)",
+                    border: "1px solid var(--color-bt-accent-border)",
+                  }}
+                >
+                  Planner
+                </span>
+              )
             )}
             {/* Crew row: promote to co-planner */}
             {canPromoteToCoplanner && (
@@ -173,55 +192,18 @@ function CrewMemberRow({
                 Make planner
               </button>
             )}
-            {/* Remove (X) */}
-            {editable && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmRemove(true); }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={14} />
-              </button>
-            )}
           </div>
         </div>
       </div>
 
-      {/* ── Remove confirmation ──────────────────────────────────────────── */}
-      {confirmRemove && (
-        <div
-          className="flex items-center gap-2 rounded-lg px-3 py-2 mb-1"
-          style={{ background: "color-mix(in srgb, var(--color-bt-danger) 6%, var(--color-bt-base))" }}
-        >
-          <p className="flex-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>
-            Remove {display} from this trip?
-          </p>
-          <button
-            onClick={handleRemove}
-            disabled={removeMember.isPending || removeGuest.isPending}
-            className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
-            style={{ background: "var(--color-bt-danger)", color: "white" }}
-          >
-            Remove
-          </button>
-          <button
-            onClick={() => setConfirmRemove(false)}
-            className="rounded-lg border px-3 py-1 text-xs"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-
-      {/* ── Expanded edit panel — crew only, not for planner rows ─────────── */}
-      {isExpanded && editable && !isPlannerRow && (
+      {/* ── Expanded panel ───────────────────────────────────────────────── */}
+      {isExpanded && editable && (
         <div
           className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
         >
-          {/* Name + email — guest-only (validated users manage their own profile) */}
-          {m.isGuest && (
+          {/* Name + email — guest crew only */}
+          {m.isGuest && !isPlannerRow && (
             <div className="flex gap-2">
               <input
                 value={editName}
@@ -241,25 +223,59 @@ function CrewMemberRow({
             </div>
           )}
 
-          {/* Actions row — save/cancel (planner promotion lives in the inline row button) */}
-          <div className="flex items-center justify-end gap-2">
-            {m.isGuest && (
+          <div className="flex items-center gap-2">
+            {/* Remove from trip — left side */}
+            {confirmRemove ? (
+              <>
+                <span className="text-xs font-medium" style={{ color: "var(--color-bt-danger)" }}>
+                  Remove {display}?
+                </span>
+                <button
+                  onClick={handleRemove}
+                  disabled={removeMember.isPending || removeGuest.isPending}
+                  className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-40"
+                  style={{ background: "var(--color-bt-danger)", color: "white" }}
+                >
+                  Yes, remove
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="rounded-lg border px-2.5 py-1 text-xs"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
               <button
-                onClick={handleSave}
-                disabled={!hasTextChanges || updateGuest.isPending}
-                className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                onClick={() => setConfirmRemove(true)}
+                className="rounded-lg px-2.5 py-1 text-xs font-medium"
+                style={{ color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger)", opacity: 0.75 }}
               >
-                Save
+                Remove from trip
               </button>
             )}
-            <button
-              onClick={onToggle}
-              className="rounded-lg border px-3 py-1 text-xs"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              {m.isGuest ? "Cancel" : "Close"}
-            </button>
+
+            {/* Save / Cancel — guest crew only */}
+            {m.isGuest && !isPlannerRow && (
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={handleSave}
+                  disabled={!hasTextChanges || updateGuest.isPending}
+                  className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                >
+                  Save
+                </button>
+                <button
+                  onClick={onToggle}
+                  className="rounded-lg border px-3 py-1 text-xs"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -335,7 +351,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         {isOwner && (
           <>
             <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Invite people who want to help plan. Planners can add destination ideas, vote, and weigh in before the trip is official — everyone else gets added when it&apos;s time to go.
+              Co-planners can help manage the trip alongside you.
             </p>
             <div className="mb-2">
               <CrewSearchInput
@@ -363,9 +379,9 @@ export function CrewTab({ trip, canEdit }: TabProps) {
               isOwner={isOwner}
               isMe={isMe}
               index={i}
-              isExpanded={false}
+              isExpanded={expandedId === m.user_id}
               isPlannerRow
-              onToggle={() => {}}
+              onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
               onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
             />
           );
@@ -385,7 +401,7 @@ export function CrewTab({ trip, canEdit }: TabProps) {
         {canEdit && (
           <div className="mb-2">
             <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Start building your crew list. Add names and emails as you think of them — invites go out later when you&apos;re ready.
+              BuddyTrip members get access as soon as you add them. Guests without an account need an email invite — use the panel on the right.
             </p>
             <div className="flex gap-2">
               <input
