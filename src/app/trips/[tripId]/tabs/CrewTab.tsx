@@ -240,6 +240,12 @@ function CrewMemberRow({
                 <input
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && hasTextChanges && !updateGuest.isPending) {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
                   placeholder={`${m.displayName.toLowerCase()}@example.com`}
                   type="email"
                   className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
