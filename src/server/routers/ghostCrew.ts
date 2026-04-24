@@ -184,7 +184,15 @@ export const ghostCrewRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit a guest user's name/nickname/email (Planner+)
+  // update — edit a guest user's name/nickname/email (Planner+).
+  //
+  // If `email` is provided and matches an existing real BuddyTrip account,
+  // this swaps trip_members.user_id from the ghost to the real user (the
+  // "auto-link" path) and returns the real user record with linked: true.
+  // The ghost users row is left intact in case it's referenced by other
+  // trips — only the trip_members pointer changes.
+  //
+  // Otherwise, falls through to a plain UPDATE on the ghost users row.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -201,7 +209,7 @@ export const ghostCrewRouter = router({
       // Verify this guest is a member of this trip
       const { data: membership } = await ctx.supabase
         .from("trip_members")
-        .select("id")
+        .select("id, role")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.guestUserId)
         .maybeSingle();
@@ -213,6 +221,51 @@ export const ghostCrewRouter = router({
         });
       }
 
+      // ── Auto-link branch: email matches an existing real BT account ───
+      if (input.email) {
+        const { data: existingUser } = await ctx.supabase
+          .from("users")
+          .select("id, name, nickname, email, is_guest, created_at")
+          .eq("email", input.email)
+          .maybeSingle();
+
+        if (existingUser && !existingUser.is_guest) {
+          // Reject if the real user is already a member of this trip.
+          const { data: alreadyMember } = await ctx.supabase
+            .from("trip_members")
+            .select("id")
+            .eq("trip_id", ctx.tripId)
+            .eq("user_id", existingUser.id)
+            .maybeSingle();
+
+          if (alreadyMember) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "A user with this email is already a member of this trip.",
+            });
+          }
+
+          // Swap the trip_members row to point at the real account. We
+          // preserve the ghost's role and flip status to 'in' since they
+          // now have a real account.
+          const { error: linkErr } = await ctx.supabase
+            .from("trip_members")
+            .update({ user_id: existingUser.id, status: "in" })
+            .eq("trip_id", ctx.tripId)
+            .eq("user_id", input.guestUserId);
+
+          if (linkErr) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to link existing account: ${linkErr.message}`,
+            });
+          }
+
+          return { ...existingUser, linked: true as const };
+        }
+      }
+
+      // ── Plain ghost update ────────────────────────────────────────────
       const update: Record<string, unknown> = {};
       if (input.name !== undefined) update.name = input.name;
       if (input.nickname !== undefined) update.nickname = input.nickname;
@@ -237,7 +290,7 @@ export const ghostCrewRouter = router({
         });
       }
 
-      return data;
+      return { ...data, linked: false as const };
     }),
 
   // -----------------------------------------------------------------------
