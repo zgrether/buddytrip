@@ -321,7 +321,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
-    <div className="px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5 lg:items-start lg:px-4">
+    <div className="@container px-4">
+      <div className="@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_320px] @[640px]:gap-5 @[640px]:items-start">
       <div className="min-w-0 space-y-4">
       {/* ── PLANNERS section ── */}
       <div>
@@ -444,9 +445,14 @@ export function CrewTab({ trip, canEdit }: TabProps) {
       </div>
       </div>
 
-      {/* Right column — owner-only sticky email panel (desktop only) */}
-      <div className="hidden lg:block lg:sticky lg:top-6 lg:self-start">
+      {/* Right column — owner-only sticky email panel. Only surfaces when the
+          surrounding CrewTab container is wide enough to fit both columns
+          (container query, not viewport) — this matters because the sidebar
+          chat already eats ~344px, so a 1024px viewport leaves only ~650px
+          of actual CrewTab width. */}
+      <div className="hidden @[640px]:block @[640px]:sticky @[640px]:top-6 @[640px]:self-start">
         {isOwner && <CrewEmailPanel trip={trip} isOwner={isOwner} />}
+      </div>
       </div>
     </div>
   );
