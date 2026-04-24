@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Settings, Lock, MessageCircle, Sparkles } from "lucide-react";
+import { Settings, Lock, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
@@ -12,6 +12,7 @@ import { TripHeader } from "@/components/TripHeader";
 import { ProgressStepper } from "@/components/ProgressStepper";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
+import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
@@ -21,12 +22,9 @@ import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
-import { ChatDrawer } from "./components/ChatDrawer";
 import { QuickInfoSection } from "./components/QuickInfoSection";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
-import { TwoColumnLayout } from "./components/TwoColumnLayout";
-import { SidebarForStage } from "./components/SidebarForStage";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -39,8 +37,7 @@ export default function TripDetailPage() {
   const [showInvitationModal, setShowInvitationModal] = useState(false);
   const [showWriteInvitationModal, setShowWriteInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
-  const [showChatDrawer, setShowChatDrawer] = useState(false);
-  const [sidebarChatMinimized, setSidebarChatMinimized] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -223,6 +220,8 @@ export default function TripDetailPage() {
         notifications={notifications}
         unreadCount={unreadCount}
         onMarkAllRead={() => markAllRead.mutate({ tripId })}
+        tripId={tripId}
+        onOpenChat={() => setChatOpen(true)}
       />
 
       {/* ── Trip content ────────────────────────────────────────────────── */}
@@ -274,73 +273,57 @@ export default function TripDetailPage() {
                 displayStatus={status}
                 onTabChange={(tab) => setActiveTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-                onOpenChat={() => setShowChatDrawer(true)}
+                onOpenChat={() => setChatOpen(true)}
               />
             )}
           </main>
         </>
       ) : (
-        /* Planning / going / now / past / saved: persistent two-column layout —
-           owner toolbar, header, quick info, tab bar, and tab content live in
-           the main column so the sidebar column can sticky-fill the viewport
-           from the top of the content area. */
-        <div className="mx-auto max-w-[1280px] px-4 pt-4">
-          <TwoColumnLayout
-            stickySidebar
-            collapseSidebar={sidebarChatMinimized}
-            sidebar={
-              <SidebarForStage
-                stage={stage as "planning" | "going" | "now" | "past" | "saved"}
-                tripId={tripId}
-                isOwner={isOwner}
-                canEdit={effectiveCanEdit}
-                memberNames={Object.fromEntries(
-                  members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
-                )}
-                onExpandChat={() => setShowChatDrawer(true)}
-                chatMinimized={sidebarChatMinimized}
-                onMinimizeChat={() => setSidebarChatMinimized(true)}
-              />
-            }
-          >
-            <div>
-              {/* ── Owner toolbar: progress stepper + settings ──
-                  The Trip Summary button lives inline with the Action
-                  Center title; see HomeTab below. */}
-              {isOwner && (
-                <div className="mb-3 flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <ProgressStepper
-                      stage={stage}
-                      displayStatus={status}
-                      countdownText={countdownLabel(trip)}
-                    />
-                  </div>
-                  {settingsButton}
+        /* Planning / going / now / past / saved: single-column page.
+           Crew chat lives in the FloatingChatPanel on the right (desktop)
+           or as a bottom sheet (mobile), so no sidebar column is needed. */
+        <div
+          className="mx-auto max-w-[1280px] px-4 pt-4 transition-[margin-right] duration-200"
+          style={{ marginRight: chatOpen ? undefined : undefined }}
+        >
+          <div className={chatOpen ? "lg:mr-[380px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
+            {/* ── Owner toolbar: progress stepper + settings ──
+                The Trip Summary button lives inline with the Action
+                Center title; see HomeTab below. */}
+            {isOwner && (
+              <div className="mb-3 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <ProgressStepper
+                    stage={stage}
+                    displayStatus={status}
+                    countdownText={countdownLabel(trip)}
+                  />
                 </div>
-              )}
+                {settingsButton}
+              </div>
+            )}
 
-              <TripHeader
-                tripName={trip.title}
-                status={status}
-                location={destLocation}
-                lockedTitle={trip.locked_destination_title}
-                dateRange={formatDateRange(trip.start_date, trip.end_date)}
-                isLocked={isLocked}
-                canEdit={canEdit}
-                myRole={role}
-                tripStartDate={trip.start_date}
-                onDestinationChange={(value) => {
-                  lockDestination.mutate({
-                    tripId: trip.id,
-                    title: value,
-                    location: value,
-                  });
-                }}
-                onDatesTap={() => setActiveTab("schedule")}
-              />
+            <TripHeader
+              tripName={trip.title}
+              status={status}
+              location={destLocation}
+              lockedTitle={trip.locked_destination_title}
+              dateRange={formatDateRange(trip.start_date, trip.end_date)}
+              isLocked={isLocked}
+              canEdit={canEdit}
+              myRole={role}
+              tripStartDate={trip.start_date}
+              onDestinationChange={(value) => {
+                lockDestination.mutate({
+                  tripId: trip.id,
+                  title: value,
+                  location: value,
+                });
+              }}
+              onDatesTap={() => setActiveTab("schedule")}
+            />
 
-              <div className="mt-4">
+            <div className="mt-4">
               {(stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
                 <div className="mb-4">
                   <QuickInfoSection tripId={tripId} isOwner={isOwner} />
@@ -374,7 +357,7 @@ export default function TripDetailPage() {
                     displayStatus={status}
                     onTabChange={(tab) => setActiveTab(tab as TabId)}
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-                    onOpenChat={() => setShowChatDrawer(true)}
+                    onOpenChat={() => setChatOpen(true)}
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
                     actionCenterTitleAction={summaryButton}
                   />
@@ -395,9 +378,8 @@ export default function TripDetailPage() {
                   <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
                 )}
               </div>
-              </div>
             </div>
-          </TwoColumnLayout>
+          </div>
         </div>
       )}
 
@@ -440,39 +422,16 @@ export default function TripDetailPage() {
         />
       )}
 
-      {/* ── Mobile crew chat FAB ──────────────────────────────────────
-          Always rendered on mobile. On desktop, it's hidden unless the user
-          has minimized the sidebar chat — in which case it stands in for the
-          collapsed sidebar panel. */}
-      {(stage === "planning" || stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
-        <div className={`fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 ${sidebarChatMinimized ? "" : "lg:hidden"}`}>
-          <button
-            onClick={() => setShowChatDrawer(true)}
-            data-testid="floating-chat-btn"
-            className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-              borderRadius: "1rem",
-              boxShadow: "var(--shadow-floating)",
-            }}
-            aria-label="Open crew chat"
-          >
-            <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
-          </button>
-        </div>
-      )}
-      <ChatDrawer
+      {/* ── Floating crew chat ──────────────────────────────────────────
+          Opened from the chat button in the TopNav. Renders as a side
+          panel on desktop (lg+) and as a bottom sheet on mobile. */}
+      <FloatingChatPanel
         tripId={tripId}
-        isOpen={showChatDrawer}
-        onClose={() => setShowChatDrawer(false)}
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
         memberNames={Object.fromEntries(
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
         )}
-        onDockToSidebar={sidebarChatMinimized ? () => {
-          setSidebarChatMinimized(false);
-          setShowChatDrawer(false);
-        } : undefined}
       />
 
       {/* ── Toast notification ─────────────────────────────────────────── */}
