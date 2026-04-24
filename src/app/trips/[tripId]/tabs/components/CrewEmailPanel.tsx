@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckSquare, Ghost, Mail, Plus, RotateCcw, Send, Square, X } from "lucide-react";
+import { CheckSquare, Mail, RotateCcw, Send, Square } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
@@ -79,9 +79,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
   const withEmail = others
     .filter((m) => !!m.user?.email)
     .sort(recipientSort) as RecipientMember[];
-  const withoutEmail = others
-    .filter((m) => !m.user?.email && m.isGuest)
-    .sort(recipientSort) as RecipientMember[];
+  const noEmailCount = others.filter((m) => !m.user?.email).length;
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lastSentCount, setLastSentCount] = useState<number | null>(null);
@@ -97,24 +95,6 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
   };
 
   const selectedMembers = withEmail.filter((m) => checkedIds.has(m.memberId));
-
-  // Ghost chips — inline email capture
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [emailDraft, setEmailDraft] = useState("");
-
-  const updateGuest = trpc.ghostCrew.update.useMutation({
-    onSuccess() {
-      utils.tripMembers.list.invalidate({ tripId });
-      setEditingId(null);
-      setEmailDraft("");
-    },
-  });
-
-  const saveEmail = (guestUserId: string) => {
-    const email = emailDraft.trim();
-    if (!email) return;
-    updateGuest.mutate({ tripId, guestUserId, email });
-  };
 
   const blast = trpc.tripMembers.sendInvitationBlast.useMutation({
     onSuccess(data) {
@@ -322,118 +302,17 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
         </>
       )}
 
-      {/* No-email divider */}
-      {withEmail.length > 0 && withoutEmail.length > 0 && (
-        <div className="mb-3 flex items-center gap-2">
-          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
-          <span
-            className="text-[9px] font-bold uppercase tracking-widest"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            No email yet
-          </span>
-          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
-        </div>
-      )}
-
-      {/* Ghost chips */}
-      {withoutEmail.length > 0 && (
-        <div className="mb-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {withoutEmail.map((m) => {
-              const guestUserId = m.user_id;
-              if (!guestUserId) return null;
-
-              if (editingId === m.memberId) {
-                return (
-                  <div
-                    key={m.memberId}
-                    className="flex items-center gap-1.5 rounded-full px-2 py-1"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      border: "1px solid var(--color-bt-accent)",
-                    }}
-                  >
-                    <span
-                      className="text-xs font-medium"
-                      style={{ color: "var(--color-bt-text)" }}
-                    >
-                      {m.displayName}
-                    </span>
-                    <input
-                      autoFocus
-                      type="email"
-                      value={emailDraft}
-                      onChange={(e) => setEmailDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          saveEmail(guestUserId);
-                        } else if (e.key === "Escape") {
-                          setEditingId(null);
-                          setEmailDraft("");
-                        }
-                      }}
-                      placeholder="email@…"
-                      disabled={updateGuest.isPending}
-                      className="w-44 rounded border px-1.5 py-0.5 text-xs outline-none disabled:opacity-50"
-                      style={{
-                        background: "var(--color-bt-base)",
-                        borderColor: "var(--color-bt-border)",
-                        color: "var(--color-bt-text)",
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => saveEmail(guestUserId)}
-                      disabled={!emailDraft.trim() || updateGuest.isPending}
-                      className="rounded-full px-2 py-0.5 text-xs font-semibold disabled:opacity-40"
-                      style={{
-                        background: "var(--color-bt-accent)",
-                        color: "var(--color-bt-base)",
-                      }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingId(null);
-                        setEmailDraft("");
-                      }}
-                      aria-label="Cancel"
-                      className="flex h-5 w-5 items-center justify-center rounded-full"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                );
-              }
-
-              return (
-                <button
-                  key={m.memberId}
-                  type="button"
-                  onClick={() => {
-                    setEditingId(m.memberId);
-                    setEmailDraft("");
-                  }}
-                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    border: "1px dashed var(--color-bt-border)",
-                    color: "var(--color-bt-text)",
-                  }}
-                >
-                  <Ghost size={11} style={{ color: "var(--color-bt-text-dim)" }} />
-                  <span>{m.displayName}</span>
-                  <Plus size={11} strokeWidth={2.5} style={{ color: "var(--color-bt-accent)" }} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
+      {/* No-email hint — counts guests still missing an email so the
+          owner knows they exist. Email entry happens in the crew list,
+          not here. */}
+      {noEmailCount > 0 && (
+        <p
+          className="mb-3 text-[12px] leading-relaxed"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {noEmailCount === 1 ? "1 guest" : `${noEmailCount} guests`} still need an email — add one
+          from their crew row to invite them.
+        </p>
       )}
 
       {/* Send button */}
