@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckSquare, Ghost, Mail, Plus, Send, Square, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -52,6 +52,16 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
   const cannedInvitation = buildCannedInvitation(trip);
   const savedMessage = trip.about_message?.trim() || "";
   const [messageDraft, setMessageDraft] = useState(savedMessage || cannedInvitation);
+
+  // Auto-grow textarea: height tracks content so a multi-paragraph invite
+  // isn't squashed into a tiny scroll box.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [messageDraft]);
 
   const updateAbout = trpc.trips.updateAboutMessage.useMutation({
     onSuccess() { utils.trips.getById.invalidate({ tripId }); },
@@ -158,11 +168,12 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
         }}
       >
         <textarea
+          ref={textareaRef}
           value={messageDraft}
           onChange={(e) => setMessageDraft(e.target.value)}
           onBlur={handleBlur}
           rows={3}
-          className="w-full resize-none bg-transparent text-[13px] leading-relaxed outline-none"
+          className="block w-full resize-none overflow-hidden bg-transparent text-[13px] leading-relaxed outline-none"
           style={{ color: "var(--color-bt-text)" }}
           data-testid="crew-email-message"
         />
