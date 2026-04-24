@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Ghost, X, Check, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
-import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { TabProps } from "./types";
@@ -31,7 +30,6 @@ function CrewMemberRow({
   isOwnerView,
   isMe,
   isExpanded,
-  index,
   isPlannerSection,
   onToggle,
   onUpdated,
@@ -41,13 +39,10 @@ function CrewMemberRow({
   isOwnerView: boolean;
   isMe: boolean;
   isExpanded: boolean;
-  index: number;
   isPlannerSection?: boolean;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
   const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -98,7 +93,7 @@ function CrewMemberRow({
       className="border-b last:border-b-0"
       style={{
         borderColor: "var(--color-bt-border)",
-        background: index % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
+        background: isExpanded ? "var(--color-bt-card-raised)" : undefined,
       }}
     >
       {/* ── Main row (tappable when expandable) ────────────────────────── */}
@@ -434,7 +429,7 @@ export function CrewTab({ trip }: TabProps) {
                 border: "1px solid var(--color-bt-border)",
               }}
             >
-              {plannersSorted.map((m, i) => {
+              {plannersSorted.map((m) => {
                 const isMe = m.user_id === currentUser?.id;
                 return (
                   <CrewMemberRow
@@ -443,7 +438,6 @@ export function CrewTab({ trip }: TabProps) {
                     tripId={tripId}
                     isOwnerView={isOwner}
                     isMe={isMe}
-                    index={i}
                     isExpanded={expandedId === m.user_id}
                     isPlannerSection
                     onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
@@ -474,7 +468,7 @@ export function CrewTab({ trip }: TabProps) {
                 border: "1px solid var(--color-bt-border)",
               }}
             >
-              {crewSorted.map((m, i) => {
+              {crewSorted.map((m) => {
                 const isMe = m.user_id === currentUser?.id;
                 return (
                   <CrewMemberRow
@@ -483,7 +477,6 @@ export function CrewTab({ trip }: TabProps) {
                     tripId={tripId}
                     isOwnerView={isOwner}
                     isMe={isMe}
-                    index={i}
                     isExpanded={expandedId === m.user_id}
                     onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
                     onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
