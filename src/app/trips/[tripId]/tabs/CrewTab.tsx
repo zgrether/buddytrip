@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, X, Check, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { Ghost, X, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -63,6 +63,10 @@ function CrewMemberRow({
   const display = m.displayName;
   const isOwnerRow = m.role === "Owner";
   const isPlannerRow = m.role === "Planner";
+  // BT members (real accounts in the "rest of crew" panel) get a faint
+  // teal tint instead of a "BT" badge so the eye separates them from
+  // guests at a glance.
+  const isBTMember = !m.isGuest && !isOwnerRow && !isPlannerRow;
   // Owner is the only role that can expand/edit rows. Owner can never
   // expand themselves or the Owner row of the trip.
   const expandable = isOwnerView && !isMe && !isOwnerRow;
@@ -93,7 +97,11 @@ function CrewMemberRow({
       className="border-b last:border-b-0"
       style={{
         borderColor: "var(--color-bt-border)",
-        background: isExpanded ? "var(--color-bt-card-raised)" : undefined,
+        background: isExpanded
+          ? "var(--color-bt-card-raised)"
+          : isBTMember
+            ? "color-mix(in srgb, var(--color-bt-accent) 5%, transparent)"
+            : undefined,
       }}
     >
       {/* ── Main row (tappable when expandable) ────────────────────────── */}
@@ -179,18 +187,6 @@ function CrewMemberRow({
                 Planner
               </span>
             )
-          )}
-
-          {/* BT member ✓ — non-guest, non-owner, non-planner */}
-          {!m.isGuest && !isOwnerRow && !isPlannerRow && (
-            <span
-              className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-              style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-              title="BuddyTrip account"
-            >
-              <Check size={10} strokeWidth={2.5} />
-              BT
-            </span>
           )}
 
           {/* Make-planner button — owner only, member rows with email */}
