@@ -225,8 +225,12 @@ function CrewMemberRow({
       </div>
 
       {/* ── Expanded panel ───────────────────────────────────────────────── */}
+      {/* Indented under the name column: an empty cell mirrors the avatar +
+          gap so the inputs align with the name above. */}
       {isExpanded && expandable && (
-        <div className="space-y-3 px-2 pb-3">
+        <div className="flex gap-3 px-2 pb-3">
+          <div className="w-8 flex-shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-3">
           {/* Email — guest crew only. To change a guest's name, remove and
               re-add them. */}
           {m.isGuest && !isPlannerSection && (
@@ -291,6 +295,7 @@ function CrewMemberRow({
                 Remove from trip
               </button>
             )}
+          </div>
           </div>
         </div>
       )}
