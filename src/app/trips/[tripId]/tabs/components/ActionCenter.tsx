@@ -52,13 +52,7 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
     return (
       <section className="space-y-3">
         <ActionCenterHeader titleAction={titleAction} />
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "12px",
-          }}
-        >
+        <div className="space-y-3">
           {isOwner && (
             <InvitationCard
               trip={trip}
@@ -175,35 +169,10 @@ function ActionCenterIdle({ isOwner }: { isOwner: boolean }) {
 
 function TravelCard({ trip, isOwner }: { trip: TripData; isOwner: boolean }) {
   const tripId = trip.id;
-  const travelEnabled = !!trip.travel_enabled;
   const currentUser = useCurrentUser();
-  const utils = trpc.useUtils();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
   const myMember = members.find((m) => m.user_id === currentUser?.id);
-
-  const updateSettings = trpc.trips.updateActionCenterSettings.useMutation({
-    async onMutate(vars) {
-      await utils.trips.getById.cancel({ tripId });
-      const prev = utils.trips.getById.getData({ tripId });
-      utils.trips.getById.setData({ tripId }, (old: unknown) => {
-        if (!old) return old;
-        return {
-          ...(old as Record<string, unknown>),
-          ...(vars.travelEnabled !== undefined ? { travel_enabled: vars.travelEnabled } : {}),
-        } as typeof old;
-      });
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev) utils.trips.getById.setData({ tripId }, context.prev);
-    },
-    onSettled() {
-      utils.trips.getById.invalidate({ tripId });
-    },
-  });
-
-  if (!isOwner && !travelEnabled) return null;
 
   return (
     <ActionCard isResolved={false}>
@@ -213,92 +182,18 @@ function TravelCard({ trip, isOwner }: { trip: TripData; isOwner: boolean }) {
       >
         Travel
       </p>
-
-      {isOwner && (
-        <div
-          className="mb-4 flex flex-col gap-2 rounded-lg px-3 py-2.5"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <ToggleRow
-            label="Share travel info"
-            checked={travelEnabled}
-            onChange={(v) => updateSettings.mutate({ tripId, travelEnabled: v })}
-            testid="toggle-travel-enabled"
-          />
-        </div>
-      )}
-
-      {travelEnabled ? (
-        <>
-          <p
-            className="mb-3 text-[13px] leading-relaxed"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {isOwner
-              ? "You're the host — share your travel plans so the crew can coordinate."
-              : "Share your travel plans so the crew can coordinate."}
-          </p>
-          <TravelEntryForm
-            tripId={tripId}
-            currentTravel={myMember as Parameters<typeof TravelEntryForm>[0]["currentTravel"]}
-          />
-        </>
-      ) : (
-        <p
-          className="text-[13px] leading-relaxed"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Enable travel sharing so the crew can coordinate arrival plans.
-        </p>
-      )}
+      <p
+        className="mb-3 text-[13px] leading-relaxed"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        {isOwner
+          ? "You're the host — share your travel plans so the crew can coordinate."
+          : "Share your travel plans so the crew can coordinate."}
+      </p>
+      <TravelEntryForm
+        tripId={tripId}
+        currentTravel={myMember as Parameters<typeof TravelEntryForm>[0]["currentTravel"]}
+      />
     </ActionCard>
-  );
-}
-
-// ── Small inline toggle row ──────────────────────────────────────────────────
-
-function ToggleRow({
-  label,
-  checked,
-  disabled,
-  onChange,
-  testid,
-}: {
-  label: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (value: boolean) => void;
-  testid: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center justify-between gap-3">
-      <span
-        className="min-w-0 flex-1 text-[13px] font-medium"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        {label}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        data-testid={testid}
-        onClick={() => onChange(!checked)}
-        className="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
-        style={{
-          background: checked ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-        }}
-      >
-        <span
-          className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
-          style={{ transform: checked ? "translateX(18px)" : "translateX(2px)" }}
-        />
-      </button>
-    </label>
   );
 }
