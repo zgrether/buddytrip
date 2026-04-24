@@ -197,7 +197,12 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
             </span>
             <button
               type="button"
-              onClick={() => setCheckedIds(new Set(withEmail.map((m) => m.memberId)))}
+              onClick={() => {
+                const allSelected = selectedMembers.length === withEmail.length;
+                setCheckedIds(
+                  allSelected ? new Set() : new Set(withEmail.map((m) => m.memberId))
+                );
+              }}
               className="text-xs font-semibold"
               style={{
                 color: "var(--color-bt-accent)",
@@ -205,7 +210,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
                 border: "none",
               }}
             >
-              Select all
+              {selectedMembers.length === withEmail.length ? "Unselect all" : "Select all"}
             </button>
           </div>
 

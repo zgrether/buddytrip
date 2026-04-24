@@ -319,7 +319,7 @@ function BlastSection({
         </p>
       ) : (
         <>
-          {/* Toolbar: count + Select defaults */}
+          {/* Toolbar: count + Select/Unselect all */}
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {selectedMembers.length}{" "}
@@ -327,11 +327,16 @@ function BlastSection({
             </span>
             <button
               type="button"
-              onClick={() => setCheckedIds(new Set(withEmail.map((m) => m.memberId)))}
+              onClick={() => {
+                const allSelected = selectedMembers.length === withEmail.length;
+                setCheckedIds(
+                  allSelected ? new Set() : new Set(withEmail.map((m) => m.memberId))
+                );
+              }}
               className="text-xs font-semibold"
               style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none" }}
             >
-              Select all
+              {selectedMembers.length === withEmail.length ? "Unselect all" : "Select all"}
             </button>
           </div>
 
