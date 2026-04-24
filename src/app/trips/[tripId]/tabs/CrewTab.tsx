@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, X } from "lucide-react";
-import { CrewSearchInput } from "@/components/CrewSearchInput";
+import { Ghost, X, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
-import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { TabProps } from "./types";
@@ -29,30 +27,23 @@ type Member = {
 function CrewMemberRow({
   member: m,
   tripId,
-  canEdit,
-  isOwner,
+  isOwnerView,
   isMe,
   isExpanded,
-  index,
-  isPlannerRow,
+  isPlannerSection,
   onToggle,
   onUpdated,
 }: {
   member: Member;
   tripId: string;
-  canEdit: boolean;
-  isOwner: boolean;
+  isOwnerView: boolean;
   isMe: boolean;
   isExpanded: boolean;
-  index: number;
-  isPlannerRow?: boolean;
+  isPlannerSection?: boolean;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
-  const [editName, setEditName] = useState(m.displayName);
   const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
   const [confirmRemove, setConfirmRemove] = useState(false);
 
@@ -70,23 +61,25 @@ function CrewMemberRow({
   });
 
   const display = m.displayName;
-  const editable = canEdit && !isMe && m.role !== "Owner";
-  const canActOnPlanner = isOwner && !isMe && m.role === "Planner";
-  const canPromoteToCoplanner = isOwner && !isMe && m.role === "Member" && !isPlannerRow && !!m.user?.email;
-  const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
+  const isOwnerRow = m.role === "Owner";
+  const isPlannerRow = m.role === "Planner";
+  // Any real BT account — Owner, Planner, or Member — gets a faint teal
+  // tint to separate them from guests at a glance.
+  const isBTMember = !m.isGuest;
+  // Owner is the only role that can expand/edit rows. Owner can never
+  // expand themselves or the Owner row of the trip.
+  const expandable = isOwnerView && !isMe && !isOwnerRow;
+  const canActOnPlanner = isOwnerView && !isMe && isPlannerRow;
+  const canPromoteToCoplanner = isOwnerView && !isMe && m.role === "Member" && !!m.user?.email;
+  const hasTextChanges = editEmail.trim() !== (m.user?.email ?? "");
 
   const handleSave = async () => {
-    if (m.isGuest && m.user_id) {
-      const nameChanged = editName.trim() !== m.displayName;
-      const emailChanged = editEmail.trim() !== (m.user?.email ?? "");
-      if (nameChanged || emailChanged) {
-        await updateGuest.mutateAsync({
-          tripId,
-          guestUserId: m.user_id,
-          ...(nameChanged && { name: editName.trim() }),
-          ...(emailChanged && { email: editEmail.trim() || null }),
-        });
-      }
+    if (m.isGuest && m.user_id && hasTextChanges) {
+      await updateGuest.mutateAsync({
+        tripId,
+        guestUserId: m.user_id,
+        email: editEmail.trim() || null,
+      });
     }
     onToggle();
     onUpdated();
@@ -94,28 +87,27 @@ function CrewMemberRow({
 
   const handleRemove = () => {
     if (!m.user_id) return;
-    if (m.isGuest) {
-      removeGuest.mutate({ tripId, guestUserId: m.user_id });
-    } else {
-      removeMember.mutate({ tripId, userId: m.user_id });
-    }
+    if (m.isGuest) removeGuest.mutate({ tripId, guestUserId: m.user_id });
+    else removeMember.mutate({ tripId, userId: m.user_id });
   };
 
   return (
     <div
-      className="border-b"
+      className="border-b last:border-b-0"
       style={{
         borderColor: "var(--color-bt-border)",
-        background: index % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
+        background: isExpanded
+          ? "var(--color-bt-card-raised)"
+          : isBTMember
+            ? "color-mix(in srgb, var(--color-bt-accent) 5%, transparent)"
+            : undefined,
       }}
     >
-      {/* ── Main row (tappable) ──────────────────────────────────────────── */}
+      {/* ── Main row (tappable when expandable) ────────────────────────── */}
       <div
-        className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
-        style={{
-          cursor: editable && !isPlannerRow ? "pointer" : undefined,
-        }}
-        onClick={editable && !isPlannerRow ? onToggle : undefined}
+        className="flex items-center gap-3 py-2.5 px-3"
+        style={{ cursor: expandable ? "pointer" : undefined }}
+        onClick={expandable ? onToggle : undefined}
       >
         {/* Avatar */}
         {m.isGuest ? (
@@ -142,124 +134,164 @@ function CrewMemberRow({
               {m.user.email}
             </p>
           ) : m.isGuest ? (
-            <p className="truncate text-xs opacity-40" style={{ color: "var(--color-bt-text-dim)" }}>
-              no email on file
+            <p className="truncate text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+              tap to add email
             </p>
           ) : null}
         </div>
 
-        {/* ── Right side: actions ──────────────────────────────────────────── */}
-        <div className="flex flex-shrink-0 items-center">
-          <div className="flex flex-shrink-0 items-center gap-1">
-            {/* Planner row: move to rest of crew */}
-            {isPlannerRow && canActOnPlanner && (
+        {/* ── Right side: badges + chevron ─────────────────────────────── */}
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          {/* Owner badge */}
+          {isOwnerRow && (
+            <span
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              style={{
+                background: "color-mix(in srgb, var(--color-bt-warning) 15%, transparent)",
+                color: "var(--color-bt-warning)",
+                border: "1px solid color-mix(in srgb, var(--color-bt-warning) 30%, transparent)",
+              }}
+            >
+              <Crown size={10} />
+              Owner
+            </span>
+          )}
+
+          {/* Planner badge / Planner × button */}
+          {isPlannerRow && (
+            canActOnPlanner ? (
               <button
                 onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
                 disabled={updateRole.isPending}
-                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
-                style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                aria-label={`Remove ${display} as planner`}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 hover:opacity-75 transition-opacity"
+                style={{
+                  background: "var(--color-bt-accent-faint)",
+                  color: "var(--color-bt-accent)",
+                  border: "1px solid var(--color-bt-accent-border)",
+                }}
               >
-                Remove as planner
+                Planner
+                <X size={10} strokeWidth={2.5} />
               </button>
-            )}
-            {/* Crew row: promote to co-planner */}
-            {canPromoteToCoplanner && (
-              <button
-                onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Planner" }); }}
-                disabled={updateRole.isPending}
-                className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
-                style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+            ) : (
+              <span
+                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                style={{
+                  background: "var(--color-bt-accent-faint)",
+                  color: "var(--color-bt-accent)",
+                  border: "1px solid var(--color-bt-accent-border)",
+                }}
               >
-                Make planner
-              </button>
-            )}
-            {/* Remove (X) */}
-            {editable && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmRemove(true); }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
+                Planner
+              </span>
+            )
+          )}
+
+          {/* Make-planner button — owner only, member rows with email */}
+          {canPromoteToCoplanner && (
+            <button
+              onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Planner" }); }}
+              disabled={updateRole.isPending}
+              className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+              style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+            >
+              Make planner
+            </button>
+          )}
+
+          {/* Chevron — only on expandable rows */}
+          {expandable && (
+            <ChevronDown
+              size={16}
+              className="transition-transform duration-150"
+              style={{
+                color: "var(--color-bt-text-dim)",
+                transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
+          )}
         </div>
       </div>
 
-      {/* ── Remove confirmation ──────────────────────────────────────────── */}
-      {confirmRemove && (
-        <div
-          className="flex items-center gap-2 rounded-lg px-3 py-2 mb-1"
-          style={{ background: "color-mix(in srgb, var(--color-bt-danger) 6%, var(--color-bt-base))" }}
-        >
-          <p className="flex-1 text-xs" style={{ color: "var(--color-bt-danger)" }}>
-            Remove {display} from this trip?
-          </p>
-          <button
-            onClick={handleRemove}
-            disabled={removeMember.isPending || removeGuest.isPending}
-            className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
-            style={{ background: "var(--color-bt-danger)", color: "white" }}
-          >
-            Remove
-          </button>
-          <button
-            onClick={() => setConfirmRemove(false)}
-            className="rounded-lg border px-3 py-1 text-xs"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-          >
-            Cancel
-          </button>
-        </div>
-      )}
-
-      {/* ── Expanded edit panel — crew only, not for planner rows ─────────── */}
-      {isExpanded && editable && !isPlannerRow && (
-        <div
-          className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
-          style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
-        >
-          {/* Name + email — guest-only (validated users manage their own profile) */}
-          {m.isGuest && (
-            <div className="flex gap-2">
-              <input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Name"
-                className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-              />
-              <input
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-                placeholder="Email"
-                type="email"
-                className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-              />
+      {/* ── Expanded panel ───────────────────────────────────────────────── */}
+      {/* Indented under the name column: an empty cell mirrors the avatar +
+          gap so the inputs align with the name above. */}
+      {isExpanded && expandable && (
+        <div className="flex gap-3 px-3 pb-3">
+          <div className="w-8 flex-shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-3">
+          {/* Email — guest crew only. To change a guest's name, remove and
+              re-add them. */}
+          {m.isGuest && !isPlannerSection && (
+            <div>
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Email
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && hasTextChanges && !updateGuest.isPending) {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
+                  placeholder={`${m.displayName.toLowerCase()}@example.com`}
+                  type="email"
+                  className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                />
+                <button
+                  onClick={handleSave}
+                  disabled={!hasTextChanges || updateGuest.isPending}
+                  className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                >
+                  Save
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Actions row — save/cancel (planner promotion lives in the inline row button) */}
-          <div className="flex items-center justify-end gap-2">
-            {m.isGuest && (
+          {/* Remove from trip */}
+          <div className="flex items-center gap-2">
+            {confirmRemove ? (
+              <>
+                <span className="text-xs font-medium" style={{ color: "var(--color-bt-danger)" }}>
+                  Remove {display}?
+                </span>
+                <button
+                  onClick={handleRemove}
+                  disabled={removeMember.isPending || removeGuest.isPending}
+                  className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-40"
+                  style={{ background: "var(--color-bt-danger)", color: "white" }}
+                >
+                  Yes, remove
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="rounded-lg border px-2.5 py-1 text-xs"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
               <button
-                onClick={handleSave}
-                disabled={!hasTextChanges || updateGuest.isPending}
-                className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                onClick={() => setConfirmRemove(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
+                style={{ color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger)", opacity: 0.75 }}
               >
-                Save
+                <Trash2 size={12} />
+                Remove {display} from trip
               </button>
             )}
-            <button
-              onClick={onToggle}
-              className="rounded-lg border px-3 py-1 text-xs"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              {m.isGuest ? "Cancel" : "Close"}
-            </button>
+          </div>
           </div>
         </div>
       )}
@@ -267,21 +299,99 @@ function CrewMemberRow({
   );
 }
 
+// ── AddSomeoneRow ─────────────────────────────────────────────────────────
+// Collapsed dashed-avatar row at the bottom of the crew list. Expands to a
+// name-only form. Email is added later via the row's edit panel — that's
+// where the existing-account auto-link runs.
+
+function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => void }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [name, setName] = useState("");
+  const create = trpc.ghostCrew.create.useMutation({
+    onSuccess() {
+      setName("");
+      setIsExpanded(false);
+      onAdded();
+    },
+  });
+
+  const handleSubmit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    create.mutate({ tripId, name: trimmed, role: "Member" });
+  };
+
+  if (!isExpanded) {
+    return (
+      <button
+        onClick={() => setIsExpanded(true)}
+        className="flex w-full items-center gap-3 py-2.5 px-3 transition-colors hover:bg-[var(--color-bt-hover)]"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <div
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+          style={{ border: "1px dashed var(--color-bt-border)" }}
+        >
+          <Plus size={14} />
+        </div>
+        <span className="text-sm">Add someone</span>
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="space-y-2 rounded-lg px-3 py-2.5 my-1"
+      style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
+    >
+      <div className="flex gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSubmit();
+            if (e.key === "Escape") {
+              setIsExpanded(false);
+              setName("");
+            }
+          }}
+          className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!name.trim() || create.isPending}
+          className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          {create.isPending ? "..." : "Add"}
+        </button>
+        <button
+          onClick={() => {
+            setIsExpanded(false);
+            setName("");
+          }}
+          className="rounded-lg border px-3 py-1.5 text-xs"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
-export function CrewTab({ trip, canEdit }: TabProps) {
+export function CrewTab({ trip }: TabProps) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const tripId = trip.id;
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  const [addName, setAddName] = useState("");
-  const [addEmail, setAddEmail] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const createGhost = trpc.ghostCrew.create.useMutation();
-  const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -289,172 +399,140 @@ export function CrewTab({ trip, canEdit }: TabProps) {
     const aOrder = ROLE_ORDER[a.role] ?? 2;
     const bOrder = ROLE_ORDER[b.role] ?? 2;
     if (aOrder !== bOrder) return aOrder - bOrder;
-    // Real members before ghosts within the same role
     if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
     return a.displayName.localeCompare(b.displayName);
   });
 
-  const handleAdd = async () => {
-    const name = addName.trim();
-    const email = addEmail.trim().toLowerCase() || null;
-    if (!name) return;
-
-    setIsAdding(true);
-    try {
-      if (email) {
-        // Email provided: use inviteByEmail which handles both
-        // existing accounts (adds directly) and new users (creates invite + sends email)
-        await inviteByEmail.mutateAsync({ tripId, email, role: "Member" });
-      } else {
-        await createGhost.mutateAsync({ tripId, name, role: "Member" });
-      }
-      setAddName("");
-      setAddEmail("");
-      utils.tripMembers.list.invalidate({ tripId });
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  // Split members into planners and crew
   const plannersSorted = sorted.filter((m) => m.role === "Owner" || m.role === "Planner");
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
     <div className="@container px-4">
-      <div className="@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_320px] @[640px]:gap-5">
-      <div className="min-w-0 space-y-4">
-      {/* ── PLANNERS section ── */}
-      <div>
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Planners
-        </h2>
-        {isOwner && (
-          <>
-            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Invite people who want to help plan. Planners can add destination ideas, vote, and weigh in before the trip is official — everyone else gets added when it&apos;s time to go.
-            </p>
-            <div className="mb-2">
-              <CrewSearchInput
-                tripId={tripId}
-                defaultRole="Planner"
-                defaultStatus="draft"
-                allowGhost={false}
-                allowInvite
-                showSearchIcon
-                placeholder="Search by email..."
-                frequentTripmates={[]}
-                onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
-              />
-            </div>
-          </>
-        )}
-        {plannersSorted.map((m, i) => {
-          const isMe = m.user_id === currentUser?.id;
-          return (
-            <CrewMemberRow
-              key={m.memberId}
-              member={m}
-              tripId={tripId}
-              canEdit={canEdit}
-              isOwner={isOwner}
-              isMe={isMe}
-              index={i}
-              isExpanded={false}
-              isPlannerRow
-              onToggle={() => {}}
-              onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-            />
-          );
-        })}
-      </div>
-
-      {/* ── REST OF THE CREW section ── */}
-      <div className="pt-4">
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Rest of the crew
-        </h2>
-
-        {/* Name + email add for crew members */}
-        {canEdit && (
-          <div className="mb-2">
-            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Start building your crew list. Add names and emails as you think of them — invites go out later when you&apos;re ready.
-            </p>
-            <div className="flex gap-2">
-              <input
-                value={addName}
-                onChange={(e) => setAddName(e.target.value)}
-                placeholder="Name"
-                className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-              />
-              <input
-                value={addEmail}
-                onChange={(e) => setAddEmail(e.target.value)}
-                placeholder="Email (optional)"
-                type="email"
-                className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-              />
-              <button
-                onClick={handleAdd}
-                disabled={!addName.trim() || isAdding}
-                className="flex-shrink-0 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {isAdding ? "..." : "Add"}
-              </button>
+      <div className="@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5">
+        <div className="min-w-0 space-y-4">
+          {/* ── PLANNERS section ── */}
+          <div>
+            <h2
+              className="mb-2 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Planners
+            </h2>
+            {isOwner && (
+              <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+                Co-planners can help manage the trip alongside you. Promote any crew member with a BuddyTrip account.
+              </p>
+            )}
+            <div
+              className="overflow-hidden rounded-xl"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              {plannersSorted.map((m) => {
+                const isMe = m.user_id === currentUser?.id;
+                return (
+                  <CrewMemberRow
+                    key={m.memberId}
+                    member={m}
+                    tripId={tripId}
+                    isOwnerView={isOwner}
+                    isMe={isMe}
+                    isExpanded={expandedId === m.user_id}
+                    isPlannerSection
+                    onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                    onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                  />
+                );
+              })}
             </div>
           </div>
-        )}
 
-        <div>
-          {crewSorted.map((m, i) => {
-            const isMe = m.user_id === currentUser?.id;
-            return (
-              <CrewMemberRow
-                key={m.memberId}
-                member={m}
-                tripId={tripId}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                isMe={isMe}
-                index={i}
-                isExpanded={expandedId === m.user_id}
-                onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
-                onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-              />
-            );
-          })}
+          {/* ── REST OF THE CREW section ── */}
+          <div className="pt-4">
+            <h2
+              className="mb-2 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Rest of the crew
+            </h2>
+            {isOwner && (
+              <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+                BuddyTrip members get access as soon as you add them. Guests without an account need an email invite — use the panel on the right.
+              </p>
+            )}
+            {crewSorted.some((m) => m.isGuest) && (
+              <div
+                className="mb-2 flex items-center gap-2 text-[12px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <span
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+                  style={{ background: "var(--color-bt-border)" }}
+                >
+                  <Ghost size={11} />
+                </span>
+                <span>= hasn&apos;t joined BuddyTrip yet</span>
+              </div>
+            )}
+            <div
+              className="overflow-hidden rounded-xl"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              {crewSorted.map((m) => {
+                const isMe = m.user_id === currentUser?.id;
+                return (
+                  <CrewMemberRow
+                    key={m.memberId}
+                    member={m}
+                    tripId={tripId}
+                    isOwnerView={isOwner}
+                    isMe={isMe}
+                    isExpanded={expandedId === m.user_id}
+                    onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                    onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                  />
+                );
+              })}
+              {isOwner && (
+                <AddSomeoneRow
+                  tripId={tripId}
+                  onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
+                />
+              )}
+
+              {crewSorted.length === 0 && !isOwner && (
+                <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                  No crew members yet.
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
-        {crewSorted.length === 0 && !canEdit && (
-          <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            No crew members yet.
-          </p>
+        {/* Email panel — owner-only.
+            At ≥640px container width it's absolutely positioned in the right
+            column so its content height doesn't stretch the grid row — the left
+            column dictates panel height. Below 640px the grid collapses and it
+            stacks under the crew list. */}
+        {isOwner && (
+          <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[360px]">
+            <h2
+              className="mb-2 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Notify crew
+            </h2>
+            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Send your first invite, then keep everyone in the loop as the trip gets closer.
+            </p>
+            <CrewEmailPanel trip={trip} isOwner={isOwner} />
+          </div>
         )}
-      </div>
-      </div>
-
-      {/* Email panel — owner-only.
-          At ≥640px container width it's absolutely positioned in the right
-          column so its content height doesn't stretch the grid row — the left
-          column dictates panel height and content scrolls internally. Below
-          640px the grid collapses and it stacks under the crew list. */}
-      {isOwner && (
-        <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[320px]">
-          <CrewEmailPanel trip={trip} isOwner={isOwner} />
-        </div>
-      )}
       </div>
     </div>
   );

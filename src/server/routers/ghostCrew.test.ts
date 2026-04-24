@@ -147,6 +147,65 @@ describe("ghostCrew router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
+  it("update — auto-links to existing real BT account when email matches", async () => {
+    // Create a fresh ghost on this trip
+    const planner = ctx.callerAs("planner");
+    const ghost = await planner.ghostCrew.create({ tripId, name: "LinkMe" });
+    guestUserIds.push(ghost.id);
+
+    // 'outsider' has a real BT account but isn't a member of this trip
+    const outsider = ctx.getUser("outsider");
+
+    const result = await planner.ghostCrew.update({
+      tripId,
+      guestUserId: ghost.id,
+      email: outsider.email,
+    });
+
+    expect(result.linked).toBe(true);
+    expect(result.id).toBe(outsider.id);
+    expect(result.is_guest).toBe(false);
+
+    // trip_members should now point at the real user, not the ghost
+    const members = await planner.tripMembers.list({ tripId });
+    expect(members.find((m) => m.user_id === outsider.id)).toBeTruthy();
+    expect(members.find((m) => m.user_id === ghost.id)).toBeFalsy();
+  });
+
+  it("update — refuses link when real account is already a trip member", async () => {
+    // Create another ghost
+    const planner = ctx.callerAs("planner");
+    const ghost = await planner.ghostCrew.create({ tripId, name: "DupLink" });
+    guestUserIds.push(ghost.id);
+
+    // 'member' is already a real member of this trip
+    const member = ctx.getUser("member");
+    await expect(
+      planner.ghostCrew.update({
+        tripId,
+        guestUserId: ghost.id,
+        email: member.email,
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("update — non-matching email falls through to plain ghost update", async () => {
+    const planner = ctx.callerAs("planner");
+    const ghost = await planner.ghostCrew.create({ tripId, name: "Plain" });
+    guestUserIds.push(ghost.id);
+
+    const newEmail = `plain-${RUN_ID}@example.com`;
+    const result = await planner.ghostCrew.update({
+      tripId,
+      guestUserId: ghost.id,
+      email: newEmail,
+    });
+
+    expect(result.linked).toBe(false);
+    expect(result.email).toBe(newEmail);
+    expect(result.is_guest).toBe(true);
+  });
+
   // ── remove ────────────────────────────────────────────────────────────────
 
   it("remove — owner can remove a guest from the trip", async () => {
