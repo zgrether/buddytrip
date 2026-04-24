@@ -321,8 +321,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
-    <div className="px-4 lg:grid lg:grid-cols-[1fr_380px] lg:gap-5 lg:items-start lg:px-0 lg:pl-4 lg:pr-4">
-      <div className="space-y-4">
+    <div className="px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5 lg:items-start lg:px-4">
+      <div className="min-w-0 space-y-4">
       {/* ── PLANNERS section ── */}
       <div>
         <h2
