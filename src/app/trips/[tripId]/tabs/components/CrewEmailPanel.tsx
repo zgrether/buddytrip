@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckSquare, Mail, RotateCcw, Send, Square } from "lucide-react";
+import { CheckSquare, Ghost, Mail, RotateCcw, Send, Square } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
@@ -79,7 +79,9 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
   const withEmail = others
     .filter((m) => !!m.user?.email)
     .sort(recipientSort) as RecipientMember[];
-  const noEmailCount = others.filter((m) => !m.user?.email).length;
+  const withoutEmail = others
+    .filter((m) => !m.user?.email)
+    .sort(recipientSort) as RecipientMember[];
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lastSentCount, setLastSentCount] = useState<number | null>(null);
@@ -302,17 +304,38 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
         </>
       )}
 
-      {/* No-email hint — counts guests still missing an email so the
-          owner knows they exist. Email entry happens in the crew list,
-          not here. */}
-      {noEmailCount > 0 && (
-        <p
-          className="mb-3 text-[12px] leading-relaxed"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {noEmailCount === 1 ? "1 guest" : `${noEmailCount} guests`} still need an email — add one
-          from their crew row to invite them.
-        </p>
+      {/* No-email divider + static chips. Adding emails happens in the
+          crew list dropdown, so chips here are display-only. */}
+      {withEmail.length > 0 && withoutEmail.length > 0 && (
+        <div className="mb-3 flex items-center gap-2">
+          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+          <span
+            className="text-[9px] font-bold uppercase tracking-widest"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            No email yet
+          </span>
+          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+        </div>
+      )}
+
+      {withoutEmail.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {withoutEmail.map((m) => (
+            <span
+              key={m.memberId}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px dashed var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            >
+              <Ghost size={11} style={{ color: "var(--color-bt-text-dim)" }} />
+              <span>{m.displayName}</span>
+            </span>
+          ))}
+        </div>
       )}
 
       {/* Send button */}
