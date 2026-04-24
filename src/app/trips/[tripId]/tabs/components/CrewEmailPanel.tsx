@@ -84,7 +84,6 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
     .sort(recipientSort) as RecipientMember[];
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
-  const [lastSentCount, setLastSentCount] = useState<number | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
 
   const toggleMember = (memberId: string) => {
@@ -99,8 +98,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
   const selectedMembers = withEmail.filter((m) => checkedIds.has(m.memberId));
 
   const blast = trpc.tripMembers.sendInvitationBlast.useMutation({
-    onSuccess(data) {
-      setLastSentCount(data.sent);
+    onSuccess() {
       setCheckedIds(new Set());
       utils.tripMembers.list.invalidate({ tripId });
       utils.trips.getById.invalidate({ tripId });
@@ -198,22 +196,6 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
         />
       </div>
 
-      {/* Success flash */}
-      {lastSentCount !== null && (
-        <div
-          className="mb-3 rounded-lg px-3 py-2 text-[13px] font-medium"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-            border: "1px solid var(--color-bt-accent-border)",
-          }}
-        >
-          {lastSentCount === 0
-            ? "No emails sent — something went wrong"
-            : `Sent to ${lastSentCount} ${lastSentCount === 1 ? "person" : "people"}`}
-        </div>
-      )}
-
       {/* Recipient list */}
       {withEmail.length === 0 ? (
         <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -244,16 +226,26 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
             </button>
           </div>
 
-          <div className="mb-3">
+          <div className="mb-3 -mx-4">
             {withEmail.map((m) => {
               const checked = checkedIds.has(m.memberId);
+              const isBTMember = !m.isGuest;
               return (
                 <div
                   key={m.memberId}
                   onClick={() => toggleMember(m.memberId)}
-                  className={`flex cursor-pointer items-center gap-2.5 border-b px-2 py-1.5 transition-colors duration-150 last:border-b-0${!checked ? " hover:bg-[var(--color-bt-hover)]" : ""}`}
+                  title={
+                    isBTMember
+                      ? "Will be notified about the trip"
+                      : "Will be invited to sign up for BuddyTrip and join the trip"
+                  }
+                  className={`flex cursor-pointer items-center gap-2.5 border-b px-4 py-1.5 transition-colors duration-150${!checked ? " hover:bg-[var(--color-bt-hover)]" : ""}`}
                   style={{
-                    background: checked ? "var(--color-bt-accent-faint)" : "transparent",
+                    background: checked
+                      ? "var(--color-bt-accent-faint)"
+                      : isBTMember
+                        ? "color-mix(in srgb, var(--color-bt-accent) 5%, transparent)"
+                        : undefined,
                     borderColor: "var(--color-bt-border)",
                   }}
                 >
@@ -270,10 +262,17 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
                   )}
                   <div className="min-w-0 flex-1">
                     <div
-                      className="truncate text-[13px] font-medium"
+                      className="flex items-center gap-1.5 truncate text-[13px] font-medium"
                       style={{ color: "var(--color-bt-text)" }}
                     >
-                      {m.displayName}
+                      {m.isGuest && (
+                        <Ghost
+                          size={12}
+                          className="flex-shrink-0"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        />
+                      )}
+                      <span className="truncate">{m.displayName}</span>
                     </div>
                     <div
                       className="truncate text-xs"
