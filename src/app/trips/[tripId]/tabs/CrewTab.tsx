@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, X, Check, Crown, ChevronDown, Plus, Pencil } from "lucide-react";
+import { Ghost, X, Check, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
@@ -132,8 +132,8 @@ function CrewMemberRow({
               {m.user.email}
             </p>
           ) : m.isGuest ? (
-            <p className="truncate text-xs opacity-40" style={{ color: "var(--color-bt-text-dim)" }}>
-              no email on file
+            <p className="truncate text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+              tap to add email
             </p>
           ) : null}
         </div>
@@ -226,32 +226,40 @@ function CrewMemberRow({
 
       {/* ── Expanded panel ───────────────────────────────────────────────── */}
       {isExpanded && expandable && (
-        <div
-          className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
-          style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
-        >
+        <div className="space-y-3 px-2 pb-3">
           {/* Email — guest crew only. To change a guest's name, remove and
               re-add them. */}
           {m.isGuest && !isPlannerSection && (
-            <div className="relative">
-              <input
-                value={editEmail}
-                onChange={(e) => setEditEmail(e.target.value)}
-                placeholder="Email"
-                type="email"
-                className="w-full rounded-lg border px-2.5 py-1.5 pr-7 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-              />
-              <Pencil
-                size={11}
-                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+            <div>
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
                 style={{ color: "var(--color-bt-text-dim)" }}
-              />
+              >
+                Email
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder={`${m.displayName.toLowerCase()}@example.com`}
+                  type="email"
+                  className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                />
+                <button
+                  onClick={handleSave}
+                  disabled={!hasTextChanges || updateGuest.isPending}
+                  className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                >
+                  Save
+                </button>
+              </div>
             </div>
           )}
 
+          {/* Remove from trip */}
           <div className="flex items-center gap-2">
-            {/* Remove from trip */}
             {confirmRemove ? (
               <>
                 <span className="text-xs font-medium" style={{ color: "var(--color-bt-danger)" }}>
@@ -276,32 +284,12 @@ function CrewMemberRow({
             ) : (
               <button
                 onClick={() => setConfirmRemove(true)}
-                className="rounded-lg px-2.5 py-1 text-xs font-medium"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
                 style={{ color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger)", opacity: 0.75 }}
               >
+                <Trash2 size={12} />
                 Remove from trip
               </button>
-            )}
-
-            {/* Save / Cancel — guest crew only */}
-            {m.isGuest && !isPlannerSection && (
-              <div className="ml-auto flex items-center gap-2">
-                <button
-                  onClick={handleSave}
-                  disabled={!hasTextChanges || updateGuest.isPending}
-                  className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
-                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                >
-                  Save
-                </button>
-                <button
-                  onClick={onToggle}
-                  className="rounded-lg border px-3 py-1 text-xs"
-                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                >
-                  Cancel
-                </button>
-              </div>
             )}
           </div>
         </div>
