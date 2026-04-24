@@ -467,6 +467,20 @@ export function CrewTab({ trip }: TabProps) {
                 BuddyTrip members get access as soon as you add them. Guests without an account need an email invite — use the panel on the right.
               </p>
             )}
+            {crewSorted.some((m) => m.isGuest) && (
+              <div
+                className="mb-2 flex items-center gap-2 text-[12px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <span
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+                  style={{ background: "var(--color-bt-border)" }}
+                >
+                  <Ghost size={11} />
+                </span>
+                <span>= hasn&apos;t joined BuddyTrip yet</span>
+              </div>
+            )}
             <div
               className="overflow-hidden rounded-xl"
               style={{

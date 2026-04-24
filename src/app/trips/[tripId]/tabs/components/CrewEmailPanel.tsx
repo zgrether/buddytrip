@@ -244,16 +244,17 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
             </button>
           </div>
 
-          <div className="mb-3 space-y-0.5">
+          <div className="mb-3">
             {withEmail.map((m) => {
               const checked = checkedIds.has(m.memberId);
               return (
                 <div
                   key={m.memberId}
                   onClick={() => toggleMember(m.memberId)}
-                  className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors duration-150${!checked ? " hover:bg-[var(--color-bt-hover)]" : ""}`}
+                  className={`flex cursor-pointer items-center gap-2.5 border-b px-2 py-1.5 transition-colors duration-150 last:border-b-0${!checked ? " hover:bg-[var(--color-bt-hover)]" : ""}`}
                   style={{
                     background: checked ? "var(--color-bt-accent-faint)" : "transparent",
+                    borderColor: "var(--color-bt-border)",
                   }}
                 >
                   {checked ? (
