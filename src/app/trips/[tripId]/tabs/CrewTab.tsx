@@ -63,10 +63,9 @@ function CrewMemberRow({
   const display = m.displayName;
   const isOwnerRow = m.role === "Owner";
   const isPlannerRow = m.role === "Planner";
-  // BT members (real accounts in the "rest of crew" panel) get a faint
-  // teal tint instead of a "BT" badge so the eye separates them from
-  // guests at a glance.
-  const isBTMember = !m.isGuest && !isOwnerRow && !isPlannerRow;
+  // Any real BT account — Owner, Planner, or Member — gets a faint teal
+  // tint to separate them from guests at a glance.
+  const isBTMember = !m.isGuest;
   // Owner is the only role that can expand/edit rows. Owner can never
   // expand themselves or the Owner row of the trip.
   const expandable = isOwnerView && !isMe && !isOwnerRow;
