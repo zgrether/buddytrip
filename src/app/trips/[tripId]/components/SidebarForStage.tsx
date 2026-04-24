@@ -1,10 +1,9 @@
 "use client";
 
 import { MapPin, Plus } from "lucide-react";
-import { SidebarChatPanel } from "./PlanningChatPanel";
 import { CoPlannerPanel } from "./IdeaZonePanel";
 
-export type SidebarStage = "idea" | "planning" | "going" | "now" | "past" | "saved";
+export type SidebarStage = "idea";
 
 interface IdeaMember {
   user_id: string;
@@ -18,87 +17,53 @@ export interface SidebarForStageProps {
   stage: SidebarStage;
   tripId: string;
   isOwner: boolean;
-  canEdit: boolean;
-  /** userId → display name map, used by the embedded chat. */
-  memberNames: Record<string, string>;
-
-  // ── Idea-stage specific ─────────────────────────────────────────────
-  /** Full member list (idea stage only — feeds the CoPlannerPanel). */
+  /** Full member list — feeds the CoPlannerPanel. */
   members?: IdeaMember[];
-  /** Set of user IDs who have voted on any idea (idea stage only). */
+  /** Set of user IDs who have voted on any idea. */
   allVoterIds?: Set<string>;
-  /** Called when the user clicks "Add destination idea" (idea stage only). */
+  /** Called when the user clicks "Add destination idea". */
   onAddIdea?: () => void;
-
-  /** Opens the full-width ChatDrawer from the sidebar's expand icon. */
-  onExpandChat?: () => void;
-  /** When true, the embedded sidebar chat is hidden — the floating chat button
-   *  takes over on desktop (matching the mobile experience). */
-  chatMinimized?: boolean;
-  /** Fired when the user clicks the minimize icon in the sidebar chat header. */
-  onMinimizeChat?: () => void;
 }
 
 /**
- * SidebarForStage — renders the right-rail sidebar content appropriate for
- * the trip's current lifecycle stage. Used inside <TwoColumnLayout> so the
- * outer grid stays stage-agnostic.
+ * SidebarForStage — the idea-stage right rail: "Add destination idea"
+ * CTA (owners only) plus the CoPlannerPanel. Crew chat lives in the
+ * FloatingChatPanel at the page level and is no longer mounted here.
  *
- * The sidebar chat (SidebarChatPanel) is common to every stage; stage-specific
- * actions stack above it.
+ * The component kept its stage-aware shape (one branch today) so the
+ * call site in IdeaZonePanel doesn't need to know about the content.
  */
 export function SidebarForStage({
-  stage,
   tripId,
   isOwner,
-  canEdit: _canEdit,
-  memberNames,
   members,
   allVoterIds,
   onAddIdea,
-  onExpandChat,
-  chatMinimized,
-  onMinimizeChat,
 }: SidebarForStageProps) {
   return (
     <>
-      {stage === "idea" && (
-        <>
-          {isOwner && onAddIdea && (
-            <button
-              data-testid="add-idea-btn"
-              onClick={onAddIdea}
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{
-                border: "1.5px dashed var(--color-bt-accent)",
-                color: "var(--color-bt-accent)",
-                background: "transparent",
-              }}
-            >
-              <Plus size={16} />
-              <MapPin size={15} />
-              Add destination idea
-            </button>
-          )}
-          {members && allVoterIds && (
-            <CoPlannerPanel
-              tripId={tripId}
-              members={members}
-              isOwner={isOwner}
-              allVoterIds={allVoterIds}
-            />
-          )}
-        </>
+      {isOwner && onAddIdea && (
+        <button
+          data-testid="add-idea-btn"
+          onClick={onAddIdea}
+          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{
+            border: "1.5px dashed var(--color-bt-accent)",
+            color: "var(--color-bt-accent)",
+            background: "transparent",
+          }}
+        >
+          <Plus size={16} />
+          <MapPin size={15} />
+          Add destination idea
+        </button>
       )}
-
-      {/* Chat is universal across stages — hidden when the user has minimized
-          it to the floating button (handled by the page wrapper). */}
-      {!chatMinimized && (
-        <SidebarChatPanel
+      {members && allVoterIds && (
+        <CoPlannerPanel
           tripId={tripId}
-          memberNames={memberNames}
-          onExpand={onExpandChat}
-          onMinimize={onMinimizeChat}
+          members={members}
+          isOwner={isOwner}
+          allVoterIds={allVoterIds}
         />
       )}
     </>

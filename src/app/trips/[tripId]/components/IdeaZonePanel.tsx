@@ -1846,7 +1846,7 @@ export default function IdeaZonePanel({
   canEdit: boolean;
   isOwner: boolean;
   onTabChange?: (tab: string) => void;
-  /** Opens the mobile ChatDrawer (managed in page.tsx) */
+  /** Opens the FloatingChatPanel (managed in page.tsx) */
   onOpenChat?: () => void;
 }) {
   const currentUser = useCurrentUser();
@@ -1986,13 +1986,9 @@ export default function IdeaZonePanel({
             stage="idea"
             tripId={tripId}
             isOwner={isOwner}
-            canEdit={canEdit}
             members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
             allVoterIds={allVoterIds}
             onAddIdea={() => setShowAddModal(true)}
-            memberNames={Object.fromEntries(
-              members.map((m) => [m.memberId, m.displayName])
-            )}
           />
         </div>
       </div>
