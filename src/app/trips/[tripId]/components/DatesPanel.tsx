@@ -220,18 +220,24 @@ export function DatesPanel({
   }
 
   // Owner, not-locked — segmented control state machine.
+  //
+  // No inner "Dates / TBD" header row here: placement inside the Action
+  // Center already says "this needs your attention" — a second heading
+  // before the segmented control is pure noise.
   const valid = !!directStart && !!directEnd && directStart < directEnd;
+  const outerBorder = pollMode
+    ? "var(--color-bt-accent-border)"
+    : "var(--color-bt-border)";
 
   return (
     <>
-      <PlanningRow
-        icon={<Calendar size={16} />}
-        label={headerLabel}
-        note={headerNote}
-        state={state}
-        isOpen={true}
-        onToggle={() => {}}
-        noExpand={true}
+      <div
+        className="rounded-xl p-4"
+        style={{
+          background: "var(--color-bt-card)",
+          border: `1px solid ${outerBorder}`,
+          boxShadow: "var(--shadow-raised)",
+        }}
       >
         <div className="space-y-3">
           {/* ── Segmented control: Pick your Dates | Poll the Crew ─────── */}
@@ -372,7 +378,7 @@ export function DatesPanel({
             />
           )}
         </div>
-      </PlanningRow>
+      </div>
 
       {/* Confirmation modal */}
       {showDatesModal && valid && (

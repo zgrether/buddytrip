@@ -30,6 +30,7 @@ export interface TripData {
   event_id?: string | null;
   series_id?: string | null;
   created_at?: string | null;
+  last_blast_sent_at?: string | null;
 }
 
 export interface TabProps {

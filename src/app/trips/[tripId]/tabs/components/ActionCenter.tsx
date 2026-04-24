@@ -1,10 +1,15 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Sparkles } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { TripData } from "../types";
 import { DatePollCard } from "./DatePollCard";
 import { DatesPanel } from "../../components/DatesPanel";
 import { InvitationCard } from "./InvitationCard";
+import { ActionCard } from "./ActionCard";
+import { TravelEntryForm } from "../../components/TravelEntryForm";
 
 export interface ActionCenterProps {
   trip: TripData;
@@ -12,6 +17,9 @@ export interface ActionCenterProps {
   canEdit: boolean;
   onTabChange?: (tab: string) => void;
   onWriteInvitation?: () => void;
+  /** Optional right-aligned node rendered inline with the "Action Center"
+   *  title — e.g. the Trip Summary button. */
+  titleAction?: ReactNode;
 }
 
 /**
@@ -28,7 +36,7 @@ export interface ActionCenterProps {
  * DatesPanel is removed from PlanningSection; it lives here exclusively.
  * Future cards (RsvpCard, TravelCard) slot in alongside the dates surface.
  */
-export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvitation }: ActionCenterProps) {
+export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvitation, titleAction }: ActionCenterProps) {
   const stage = trip.stage ?? "idea";
   if (stage !== "idea" && stage !== "planning" && stage !== "going") return null;
 
@@ -36,30 +44,32 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
   const pollMode = !!trip.poll_mode;
 
   // ── GOING stage ────────────────────────────────────────────────────────
-  // In the going stage the Action Center's primary card is the host's
-  // invitation and (optionally) the travel-sharing form.
+  // In the going stage the Action Center shows a travel-sharing card for
+  // everyone, and — for owners only — the invitation card (full on mobile,
+  // compact nudge on lg+, where the full email UI lives in the Crew tab's
+  // sticky CrewEmailPanel).
   if (stage === "going") {
     return (
       <section className="space-y-3">
-        <p
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Action Center
-        </p>
-        <InvitationCard trip={trip} isOwner={isOwner} onWriteInvitation={onWriteInvitation} />
+        <ActionCenterHeader titleAction={titleAction} />
+        <div className="space-y-3">
+          {isOwner && (
+            <InvitationCard
+              trip={trip}
+              isOwner={isOwner}
+              onWriteInvitation={onWriteInvitation}
+              onTabChange={onTabChange}
+            />
+          )}
+          <TravelCard trip={trip} isOwner={isOwner} />
+        </div>
       </section>
     );
   }
 
   return (
     <section className="space-y-3">
-      <p
-        className="text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Action Center
-      </p>
+      <ActionCenterHeader titleAction={titleAction} />
 
       {datesLocked ? (
         // Dates locked — nothing to do
@@ -90,6 +100,25 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
 
       {/* TODO: RsvpCard + TravelCard slot in here in later phases */}
     </section>
+  );
+}
+
+/**
+ * Header row — "Action Center" label on the left, optional action slot
+ * (Trip Summary button) right-aligned. Slot stays out of the card panel
+ * so the title stays visually distinct from the card chrome.
+ */
+function ActionCenterHeader({ titleAction }: { titleAction?: ReactNode }) {
+  return (
+    <div className="flex min-h-[2rem] items-center justify-between gap-2">
+      <p
+        className="text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Action Center
+      </p>
+      {titleAction}
+    </div>
   );
 }
 
@@ -133,5 +162,38 @@ function ActionCenterIdle({ isOwner }: { isOwner: boolean }) {
         </p>
       </div>
     </div>
+  );
+}
+
+// ── Travel Card ──────────────────────────────────────────────────────────────
+
+function TravelCard({ trip, isOwner }: { trip: TripData; isOwner: boolean }) {
+  const tripId = trip.id;
+  const currentUser = useCurrentUser();
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+
+  const myMember = members.find((m) => m.user_id === currentUser?.id);
+
+  return (
+    <ActionCard isResolved={false}>
+      <p
+        className="mb-2 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Travel
+      </p>
+      <p
+        className="mb-3 text-[13px] leading-relaxed"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        {isOwner
+          ? "You're the host — share your travel plans so the crew can coordinate."
+          : "Share your travel plans so the crew can coordinate."}
+      </p>
+      <TravelEntryForm
+        tripId={tripId}
+        currentTravel={myMember as Parameters<typeof TravelEntryForm>[0]["currentTravel"]}
+      />
+    </ActionCard>
   );
 }

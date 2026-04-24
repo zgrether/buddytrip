@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { TabProps } from "./types";
+import { CrewEmailPanel } from "./components/CrewEmailPanel";
 
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
 
@@ -320,11 +321,13 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
-    <div className="space-y-4 px-4">
+    <div className="@container px-4">
+      <div className="@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_320px] @[640px]:gap-5">
+      <div className="min-w-0 space-y-4">
       {/* ── PLANNERS section ── */}
       <div>
         <h2
-          className="mb-1 text-xs font-semibold uppercase tracking-wider"
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Planners
@@ -439,6 +442,19 @@ export function CrewTab({ trip, canEdit }: TabProps) {
             No crew members yet.
           </p>
         )}
+      </div>
+      </div>
+
+      {/* Email panel — owner-only.
+          At ≥640px container width it's absolutely positioned in the right
+          column so its content height doesn't stretch the grid row — the left
+          column dictates panel height and content scrolls internally. Below
+          640px the grid collapses and it stacks under the crew list. */}
+      {isOwner && (
+        <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[320px]">
+          <CrewEmailPanel trip={trip} isOwner={isOwner} />
+        </div>
+      )}
       </div>
     </div>
   );

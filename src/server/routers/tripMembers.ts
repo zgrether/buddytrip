@@ -16,7 +16,7 @@ export const tripMembersRouter = router({
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
         .from("trip_members")
-        .select("id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared")
+        .select("id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at")
         .eq("trip_id", ctx.tripId)
         .order("joined_at", { ascending: true });
 
@@ -462,6 +462,96 @@ export const tripMembersRouter = router({
       }
 
       return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // sendInvitationBlast — Owner sends the trip invitation email to a
+  // selected subset of crew members. Updates last_invited_at per recipient
+  // and last_blast_sent_at on the trip.
+  // -----------------------------------------------------------------------
+  sendInvitationBlast: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        memberUserIds: z.array(z.string()).min(1),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      // Fetch trip for email content
+      const { data: trip } = await ctx.supabase
+        .from("trips")
+        .select("title, about_message, location, locked_destination_title, start_date, end_date")
+        .eq("id", ctx.tripId)
+        .single();
+
+      if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+
+      // Fetch owner display name
+      const { data: owner } = await ctx.supabase
+        .from("users")
+        .select("name, nickname")
+        .eq("id", ctx.user!.id)
+        .single();
+      const ownerName = owner?.nickname ?? owner?.name ?? "Your host";
+
+      // Verify recipients are actual trip members (prevents spoofed IDs)
+      const { data: memberRows } = await ctx.supabase
+        .from("trip_members")
+        .select("user_id")
+        .eq("trip_id", ctx.tripId)
+        .in("user_id", input.memberUserIds);
+
+      const verifiedIds = (memberRows ?? []).map((m) => m.user_id).filter(Boolean) as string[];
+      if (verifiedIds.length === 0) return { sent: 0 };
+
+      // Fetch user records with emails
+      const { data: users } = await ctx.supabase
+        .from("users")
+        .select("id, name, nickname, email")
+        .in("id", verifiedIds);
+
+      // Build invitation message (custom or canned default)
+      const { buildCannedInvitation } = await import("@/lib/invitationDefault");
+      const invitationMessage = trip.about_message?.trim() || buildCannedInvitation(trip);
+
+      const { sendInvitationBlast: sendBlast } = await import("@/lib/email");
+      const now = new Date().toISOString();
+      const sentIds: string[] = [];
+
+      for (const user of users ?? []) {
+        if (!user.email) continue;
+        try {
+          await sendBlast({
+            toEmail: user.email,
+            toName: user.nickname ?? user.name ?? user.email.split("@")[0],
+            ownerName,
+            tripTitle: trip.title,
+            invitationMessage,
+            tripId: ctx.tripId,
+          });
+          sentIds.push(user.id);
+        } catch {
+          // Email failure for one recipient shouldn't stop others
+        }
+      }
+
+      // Update last_invited_at for each successfully sent recipient
+      if (sentIds.length > 0) {
+        await ctx.supabase
+          .from("trip_members")
+          .update({ last_invited_at: now })
+          .eq("trip_id", ctx.tripId)
+          .in("user_id", sentIds);
+      }
+
+      // Update trip.last_blast_sent_at
+      await ctx.supabase
+        .from("trips")
+        .update({ last_blast_sent_at: now })
+        .eq("id", ctx.tripId);
+
+      return { sent: sentIds.length };
     }),
 
   // -----------------------------------------------------------------------

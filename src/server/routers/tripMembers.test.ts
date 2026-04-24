@@ -1,5 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { vi, describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
+import { sendInvitationBlast } from "@/lib/email";
+
+vi.mock("@/lib/email", () => ({
+  sendInvitationBlast: vi.fn().mockResolvedValue({ id: "mock-email-id" }),
+  sendInviteExistingUser: vi.fn().mockResolvedValue({}),
+  sendInviteNewUser: vi.fn().mockResolvedValue({}),
+}));
 
 let ctx: TestContext;
 let tripId: string;
@@ -203,5 +210,77 @@ describe("tripMembers router — travel", () => {
       travelShared: false,
     });
     expect(result.travel_mode).toBeNull();
+  });
+});
+
+// ── sendInvitationBlast tests ────────────────────────────────────────────────
+
+describe("tripMembers router — sendInvitationBlast", () => {
+  let ctx: TestContext;
+  let tripId: string;
+
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Blast Test Trip");
+    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "member", "Member");
+  }, 30_000);
+
+  afterAll(async () => {
+    await ctx.cleanup();
+  }, 30_000);
+
+  it("sendInvitationBlast — owner can blast to members with email", async () => {
+    vi.mocked(sendInvitationBlast).mockClear();
+    const caller = ctx.caller();
+    const planner = ctx.getUser("planner");
+    const member = ctx.getUser("member");
+
+    const result = await caller.tripMembers.sendInvitationBlast({
+      tripId,
+      memberUserIds: [planner.id, member.id],
+    });
+
+    expect(result.sent).toBeGreaterThan(0);
+    expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalled();
+  });
+
+  it("sendInvitationBlast — updates last_blast_sent_at on the trip", async () => {
+    const admin = ctx.admin;
+    const caller = ctx.caller();
+    const planner = ctx.getUser("planner");
+
+    await caller.tripMembers.sendInvitationBlast({
+      tripId,
+      memberUserIds: [planner.id],
+    });
+
+    const { data: trip } = await admin
+      .from("trips")
+      .select("last_blast_sent_at")
+      .eq("id", tripId)
+      .single();
+
+    expect(trip?.last_blast_sent_at).toBeTruthy();
+  });
+
+  it("sendInvitationBlast — member cannot blast", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.tripMembers.sendInvitationBlast({
+        tripId,
+        memberUserIds: [ctx.getUser("planner").id],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.sendInvitationBlast({
+        tripId,
+        memberUserIds: [ctx.getUser("member").id],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
