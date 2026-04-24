@@ -31,23 +31,6 @@ function recipientSort(a: RecipientMember, b: RecipientMember) {
   return a.displayName.localeCompare(b.displayName);
 }
 
-// Members sent in the last blast (last_invited_at >= last_blast_sent_at) are
-// unchecked by default so the owner sees "new" people pre-selected on re-blast.
-function computeDefaultChecked(
-  withEmail: RecipientMember[],
-  lastBlastSentAt: string | null
-): Set<string> {
-  return new Set(
-    withEmail
-      .filter((m) => {
-        if (!lastBlastSentAt) return true;
-        const inv = m.last_invited_at ?? null;
-        if (!inv) return true;
-        return inv < lastBlastSentAt;
-      })
-      .map((m) => m.memberId)
-  );
-}
 
 export interface InvitationCardProps {
   trip: TripData;
@@ -244,11 +227,11 @@ function BlastSection({
             </span>
             <button
               type="button"
-              onClick={() => setCheckedIds(computeDefaultChecked(withEmail, lastBlastSentAt))}
+              onClick={() => setCheckedIds(new Set(withEmail.map((m) => m.memberId)))}
               className="text-xs font-semibold"
               style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none" }}
             >
-              Select defaults
+              Select all
             </button>
           </div>
 
