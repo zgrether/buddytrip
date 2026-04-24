@@ -273,4 +273,14 @@ describe("tripMembers router — sendInvitationBlast", () => {
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("sendInvitationBlast — planner cannot blast (owner-only)", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.sendInvitationBlast({
+        tripId,
+        memberUserIds: [ctx.getUser("member").id],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });
