@@ -109,7 +109,7 @@ function CrewMemberRow({
     >
       {/* ── Main row (tappable when expandable) ────────────────────────── */}
       <div
-        className="flex items-center gap-3 py-2.5 px-1 -mx-1 rounded"
+        className="flex items-center gap-3 py-2.5 px-2 rounded"
         style={{ cursor: expandable ? "pointer" : undefined }}
         onClick={expandable ? onToggle : undefined}
       >
@@ -350,7 +350,7 @@ function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => voi
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className="flex w-full items-center gap-3 py-2.5 px-1 -mx-1 rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+        className="flex w-full items-center gap-3 py-2.5 px-2 rounded transition-colors hover:bg-[var(--color-bt-hover)]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         <div
@@ -448,23 +448,31 @@ export function CrewTab({ trip }: TabProps) {
                 Co-planners can help manage the trip alongside you. Promote any crew member with a BuddyTrip account.
               </p>
             )}
-            {plannersSorted.map((m, i) => {
-              const isMe = m.user_id === currentUser?.id;
-              return (
-                <CrewMemberRow
-                  key={m.memberId}
-                  member={m}
-                  tripId={tripId}
-                  isOwnerView={isOwner}
-                  isMe={isMe}
-                  index={i}
-                  isExpanded={expandedId === m.user_id}
-                  isPlannerSection
-                  onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
-                  onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-                />
-              );
-            })}
+            <div
+              className="rounded-xl px-2 py-1"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              {plannersSorted.map((m, i) => {
+                const isMe = m.user_id === currentUser?.id;
+                return (
+                  <CrewMemberRow
+                    key={m.memberId}
+                    member={m}
+                    tripId={tripId}
+                    isOwnerView={isOwner}
+                    isMe={isMe}
+                    index={i}
+                    isExpanded={expandedId === m.user_id}
+                    isPlannerSection
+                    onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                    onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                  />
+                );
+              })}
+            </div>
           </div>
 
           {/* ── REST OF THE CREW section ── */}
@@ -480,7 +488,13 @@ export function CrewTab({ trip }: TabProps) {
                 BuddyTrip members get access as soon as you add them. Guests without an account need an email invite — use the panel on the right.
               </p>
             )}
-            <div>
+            <div
+              className="rounded-xl px-2 py-1"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
               {crewSorted.map((m, i) => {
                 const isMe = m.user_id === currentUser?.id;
                 return (
@@ -503,13 +517,13 @@ export function CrewTab({ trip }: TabProps) {
                   onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
                 />
               )}
-            </div>
 
-            {crewSorted.length === 0 && !isOwner && (
-              <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                No crew members yet.
-              </p>
-            )}
+              {crewSorted.length === 0 && !isOwner && (
+                <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                  No crew members yet.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
