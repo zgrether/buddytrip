@@ -7,7 +7,6 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
 import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
-import { TravelEntryForm } from "../../components/TravelEntryForm";
 import { ActionCard } from "./ActionCard";
 
 // Same sort order as the Crew tab: Owner → Planner → Member, real before
@@ -56,54 +55,19 @@ export interface InvitationCardProps {
   onWriteInvitation?: () => void;
 }
 
-/**
- * InvitationCard — going-stage Action Center card.
- *
- * Owner view (top → bottom):
- *   1. Travel toggle
- *   2. Invitation text with pencil → TripInvitationModal
- *   3. BlastSection: checkbox recipient list + Send button
- *   4. Travel section (when travel_enabled)
- *
- * Member view: invitation text only + travel section.
- */
+/** Crew Email card — going-stage Action Center. Owner sees blast controls; members see read-only invite text. */
 export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: InvitationCardProps) {
   const tripId = trip.id;
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  const travelEnabled = !!trip.travel_enabled;
   const lastBlastSentAt = trip.last_blast_sent_at ?? null;
 
   const cannedInvitation = buildCannedInvitation(trip);
   const savedMessage = trip.about_message?.trim() || "";
   const invitationText = savedMessage || cannedInvitation;
   const isUsingDefault = !savedMessage;
-
-  const updateSettings = trpc.trips.updateActionCenterSettings.useMutation({
-    async onMutate(vars) {
-      await utils.trips.getById.cancel({ tripId });
-      const prev = utils.trips.getById.getData({ tripId });
-      utils.trips.getById.setData({ tripId }, (old: unknown) => {
-        if (!old) return old;
-        const trip = old as Record<string, unknown>;
-        return {
-          ...trip,
-          ...(vars.travelEnabled !== undefined ? { travel_enabled: vars.travelEnabled } : {}),
-        } as typeof old;
-      });
-      return { prev };
-    },
-    onError(_err, _vars, context) {
-      if (context?.prev) utils.trips.getById.setData({ tripId }, context.prev);
-    },
-    onSettled() {
-      utils.trips.getById.invalidate({ tripId });
-    },
-  });
-
-  const myMember = members.find((m) => m.user_id === currentUser?.id);
 
   type Member = typeof members[number];
   const others: Member[] = members.filter((m) => m.user_id !== currentUser?.id);
@@ -116,30 +80,12 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
 
   return (
     <ActionCard isResolved={false}>
-      {/* ── Owner travel toggle ───────────────────────────────────────── */}
-      {isOwner && (
-        <div
-          className="mb-4 flex flex-col gap-2 rounded-lg px-3 py-2.5"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <ToggleRow
-            label="Share travel info"
-            checked={travelEnabled}
-            onChange={(v) => updateSettings.mutate({ tripId, travelEnabled: v })}
-            testid="toggle-travel-enabled"
-          />
-        </div>
-      )}
-
-      {/* ── Invitation message ───────────────────────────────────────── */}
+      {/* ── Crew email header ───────────────────────────────────────── */}
       <p
         className="mb-2 text-xs font-semibold uppercase tracking-wider"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Invitation
+        Crew Email
       </p>
       {isOwner ? (
         <p
@@ -147,15 +93,15 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {isUsingDefault
-            ? "We drafted a short invite from your trip details. Edit it, or send it as-is."
-            : "Your custom invite is what the crew will see."}
+            ? "We drafted a short invite from your trip details. Edit it, or send as-is — come back here any time to blast updates to the crew."
+            : "Your custom message is set. Use this card any time to blast updates to the crew."}
         </p>
       ) : (
         <p
           className="mb-3 text-[13px] leading-relaxed"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          A note from your host on what this trip is about.
+          A note from your host about the trip — they&apos;ll also use this space to send crew updates.
         </p>
       )}
 
@@ -200,31 +146,6 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
         />
       )}
 
-      {/* ── Travel section (opt-in) ─────────────────────────────────── */}
-      {travelEnabled && (
-        <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--color-bt-border)" }}>
-          <p
-            className="mb-2 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Travel
-          </p>
-          <p
-            className="mb-3 text-[13px] leading-relaxed"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {isOwner
-              ? "You're the host — share your travel plans so the crew can coordinate."
-              : "Share your travel plans so the crew can coordinate."}
-          </p>
-          <TravelEntryForm
-            tripId={tripId}
-            currentTravel={
-              myMember as Parameters<typeof TravelEntryForm>[0]["currentTravel"]
-            }
-          />
-        </div>
-      )}
     </ActionCard>
   );
 }
@@ -544,47 +465,3 @@ function BlastSection({
   );
 }
 
-// ── Small inline toggle row ──────────────────────────────────────────────────
-
-function ToggleRow({
-  label,
-  checked,
-  disabled,
-  onChange,
-  testid,
-}: {
-  label: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (value: boolean) => void;
-  testid: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center justify-between gap-3">
-      <span
-        className="min-w-0 flex-1 text-[13px] font-medium"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        {label}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        data-testid={testid}
-        onClick={() => onChange(!checked)}
-        className="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
-        style={{
-          background: checked ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-        }}
-      >
-        <span
-          className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
-          style={{ transform: checked ? "translateX(18px)" : "translateX(2px)" }}
-        />
-      </button>
-    </label>
-  );
-}
