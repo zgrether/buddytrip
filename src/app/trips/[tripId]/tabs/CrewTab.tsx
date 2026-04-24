@@ -49,7 +49,6 @@ function CrewMemberRow({
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
-  const [editName, setEditName] = useState(m.displayName);
   const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
   const [confirmRemove, setConfirmRemove] = useState(false);
 
@@ -74,20 +73,15 @@ function CrewMemberRow({
   const expandable = isOwnerView && !isMe && !isOwnerRow;
   const canActOnPlanner = isOwnerView && !isMe && isPlannerRow;
   const canPromoteToCoplanner = isOwnerView && !isMe && m.role === "Member" && !!m.user?.email;
-  const hasTextChanges = editName.trim() !== m.displayName || editEmail.trim() !== (m.user?.email ?? "");
+  const hasTextChanges = editEmail.trim() !== (m.user?.email ?? "");
 
   const handleSave = async () => {
-    if (m.isGuest && m.user_id) {
-      const nameChanged = editName.trim() !== m.displayName;
-      const emailChanged = editEmail.trim() !== (m.user?.email ?? "");
-      if (nameChanged || emailChanged) {
-        await updateGuest.mutateAsync({
-          tripId,
-          guestUserId: m.user_id,
-          ...(nameChanged && { name: editName.trim() }),
-          ...(emailChanged && { email: editEmail.trim() || null }),
-        });
-      }
+    if (m.isGuest && m.user_id && hasTextChanges) {
+      await updateGuest.mutateAsync({
+        tripId,
+        guestUserId: m.user_id,
+        email: editEmail.trim() || null,
+      });
     }
     onToggle();
     onUpdated();
@@ -236,31 +230,23 @@ function CrewMemberRow({
           className="space-y-2 rounded-lg px-3 py-2.5 mb-1"
           style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
         >
-          {/* Name + email — guest crew only (planners can't edit name/email here) */}
+          {/* Email — guest crew only. To change a guest's name, remove and
+              re-add them. */}
           {m.isGuest && !isPlannerSection && (
-            <div className="flex gap-2">
+            <div className="relative">
               <input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Name"
-                className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="Email"
+                type="email"
+                className="w-full rounded-lg border px-2.5 py-1.5 pr-7 text-sm outline-none"
                 style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               />
-              <div className="relative min-w-0 flex-1">
-                <input
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="Email"
-                  type="email"
-                  className="w-full rounded-lg border px-2.5 py-1.5 pr-7 text-sm outline-none"
-                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                />
-                <Pencil
-                  size={11}
-                  className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                />
-              </div>
+              <Pencil
+                size={11}
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              />
             </div>
           )}
 
