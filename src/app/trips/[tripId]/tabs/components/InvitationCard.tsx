@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { CheckSquare, Ghost, Pencil, Plus, Send, Square, X } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, CheckSquare, Ghost, Mail, Pencil, Plus, Send, Square, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
@@ -36,10 +36,13 @@ export interface InvitationCardProps {
   trip: TripData;
   isOwner?: boolean;
   onWriteInvitation?: () => void;
+  onTabChange?: (tab: string) => void;
 }
 
-/** Crew Email card — going-stage Action Center. Owner sees blast controls; members see read-only invite text. */
-export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: InvitationCardProps) {
+/** Crew Email card — going-stage Action Center. Owner sees blast controls; members see read-only invite text.
+ *  Mobile: full inline UI. Desktop (lg+): compact nudge that routes to the Crew tab
+ *  where CrewEmailPanel lives in the sticky right column. */
+export function InvitationCard({ trip, isOwner = false, onWriteInvitation, onTabChange }: InvitationCardProps) {
   const tripId = trip.id;
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
@@ -61,7 +64,44 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
     .filter((m) => !m.user?.email && m.isGuest)
     .sort(recipientSort) as RecipientMember[];
 
+  // ── Desktop nudge ────────────────────────────────────────────────────────
+  // On lg+ the full email UI lives in CrewEmailPanel on the Crew tab. The
+  // Action Center just surfaces a compact hint — or renders nothing if the
+  // crew is fully on-app and the first blast has already gone out.
+  const unlinkedCount = others.filter((m) => m.isGuest).length;
+  const renderDesktopNudge = () => {
+    if (unlinkedCount > 0) {
+      return (
+        <NudgeCard
+          title={`${unlinkedCount} ${unlinkedCount === 1 ? "person hasn't" : "people haven't"} joined the app yet`}
+          subtitle="Send them an email so they can RSVP and see the plan."
+          cta="Go to Crew"
+          onClick={() => onTabChange?.("crew")}
+        />
+      );
+    }
+    if (!lastBlastSentAt) {
+      return (
+        <NudgeCard
+          title="Everyone's in the app — send a welcome?"
+          subtitle="Blast the crew a quick note that the trip is on."
+          cta="Go to Crew"
+          onClick={() => onTabChange?.("crew")}
+        />
+      );
+    }
+    return null;
+  };
+
+  const desktopNudge = renderDesktopNudge();
+
   return (
+    <>
+      {/* Desktop: compact nudge (owner only) */}
+      {desktopNudge && <div className="hidden lg:block">{desktopNudge}</div>}
+
+      {/* Mobile: full inline UI */}
+      <div className="lg:hidden">
     <ActionCard isResolved={false}>
       {/* ── Crew email header ───────────────────────────────────────── */}
       <p
@@ -130,6 +170,66 @@ export function InvitationCard({ trip, isOwner = false, onWriteInvitation }: Inv
       )}
 
     </ActionCard>
+      </div>
+    </>
+  );
+}
+
+// ── Desktop nudge card ───────────────────────────────────────────────────────
+
+function NudgeCard({
+  title,
+  subtitle,
+  cta,
+  onClick,
+}: {
+  title: string;
+  subtitle: string;
+  cta: string;
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      className="flex items-start gap-3 rounded-xl px-4 py-3.5"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+      data-testid="invitation-desktop-nudge"
+    >
+      <span
+        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+        }}
+      >
+        <Mail size={14} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+          {title}
+        </p>
+        <p className="mt-0.5 text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          {subtitle}
+        </p>
+      </div>
+      {onClick && (
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex flex-shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-80"
+          style={{
+            color: "var(--color-bt-accent)",
+            background: "transparent",
+            border: "1px solid var(--color-bt-accent-border)",
+          }}
+        >
+          {cta}
+          <ArrowRight size={12} />
+        </button>
+      )}
+    </div>
   );
 }
 

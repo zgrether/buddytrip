@@ -44,8 +44,10 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
   const pollMode = !!trip.poll_mode;
 
   // ── GOING stage ────────────────────────────────────────────────────────
-  // In the going stage the Action Center's primary card is the host's
-  // invitation and (optionally) the travel-sharing form.
+  // In the going stage the Action Center shows a travel-sharing card for
+  // everyone, and — for owners only — the invitation card (full on mobile,
+  // compact nudge on lg+, where the full email UI lives in the Crew tab's
+  // sticky CrewEmailPanel).
   if (stage === "going") {
     return (
       <section className="space-y-3">
@@ -57,7 +59,14 @@ export function ActionCenter({ trip, isOwner, canEdit, onTabChange, onWriteInvit
             gap: "12px",
           }}
         >
-          <InvitationCard trip={trip} isOwner={isOwner} onWriteInvitation={onWriteInvitation} />
+          {isOwner && (
+            <InvitationCard
+              trip={trip}
+              isOwner={isOwner}
+              onWriteInvitation={onWriteInvitation}
+              onTabChange={onTabChange}
+            />
+          )}
           <TravelCard trip={trip} isOwner={isOwner} />
         </div>
       </section>
