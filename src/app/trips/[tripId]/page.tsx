@@ -221,7 +221,8 @@ export default function TripDetailPage() {
         unreadCount={unreadCount}
         onMarkAllRead={() => markAllRead.mutate({ tripId })}
         tripId={tripId}
-        onOpenChat={() => setChatOpen(true)}
+        onOpenChat={() => setChatOpen((prev) => !prev)}
+        chatOpen={chatOpen}
       />
 
       {/* ── Trip content ────────────────────────────────────────────────── */}

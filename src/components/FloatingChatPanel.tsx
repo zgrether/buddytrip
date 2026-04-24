@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, X, Maximize2, Minimize2 } from "lucide-react";
+import { Send, X } from "lucide-react";
+
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 720;
+const DEFAULT_WIDTH = 380;
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
@@ -56,10 +60,105 @@ function FloatingChatPanelInner({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
-  const [expanded, setExpanded] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(DEFAULT_WIDTH);
+
+  // Mobile sheet drag state — restored from localStorage as a vh fraction.
+  const [sheetHeight, setSheetHeight] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const ratio = parseFloat(localStorage.getItem("bt-chat-sheet-height") ?? "");
+      if (!isNaN(ratio)) {
+        const min = window.innerHeight * 0.25;
+        const max = window.innerHeight * 0.95;
+        return Math.round(Math.min(max, Math.max(min, ratio * window.innerHeight)));
+      }
+    } catch { /* localStorage unavailable */ }
+    return null;
+  });
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const isSheetDragging = useRef(false);
+  const sheetDragStartY = useRef(0);
+  const sheetDragStartHeight = useRef(0);
 
   useRealtimeChat(tripId, "trip");
   useModalBackButton(onClose);
+
+  const finalSheetHeight = useRef<number>(0);
+  const didSheetMove = useRef(false);
+
+  const handleSheetDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const startY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const currentHeight = sheetRef.current?.getBoundingClientRect().height ?? window.innerHeight * 0.85;
+    isSheetDragging.current = true;
+    didSheetMove.current = false;
+    // sheetDragStartY tracks the PREVIOUS frame's Y so delta is always incremental.
+    sheetDragStartY.current = startY;
+    finalSheetHeight.current = currentHeight;
+
+    const minHeight = window.innerHeight * 0.25;
+    const maxHeight = window.innerHeight * 0.95;
+
+    function onMove(ev: MouseEvent | TouchEvent) {
+      if (!isSheetDragging.current) return;
+      if (!("touches" in ev) && (ev as MouseEvent).buttons === 0) { onEnd(); return; }
+      const y = "touches" in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+      // Incremental delta: movement since last frame, not from original start.
+      // This avoids the deadzone that builds up when the sheet is clamped at min/max.
+      const delta = sheetDragStartY.current - y;
+      sheetDragStartY.current = y;
+      const next = Math.min(maxHeight, Math.max(minHeight, finalSheetHeight.current + delta));
+      finalSheetHeight.current = next;
+      didSheetMove.current = true;
+      // Mutate the DOM directly — avoids a React re-render on every frame.
+      if (sheetRef.current) sheetRef.current.style.height = `${next}px`;
+    }
+    document.body.style.userSelect = "none";
+
+    function onEnd() {
+      isSheetDragging.current = false;
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onEnd);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      // Sync React state once on release so the value survives re-renders.
+      if (didSheetMove.current) setSheetHeight(finalSheetHeight.current);
+    }
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onEnd);
+    document.addEventListener("touchmove", onMove, { passive: true });
+    document.addEventListener("touchend", onEnd);
+  }, [onClose]);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = panelWidth;
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+
+    function onMove(ev: MouseEvent) {
+      if (!isDragging.current) return;
+      if (ev.buttons === 0) { onUp(); return; }
+      const delta = dragStartX.current - ev.clientX;
+      setPanelWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, dragStartWidth.current + delta)));
+    }
+    function onUp() {
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [panelWidth]);
 
   const { data: messages = [] } = trpc.messages.list.useQuery(
     { tripId, channel: "trip", limit: 50 }
@@ -89,6 +188,14 @@ function FloatingChatPanelInner({
       }
     }
   }, [tripId, displayed]);
+
+  // Persist sheet height as a vh fraction so it survives close/reopen.
+  useEffect(() => {
+    if (sheetHeight == null) return;
+    try {
+      localStorage.setItem("bt-chat-sheet-height", String(sheetHeight / window.innerHeight));
+    } catch { /* localStorage unavailable */ }
+  }, [sheetHeight]);
 
   // Mobile-only: lock body scroll while open.
   useEffect(() => {
@@ -226,16 +333,36 @@ function FloatingChatPanelInner({
     <>
       {/* ── Desktop: anchored side panel ───────────────────────────────── */}
       <div
-        className="hidden lg:flex fixed right-0 top-14 z-40 flex-col rounded-l-xl border animate-slide-in-right"
+        className="hidden lg:flex fixed right-0 top-14 bottom-0 z-30 flex-col animate-slide-in-right"
         style={{
           background: "var(--color-bt-card)",
-          borderColor: "var(--color-bt-border)",
-          width: expanded ? "640px" : "380px",
-          height: "calc(100vh - 56px)",
-          boxShadow: "var(--shadow-floating)",
-          transition: "width 180ms ease",
+          borderLeft: "1px solid var(--color-bt-border)",
+          width: panelWidth,
         }}
       >
+        {/* Drag handle — visible grip on the left edge */}
+        <div
+          onMouseDown={handleDragStart}
+          className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize flex items-center justify-center group z-10"
+          aria-hidden="true"
+        >
+          {/* Hit-area highlight on hover */}
+          <div
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+            style={{ background: "var(--color-bt-accent-faint)" }}
+          />
+          {/* Grip dots — always visible */}
+          <div className="relative flex flex-col gap-[3px]">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="h-[3px] w-[3px] rounded-full transition-colors duration-150"
+                style={{ background: "var(--color-bt-border)" }}
+              />
+            ))}
+          </div>
+        </div>
+
         <div
           className="flex flex-shrink-0 items-center justify-between gap-2 px-3 py-2"
           style={{ borderBottom: "1px solid var(--color-bt-border)" }}
@@ -246,26 +373,15 @@ function FloatingChatPanelInner({
           >
             Crew Chat
           </p>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              aria-label={expanded ? "Shrink chat" : "Expand chat"}
-              title={expanded ? "Shrink" : "Expand"}
-            >
-              {expanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-            </button>
-            <button
-              onClick={onClose}
-              className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              aria-label="Close chat"
-              title="Close"
-            >
-              <X size={13} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Close chat"
+            title="Close"
+          >
+            <X size={13} />
+          </button>
         </div>
         {body}
       </div>
@@ -277,18 +393,32 @@ function FloatingChatPanelInner({
         onClick={onClose}
       >
         <div
+          ref={sheetRef}
           className="flex w-full flex-col rounded-t-2xl"
           style={{
             background: "var(--color-bt-card)",
-            height: "85vh",
+            height: sheetHeight != null ? sheetHeight : "85vh",
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex justify-center pt-3 pb-2">
-            <div
-              className="h-1 w-8 rounded-full"
-              style={{ background: "var(--color-bt-border)" }}
-            />
+          <div
+            className="flex justify-center pt-3 pb-2 cursor-ns-resize touch-none group"
+            onMouseDown={handleSheetDragStart}
+            onTouchStart={handleSheetDragStart}
+          >
+            <div className="relative flex flex-row gap-[3px] rounded px-1.5 py-1">
+              <div
+                className="absolute inset-0 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                style={{ background: "var(--color-bt-accent-faint)" }}
+              />
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="relative h-[3px] w-[3px] rounded-full transition-colors duration-150"
+                  style={{ background: "var(--color-bt-border)" }}
+                />
+              ))}
+            </div>
           </div>
           <div
             className="flex items-center justify-between px-4 pb-2"

@@ -40,6 +40,9 @@ interface TopNavProps {
   /** Opens the FloatingChatPanel. Required alongside tripId to show the chat
    *  button. */
   onOpenChat?: () => void;
+  /** Reflects whether the FloatingChatPanel is currently open — used to
+   *  render the chat button in its active state. */
+  chatOpen?: boolean;
 }
 
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
@@ -62,6 +65,7 @@ export const TopNav: FC<TopNavProps> = ({
   unreadCount = 0,
   tripId,
   onOpenChat,
+  chatOpen = false,
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -123,7 +127,7 @@ export const TopNav: FC<TopNavProps> = ({
 
       <div className="flex items-center gap-2">
         {tripId && onOpenChat && (
-          <ChatButton tripId={tripId} onClick={onOpenChat} />
+          <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
         )}
         <div ref={ref} className="relative">
           <button
@@ -280,15 +284,19 @@ export const TopNav: FC<TopNavProps> = ({
 // pages where a tripId is present. Mirrors the notification bell's shape,
 // hover, and badge treatment.
 
-function ChatButton({ tripId, onClick }: { tripId: string; onClick: () => void }) {
+function ChatButton({ tripId, onClick, isOpen }: { tripId: string; onClick: () => void; isOpen: boolean }) {
   const unread = useChatUnreadCount(tripId);
   return (
     <button
       aria-label="Open crew chat"
       data-testid="chat-button"
       onClick={onClick}
-      className="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-      style={{ color: "var(--color-bt-text-dim)" }}
+      className={`relative flex h-8 w-8 items-center justify-center transition-colors ${isOpen ? "rounded-lg" : "rounded-full hover:bg-[var(--color-bt-hover)]"}`}
+      style={
+        isOpen
+          ? { color: "var(--color-bt-accent)", background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }
+          : { color: "var(--color-bt-text-dim)" }
+      }
     >
       <MessageCircle size={20} strokeWidth={1.5} />
       {unread > 0 && (
