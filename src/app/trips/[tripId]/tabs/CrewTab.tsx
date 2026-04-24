@@ -292,7 +292,7 @@ function CrewMemberRow({
                 style={{ color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger)", opacity: 0.75 }}
               >
                 <Trash2 size={12} />
-                Remove from trip
+                Remove {display} from trip
               </button>
             )}
           </div>
