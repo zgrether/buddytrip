@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { TabProps } from "./types";
+import { CrewEmailPanel } from "./components/CrewEmailPanel";
 
 const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
 
@@ -320,7 +321,8 @@ export function CrewTab({ trip, canEdit }: TabProps) {
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
-    <div className="space-y-4 px-4">
+    <div className="px-4 lg:grid lg:grid-cols-[1fr_380px] lg:gap-5 lg:items-start lg:px-0 lg:pl-4 lg:pr-4">
+      <div className="space-y-4">
       {/* ── PLANNERS section ── */}
       <div>
         <h2
@@ -439,6 +441,12 @@ export function CrewTab({ trip, canEdit }: TabProps) {
             No crew members yet.
           </p>
         )}
+      </div>
+      </div>
+
+      {/* Right column — owner-only sticky email panel (desktop only) */}
+      <div className="hidden lg:block lg:sticky lg:top-6 lg:self-start">
+        {isOwner && <CrewEmailPanel trip={trip} isOwner={isOwner} />}
       </div>
     </div>
   );
