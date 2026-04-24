@@ -131,7 +131,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
 
   return (
     <div
-      className="rounded-xl p-4"
+      className="rounded-xl p-4 @[640px]:h-full @[640px]:overflow-y-auto"
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
