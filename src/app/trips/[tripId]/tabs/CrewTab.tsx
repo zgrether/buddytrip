@@ -103,7 +103,7 @@ function CrewMemberRow({
     >
       {/* ── Main row (tappable when expandable) ────────────────────────── */}
       <div
-        className="flex items-center gap-3 py-2.5 px-2 rounded"
+        className="flex items-center gap-3 py-2.5 px-3"
         style={{ cursor: expandable ? "pointer" : undefined }}
         onClick={expandable ? onToggle : undefined}
       >
@@ -228,7 +228,7 @@ function CrewMemberRow({
       {/* Indented under the name column: an empty cell mirrors the avatar +
           gap so the inputs align with the name above. */}
       {isExpanded && expandable && (
-        <div className="flex gap-3 px-2 pb-3">
+        <div className="flex gap-3 px-3 pb-3">
           <div className="w-8 flex-shrink-0" aria-hidden />
           <div className="min-w-0 flex-1 space-y-3">
           {/* Email — guest crew only. To change a guest's name, remove and
@@ -329,7 +329,7 @@ function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => voi
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className="flex w-full items-center gap-3 py-2.5 px-2 rounded transition-colors hover:bg-[var(--color-bt-hover)]"
+        className="flex w-full items-center gap-3 py-2.5 px-3 transition-colors hover:bg-[var(--color-bt-hover)]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         <div
@@ -428,7 +428,7 @@ export function CrewTab({ trip }: TabProps) {
               </p>
             )}
             <div
-              className="rounded-xl px-2 py-1"
+              className="overflow-hidden rounded-xl"
               style={{
                 background: "var(--color-bt-card)",
                 border: "1px solid var(--color-bt-border)",
@@ -468,7 +468,7 @@ export function CrewTab({ trip }: TabProps) {
               </p>
             )}
             <div
-              className="rounded-xl px-2 py-1"
+              className="overflow-hidden rounded-xl"
               style={{
                 background: "var(--color-bt-card)",
                 border: "1px solid var(--color-bt-border)",
