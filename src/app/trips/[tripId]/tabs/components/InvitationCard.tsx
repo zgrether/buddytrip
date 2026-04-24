@@ -5,8 +5,7 @@ import { CheckSquare, Ghost, Pencil, Plus, Send, Square, X } from "lucide-react"
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
-import { RoleBadge } from "@/components/RoleBadge";
-import type { TripRole } from "@/server/middleware";
+import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
 import { TravelEntryForm } from "../../components/TravelEntryForm";
 import { ActionCard } from "./ActionCard";
@@ -326,68 +325,100 @@ function BlastSection({
           No one on your crew has an email yet — add one below to send the invite.
         </p>
       ) : (
-        <div className="mb-3 space-y-0.5">
-          {withEmail.map((m) => {
-            const checked = checkedIds.has(m.memberId);
-            const alreadySent =
-              !!m.last_invited_at &&
-              !!lastBlastSentAt &&
-              m.last_invited_at >= lastBlastSentAt;
-            return (
-              <div
-                key={m.memberId}
-                onClick={() => toggleMember(m.memberId)}
-                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
-              >
-                {checked ? (
-                  <CheckSquare
-                    size={16}
-                    style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
-                  />
-                ) : (
-                  <Square
-                    size={16}
-                    style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
-                  />
-                )}
-                <RoleBadge role={m.role as TripRole} />
-                <div className="min-w-0 flex-1">
-                  <div
-                    className="truncate text-[13px] font-medium"
-                    style={{ color: "var(--color-bt-text)" }}
-                  >
-                    {m.displayName}
+        <>
+          {/* Toolbar: count + Select defaults */}
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {selectedMembers.length}{" "}
+              {selectedMembers.length === 1 ? "person" : "people"} will receive an email
+            </span>
+            <button
+              type="button"
+              onClick={() => setCheckedIds(computeDefaultChecked(withEmail, lastBlastSentAt))}
+              className="text-xs font-semibold"
+              style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none" }}
+            >
+              Select defaults
+            </button>
+          </div>
+
+          <div className="mb-3 space-y-0.5">
+            {withEmail.map((m) => {
+              const checked = checkedIds.has(m.memberId);
+              return (
+                <div
+                  key={m.memberId}
+                  onClick={() => toggleMember(m.memberId)}
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors duration-150${!checked ? " hover:bg-[var(--color-bt-hover)]" : ""}`}
+                  style={{
+                    background: checked ? "var(--color-bt-accent-faint)" : "transparent",
+                  }}
+                >
+                  {checked ? (
+                    <CheckSquare
+                      size={16}
+                      style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
+                    />
+                  ) : (
+                    <Square
+                      size={16}
+                      style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="truncate text-[13px] font-medium"
+                      style={{ color: "var(--color-bt-text)" }}
+                    >
+                      {m.displayName}
+                    </div>
+                    <div
+                      className="truncate text-xs"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      {m.user?.email}
+                    </div>
                   </div>
-                  <div
-                    className="truncate text-xs"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    {m.user?.email}
-                  </div>
+                  {m.last_invited_at && (
+                    <span
+                      className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+                      style={{
+                        background: "var(--color-bt-accent-faint)",
+                        color: "var(--color-bt-accent)",
+                        border: "1px solid var(--color-bt-accent-border)",
+                      }}
+                    >
+                      Sent{" "}
+                      {parseLocalDate(m.last_invited_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  )}
                 </div>
-                {alreadySent && (
-                  <span
-                    className="flex-shrink-0 text-[11px]"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    Sent
-                  </span>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Divider + "No email yet" label — only between two populated groups */}
+      {withEmail.length > 0 && withoutEmail.length > 0 && (
+        <div className="mb-3 flex items-center gap-2">
+          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+          <span
+            className="text-[10px] font-semibold uppercase tracking-widest"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            No email yet
+          </span>
+          <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
         </div>
       )}
 
       {/* Ghost chips — members missing an email */}
       {withoutEmail.length > 0 && (
         <div className="mb-3">
-          <p
-            className="mb-1.5 text-[11px]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Missing an email — tap to add
-          </p>
           <div className="flex flex-wrap items-center gap-1.5">
             {withoutEmail.map((m) => {
               const guestUserId = m.user_id;
@@ -477,7 +508,7 @@ function BlastSection({
                 >
                   <Ghost size={11} style={{ color: "var(--color-bt-text-dim)" }} />
                   <span>{m.displayName}</span>
-                  <Plus size={11} style={{ color: "var(--color-bt-text-dim)" }} />
+                  <Plus size={11} strokeWidth={2.5} style={{ color: "var(--color-bt-accent)" }} />
                 </button>
               );
             })}
