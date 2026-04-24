@@ -1,7 +1,7 @@
 "use client";
 
 import { type FC, useEffect } from "react";
-import { Home, Plus, Activity, MessageSquare, type LucideIcon } from "lucide-react";
+import { Home, Plus, Activity, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
 // ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
@@ -79,14 +79,12 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
 interface TripBottomNavProps {
   tripId: string;
   eventId?: string | null;
-  unreadMessages?: number;
   showComp?: boolean;
 }
 
 export const TripBottomNav: FC<TripBottomNavProps> = ({
   tripId,
   eventId,
-  unreadMessages = 0,
   showComp,
 }) => {
   const router = useRouter();
@@ -94,13 +92,6 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
 
   const items: NavItem[] = [
     { id: "trip-home", label: "Trip Home", Icon: Home, href: `/trips/${tripId}` },
-    {
-      id: "messages",
-      label: "Messages",
-      Icon: MessageSquare,
-      href: `/trips/${tripId}/messages`,
-      badge: unreadMessages,
-    },
     {
       id: "live",
       label: "Live",
