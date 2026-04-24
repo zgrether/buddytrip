@@ -167,19 +167,8 @@ function BlastSection({
   onSuccess: () => void;
   onInvalidateMembers: () => void;
 }) {
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(() =>
-    computeDefaultChecked(withEmail, lastBlastSentAt)
-  );
-  const [initialized, setInitialized] = useState(withEmail.length > 0);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lastSentCount, setLastSentCount] = useState<number | null>(null);
-
-  // Members load asynchronously — initialize once they arrive
-  useEffect(() => {
-    if (!initialized && withEmail.length > 0) {
-      setCheckedIds(computeDefaultChecked(withEmail, lastBlastSentAt));
-      setInitialized(true);
-    }
-  }, [withEmail.length, lastBlastSentAt, initialized]);
 
   // Ghost email inline editing
   const [editingId, setEditingId] = useState<string | null>(null);
