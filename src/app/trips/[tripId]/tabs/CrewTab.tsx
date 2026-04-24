@@ -521,6 +521,15 @@ export function CrewTab({ trip }: TabProps) {
             stacks under the crew list. */}
         {isOwner && (
           <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[360px]">
+            <h2
+              className="mb-2 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Notify crew
+            </h2>
+            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Send your first invite, then keep everyone in the loop as the trip gets closer.
+            </p>
             <CrewEmailPanel trip={trip} isOwner={isOwner} />
           </div>
         )}
