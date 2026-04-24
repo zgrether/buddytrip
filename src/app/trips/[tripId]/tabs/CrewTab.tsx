@@ -95,7 +95,7 @@ function CrewMemberRow({
 
   return (
     <div
-      className="border-b"
+      className="border-b last:border-b-0"
       style={{
         borderColor: "var(--color-bt-border)",
         background: index % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
