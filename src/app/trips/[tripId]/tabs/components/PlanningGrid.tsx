@@ -52,13 +52,13 @@ function tileWrapperClass(
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-2 border-[var(--color-bt-accent)]`;
   }
   if (state === "complete") {
-    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-accent-border)]`;
+    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-accent-border)] hover:bg-[var(--color-bt-card-raised)]`;
   }
   if (state === "skipped") {
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] opacity-50`;
   }
   // empty
-  return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)]`;
+  return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)]`;
 }
 
 /** Icon and label colors only (background/border handled via className above). */
