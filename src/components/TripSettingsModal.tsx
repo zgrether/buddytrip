@@ -371,8 +371,8 @@ export function TripSettingsModal({
                 </div>
               )}
 
-              {/* Change dates */}
-              {datesLocked && (
+              {/* Change dates — hidden during planning stage; use the Dates panel in PlanningGrid instead */}
+              {datesLocked && trip?.stage !== "planning" && (
                 <div>
                   <button
                     data-testid="settings-change-dates-btn"

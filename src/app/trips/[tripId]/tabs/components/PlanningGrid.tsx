@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Calendar,
@@ -482,8 +482,15 @@ export function PlanningGrid({
     } catch {}
   };
 
-  // Auto-close the active panel when its tile is skipped, or when dates are locked in.
+  // Track the previous datesState so we only auto-close the dates panel on the
+  // transition to complete, not every time the user reopens it while already complete.
+  const prevDatesStateRef = useRef<TileState>(datesState);
+
+  // Auto-close the active panel when its tile is skipped, or when dates are first locked in.
   useEffect(() => {
+    const prevDatesState = prevDatesStateRef.current;
+    prevDatesStateRef.current = datesState;
+
     if (activePanel === null) return;
     const stateMap: Record<TileKey, TileState> = {
       dates: datesState,
@@ -492,7 +499,9 @@ export function PlanningGrid({
       schedule: scheduleState,
     };
     const panelState = stateMap[activePanel];
-    if (panelState === "skipped" || (activePanel === "dates" && panelState === "complete")) {
+    const datesJustLocked =
+      activePanel === "dates" && panelState === "complete" && prevDatesState !== "complete";
+    if (panelState === "skipped" || datesJustLocked) {
       setActivePanel(null);
       try { localStorage.removeItem(datesStorageKey); } catch {}
     }
