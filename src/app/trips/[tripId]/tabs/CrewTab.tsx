@@ -408,7 +408,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
-      <div className={isOwner && members.length > 1 ? "@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
+      <div className={isOwner && members.length > 1 ? "@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
         <div className="min-w-0 space-y-4">
           {/* ── PLANNERS section ── */}
           <div>
@@ -514,13 +514,10 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           </div>
         </div>
 
-        {/* Email panel — owner-only.
-            At ≥640px container width it's absolutely positioned in the right
-            column so its content height doesn't stretch the grid row — the left
-            column dictates panel height. Below 640px the grid collapses and it
-            stacks under the crew list. */}
+        {/* Email panel — owner-only. Stacks below crew list on small containers,
+            sits in the right grid column at ≥640px. */}
         {isOwner && members.length > 1 && (
-          <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[360px]">
+          <div className="mt-6 @[640px]:mt-0">
             <h2
               className="mb-2 text-xs font-semibold uppercase tracking-wider"
               style={{ color: "var(--color-bt-text-dim)" }}
