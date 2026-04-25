@@ -65,6 +65,7 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   // Re-sync expanded state when the underlying travel data changes — e.g.
   // user saves, member row refetches, expanded can close automatically.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (hasMyTravel) setExpanded(false);
   }, [hasMyTravel]);
 

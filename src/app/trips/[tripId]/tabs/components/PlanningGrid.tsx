@@ -467,6 +467,17 @@ export function PlanningGrid({
 
   const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
 
+  // Declared early so the effects below can reference them without
+  // triggering react-hooks/immutability "access before declaration" errors.
+  const [showPollSwitchPrompt, setShowPollSwitchPrompt] = useState(false);
+
+  const setPollActive = trpc.datePoll.setPollMode.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
   // ── Mobile active tab — synced with desktop activePanel ──────────────────
   const [mobileActiveTab, setMobileActiveTab] = useState<TileKey>(() => {
     // Initialise from localStorage so first render matches desktop.
@@ -588,19 +599,10 @@ export function PlanningGrid({
     },
   });
 
-  const setPollActive = trpc.datePoll.setPollMode.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
   // ── Switch-to-poll prompt ───────────────────────────────────────────────
   // Shown when the user clicks "Poll the Crew" while dates are already set
   // directly. Offers to carry the current dates over as the first window so
   // they don't have to reset and re-enter.
-  const [showPollSwitchPrompt, setShowPollSwitchPrompt] = useState(false);
-
   const addPollWindow = trpc.datePoll.addWindow.useMutation({
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -668,6 +670,7 @@ export function PlanningGrid({
     setPendingTile(tile);
     // Record intent before the mutation fires — the effect below watches for
     // the tile to leave "skipped" state and opens it then, not before.
+    // eslint-disable-next-line react-hooks/immutability
     pendingAutoOpenRef.current = tile;
     unskipTile.mutate({ tripId, tile });
   };
