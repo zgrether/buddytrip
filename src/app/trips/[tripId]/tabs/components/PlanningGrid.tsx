@@ -1179,7 +1179,13 @@ export function PlanningGrid({
           })}
         </div>
         {/* Tab content */}
-        <div className="mt-3">
+        <div
+          className="mt-3 overflow-hidden rounded-xl"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
           {mobileActiveTab === "dates" && (
             datesPanelBody ?? (
               <p
