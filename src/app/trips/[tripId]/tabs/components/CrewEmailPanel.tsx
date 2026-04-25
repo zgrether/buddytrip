@@ -198,8 +198,11 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
 
       {/* Recipient list */}
       {withEmail.length === 0 ? (
-        <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          No one on your crew has an email yet — add one below.
+        <p
+          className="mb-2 text-center text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          No email yet
         </p>
       ) : (
         <>
