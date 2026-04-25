@@ -1063,31 +1063,31 @@ export function PlanningGrid({
   return (
     <div className="space-y-4">
       {/* ── Section header — visible on all breakpoints ──────────────────── */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-3">
           <h2
-            className="mb-2 text-xs font-semibold uppercase tracking-wider"
+            className="text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Planning
           </h2>
-          <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-            Destination locked in — now let&apos;s get the details sorted.
-          </p>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setDestDraft(trip.locked_destination_location ?? trip.locked_destination_title ?? "");
+                setShowDestModal(true);
+              }}
+              className="flex flex-shrink-0 items-center gap-1 text-xs font-semibold transition-opacity hover:opacity-70"
+              style={{ background: "transparent", border: "none", color: "var(--color-bt-accent)", cursor: "pointer" }}
+            >
+              Edit destination <ChevronRight size={10} />
+            </button>
+          )}
         </div>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => {
-              setDestDraft(trip.locked_destination_location ?? trip.locked_destination_title ?? "");
-              setShowDestModal(true);
-            }}
-            className="flex flex-shrink-0 items-center gap-1 text-xs font-semibold transition-opacity hover:opacity-70"
-            style={{ background: "transparent", border: "none", color: "var(--color-bt-accent)", cursor: "pointer" }}
-          >
-            Edit destination <ChevronRight size={10} />
-          </button>
-        )}
+        <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          Destination locked in — now let&apos;s get the details sorted.
+        </p>
       </div>
 
       {/* ── DESKTOP / TABLET: tile grid + expanded panel (sm+) ──────────── */}
