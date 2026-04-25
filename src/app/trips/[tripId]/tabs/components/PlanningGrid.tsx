@@ -863,7 +863,7 @@ export function PlanningGrid({
       {/* Body */}
       {dateMode === "set" ? (
         <div
-          className="border-t px-4 pb-4 pt-4"
+          className="px-4 pb-4 pt-2"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
           <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -975,7 +975,7 @@ export function PlanningGrid({
         </div>
       ) : (
         <div
-          className="border-t px-4 pb-4 pt-4"
+          className="px-4 pb-4 pt-2"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
           <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>

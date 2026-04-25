@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Bell, Pencil, RotateCcw, ThumbsUp, X } from "lucide-react";
+import { Bell, Info, Pencil, RotateCcw, ThumbsUp, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -69,7 +69,8 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
   // "new-date" | "reset" | null — drives the button label copy.
   const [renotifyReason, setRenotifyReason] = useState<"new-date" | "reset" | null>(null);
 
-  // Poll note editor
+  // Poll note modal + editor
+  const [showNoteModal, setShowNoteModal] = useState(false);
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState<string>("");
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -484,6 +485,7 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
   const handleStartEditNote = () => {
     setNoteValue(pollNote ?? "");
     setEditingNote(true);
+    setShowNoteModal(true);
     setTimeout(() => {
       noteTextareaRef.current?.focus();
       noteTextareaRef.current?.select();
@@ -493,81 +495,112 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
   return (
     <>
       <div className="space-y-2">
-        {/* ── Poll note: only shown once at least one date has been added ── */}
+        {/* ── Instructions button — opens note modal ── */}
         {windows.length > 0 && (
-          editingNote ? (
-            <div className="space-y-1.5">
-              <textarea
-                ref={noteTextareaRef}
-                value={noteValue}
-                onChange={(e) => setNoteValue(e.target.value)}
-                rows={3}
-                maxLength={500}
-                placeholder={DEFAULT_POLL_NOTE}
-                className="w-full resize-none rounded-xl px-3 py-2.5 text-[13px] leading-snug"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-accent)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-              <div className="flex gap-2">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => {
+                setNoteValue(pollNote ?? "");
+                setEditingNote(false);
+                setShowNoteModal(true);
+              }}
+              className="flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-70"
+              style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none" }}
+            >
+              <Info size={13} />
+              Crew Instructions
+              {isOwner && <Pencil size={11} style={{ color: "var(--color-bt-accent)", opacity: 0.7 }} />}
+            </button>
+          </div>
+        )}
+
+        {/* ── Note modal ── */}
+        {showNoteModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.6)" }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setShowNoteModal(false); setEditingNote(false); } }}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl p-5 shadow-xl"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                  Crew Instructions
+                </h3>
                 <button
                   type="button"
-                  onClick={() => setEditingNote(false)}
-                  className="flex-1 rounded-xl py-2 text-[13px] font-medium"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text-dim)",
-                    border: "1px solid var(--color-bt-border)",
-                  }}
+                  onClick={() => { setShowNoteModal(false); setEditingNote(false); }}
+                  className="rounded-lg p-1 transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveNote}
-                  disabled={updatePollNote.isPending}
-                  className="flex-1 rounded-xl py-2 text-[13px] font-semibold"
-                  style={{
-                    background: "var(--color-bt-accent)",
-                    color: "var(--color-bt-base)",
-                  }}
-                >
-                  {updatePollNote.isPending ? "Saving…" : "Save"}
+                  <X size={16} />
                 </button>
               </div>
-            </div>
-          ) : (
-            <div
-              className="flex items-start gap-2 rounded-xl px-3 py-2.5"
-              style={{
-                background: "var(--color-bt-accent-faint)",
-                border: "1px solid var(--color-bt-accent-border)",
-              }}
-            >
-              <p
-                className="flex-1 text-[12px] leading-snug"
-                style={{
-                  color: pollNote ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
-                  fontStyle: pollNote ? "normal" : "italic",
-                }}
-              >
-                {displayNote}
-              </p>
-              {isOwner && (
-                <button
-                  type="button"
-                  onClick={handleStartEditNote}
-                  className="flex-shrink-0 rounded-md p-1 transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-accent)" }}
-                  aria-label="Edit note"
-                >
-                  <Pencil size={12} />
-                </button>
+
+              {editingNote ? (
+                <div className="space-y-3">
+                  <textarea
+                    ref={noteTextareaRef}
+                    value={noteValue}
+                    onChange={(e) => setNoteValue(e.target.value)}
+                    rows={4}
+                    maxLength={500}
+                    placeholder={DEFAULT_POLL_NOTE}
+                    className="w-full resize-none rounded-xl px-3 py-2.5 text-[13px] leading-relaxed outline-none"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-accent)",
+                      color: "var(--color-bt-text)",
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingNote(false)}
+                      className="flex-1 rounded-xl py-2 text-[13px] font-medium"
+                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { handleSaveNote(); setShowNoteModal(false); }}
+                      disabled={updatePollNote.isPending}
+                      className="flex-1 rounded-xl py-2 text-[13px] font-semibold disabled:opacity-40"
+                      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                    >
+                      {updatePollNote.isPending ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p
+                    className="text-[13px] leading-relaxed"
+                    style={{
+                      color: pollNote ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                      fontStyle: pollNote ? "normal" : "italic",
+                    }}
+                  >
+                    {displayNote}
+                  </p>
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={handleStartEditNote}
+                      className="flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-70"
+                      style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none" }}
+                    >
+                      <Pencil size={12} /> Edit instructions
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-          )
+          </div>
         )}
 
         {/* ── Date poll grid ─────────────────────────────────────────────── */}
