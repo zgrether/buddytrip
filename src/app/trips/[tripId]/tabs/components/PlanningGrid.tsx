@@ -67,11 +67,10 @@ function iconLabelColors(
   isActive: boolean,
 ): { iconBg: string; iconColor: string; labelColor: string; iconBorder?: string } {
   if (isActive) {
-    // Solid accent icon square (white icon) + teal label on card-raised bg.
     return {
       iconBg: "var(--color-bt-accent)",
       iconColor: "var(--color-bt-base)",
-      labelColor: "var(--color-bt-accent)",
+      labelColor: "var(--color-bt-text-dim)",
     };
   }
   if (state === "complete") {
@@ -85,7 +84,7 @@ function iconLabelColors(
     return {
       iconBg: "var(--color-bt-card-raised)",
       iconColor: "var(--color-bt-text-dim)",
-      labelColor: "var(--color-bt-accent)",
+      labelColor: "var(--color-bt-text-dim)",
     };
   }
   // skipped
