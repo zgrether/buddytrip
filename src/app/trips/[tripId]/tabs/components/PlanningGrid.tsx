@@ -8,6 +8,7 @@ import {
   Check,
   ChevronRight,
   Hotel,
+  RotateCcw,
   Users,
   X,
 } from "lucide-react";
@@ -967,13 +968,14 @@ export function PlanningGrid({
                 type="button"
                 onClick={() => unlockDates.mutate({ tripId })}
                 disabled={unlockDates.isPending}
-                className="flex-shrink-0 rounded-lg border px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                className="flex-shrink-0 flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[13px] font-medium disabled:opacity-40"
                 style={{
-                  background: "transparent",
+                  background: "var(--color-bt-card-raised)",
                   borderColor: "var(--color-bt-border)",
                   color: "var(--color-bt-text-dim)",
                 }}
               >
+                <RotateCcw size={13} />
                 {unlockDates.isPending ? "Clearing…" : "Reset"}
               </button>
             )}
