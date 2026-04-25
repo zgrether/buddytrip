@@ -473,7 +473,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                 >
                   <Ghost size={11} />
                 </span>
-                <span>= hasn&apos;t joined BuddyTrip yet</span>
+                <span>= not a BuddyTrip member</span>
               </div>
             )}
             <div

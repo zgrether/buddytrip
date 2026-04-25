@@ -183,7 +183,7 @@ function Tile({
       {/* ── Label row: LABEL only ── */}
       <div className="mb-1">
         <p
-          className="text-[10px] font-bold uppercase tracking-wider"
+          className="text-xs font-bold uppercase tracking-wider"
           style={{ color: colors.labelColor }}
         >
           {label}
@@ -202,19 +202,19 @@ function Tile({
             </p>
           )}
           {completeSub && (
-            <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               {completeSub}
             </p>
           )}
         </>
       ) : state === "skipped" ? (
         <div className="space-y-1">
-          <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="text-[13px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
             Not needed for planning
           </p>
         </div>
       ) : (
-        <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="text-[13px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
           {emptyDescription}
         </p>
       )}
@@ -230,7 +230,7 @@ function Tile({
       <div className="mt-auto flex items-end justify-between gap-2 pt-2">
         {state === "complete" && clickable && (
           <span
-            className="flex items-center gap-1 text-[11px] font-semibold"
+            className="flex items-center gap-1 text-xs font-semibold"
             style={{ color: "var(--color-bt-accent)" }}
           >
             {editLabel} <ChevronRight size={10} />
@@ -240,7 +240,7 @@ function Tile({
           <>
             {clickable ? (
               <span
-                className="flex items-center gap-1 text-[11px] font-semibold"
+                className="flex items-center gap-1 text-xs font-semibold"
                 style={{ color: "var(--color-bt-accent)" }}
               >
                 {emptyCTA}
@@ -257,7 +257,7 @@ function Tile({
                   onSkip();
                 }}
                 disabled={skipping}
-                className="text-[11px] disabled:opacity-40"
+                className="text-xs disabled:opacity-40"
                 style={{
                   color: "var(--color-bt-text-dim)",
                   background: "transparent",
@@ -279,7 +279,7 @@ function Tile({
               onUnskip();
             }}
             disabled={skipping}
-            className="ml-auto text-[11px] disabled:opacity-40"
+            className="ml-auto text-xs disabled:opacity-40"
             style={{
               color: "var(--color-bt-text-dim)",
               background: "transparent",
@@ -794,8 +794,20 @@ export function PlanningGrid({
 
   // ── Dates panel body — shared by desktop panel and mobile tab ─────────────
   // Guard against skipped state — content should never show when opted out.
+  const panelTitleColor = (state: TileState) =>
+    state === "complete" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
+
   const datesPanelBody = canEdit && datesState !== "skipped" ? (
     <div data-testid="planning-dates-panel">
+      {/* Panel title */}
+      <div className="px-3 pt-3">
+        <h2
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: panelTitleColor(datesState) }}
+        >
+          Dates
+        </h2>
+      </div>
       {/* Segmented control */}
       <div className="p-3">
         <div
@@ -1111,16 +1123,19 @@ export function PlanningGrid({
           >
             {activePanel === "crew" && (crewState === "skipped" ? null : (
               <div className="px-4 py-4">
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(crewState) }}>Crew</h2>
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             ))}
             {activePanel === "lodging" && (lodgingState === "skipped" ? null : (
               <div className="px-4 py-4">
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(lodgingState) }}>Lodging</h2>
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             ))}
             {activePanel === "schedule" && (scheduleState === "skipped" ? null : (
               <div className="px-4 py-4">
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(scheduleState) }}>Schedule</h2>
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             ))}
@@ -1209,6 +1224,7 @@ export function PlanningGrid({
               </div>
             ) : (
               <div className="px-4 py-4">
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(crewState) }}>Crew</h2>
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )
@@ -1226,6 +1242,7 @@ export function PlanningGrid({
               </div>
             ) : (
               <div className="px-4 py-4">
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(lodgingState) }}>Lodging</h2>
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )
@@ -1243,6 +1260,7 @@ export function PlanningGrid({
               </div>
             ) : (
               <div className="px-4 py-4">
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(scheduleState) }}>Schedule</h2>
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )
