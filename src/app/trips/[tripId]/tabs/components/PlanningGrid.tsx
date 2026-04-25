@@ -54,9 +54,9 @@ function tileWrapperClass(
   const dim = anyPanelOpen && !isActive && state !== "skipped" ? "opacity-70" : "";
 
   if (isActive) {
-    // Active: solid accent bg — unmistakably "selected" vs complete (accent-faint).
-    // Flat bottom corners + borderBottom:none set via inline style to connect to the expanded panel.
-    return `${shared} ${cursor} bg-[var(--color-bt-accent)] border-[var(--color-bt-accent)]`;
+    // Active: card bg + 2px teal border; solid accent icon square is the selection signal.
+    // Flat bottom corners + borderBottom:none via inline style to connect to the expanded panel.
+    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-2 border-[var(--color-bt-accent)]`;
   }
   if (state === "complete") {
     return `${shared} ${cursor} ${dim} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)] hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]`;
@@ -73,11 +73,11 @@ function iconLabelColors(
   isActive: boolean,
 ): { iconBg: string; iconColor: string; labelColor: string } {
   if (isActive) {
-    // On solid accent bg — dark-tinted icon well + white (base) text for contrast.
+    // Solid accent icon square (white icon) + teal label on card bg.
     return {
-      iconBg: "rgba(0,0,0,0.15)",
+      iconBg: "var(--color-bt-accent)",
       iconColor: "var(--color-bt-base)",
-      labelColor: "var(--color-bt-base)",
+      labelColor: "var(--color-bt-accent)",
     };
   }
   if (state === "complete") {
@@ -175,10 +175,7 @@ function Tile({
         {state === "complete" && (
           <span
             className="ml-auto flex h-5 w-5 items-center justify-center rounded-full"
-            style={{
-              background: isActive ? "rgba(0,0,0,0.15)" : "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-            }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             aria-label="Complete"
           >
             <Check size={11} strokeWidth={3} />
@@ -211,7 +208,7 @@ function Tile({
         {state === "complete" && (
           <span
             className="flex-shrink-0 text-[11px] opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100"
-            style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             {editLabel} →
           </span>
@@ -224,13 +221,12 @@ function Tile({
           {completeValue && (
             <p
               className="truncate text-sm font-semibold"
-              style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text)" }}
+              style={{ color: "var(--color-bt-text)" }}
             >
               {completeValue}
             </p>
           )}
-          {/* Hide completeSub when active — the open panel has full detail */}
-          {completeSub && !isActive && (
+          {completeSub && (
             <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {completeSub}
             </p>
@@ -238,13 +234,13 @@ function Tile({
         </>
       ) : state === "skipped" ? (
         <div className="space-y-1">
-          <p className="text-xs italic" style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}>
+          <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
             Not needed for this trip
           </p>
-          {!isActive && skippedNudge}
+          {skippedNudge}
         </div>
       ) : (
-        <p className="text-xs italic" style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}>
+        <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
           {emptyDescription}
         </p>
       )}
@@ -263,7 +259,7 @@ function Tile({
             {clickable ? (
               <span
                 className="flex items-center gap-1 text-[11px] font-semibold"
-                style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-accent)" }}
+                style={{ color: "var(--color-bt-accent)" }}
               >
                 {emptyCTA}
                 <ChevronRight size={10} />
@@ -281,14 +277,14 @@ function Tile({
                 disabled={skipping}
                 className="text-[11px] disabled:opacity-40"
                 style={{
-                  color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+                  color: "var(--color-bt-text-dim)",
                   background: "transparent",
                   border: "none",
                   textDecoration: "underline dotted",
                   textUnderlineOffset: 2,
                 }}
               >
-                Skip
+                Opt out
               </button>
             )}
           </>
@@ -303,14 +299,14 @@ function Tile({
             disabled={skipping}
             className="ml-auto text-[11px] disabled:opacity-40"
             style={{
-              color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
+              color: "var(--color-bt-text-dim)",
               background: "transparent",
               border: "none",
               textDecoration: "underline dotted",
               textUnderlineOffset: 2,
             }}
           >
-            Undo skip
+            Opt in
           </button>
         )}
       </div>
@@ -504,15 +500,21 @@ export function PlanningGrid({
     } catch {}
   };
 
-  // Auto-close dates panel when dates are resolved.
+  // Auto-close the active panel when its tile is skipped, or when dates are locked in.
   useEffect(() => {
-    if (datesState === "complete" || datesState === "skipped") {
-      setActivePanel((prev) => (prev === "dates" ? null : prev));
-      try {
-        localStorage.removeItem(datesStorageKey);
-      } catch {}
+    if (activePanel === null) return;
+    const stateMap: Record<TileKey, TileState> = {
+      dates: datesState,
+      crew: crewState,
+      lodging: lodgingState,
+      schedule: scheduleState,
+    };
+    const panelState = stateMap[activePanel];
+    if (panelState === "skipped" || (activePanel === "dates" && panelState === "complete")) {
+      setActivePanel(null);
+      try { localStorage.removeItem(datesStorageKey); } catch {}
     }
-  }, [datesState, datesStorageKey]);
+  }, [datesState, crewState, lodgingState, scheduleState, activePanel, datesStorageKey]);
 
   // Pick-your-dates form state
   const [directStart, setDirectStart] = useState("");
@@ -1026,7 +1028,7 @@ export function PlanningGrid({
           editLabel="Edit dates"
           preview={datesPreview}
           canEdit={canEdit}
-          onClick={() => handleTileClick("dates")}
+          onClick={datesState !== "skipped" ? () => handleTileClick("dates") : undefined}
           onSkip={() => handleSkip("dates")}
           onUnskip={() => handleUnskip("dates")}
           skipping={pendingTile === "dates"}
@@ -1044,7 +1046,7 @@ export function PlanningGrid({
           editLabel="Manage crew"
           preview={crewPreview}
           canEdit={canEdit}
-          onClick={() => handleTileClick("crew")}
+          onClick={crewState !== "skipped" ? () => handleTileClick("crew") : undefined}
           onSkip={() => handleSkip("crew")}
           onUnskip={() => handleUnskip("crew")}
           skipping={pendingTile === "crew"}
@@ -1075,7 +1077,7 @@ export function PlanningGrid({
           preview={lodgingPreview}
           anyPanelOpen={!!activePanel}
           canEdit={canEdit}
-          onClick={() => handleTileClick("lodging")}
+          onClick={lodgingState !== "skipped" ? () => handleTileClick("lodging") : undefined}
           onSkip={() => handleSkip("lodging")}
           onUnskip={() => handleUnskip("lodging")}
           skipping={pendingTile === "lodging"}
@@ -1103,7 +1105,7 @@ export function PlanningGrid({
           preview={schedulePreview}
           anyPanelOpen={!!activePanel}
           canEdit={canEdit}
-          onClick={() => handleTileClick("schedule")}
+          onClick={scheduleState !== "skipped" ? () => handleTileClick("schedule") : undefined}
           onSkip={() => handleSkip("schedule")}
           onUnskip={() => handleUnskip("schedule")}
           skipping={pendingTile === "schedule"}
@@ -1200,28 +1202,76 @@ export function PlanningGrid({
           data-testid="planning-mobile-panel"
         >
           {mobileActiveTab === "dates" && (
-            datesPanelBody ?? (
-              <div className="px-4 py-6 text-center" style={{ background: "var(--color-bt-card)" }}>
-                <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
-                </p>
+            datesState === "skipped" ? (
+              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+                <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of dates</p>
+                {canEdit && (
+                  <button type="button" onClick={() => handleUnskip("dates")} disabled={pendingTile === "dates"}
+                    className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                  >Opt in</button>
+                )}
               </div>
+            ) : (
+              datesPanelBody ?? (
+                <div className="px-4 py-6 text-center" style={{ background: "var(--color-bt-card)" }}>
+                  <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
+                  </p>
+                </div>
+              )
             )
           )}
           {mobileActiveTab === "crew" && (
-            <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
-              <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
-            </div>
+            crewState === "skipped" ? (
+              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+                <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of crew</p>
+                {canEdit && (
+                  <button type="button" onClick={() => handleUnskip("crew")} disabled={pendingTile === "crew"}
+                    className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                  >Opt in</button>
+                )}
+              </div>
+            ) : (
+              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+                <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+              </div>
+            )
           )}
           {mobileActiveTab === "lodging" && (
-            <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
-              <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
-            </div>
+            lodgingState === "skipped" ? (
+              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+                <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of lodging</p>
+                {canEdit && (
+                  <button type="button" onClick={() => handleUnskip("lodging")} disabled={pendingTile === "lodging"}
+                    className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                  >Opt in</button>
+                )}
+              </div>
+            ) : (
+              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+                <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+              </div>
+            )
           )}
           {mobileActiveTab === "schedule" && (
-            <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
-              <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
-            </div>
+            scheduleState === "skipped" ? (
+              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+                <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of schedule</p>
+                {canEdit && (
+                  <button type="button" onClick={() => handleUnskip("schedule")} disabled={pendingTile === "schedule"}
+                    className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                  >Opt in</button>
+                )}
+              </div>
+            ) : (
+              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+                <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+              </div>
+            )
           )}
         </div>
       </div>
