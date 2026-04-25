@@ -800,7 +800,7 @@ export function PlanningGrid({
   const datesPanelBody = canEdit && datesState !== "skipped" ? (
     <div data-testid="planning-dates-panel">
       {/* Panel title */}
-      <div className="px-3 pt-3">
+      <div className="px-4 pt-4">
         <h2
           className="text-xs font-semibold uppercase tracking-wider"
           style={{ color: panelTitleColor(datesState) }}
@@ -809,7 +809,7 @@ export function PlanningGrid({
         </h2>
       </div>
       {/* Segmented control */}
-      <div className="p-3">
+      <div className="px-4 py-3">
         <div
           className="flex rounded-xl p-1"
           style={{
@@ -860,7 +860,7 @@ export function PlanningGrid({
       {/* Body */}
       {dateMode === "set" ? (
         <div
-          className="border-t px-3 pb-3 pt-3"
+          className="border-t px-4 pb-4 pt-4"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
           <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -959,7 +959,7 @@ export function PlanningGrid({
         </div>
       ) : hasCrew ? (
         <div
-          className="border-t px-3 pb-3 pt-3"
+          className="border-t px-4 pb-4 pt-4"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
           <DatePollCard
@@ -970,7 +970,7 @@ export function PlanningGrid({
         </div>
       ) : (
         <div
-          className="border-t px-3 pb-3 pt-3"
+          className="border-t px-4 pb-4 pt-4"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
           <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
