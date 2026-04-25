@@ -781,7 +781,8 @@ export function PlanningGrid({
   }, [typedSchedule]);
 
   // ── Dates panel body — shared by desktop panel and mobile tab ─────────────
-  const datesPanelBody = canEdit ? (
+  // Guard against skipped state — content should never show when opted out.
+  const datesPanelBody = canEdit && datesState !== "skipped" ? (
     <div data-testid="planning-dates-panel">
       {/* Segmented control */}
       <div className="p-3">
@@ -1093,21 +1094,21 @@ export function PlanningGrid({
             style={{ border: activePanelBorder }}
             data-testid="planning-expanded-panel"
           >
-            {activePanel === "crew" && (
+            {activePanel === "crew" && (crewState === "skipped" ? null : (
               <div className="px-4 py-4">
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
-            )}
-            {activePanel === "lodging" && (
+            ))}
+            {activePanel === "lodging" && (lodgingState === "skipped" ? null : (
               <div className="px-4 py-4">
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
-            )}
-            {activePanel === "schedule" && (
+            ))}
+            {activePanel === "schedule" && (scheduleState === "skipped" ? null : (
               <div className="px-4 py-4">
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
-            )}
+            ))}
             {activePanel === "dates" && datesPanelBody}
           </div>
         )}
