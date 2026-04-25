@@ -498,6 +498,18 @@ export function PlanningGrid({
     }
   }, [datesState, crewState, lodgingState, scheduleState, activePanel, datesStorageKey]);
 
+  // Auto-disable poll mode when there's no crew left to poll.
+  useEffect(() => {
+    if (!hasCrew && pollMode) {
+      setPollActive.mutate({ tripId, pollMode: false });
+    }
+  }, [hasCrew, pollMode, tripId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset date mode UI when crew disappears.
+  useEffect(() => {
+    if (!hasCrew) setDateMode("set");
+  }, [hasCrew]);
+
   // Pick-your-dates form state
   const [directStart, setDirectStart] = useState("");
   const [directEnd, setDirectEnd] = useState("");
@@ -557,7 +569,7 @@ export function PlanningGrid({
 
   // Dates: per-window vote tally when poll is active — scales with any crew size.
   const datesPreview = useMemo(() => {
-    if (!pollMode || !datePoll) return null;
+    if (!pollMode || !datePoll || !hasCrew) return null;
     const pollWindows = datePoll.windows as unknown as GridPollWindow[];
     if (pollWindows.length === 0) return null;
     return (
