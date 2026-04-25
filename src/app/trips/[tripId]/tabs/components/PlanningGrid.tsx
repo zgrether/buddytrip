@@ -219,8 +219,8 @@ function Tile({
         </p>
       )}
 
-      {/* ── Rich preview — hidden mobile, shown sm+ ───────────────────── */}
-      {preview && (
+      {/* ── Rich preview — hidden mobile, shown sm+, suppressed when opted out ── */}
+      {preview && state !== "skipped" && (
         <div className="mt-2 hidden min-h-0 flex-1 flex-col gap-1.5 sm:flex">
           {preview}
         </div>
