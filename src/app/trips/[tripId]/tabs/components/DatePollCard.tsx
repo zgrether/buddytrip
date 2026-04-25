@@ -83,7 +83,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     [poll?.windows]
   );
 
-  const datesLocked = !!(trip.start_date && trip.end_date);
   const notifySent = !!poll?.notifySent;
 
   // Identify members who joined after the last crew-wide notification.
@@ -458,8 +457,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
       utils.datePoll.get.invalidate({ tripId });
     },
   });
-
-  if (datesLocked) return null;
 
   // ── Poll-open view ─────────────────────────────────────────────────────
 
