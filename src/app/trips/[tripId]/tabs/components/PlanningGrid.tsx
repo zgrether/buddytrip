@@ -905,21 +905,17 @@ export function PlanningGrid({
     state === "complete" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
 
   const datesPanelBody = canEdit && datesState !== "skipped" ? (
-    <div data-testid="planning-dates-panel">
-      {/* Panel title + blurb */}
-      <div className="px-4 pt-4 pb-3">
-        <h2
-          className="mb-1.5 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: panelTitleColor(datesState) }}
-        >
-          Dates
-        </h2>
-        <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-          Lock in dates directly, or poll the crew to find a window that works for everyone.
-        </p>
-      </div>
+    // Same px-4 py-4 wrapper as crew / lodging / schedule panels.
+    <div data-testid="planning-dates-panel" className="px-4 py-4">
+      <h2
+        className="mb-4 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: panelTitleColor(datesState) }}
+      >
+        Dates
+      </h2>
+
       {/* Segmented control — natural width, left-aligned */}
-      <div className="px-4 pb-3">
+      <div className="mb-3">
         <div
           className="inline-flex rounded-xl p-1"
           style={{
@@ -979,7 +975,7 @@ export function PlanningGrid({
 
       {/* Switch-to-poll prompt — only when dates were set directly (no windows yet) */}
       {showPollSwitchPrompt && datesLocked && !pollMode && !hasPollWindows && (
-        <div className="px-4 pb-3">
+        <div className="mb-3">
           <div
             className="space-y-3 rounded-xl border p-3"
             style={{
@@ -1021,10 +1017,7 @@ export function PlanningGrid({
 
       {/* Body */}
       {dateMode === "set" ? (
-        <div
-          className="px-4 pb-4 pt-2"
-          style={{ borderColor: "var(--color-bt-border)" }}
-        >
+        <div>
           {datesLocked ? (
             <div
               className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2.5"
@@ -1115,12 +1108,11 @@ export function PlanningGrid({
           </div>
         </div>
       ) : hasCrew ? (
-        <div
-          className="border-t overflow-x-auto"
-          style={{ borderColor: "var(--color-bt-border)" }}
-        >
-          <div className="min-w-[480px] px-4 pb-4 pt-4 space-y-3">
-            {/* Locked-from-poll banner — mirrors the set tab's teal banner */}
+        // Negative margin lets the scroll container bleed to the panel edge;
+        // inner px-4 restores the content padding. No border-t separator.
+        <div className="overflow-x-auto -mx-4 px-4">
+          <div className="min-w-[480px] space-y-3">
+            {/* Locked-from-poll banner */}
             {datesLocked && (
               <div
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2.5"
@@ -1166,26 +1158,21 @@ export function PlanningGrid({
           </div>
         </div>
       ) : (
-        <div
-          className="px-4 pb-4 pt-2"
-          style={{ borderColor: "var(--color-bt-border)" }}
-        >
-          <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Add crew members first —{" "}
-            <button
-              type="button"
-              onClick={() => handleTileClick("crew")}
-              className="font-semibold underline"
-              style={{
-                color: "var(--color-bt-accent)",
-                background: "transparent",
-                border: "none",
-              }}
-            >
-              open Crew →
-            </button>
-          </p>
-        </div>
+        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Add crew members first —{" "}
+          <button
+            type="button"
+            onClick={() => handleTileClick("crew")}
+            className="font-semibold underline"
+            style={{
+              color: "var(--color-bt-accent)",
+              background: "transparent",
+              border: "none",
+            }}
+          >
+            open Crew →
+          </button>
+        </p>
       )}
     </div>
   ) : null;
