@@ -73,7 +73,7 @@ function iconLabelColors(
     return {
       iconBg: "var(--color-bt-accent-faint)",
       iconColor: "var(--color-bt-accent)",
-      labelColor: "var(--color-bt-text-dim)",
+      labelColor: state === "complete" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
     };
   }
   if (state === "complete") {
