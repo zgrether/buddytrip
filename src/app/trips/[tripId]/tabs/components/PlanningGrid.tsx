@@ -55,7 +55,7 @@ function tileWrapperClass(
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-accent-border)]`;
   }
   if (state === "skipped") {
-    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)]`;
+    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] opacity-50`;
   }
   // empty
   return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)]`;
