@@ -52,7 +52,7 @@ function tileWrapperClass(
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-2 border-[var(--color-bt-accent)]`;
   }
   if (state === "complete") {
-    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)]`;
+    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-accent-border)]`;
   }
   if (state === "skipped") {
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)]`;
