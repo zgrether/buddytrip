@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   ArrowRight,
   Calendar,
@@ -8,6 +9,7 @@ import {
   Check,
   ChevronRight,
   Hotel,
+  Pencil,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -519,16 +521,23 @@ export function PlanningGrid({
     if (!hasCrew || crewState === "skipped") setDateMode("set");
   }, [hasCrew, crewState]);
 
-  // Pick-your-dates form state
-  const [directStart, setDirectStart] = useState("");
-  const [directEnd, setDirectEnd] = useState("");
+  // Pick-your-dates form state — seeded from locked dates so reopening the panel shows current values
+  const [directStart, setDirectStart] = useState(trip.start_date ?? "");
+  const [directEnd, setDirectEnd] = useState(trip.end_date ?? "");
   const [confirmClearPoll, setConfirmClearPoll] = useState(false);
 
   const lockDates = trpc.trips.lockDates.useMutation({
     onSuccess() {
+      setConfirmClearPoll(false);
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  const unlockDates = trpc.datePoll.unlock.useMutation({
+    onSuccess() {
       setDirectStart("");
       setDirectEnd("");
-      setConfirmClearPoll(false);
       utils.trips.getById.invalidate({ tripId });
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -876,7 +885,9 @@ export function PlanningGrid({
           style={{ borderColor: "var(--color-bt-border)" }}
         >
           <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Already know the dates? Lock them in directly.
+            {datesLocked
+              ? "Dates are set — update them below or clear to start over."
+              : "Already know the dates? Lock them in directly."}
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[140px] flex-1">
@@ -930,10 +941,27 @@ export function PlanningGrid({
                 className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
                 style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
-                Set
+                {datesLocked ? "Update" : "Set"}
               </button>
             )}
           </div>
+          {datesLocked && !confirmClearPoll && (
+            <button
+              type="button"
+              onClick={() => unlockDates.mutate({ tripId })}
+              disabled={unlockDates.isPending}
+              className="mt-2 text-xs disabled:opacity-40"
+              style={{
+                color: "var(--color-bt-text-dim)",
+                background: "transparent",
+                border: "none",
+                textDecoration: "underline dotted",
+                textUnderlineOffset: 2,
+              }}
+            >
+              {unlockDates.isPending ? "Clearing…" : "Clear dates"}
+            </button>
+          )}
 
           {confirmClearPoll && (
             <div
@@ -1022,16 +1050,28 @@ export function PlanningGrid({
   return (
     <div className="space-y-4">
       {/* ── Section header — visible on all breakpoints ──────────────────── */}
-      <div>
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Planning
-        </h2>
-        <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-          Destination locked in — now let&apos;s get the details sorted.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2
+            className="mb-2 text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Planning
+          </h2>
+          <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            Destination locked in — now let&apos;s get the details sorted.
+          </p>
+        </div>
+        {canEdit && (
+          <Link
+            href={`/trips/${trip.id}/change-destination`}
+            className="flex flex-shrink-0 items-center gap-1 text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <span style={{ color: "var(--color-bt-accent)" }}>{trip.locked_destination_title}</span>
+            <Pencil size={11} />
+          </Link>
+        )}
       </div>
 
       {/* ── DESKTOP / TABLET: tile grid + expanded panel (sm+) ──────────── */}
