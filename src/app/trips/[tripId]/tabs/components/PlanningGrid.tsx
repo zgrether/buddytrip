@@ -1178,32 +1178,39 @@ export function PlanningGrid({
             );
           })}
         </div>
-        {/* Tab content */}
+        {/* Tab content — same panel structure as desktop expanded panel */}
         <div
           className="mt-3 overflow-hidden rounded-xl"
           style={{
-            background: "var(--color-bt-card)",
             border: "1px solid var(--color-bt-border)",
+            borderTop: "2px solid var(--color-bt-accent)",
+            background: "var(--color-bt-card-raised)",
           }}
+          data-testid="planning-mobile-panel"
         >
           {mobileActiveTab === "dates" && (
             datesPanelBody ?? (
-              <p
-                className="px-4 py-6 text-center text-sm italic"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
-              </p>
+              <div className="px-4 py-6 text-center" style={{ background: "var(--color-bt-card)" }}>
+                <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
+                </p>
+              </div>
             )
           )}
           {mobileActiveTab === "crew" && (
-            <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+            <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+            </div>
           )}
           {mobileActiveTab === "lodging" && (
-            <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+            <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+            </div>
           )}
           {mobileActiveTab === "schedule" && (
-            <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+            <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+            </div>
           )}
         </div>
       </div>
