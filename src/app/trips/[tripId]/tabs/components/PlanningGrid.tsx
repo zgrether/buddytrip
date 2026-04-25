@@ -955,39 +955,39 @@ export function PlanningGrid({
               />
             </div>
             {!confirmClearPoll && (
-              <button
-                type="button"
-                onClick={handleSet}
-                disabled={
-                  !directStart ||
-                  !directEnd ||
-                  directStart >= directEnd ||
-                  lockDates.isPending
-                }
-                className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {datesLocked ? "Update" : "Set"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleSet}
+                  disabled={
+                    !directStart ||
+                    !directEnd ||
+                    directStart >= directEnd ||
+                    lockDates.isPending
+                  }
+                  className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                >
+                  {datesLocked ? "Update" : "Set"}
+                </button>
+                {datesLocked && (
+                  <button
+                    type="button"
+                    onClick={() => unlockDates.mutate({ tripId })}
+                    disabled={unlockDates.isPending}
+                    className="flex-shrink-0 rounded-lg border px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                    style={{
+                      background: "transparent",
+                      borderColor: "var(--color-bt-border)",
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    {unlockDates.isPending ? "Clearing…" : "Reset"}
+                  </button>
+                )}
+              </>
             )}
           </div>
-          {datesLocked && !confirmClearPoll && (
-            <button
-              type="button"
-              onClick={() => unlockDates.mutate({ tripId })}
-              disabled={unlockDates.isPending}
-              className="mt-2 text-xs disabled:opacity-40"
-              style={{
-                color: "var(--color-bt-text-dim)",
-                background: "transparent",
-                border: "none",
-                textDecoration: "underline dotted",
-                textUnderlineOffset: 2,
-              }}
-            >
-              {unlockDates.isPending ? "Clearing…" : "Clear dates"}
-            </button>
-          )}
 
           {confirmClearPoll && (
             <div
