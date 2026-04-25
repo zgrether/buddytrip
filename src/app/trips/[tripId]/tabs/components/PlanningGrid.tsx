@@ -39,40 +39,38 @@ export interface PlanningGridProps {
 // ── Tile styling helpers ──────────────────────────────────────────────────
 
 /** CSS class string for the tile wrapper — handles hover states via className
- *  so Tailwind hover variants can override them (style prop can't be hovered).
- *  `anyPanelOpen` dims inactive tiles when a panel is expanded. */
+ *  so Tailwind hover variants can override them (style prop can't be hovered). */
 function tileWrapperClass(
   state: TileState,
   isActive: boolean,
   clickable: boolean,
-  anyPanelOpen: boolean,
 ): string {
   const shared =
     "group relative flex flex-col rounded-xl border p-3 transition-all duration-150";
   const cursor = clickable ? "cursor-pointer" : "cursor-default";
-  // Inactive tiles dim when any panel is open (skip skipped — already at 60%)
-  const dim = anyPanelOpen && !isActive && state !== "skipped" ? "opacity-70" : "";
 
   if (isActive) {
-    // Active: card-raised bg + 2px teal border, fully rounded — no flat-bottom trick.
+    // Active: card-raised bg + 2px teal border, fully rounded.
     return `${shared} ${cursor} bg-[var(--color-bt-card-raised)] border-2 border-[var(--color-bt-accent)]`;
   }
   if (state === "complete") {
-    return `${shared} ${cursor} ${dim} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)] hover:border-[var(--color-bt-accent-border)]`;
+    // Complete: sits at base level (dims into the surface); text stays full brightness.
+    return `${shared} ${cursor} bg-[var(--color-bt-base)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card)] hover:border-[var(--color-bt-accent-border)]`;
   }
   if (state === "skipped") {
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] opacity-60`;
   }
-  return `${shared} ${cursor} ${dim} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)] hover:border-[var(--color-bt-accent-border)]`;
+  // empty
+  return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)] hover:border-[var(--color-bt-accent-border)]`;
 }
 
 /** Icon and label colors only (background/border handled via className above). */
 function iconLabelColors(
   state: TileState,
   isActive: boolean,
-): { iconBg: string; iconColor: string; labelColor: string } {
+): { iconBg: string; iconColor: string; labelColor: string; iconBorder?: string } {
   if (isActive) {
-    // Solid accent icon square (white icon) + teal label on card bg.
+    // Solid accent icon square (white icon) + teal label on card-raised bg.
     return {
       iconBg: "var(--color-bt-accent)",
       iconColor: "var(--color-bt-base)",
@@ -86,6 +84,16 @@ function iconLabelColors(
       labelColor: "var(--color-bt-accent)",
     };
   }
+  if (state === "empty") {
+    // Empty: teal label + transparent icon well with teal border — clearly actionable.
+    return {
+      iconBg: "transparent",
+      iconColor: "var(--color-bt-accent)",
+      labelColor: "var(--color-bt-accent)",
+      iconBorder: "1.5px solid var(--color-bt-accent)",
+    };
+  }
+  // skipped
   return {
     iconBg: "var(--color-bt-card-raised)",
     iconColor: "var(--color-bt-text-dim)",
@@ -120,8 +128,6 @@ interface TileProps {
   editLabel: string;
   /** Rich preview content — rendered on sm+ breakpoint, hidden on mobile. */
   preview?: React.ReactNode;
-  /** True when any panel (not necessarily this tile's) is open — dims inactive tiles. */
-  anyPanelOpen?: boolean;
   testId?: string;
 }
 
@@ -142,7 +148,6 @@ function Tile({
   skippedNudge,
   editLabel,
   preview,
-  anyPanelOpen,
   testId,
 }: TileProps) {
   const colors = iconLabelColors(state, !!isActive);
@@ -155,14 +160,14 @@ function Tile({
       data-state={state}
       data-active={isActive ? "true" : undefined}
       onClick={clickable ? onClick : undefined}
-      className={tileWrapperClass(state, !!isActive, clickable, !!anyPanelOpen)}
+      className={tileWrapperClass(state, !!isActive, clickable)}
       style={{ minHeight: 130 }}
     >
       {/* ── Top row: icon + status badge (ml-auto) ───────────────────── */}
       <div className="mb-2 flex items-center">
         <span
           className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
-          style={{ background: colors.iconBg, color: colors.iconColor }}
+          style={{ background: colors.iconBg, color: colors.iconColor, border: colors.iconBorder }}
         >
           <Icon size={22} strokeWidth={1.75} />
         </span>
@@ -191,23 +196,14 @@ function Tile({
         )}
       </div>
 
-      {/* ── Label row: LABEL (left) + Edit link (right, complete-only) ── */}
-      <div className="mb-1 flex items-center justify-between gap-1">
+      {/* ── Label row: LABEL only ── */}
+      <div className="mb-1">
         <p
           className="text-[10px] font-bold uppercase tracking-wider"
           style={{ color: colors.labelColor }}
         >
           {label}
         </p>
-        {/* Edit link — visible on mobile, fades in on desktop hover */}
-        {state === "complete" && (
-          <span
-            className="flex-shrink-0 text-[11px] opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {editLabel} →
-          </span>
-        )}
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────── */}
@@ -247,8 +243,16 @@ function Tile({
         </div>
       )}
 
-      {/* ── Footer: CTA + Skip (empty) | Undo skip (skipped) ─────────── */}
+      {/* ── Footer: Edit link (complete) | CTA + Opt out (empty) | Opt in (skipped) ─── */}
       <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+        {state === "complete" && clickable && (
+          <span
+            className="flex items-center gap-1 text-[11px] font-semibold"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            {editLabel} <ChevronRight size={10} />
+          </span>
+        )}
         {state === "empty" && (
           <>
             {clickable ? (
@@ -1016,7 +1020,7 @@ export function PlanningGrid({
           label="Dates"
           state={datesState}
           isActive={activePanel === "dates"}
-          anyPanelOpen={!!activePanel}
+
           emptyDescription="Not set yet"
           emptyCTA="Set dates"
           completeValue={lockedDateLabel ?? undefined}
@@ -1034,7 +1038,7 @@ export function PlanningGrid({
           label="Crew"
           state={crewState}
           isActive={activePanel === "crew"}
-          anyPanelOpen={!!activePanel}
+
           emptyDescription="No one added yet"
           emptyCTA="Add crew"
           completeValue={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
@@ -1070,7 +1074,7 @@ export function PlanningGrid({
           }
           editLabel="Manage lodging"
           preview={lodgingPreview}
-          anyPanelOpen={!!activePanel}
+
           canEdit={canEdit}
           onClick={lodgingState !== "skipped" ? () => handleTileClick("lodging") : undefined}
           onSkip={() => handleSkip("lodging")}
@@ -1098,7 +1102,7 @@ export function PlanningGrid({
           completeValue={`${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`}
           editLabel="Manage schedule"
           preview={schedulePreview}
-          anyPanelOpen={!!activePanel}
+
           canEdit={canEdit}
           onClick={scheduleState !== "skipped" ? () => handleTileClick("schedule") : undefined}
           onSkip={() => handleSkip("schedule")}
@@ -1121,7 +1125,7 @@ export function PlanningGrid({
         {activePanel !== null && (
           <div
             className="mt-2 rounded-xl"
-            style={{ border: "1px solid var(--color-bt-accent-border)" }}
+            style={{ border: "1px solid var(--color-bt-border)" }}
             data-testid="planning-expanded-panel"
           >
             {activePanel === "crew" && (
@@ -1187,7 +1191,7 @@ export function PlanningGrid({
         {/* Tab content — same panel structure as desktop expanded panel */}
         <div
           className="mt-3 rounded-xl"
-          style={{ border: "1px solid var(--color-bt-accent-border)" }}
+          style={{ border: "1px solid var(--color-bt-border)" }}
           data-testid="planning-mobile-panel"
         >
           {mobileActiveTab === "dates" && (
