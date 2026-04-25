@@ -43,22 +43,25 @@ function tileWrapperClass(
   state: TileState,
   isActive: boolean,
   clickable: boolean,
+  anyPanelOpen: boolean,
 ): string {
   const shared =
     "group relative flex flex-col rounded-xl border p-3 transition-all duration-150";
   const cursor = clickable ? "cursor-pointer" : "cursor-default";
+  // Dim unselected (non-skipped) tiles when a panel is open.
+  const dim = anyPanelOpen && !isActive && state !== "skipped" ? "opacity-75" : "";
 
   if (isActive) {
-    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-2 border-[var(--color-bt-accent)]`;
+    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-2 border-[var(--color-bt-accent)] hover:bg-[var(--color-bt-card-raised)]`;
   }
   if (state === "complete") {
-    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-accent-border)] hover:bg-[var(--color-bt-card-raised)]`;
+    return `${shared} ${cursor} ${dim} bg-[var(--color-bt-card)] border-[var(--color-bt-accent-border)] hover:bg-[var(--color-bt-card-raised)]`;
   }
   if (state === "skipped") {
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] opacity-50`;
   }
   // empty
-  return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)]`;
+  return `${shared} ${cursor} ${dim} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)]`;
 }
 
 /** Icon and label colors only (background/border handled via className above). */
@@ -120,6 +123,8 @@ interface TileProps {
   editLabel: string;
   /** Rich preview content — rendered on sm+ breakpoint, hidden on mobile. */
   preview?: React.ReactNode;
+  /** Dims this tile when another panel is open. */
+  anyPanelOpen?: boolean;
   testId?: string;
 }
 
@@ -139,6 +144,7 @@ function Tile({
   skipping,
   editLabel,
   preview,
+  anyPanelOpen,
   testId,
 }: TileProps) {
   const colors = iconLabelColors(state, !!isActive);
@@ -151,7 +157,7 @@ function Tile({
       data-state={state}
       data-active={isActive ? "true" : undefined}
       onClick={clickable ? onClick : undefined}
-      className={tileWrapperClass(state, !!isActive, clickable)}
+      className={tileWrapperClass(state, !!isActive, clickable, !!anyPanelOpen)}
       style={{ minHeight: 130 }}
     >
       {/* ── Top row: icon + status badge (ml-auto) ───────────────────── */}
@@ -990,6 +996,7 @@ export function PlanningGrid({
           completeValue={lockedDateLabel ?? undefined}
           editLabel="Edit dates"
           preview={datesPreview}
+          anyPanelOpen={!!activePanel}
           canEdit={canEdit}
           onClick={datesState !== "skipped" ? () => handleTileClick("dates") : undefined}
           onSkip={() => handleSkip("dates")}
@@ -1008,6 +1015,7 @@ export function PlanningGrid({
           completeValue={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
           editLabel="Manage crew"
           preview={crewPreview}
+          anyPanelOpen={!!activePanel}
           canEdit={canEdit}
           onClick={crewState !== "skipped" ? () => handleTileClick("crew") : undefined}
           onSkip={() => handleSkip("crew")}
@@ -1038,6 +1046,7 @@ export function PlanningGrid({
           }
           editLabel="Manage lodging"
           preview={lodgingPreview}
+          anyPanelOpen={!!activePanel}
 
           canEdit={canEdit}
           onClick={lodgingState !== "skipped" ? () => handleTileClick("lodging") : undefined}
@@ -1056,6 +1065,7 @@ export function PlanningGrid({
           completeValue={`${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`}
           editLabel="Manage schedule"
           preview={schedulePreview}
+          anyPanelOpen={!!activePanel}
 
           canEdit={canEdit}
           onClick={scheduleState !== "skipped" ? () => handleTileClick("schedule") : undefined}
