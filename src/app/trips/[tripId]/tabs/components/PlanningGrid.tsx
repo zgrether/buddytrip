@@ -894,7 +894,7 @@ export function PlanningGrid({
             >
               <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
               <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-accent)" }}>
-                Dates are set — update them below or clear to start over.
+                Dates are set — update them below or reset to start over.
               </p>
             </div>
           ) : (
