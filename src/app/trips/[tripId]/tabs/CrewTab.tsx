@@ -410,6 +410,13 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
     <div className={embedded ? "@container" : "@container px-4"}>
       <div className={isOwner && members.length > 1 ? "@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
         <div className="min-w-0 space-y-4">
+          {/* ── Cohesive blurb — sits between the outer CREW panel title and PLANNERS ── */}
+          {isOwner && (
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away. Guests without an account can be reached via the email panel.
+            </p>
+          )}
+
           {/* ── PLANNERS section ── */}
           <div>
             <h2
@@ -418,11 +425,6 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             >
               Planners
             </h2>
-            {isOwner && (
-              <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-                Co-planners can help manage the trip alongside you. Promote any crew member with a BuddyTrip account.
-              </p>
-            )}
             <div
               className="overflow-hidden rounded-xl"
               style={{
@@ -450,32 +452,29 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           </div>
 
           {/* ── REST OF THE CREW section ── */}
-          <div className="pt-4">
-            <h2
-              className="mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Rest of the crew
-            </h2>
-            {isOwner && (
-              <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-                BuddyTrip members get access as soon as you add them. Guests without an account need an email invite — use the panel on the right.
-              </p>
-            )}
-            {crewSorted.some((m) => m.isGuest) && (
-              <div
-                className="mb-2 flex items-center gap-2 text-[12px]"
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2
+                className="text-xs font-semibold uppercase tracking-wider"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                <span
-                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-                  style={{ background: "var(--color-bt-border)" }}
+                Rest of the crew
+              </h2>
+              {crewSorted.some((m) => m.isGuest) && (
+                <div
+                  className="flex items-center gap-1.5 text-[11px]"
+                  style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  <Ghost size={11} />
-                </span>
-                <span>= not a BuddyTrip member</span>
-              </div>
-            )}
+                  <span
+                    className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
+                    style={{ background: "var(--color-bt-border)" }}
+                  >
+                    <Ghost size={10} />
+                  </span>
+                  <span>= not a BuddyTrip member</span>
+                </div>
+              )}
+            </div>
             <div
               className="overflow-hidden rounded-xl"
               style={{
