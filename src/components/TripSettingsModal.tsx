@@ -64,12 +64,16 @@ export function TripSettingsModal({
 
   // ── Destination / Dates edit state (planning stage only) ─────────────
   const stage = trip?.stage ?? "idea";
-  const canEditPlan = stage === "planning" && (viewerRole === "Owner" || viewerRole === "Planner");
+  // Show "Trip plan" section for any role-eligible user who is past the planning stage.
+  // During planning, dates and destination are managed via the PlanningGrid instead.
+  const canEditPlan = viewerRole === "Owner" || viewerRole === "Planner";
   const destinationLocked = !!trip?.locked_destination_title;
   const datesLocked = !!(trip?.start_date && trip?.end_date);
 
   const [destExpanded, setDestExpanded] = useState(false);
-  const [destDraft, setDestDraft] = useState(trip?.locked_destination_title ?? "");
+  const [destDraft, setDestDraft] = useState(
+    trip?.locked_destination_location ?? trip?.locked_destination_title ?? "",
+  );
   const [datesExpanded, setDatesExpanded] = useState(false);
   const [startDraft, setStartDraft] = useState(trip?.start_date ?? "");
   const [endDraft, setEndDraft] = useState(trip?.end_date ?? "");
@@ -127,7 +131,8 @@ export function TripSettingsModal({
 
   const canSaveDest =
     destDraft.trim().length > 0 &&
-    destDraft.trim() !== (trip?.locked_destination_title ?? "") &&
+    destDraft.trim() !==
+      (trip?.locked_destination_location ?? trip?.locked_destination_title ?? "") &&
     !changeDestinationMutation.isPending;
 
   const canSaveDates =
@@ -260,8 +265,8 @@ export function TripSettingsModal({
           </>
         )}
 
-        {/* ── Section: Trip plan (planning stage only) ───────────────── */}
-        {canEditPlan && (destinationLocked || datesLocked) && (
+        {/* ── Section: Trip plan (hidden during planning — use PlanningGrid instead) ── */}
+        {canEditPlan && stage !== "planning" && (destinationLocked || datesLocked) && (
           <>
             <p
               className="mb-3 text-[11px] font-medium uppercase tracking-wider"
@@ -281,7 +286,7 @@ export function TripSettingsModal({
                       setDatesExpanded(false);
                       setTransferExpanded(false);
                       setSaveConfirming(false);
-                      setDestDraft(trip?.locked_destination_title ?? "");
+                      setDestDraft(trip?.locked_destination_location ?? trip?.locked_destination_title ?? "");
                     }}
                     className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
                     style={{
@@ -300,7 +305,7 @@ export function TripSettingsModal({
                         Change destination
                       </p>
                       <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {trip?.locked_destination_title}
+                        {trip?.locked_destination_location ?? trip?.locked_destination_title}
                       </p>
                     </div>
                     <ChevronRight
@@ -371,8 +376,8 @@ export function TripSettingsModal({
                 </div>
               )}
 
-              {/* Change dates — hidden during planning stage; use the Dates panel in PlanningGrid instead */}
-              {datesLocked && trip?.stage !== "planning" && (
+              {/* Change dates */}
+              {datesLocked && (
                 <div>
                   <button
                     data-testid="settings-change-dates-btn"
