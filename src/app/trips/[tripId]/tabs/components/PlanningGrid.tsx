@@ -8,7 +8,6 @@ import {
   Check,
   ChevronRight,
   Hotel,
-  Pencil,
   Users,
   X,
 } from "lucide-react";
@@ -1083,13 +1082,10 @@ export function PlanningGrid({
               setDestDraft(trip.locked_destination_location ?? trip.locked_destination_title ?? "");
               setShowDestModal(true);
             }}
-            className="flex flex-shrink-0 items-center gap-1 text-xs font-medium transition-opacity hover:opacity-70"
-            style={{ background: "transparent", border: "none", color: "var(--color-bt-text-dim)", cursor: "pointer" }}
+            className="flex flex-shrink-0 items-center gap-1 text-xs font-semibold transition-opacity hover:opacity-70"
+            style={{ background: "transparent", border: "none", color: "var(--color-bt-accent)", cursor: "pointer" }}
           >
-            <span style={{ color: "var(--color-bt-accent)" }}>
-              {trip.locked_destination_location ?? trip.locked_destination_title}
-            </span>
-            <Pencil size={11} />
+            Edit destination <ChevronRight size={10} />
           </button>
         )}
       </div>
@@ -1344,18 +1340,18 @@ export function PlanningGrid({
 
       {/* ── Destination edit modal ──────────────────────────────────────── */}
       {showDestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setShowDestModal(false)}
+        >
           <div
-            className="absolute inset-0"
-            style={{ background: "var(--color-bt-overlay)" }}
-            onClick={() => setShowDestModal(false)}
-          />
-          <div
-            className="relative w-full max-w-[440px] rounded-xl p-5 space-y-4"
+            className="w-full max-w-[440px] rounded-t-2xl p-5 space-y-4 lg:rounded-2xl"
             style={{
               background: "var(--color-bt-card)",
               border: "1px solid var(--color-bt-border)",
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between">
