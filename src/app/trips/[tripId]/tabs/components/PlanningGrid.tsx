@@ -378,18 +378,29 @@ export function PlanningGrid({
   };
 
   // ── Skip / unskip ──────────────────────────────────────────────────────
+  // Track which tile is currently mutating so only that tile's button
+  // dims — otherwise all four buttons would flash together while a single
+  // mutation is in flight.
+  const [pendingTile, setPendingTile] = useState<TileKey | null>(null);
   const skipTile = trpc.trips.skipPlanningTile.useMutation({
-    onSuccess() { utils.trips.getById.invalidate({ tripId }); },
+    onSettled() {
+      setPendingTile(null);
+      utils.trips.getById.invalidate({ tripId });
+    },
   });
   const unskipTile = trpc.trips.unskipPlanningTile.useMutation({
-    onSuccess() { utils.trips.getById.invalidate({ tripId }); },
+    onSettled() {
+      setPendingTile(null);
+      utils.trips.getById.invalidate({ tripId });
+    },
   });
-  const skipping = skipTile.isPending || unskipTile.isPending;
 
   const handleSkip = (tile: TileKey) => {
+    setPendingTile(tile);
     skipTile.mutate({ tripId, tile });
   };
   const handleUnskip = (tile: TileKey) => {
+    setPendingTile(tile);
     unskipTile.mutate({ tripId, tile });
   };
 
@@ -410,7 +421,7 @@ export function PlanningGrid({
           onClick={canEdit && datesState === "empty" ? () => setDatesPanelOpen((v) => !v) : undefined}
           onSkip={() => handleSkip("dates")}
           onUnskip={() => handleUnskip("dates")}
-          skipping={skipping}
+          skipping={pendingTile === "dates"}
         />
         <Tile
           testId="planning-tile-crew"
@@ -424,7 +435,7 @@ export function PlanningGrid({
           onClick={() => onTabChange?.("crew")}
           onSkip={() => handleSkip("crew")}
           onUnskip={() => handleUnskip("crew")}
-          skipping={skipping}
+          skipping={pendingTile === "crew"}
         />
         <Tile
           testId="planning-tile-lodging"
@@ -447,7 +458,7 @@ export function PlanningGrid({
           onClick={() => onTabChange?.("lodging")}
           onSkip={() => handleSkip("lodging")}
           onUnskip={() => handleUnskip("lodging")}
-          skipping={skipping}
+          skipping={pendingTile === "lodging"}
         />
         <Tile
           testId="planning-tile-schedule"
@@ -461,7 +472,7 @@ export function PlanningGrid({
           onClick={() => onTabChange?.("schedule")}
           onSkip={() => handleSkip("schedule")}
           onUnskip={() => handleUnskip("schedule")}
-          skipping={skipping}
+          skipping={pendingTile === "schedule"}
         />
       </div>
 
