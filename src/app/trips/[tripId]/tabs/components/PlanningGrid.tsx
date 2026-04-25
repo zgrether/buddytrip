@@ -210,7 +210,7 @@ function Tile({
       ) : state === "skipped" ? (
         <div className="space-y-1">
           <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-            Not needed for this trip
+            Not needed for planning
           </p>
         </div>
       ) : (
