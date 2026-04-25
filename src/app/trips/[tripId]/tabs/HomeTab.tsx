@@ -13,6 +13,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ActionCenter } from "./components/ActionCenter";
 import { ItineraryPanel } from "../components/ItineraryPanel";
+import { PlanningGrid } from "./components/PlanningGrid";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
@@ -294,8 +295,9 @@ export function HomeTab({
   onEnableComp,
   onOpenChat,
   onWriteInvitation,
+  onAdvanceToGoing,
   actionCenterTitleAction,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onWriteInvitation?: () => void; actionCenterTitleAction?: React.ReactNode }) {
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
 
@@ -318,11 +320,22 @@ export function HomeTab({
 
   return (
     <div className="space-y-4">
-      {/* ── Action Center — unified "what needs your attention"   ── */}
-      {/*    surface: idea/planning show Dates cards, going shows    ── */}
-      {/*    the RSVP card. Rendered first so it stays visible        ── */}
-      {/*    above the itinerary once the trip is going.              ── */}
-      {(stage === "idea" || stage === "planning" || stage === "going") && (
+      {/* ── PLANNING stage: 2×2 tile grid + dates accordion + View Itinerary.
+              Replaces the old ActionCenter / PlanningSection treatment.      */}
+      {stage === "planning" && (
+        <PlanningGrid
+          trip={trip}
+          canEdit={canEditProp}
+          isOwner={!!isOwner}
+          onTabChange={onTabChange}
+          onAdvanceToGoing={onAdvanceToGoing}
+        />
+      )}
+
+      {/* ── Action Center — GOING only (idea is handled above; planning
+              now uses PlanningGrid). Still renders for the going-stage
+              travel + invitation cards.                                   */}
+      {stage === "going" && (
         <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} onWriteInvitation={onWriteInvitation} titleAction={actionCenterTitleAction} />
       )}
 

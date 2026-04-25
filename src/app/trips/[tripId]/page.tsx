@@ -360,6 +360,7 @@ export default function TripDetailPage() {
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                     onOpenChat={() => setChatOpen(true)}
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
+                    onAdvanceToGoing={isOwner ? () => setShowInvitationModal(true) : undefined}
                     actionCenterTitleAction={summaryButton}
                   />
                 )}
