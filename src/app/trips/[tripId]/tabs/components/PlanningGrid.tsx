@@ -570,74 +570,61 @@ export function PlanningGrid({
 
   // ── Rich tile previews ─────────────────────────────────────────────────
 
-  // Dates: per-member vote pips when poll is active.
+  // Dates: per-window vote tally when poll is active — scales with any crew size.
   const datesPreview = useMemo(() => {
     if (!pollMode || !datePoll) return null;
     const pollWindows = datePoll.windows as unknown as GridPollWindow[];
     if (pollWindows.length === 0) return null;
-    // Only members with an account can vote.
-    const votableMembers = typedMembers.filter((m) => m.user_id !== null);
     return (
       <div className="space-y-1">
-        {pollWindows.slice(0, 3).map((w) => (
-          <div
-            key={w.id}
-            className="flex items-center gap-2 rounded-lg px-2 py-1"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <span
-              className="flex-1 truncate text-[11px] font-medium"
-              style={{ color: "var(--color-bt-text-dim)" }}
+        {pollWindows.slice(0, 3).map((w) => {
+          const yes = w.votes.filter((v) => v.answer === "yes").length;
+          const maybe = w.votes.filter((v) => v.answer === "maybe").length;
+          const no = w.votes.filter((v) => v.answer === "no").length;
+          return (
+            <div
+              key={w.id}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+              }}
             >
-              {formatDateRangeCompact(w.start_date, w.end_date)}
-            </span>
-            <div className="flex gap-0.5">
-              {votableMembers.slice(0, 6).map((m) => {
-                const vote = w.votes.find((v) => v.user_id === m.user_id);
-                const answer = vote?.answer ?? null;
-                const pipBg =
-                  answer === "yes"
-                    ? "var(--color-bt-accent-faint)"
-                    : answer === "maybe"
-                      ? "var(--color-bt-warning-faint)"
-                      : answer === "no"
-                        ? "var(--color-bt-danger-faint)"
-                        : "var(--color-bt-card-raised)";
-                const pipColor =
-                  answer === "yes"
-                    ? "var(--color-bt-accent)"
-                    : answer === "maybe"
-                      ? "var(--color-bt-warning)"
-                      : answer === "no"
-                        ? "var(--color-bt-danger)"
-                        : "var(--color-bt-text-dim)";
-                const pipLabel =
-                  answer === "yes" ? "✓" : answer === "maybe" ? "~" : answer === "no" ? "✗" : "?";
-                return (
-                  <div
-                    key={m.memberId}
-                    className="flex h-4 w-4 items-center justify-center rounded text-[9px] font-bold"
-                    style={{ background: pipBg, color: pipColor }}
-                    title={m.displayName}
+              <span
+                className="flex-1 truncate text-[11px] font-medium"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {formatDateRangeCompact(w.start_date, w.end_date)}
+              </span>
+              <div className="flex gap-1">
+                {yes > 0 && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                    style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
                   >
-                    {pipLabel}
-                  </div>
-                );
-              })}
-              {votableMembers.length > 6 && (
-                <span
-                  className="text-[10px]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  +{votableMembers.length - 6}
-                </span>
-              )}
+                    {yes} ✓
+                  </span>
+                )}
+                {maybe > 0 && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                    style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+                  >
+                    {maybe} ~
+                  </span>
+                )}
+                {no > 0 && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                    style={{ background: "var(--color-bt-danger-faint)", color: "var(--color-bt-danger)" }}
+                  >
+                    {no} ✗
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {pollWindows.length > 3 && (
           <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
             +{pollWindows.length - 3} more options
@@ -645,7 +632,7 @@ export function PlanningGrid({
         )}
       </div>
     );
-  }, [pollMode, datePoll, typedMembers]);
+  }, [pollMode, datePoll]);
 
   // Crew: avatar chips + planner count + missing email tally.
   const crewPreview = useMemo(() => {
