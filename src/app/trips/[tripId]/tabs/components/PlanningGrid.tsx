@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { formatDateRangeCompact } from "@/lib/dates";
+import { formatDateRangeCompact, fmtTime12 } from "@/lib/dates";
 import type { TripData } from "../types";
 import { DatePollCard } from "./DatePollCard";
 
@@ -31,57 +31,55 @@ export interface PlanningGridProps {
   onAdvanceToGoing?: () => void;
 }
 
-// ── Tile primitives ───────────────────────────────────────────────────────
+// ── Tile styling helpers ──────────────────────────────────────────────────
 
-interface TileStyling {
-  background: string;
-  border: string;
-  opacity: number;
-  iconBg: string;
-  iconColor: string;
-  labelColor: string;
-}
+/** CSS class string for the tile wrapper — handles hover states via className
+ *  so Tailwind hover variants can override them (style prop can't be hovered). */
+function tileWrapperClass(
+  state: TileState,
+  isActive: boolean,
+  clickable: boolean,
+): string {
+  const shared =
+    "group relative flex flex-col rounded-xl border p-3 transition-all duration-150";
+  const cursor = clickable ? "cursor-pointer" : "cursor-default";
 
-function stylingForState(state: TileState, isActive: boolean): TileStyling {
   if (isActive) {
-    return {
-      background: "var(--color-bt-accent-faint)",
-      border: "1px solid var(--color-bt-accent-border)",
-      opacity: 1,
-      iconBg: "var(--color-bt-accent-faint)",
-      iconColor: "var(--color-bt-accent)",
-      labelColor: "var(--color-bt-accent)",
-    };
+    // Dates panel open — accent styling, no hover needed
+    return `${shared} ${cursor} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)]`;
   }
   if (state === "complete") {
+    // Teal tint base; subtle ring on hover to signal interactivity
+    return `${shared} ${cursor} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)] hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]`;
+  }
+  if (state === "skipped") {
+    // Dimmed — no hover affordance
+    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] opacity-60`;
+  }
+  // empty — raised background + accent border on hover
+  return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)] hover:border-[var(--color-bt-accent-border)]`;
+}
+
+/** Icon and label colors only (background/border handled via className above). */
+function iconLabelColors(
+  state: TileState,
+  isActive: boolean,
+): { iconBg: string; iconColor: string; labelColor: string } {
+  if (isActive || state === "complete") {
     return {
-      background: "var(--color-bt-accent-faint)",
-      border: "1px solid var(--color-bt-accent-border)",
-      opacity: 1,
       iconBg: "var(--color-bt-accent-faint)",
       iconColor: "var(--color-bt-accent)",
       labelColor: "var(--color-bt-accent)",
-    };
-  }
-  if (state === "skipped") {
-    return {
-      background: "var(--color-bt-card)",
-      border: "1px solid var(--color-bt-border)",
-      opacity: 0.6,
-      iconBg: "var(--color-bt-card-raised)",
-      iconColor: "var(--color-bt-text-dim)",
-      labelColor: "var(--color-bt-text-dim)",
     };
   }
   return {
-    background: "var(--color-bt-card)",
-    border: "1px solid var(--color-bt-border)",
-    opacity: 1,
     iconBg: "var(--color-bt-card-raised)",
     iconColor: "var(--color-bt-text-dim)",
     labelColor: "var(--color-bt-text-dim)",
   };
 }
+
+// ── Tile component ────────────────────────────────────────────────────────
 
 interface TileProps {
   icon: LucideIcon;
@@ -101,7 +99,10 @@ interface TileProps {
   skipping: boolean;
   /** Warning shown below "Not needed for this trip" when skipped + crew complete. */
   skippedNudge?: React.ReactNode;
-  /** Short action label for Edit/Manage link, e.g. "Edit dates", "Manage crew" */
+  /**
+   * Short action label used in the label row for complete tiles, e.g.
+   * "Edit dates", "Manage crew". The " →" arrow is appended automatically.
+   */
   editLabel: string;
   /** Rich preview content — rendered on sm+ breakpoint, hidden on mobile. */
   preview?: React.ReactNode;
@@ -127,7 +128,7 @@ function Tile({
   preview,
   testId,
 }: TileProps) {
-  const styling = stylingForState(state, !!isActive);
+  const colors = iconLabelColors(state, !!isActive);
   // All tiles always navigable — checkmark means "addressed", not locked.
   const clickable = !!onClick;
 
@@ -137,71 +138,69 @@ function Tile({
       data-state={state}
       data-active={isActive ? "true" : undefined}
       onClick={clickable ? onClick : undefined}
-      className="group relative flex flex-col rounded-xl p-3 transition-all duration-150 hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
-      style={{
-        background: styling.background,
-        border: styling.border,
-        opacity: styling.opacity,
-        minHeight: 130,
-        cursor: clickable ? "pointer" : "default",
-      }}
+      className={tileWrapperClass(state, !!isActive, clickable)}
+      style={{ minHeight: 130 }}
     >
-      {/* Top row: icon + badge column (badge + edit/manage link) */}
-      <div className="mb-2 flex items-start justify-between">
+      {/* ── Top row: icon + status badge (ml-auto) ───────────────────── */}
+      <div className="mb-2 flex items-center">
         <span
           className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
-          style={{ background: styling.iconBg, color: styling.iconColor }}
+          style={{ background: colors.iconBg, color: colors.iconColor }}
         >
           <Icon size={22} strokeWidth={1.75} />
         </span>
 
-        {/* Right column: status badge + edit link */}
-        <div className="flex flex-col items-end gap-0.5">
-          {state === "complete" && (
-            <span
-              className="flex h-5 w-5 items-center justify-center rounded-full"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              aria-label="Complete"
-            >
-              <Check size={11} strokeWidth={3} />
-            </span>
-          )}
-          {state === "skipped" && (
-            <span
-              className="flex h-5 w-5 items-center justify-center rounded-full"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-text-dim)",
-              }}
-              aria-label="Skipped"
-            >
-              <X size={11} strokeWidth={2.5} />
-            </span>
-          )}
-          {/* Edit/Manage link — always visible on mobile, fades in on desktop hover */}
+        {state === "complete" && (
           <span
-            className="text-[11px] transition-opacity duration-150 lg:opacity-0 lg:group-hover:opacity-100"
+            className="ml-auto flex h-5 w-5 items-center justify-center rounded-full"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            aria-label="Complete"
+          >
+            <Check size={11} strokeWidth={3} />
+          </span>
+        )}
+        {state === "skipped" && (
+          <span
+            className="ml-auto flex h-5 w-5 items-center justify-center rounded-full"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+              color: "var(--color-bt-text-dim)",
+            }}
+            aria-label="Skipped"
+          >
+            <X size={11} strokeWidth={2.5} />
+          </span>
+        )}
+      </div>
+
+      {/* ── Label row: LABEL (left) + Edit link (right, complete-only) ── */}
+      <div className="mb-1 flex items-center justify-between gap-1">
+        <p
+          className="text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: colors.labelColor }}
+        >
+          {label}
+        </p>
+        {/* Edit link — visible on mobile, fades in on desktop hover */}
+        {state === "complete" && (
+          <span
+            className="flex-shrink-0 text-[11px] opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             {editLabel} →
           </span>
-        </div>
+        )}
       </div>
 
-      {/* Label */}
-      <p
-        className="mb-1 text-[10px] font-bold uppercase tracking-wider"
-        style={{ color: styling.labelColor }}
-      >
-        {label}
-      </p>
-
-      {/* Body */}
+      {/* ── Body ─────────────────────────────────────────────────────── */}
       {state === "complete" ? (
         <>
           {completeValue && (
-            <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            <p
+              className="truncate text-sm font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
               {completeValue}
             </p>
           )}
@@ -224,14 +223,14 @@ function Tile({
         </p>
       )}
 
-      {/* Rich preview — hidden on mobile, shown on sm+ */}
+      {/* ── Rich preview — hidden mobile, shown sm+ ───────────────────── */}
       {preview && (
-        <div className="mt-2 hidden flex-col gap-1.5 sm:flex">
+        <div className="mt-2 hidden min-h-0 flex-1 flex-col gap-1.5 sm:flex">
           {preview}
         </div>
       )}
 
-      {/* Footer */}
+      {/* ── Footer: CTA + Skip (empty) | Undo skip (skipped) ─────────── */}
       <div className="mt-auto flex items-end justify-between gap-2 pt-2">
         {state === "empty" && (
           <>
@@ -268,11 +267,6 @@ function Tile({
             )}
           </>
         )}
-        {state === "complete" && (
-          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {editLabel} →
-          </span>
-        )}
         {state === "skipped" && canEdit && (
           <button
             type="button"
@@ -307,7 +301,7 @@ function initials(name: string): string {
   return (words[0][0]! + words[1][0]!).toUpperCase();
 }
 
-// ── Typed member / item shapes ────────────────────────────────────────────
+// ── Typed shapes for local casts ──────────────────────────────────────────
 
 interface GridMember {
   memberId: string;
@@ -331,16 +325,28 @@ interface GridScheduleItem {
   is_confirmed: boolean;
 }
 
+interface GridPollVote {
+  window_id: string;
+  user_id: string;
+  answer: string;
+}
+
+interface GridPollWindow {
+  id: string;
+  start_date: string;
+  end_date: string;
+  votes: GridPollVote[];
+}
+
 // ── Main grid ─────────────────────────────────────────────────────────────
 
 /**
  * PlanningGrid — the Home tab surface during the PLANNING stage.
  *
- * Four tiles (Dates / Crew / Lodging / Schedule) in a 2×2 grid.
- * Each tile has three states: empty, complete, skipped. The Dates tile
- * opens an inline accordion below the grid with "Pick Dates" / "Poll the
- * Crew" segments. Below everything, a "View Itinerary" button advances
- * the trip to going once every tile is either complete or skipped.
+ * Four tiles (Dates / Crew / Lodging / Schedule) in a responsive grid:
+ * 1-col on mobile, 2×2 on tablet, 4×1 on desktop.
+ * Each tile has three states: empty, complete, skipped.
+ * The Dates tile opens an inline accordion below the grid.
  */
 export function PlanningGrid({
   trip,
@@ -357,7 +363,7 @@ export function PlanningGrid({
   const { data: logisticsItems = [] } = trpc.logistics.list.useQuery({ tripId });
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
 
-  // ── Typed data ─────────────────────────────────────────────────────────
+  // ── Typed casts ────────────────────────────────────────────────────────
   const typedMembers = members as unknown as GridMember[];
   const typedLogistics = logisticsItems as unknown as GridLogisticsItem[];
   const typedSchedule = scheduleItems as unknown as GridScheduleItem[];
@@ -410,9 +416,9 @@ export function PlanningGrid({
     { enabled: pollMode && datesState !== "complete" },
   );
 
-  // ── Dates accordion — persisted to localStorage so it survives tab switches ──
+  // ── Dates accordion — persisted to localStorage ────────────────────────
   const storageKey = `bt-dates-panel-open-${tripId}`;
-  const [datesPanelOpen, setDatesPanelOpen] = useState(() => {
+  const [datesPanelOpen, setDatesPanelOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem(storageKey) === "true";
     } catch {
@@ -499,39 +505,82 @@ export function PlanningGrid({
 
   // ── Rich tile previews ─────────────────────────────────────────────────
 
-  // Dates: show poll vote pips when poll is active and windows exist.
+  // Dates: per-member vote pips when poll is active.
   const datesPreview = useMemo(() => {
-    if (!pollMode || !datePoll || datePoll.windows.length === 0) return null;
+    if (!pollMode || !datePoll) return null;
+    const pollWindows = datePoll.windows as unknown as GridPollWindow[];
+    if (pollWindows.length === 0) return null;
+    // Only members with an account can vote.
+    const votableMembers = typedMembers.filter((m) => m.user_id !== null);
     return (
       <div className="space-y-1">
-        {datePoll.windows.slice(0, 3).map((w) => {
-          const yes = w.votes.filter((v: { answer: string }) => v.answer === "yes").length;
-          const maybe = w.votes.filter((v: { answer: string }) => v.answer === "maybe").length;
-          const no = w.votes.filter((v: { answer: string }) => v.answer === "no").length;
-          return (
-            <div key={w.id} className="flex items-center gap-1.5">
-              <span
-                className="flex-1 truncate text-[11px]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {formatDateRangeCompact(w.start_date, w.end_date)}
-              </span>
-              <div className="flex items-center gap-1 text-[10px] font-semibold">
-                <span style={{ color: "var(--color-bt-accent)" }}>✓{yes}</span>
-                <span style={{ color: "var(--color-bt-warning)" }}>~{maybe}</span>
-                <span style={{ color: "var(--color-bt-danger)" }}>✕{no}</span>
-              </div>
+        {pollWindows.slice(0, 3).map((w) => (
+          <div
+            key={w.id}
+            className="flex items-center gap-2 rounded-lg px-2 py-1"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <span
+              className="flex-1 truncate text-[11px] font-medium"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {formatDateRangeCompact(w.start_date, w.end_date)}
+            </span>
+            <div className="flex gap-0.5">
+              {votableMembers.slice(0, 6).map((m) => {
+                const vote = w.votes.find((v) => v.user_id === m.user_id);
+                const answer = vote?.answer ?? null;
+                const pipBg =
+                  answer === "yes"
+                    ? "var(--color-bt-accent-faint)"
+                    : answer === "maybe"
+                      ? "var(--color-bt-warning-faint)"
+                      : answer === "no"
+                        ? "var(--color-bt-danger-faint)"
+                        : "var(--color-bt-card-raised)";
+                const pipColor =
+                  answer === "yes"
+                    ? "var(--color-bt-accent)"
+                    : answer === "maybe"
+                      ? "var(--color-bt-warning)"
+                      : answer === "no"
+                        ? "var(--color-bt-danger)"
+                        : "var(--color-bt-text-dim)";
+                const pipLabel =
+                  answer === "yes" ? "✓" : answer === "maybe" ? "~" : answer === "no" ? "✗" : "?";
+                return (
+                  <div
+                    key={m.memberId}
+                    className="flex h-4 w-4 items-center justify-center rounded text-[9px] font-bold"
+                    style={{ background: pipBg, color: pipColor }}
+                    title={m.displayName}
+                  >
+                    {pipLabel}
+                  </div>
+                );
+              })}
+              {votableMembers.length > 6 && (
+                <span
+                  className="text-[10px]"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  +{votableMembers.length - 6}
+                </span>
+              )}
             </div>
-          );
-        })}
-        {datePoll.windows.length > 3 && (
+          </div>
+        ))}
+        {pollWindows.length > 3 && (
           <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            +{datePoll.windows.length - 3} more options
+            +{pollWindows.length - 3} more options
           </p>
         )}
       </div>
     );
-  }, [pollMode, datePoll]);
+  }, [pollMode, datePoll, typedMembers]);
 
   // Crew: avatar chips + planner count + missing email tally.
   const crewPreview = useMemo(() => {
@@ -544,10 +593,9 @@ export function PlanningGrid({
           {visible.map((m) => (
             <span
               key={m.memberId}
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-semibold"
               style={{
-                background: "var(--color-bt-accent-faint)",
-                border: "1px solid var(--color-bt-accent-border)",
+                background: "var(--color-bt-card-raised)",
                 color: "var(--color-bt-accent)",
               }}
               title={m.displayName}
@@ -560,7 +608,7 @@ export function PlanningGrid({
               className="flex h-6 items-center justify-center rounded-full px-1.5 text-[9px] font-bold"
               style={{
                 background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
+                border: "1px dashed var(--color-bt-border)",
                 color: "var(--color-bt-text-dim)",
               }}
             >
@@ -594,7 +642,7 @@ export function PlanningGrid({
         {visible.map((item, i) => (
           <div
             key={item.id ?? i}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1"
+            className="flex items-center gap-2 rounded-lg px-2 py-1"
             style={{
               background: item.is_confirmed
                 ? "var(--color-bt-accent-faint)"
@@ -606,7 +654,7 @@ export function PlanningGrid({
               }`,
             }}
           >
-            <span
+            <div
               className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
               style={{
                 background: item.is_confirmed
@@ -615,17 +663,25 @@ export function PlanningGrid({
               }}
             />
             <span
-              className="flex-1 truncate text-[11px]"
+              className="flex-1 truncate text-xs font-medium"
               style={{ color: "var(--color-bt-text)" }}
             >
               {item.property_name ?? "Lodging option"}
             </span>
             <span
-              className="flex-shrink-0 text-[10px]"
+              className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
               style={{
+                background: item.is_confirmed
+                  ? "var(--color-bt-accent-faint)"
+                  : "var(--color-bt-warning-faint)",
                 color: item.is_confirmed
                   ? "var(--color-bt-accent)"
                   : "var(--color-bt-warning)",
+                border: `1px solid ${
+                  item.is_confirmed
+                    ? "var(--color-bt-accent-border)"
+                    : "var(--color-bt-warning-border)"
+                }`,
               }}
             >
               {item.is_confirmed ? "confirmed" : "pending"}
@@ -633,9 +689,9 @@ export function PlanningGrid({
           </div>
         ))}
         {extra > 0 && (
-          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          <span className="pl-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             +{extra} more
-          </p>
+          </span>
         )}
       </div>
     );
@@ -649,8 +705,8 @@ export function PlanningGrid({
     return (
       <div className="space-y-1">
         {visible.map((item) => (
-          <div key={item.id} className="flex items-center gap-1.5">
-            <span
+          <div key={item.id} className="flex items-center gap-2">
+            <div
               className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
               style={{
                 background: item.is_confirmed
@@ -659,7 +715,7 @@ export function PlanningGrid({
               }}
             />
             <span
-              className="flex-1 truncate text-[11px]"
+              className="flex-1 truncate text-xs"
               style={{
                 color: item.is_confirmed
                   ? "var(--color-bt-text)"
@@ -670,18 +726,18 @@ export function PlanningGrid({
             </span>
             {item.scheduled_time && (
               <span
-                className="flex-shrink-0 text-[10px]"
+                className="flex-shrink-0 text-[11px]"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                {item.scheduled_time}
+                {fmtTime12(item.scheduled_time)}
               </span>
             )}
           </div>
         ))}
         {extra > 0 && (
-          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          <span className="pl-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             +{extra} more
-          </p>
+          </span>
         )}
       </div>
     );
@@ -698,16 +754,13 @@ export function PlanningGrid({
         >
           Planning
         </h2>
-        <p
-          className="text-[13px] leading-relaxed"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
+        <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
           Destination locked in — now let&apos;s get the details sorted.
         </p>
       </div>
 
-      {/* ── 2×2 tile grid ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+      {/* ── Responsive grid: 1-col → 2×2 → 4×1 ──────────────────────── */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Tile
           testId="planning-tile-dates"
           icon={CalendarRange}
@@ -771,9 +824,12 @@ export function PlanningGrid({
           skipping={pendingTile === "lodging"}
           skippedNudge={
             lodgingState === "skipped" && crewState === "complete" ? (
-              <p className="text-[11px]" style={{ color: "var(--color-bt-warning)" }}>
+              <span
+                className="mt-1 block text-[11px]"
+                style={{ color: "var(--color-bt-warning)" }}
+              >
                 Your crew won&apos;t know where you&apos;re staying
-              </p>
+              </span>
             ) : undefined
           }
         />
@@ -794,9 +850,12 @@ export function PlanningGrid({
           skipping={pendingTile === "schedule"}
           skippedNudge={
             scheduleState === "skipped" && crewState === "complete" ? (
-              <p className="text-[11px]" style={{ color: "var(--color-bt-warning)" }}>
+              <span
+                className="mt-1 block text-[11px]"
+                style={{ color: "var(--color-bt-warning)" }}
+              >
                 Your crew won&apos;t know what&apos;s planned
-              </p>
+              </span>
             ) : undefined
           }
         />
@@ -1015,7 +1074,7 @@ export function PlanningGrid({
             data-testid="view-itinerary-btn"
             disabled={!allResolved}
             onClick={allResolved ? onAdvanceToGoing : undefined}
-            className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold"
+            className="flex flex-shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
             style={
               allResolved
                 ? {
@@ -1026,7 +1085,7 @@ export function PlanningGrid({
                 : {
                     background: "var(--color-bt-card-raised)",
                     color: "var(--color-bt-text-dim)",
-                    border: "1px solid var(--color-bt-border)",
+                    border: "0.5px solid var(--color-bt-border)",
                     cursor: "not-allowed",
                   }
             }
