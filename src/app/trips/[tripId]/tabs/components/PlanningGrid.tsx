@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import {
   ArrowRight,
   Calendar,
@@ -542,6 +541,18 @@ export function PlanningGrid({
       utils.datePoll.get.invalidate({ tripId });
     },
   });
+
+  // ── Destination editing modal ──────────────────────────────────────────
+  const [showDestModal, setShowDestModal] = useState(false);
+  const [destDraft, setDestDraft] = useState(trip.locked_destination_title ?? "");
+
+  const changeDestination = trpc.trips.changeDestination.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      setShowDestModal(false);
+    },
+  });
+
   const setPollActive = trpc.datePoll.setPollMode.useMutation({
     onSuccess() {
       utils.trips.getById.invalidate({ tripId });
@@ -1063,14 +1074,18 @@ export function PlanningGrid({
           </p>
         </div>
         {canEdit && (
-          <Link
-            href={`/trips/${trip.id}/change-destination`}
+          <button
+            type="button"
+            onClick={() => {
+              setDestDraft(trip.locked_destination_title ?? "");
+              setShowDestModal(true);
+            }}
             className="flex flex-shrink-0 items-center gap-1 text-xs font-medium transition-opacity hover:opacity-70"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            style={{ background: "transparent", border: "none", color: "var(--color-bt-text-dim)", cursor: "pointer" }}
           >
             <span style={{ color: "var(--color-bt-accent)" }}>{trip.locked_destination_title}</span>
             <Pencil size={11} />
-          </Link>
+          </button>
         )}
       </div>
 
@@ -1321,6 +1336,94 @@ export function PlanningGrid({
           )}
         </div>
       </div>
+
+      {/* ── Destination edit modal ──────────────────────────────────────── */}
+      {showDestModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={() => setShowDestModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 space-y-4"
+            style={{ background: "var(--color-bt-card-float)", boxShadow: "var(--shadow-float)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              className="text-sm font-bold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Edit Destination
+            </h3>
+
+            <div
+              className="flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] leading-relaxed"
+              style={{
+                background: "var(--color-bt-warning-faint)",
+                borderColor: "var(--color-bt-warning-border)",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              <span style={{ color: "var(--color-bt-warning)", flexShrink: 0 }}>⚠</span>
+              <span>
+                Changing the destination will notify your crew and reset any date poll votes.
+              </span>
+            </div>
+
+            <div>
+              <label
+                className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Destination
+              </label>
+              <input
+                type="text"
+                value={destDraft}
+                onChange={(e) => setDestDraft(e.target.value)}
+                placeholder="Where are you headed?"
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowDestModal(false)}
+                className="rounded-lg px-4 py-1.5 text-sm font-semibold"
+                style={{
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                  background: "transparent",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  changeDestination.mutate({ tripId, destination: destDraft.trim() })
+                }
+                disabled={
+                  !destDraft.trim() ||
+                  destDraft.trim() === trip.locked_destination_title ||
+                  changeDestination.isPending
+                }
+                className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {changeDestination.isPending ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── View Itinerary — always visible, all breakpoints ────────────── */}
       {isOwner && (
