@@ -986,7 +986,7 @@ export function PlanningGrid({
           isActive={activePanel === "dates"}
 
           emptyDescription={pollMode ? "Polling the Crew" : "To Be Determined"}
-          emptyCTA="Set dates"
+          emptyCTA={pollMode ? "View poll" : "Set dates"}
           completeValue={lockedDateLabel ?? undefined}
           editLabel="Edit dates"
           preview={datesPreview}
