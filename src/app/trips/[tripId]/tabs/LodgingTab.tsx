@@ -26,6 +26,7 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
         isOpen={true}
         onToggle={() => {}}
         inline
+        hideHeader={embedded}
       />
     </div>
   );
