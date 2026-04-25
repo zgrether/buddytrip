@@ -93,10 +93,6 @@ export function ConfirmDatesModal({
           </p>
         </div>
 
-        <p className="mt-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          You can change this anytime from Trip Settings.
-        </p>
-
         {/* Poll-window path: always preserves data, show confirmation note */}
         {showPreservedNote && (
           <div
