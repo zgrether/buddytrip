@@ -85,12 +85,10 @@ function iconLabelColors(
     };
   }
   if (state === "empty") {
-    // Empty: teal label + transparent icon well with teal border — clearly actionable.
     return {
-      iconBg: "transparent",
-      iconColor: "var(--color-bt-accent)",
+      iconBg: "var(--color-bt-card-raised)",
+      iconColor: "var(--color-bt-text-dim)",
       labelColor: "var(--color-bt-accent)",
-      iconBorder: "1.5px solid var(--color-bt-accent)",
     };
   }
   // skipped
