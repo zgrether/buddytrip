@@ -508,6 +508,25 @@ export function PlanningGrid({
     }
   }, [datesState, crewState, lodgingState, scheduleState, activePanel, datesStorageKey]);
 
+  // Auto-open after unskip — waits until the tile's state has actually left
+  // "skipped" (i.e., the getById re-fetch has resolved) before opening.
+  // Using a ref avoids the race where the panel opens while the tile is still
+  // marked skipped, which would immediately trigger the auto-close above.
+  useEffect(() => {
+    const wantOpen = pendingAutoOpenRef.current;
+    if (wantOpen === null) return;
+    const stateMap: Record<TileKey, TileState> = {
+      dates: datesState,
+      crew: crewState,
+      lodging: lodgingState,
+      schedule: scheduleState,
+    };
+    if (stateMap[wantOpen] !== "skipped") {
+      pendingAutoOpenRef.current = null;
+      if (activePanel === null) handleTileClick(wantOpen);
+    }
+  }, [datesState, crewState, lodgingState, scheduleState, activePanel]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-disable poll mode when there's no crew left to poll.
   useEffect(() => {
     if (!hasCrew && pollMode) {
@@ -625,6 +644,9 @@ export function PlanningGrid({
 
   // ── Skip / unskip ──────────────────────────────────────────────────────
   const [pendingTile, setPendingTile] = useState<TileKey | null>(null);
+  // Tracks a tile that should auto-open once it transitions out of "skipped".
+  // Set at call time (before the mutation) so the re-fetch race can't interfere.
+  const pendingAutoOpenRef = useRef<TileKey | null>(null);
   const skipTile = trpc.trips.skipPlanningTile.useMutation({
     onSettled() {
       setPendingTile(null);
@@ -644,16 +666,10 @@ export function PlanningGrid({
   };
   const handleUnskip = (tile: TileKey) => {
     setPendingTile(tile);
-    unskipTile.mutate({ tripId, tile }, {
-      onSuccess() {
-        // Auto-open the re-enabled tile if no panel is already open.
-        // Capture activePanel at call time — if the user opened something
-        // else during the round-trip we leave that panel alone.
-        if (activePanel === null) {
-          handleTileClick(tile);
-        }
-      },
-    });
+    // Record intent before the mutation fires — the effect below watches for
+    // the tile to leave "skipped" state and opens it then, not before.
+    pendingAutoOpenRef.current = tile;
+    unskipTile.mutate({ tripId, tile });
   };
 
   // ── Rich tile previews ─────────────────────────────────────────────────
