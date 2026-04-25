@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Calendar,
-  CalendarDays,
+  CalendarRange,
   Check,
   ChevronRight,
-  Home,
+  Hotel,
   Users,
   X,
 } from "lucide-react";
@@ -88,7 +88,7 @@ interface TileProps {
   label: string;
   state: TileState;
   /** Visual-only override — true when the dates tile has its accordion
-   *  expanded, so it picks up the complete-styling without being complete. */
+   *  expanded, so it picks up the active styling. */
   isActive?: boolean;
   /** Empty-state body. */
   emptyDescription: string;
@@ -103,6 +103,8 @@ interface TileProps {
   onSkip: () => void;
   onUnskip: () => void;
   skipping: boolean;
+  /** Optional warning shown below "Not needed for this trip" when skipped. */
+  skippedNudge?: React.ReactNode;
   testId?: string;
 }
 
@@ -120,10 +122,13 @@ function Tile({
   onSkip,
   onUnskip,
   skipping,
+  skippedNudge,
   testId,
 }: TileProps) {
   const styling = stylingForState(state, !!isActive);
-  const clickable = state === "empty" && !!onClick;
+  // All tiles are navigable regardless of state — checkmark means "addressed",
+  // not "locked". onClick prop being set is the only gate.
+  const clickable = !!onClick;
 
   return (
     <div
@@ -196,11 +201,14 @@ function Tile({
           )}
         </>
       ) : state === "skipped" ? (
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Skipped
-        </p>
+        <div className="space-y-1">
+          <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+            Not needed for this trip
+          </p>
+          {skippedNudge}
+        </div>
       ) : (
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
           {emptyDescription}
         </p>
       )}
@@ -339,9 +347,9 @@ export function PlanningGrid({
   const [datesPanelOpen, setDatesPanelOpen] = useState(false);
   const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
 
-  // Close the panel when the user resolves dates (locked or skipped).
+  // Close the panel when the user skips dates.
   useEffect(() => {
-    if (datesState === "complete" || datesState === "skipped") {
+    if (datesState === "skipped") {
       setDatesPanelOpen(false);
     }
   }, [datesState]);
@@ -407,18 +415,23 @@ export function PlanningGrid({
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
+      {/* Orientation copy — always visible */}
+      <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        Destination locked in — now let&apos;s get the details sorted.
+      </p>
+
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
         <Tile
           testId="planning-tile-dates"
-          icon={Calendar}
+          icon={CalendarRange}
           label="Dates"
           state={datesState}
-          isActive={datesPanelOpen && datesState === "empty"}
+          isActive={datesPanelOpen}
           emptyDescription="Not set yet"
           emptyCTA="Set dates"
           completeValue={lockedDateLabel ?? undefined}
           canEdit={canEdit}
-          onClick={canEdit && datesState === "empty" ? () => setDatesPanelOpen((v) => !v) : undefined}
+          onClick={canEdit ? () => setDatesPanelOpen((v) => !v) : undefined}
           onSkip={() => handleSkip("dates")}
           onUnskip={() => handleUnskip("dates")}
           skipping={pendingTile === "dates"}
@@ -439,7 +452,7 @@ export function PlanningGrid({
         />
         <Tile
           testId="planning-tile-lodging"
-          icon={Home}
+          icon={Hotel}
           label="Lodging"
           state={lodgingState}
           emptyDescription="Nothing added yet"
@@ -459,10 +472,17 @@ export function PlanningGrid({
           onSkip={() => handleSkip("lodging")}
           onUnskip={() => handleUnskip("lodging")}
           skipping={pendingTile === "lodging"}
+          skippedNudge={
+            lodgingState === "skipped" && crewState === "complete" ? (
+              <p className="text-[11px]" style={{ color: "var(--color-bt-warning)" }}>
+                Your crew won&apos;t know where you&apos;re staying
+              </p>
+            ) : undefined
+          }
         />
         <Tile
           testId="planning-tile-schedule"
-          icon={CalendarDays}
+          icon={Calendar}
           label="Schedule"
           state={scheduleState}
           emptyDescription="Nothing planned yet"
@@ -473,11 +493,18 @@ export function PlanningGrid({
           onSkip={() => handleSkip("schedule")}
           onUnskip={() => handleUnskip("schedule")}
           skipping={pendingTile === "schedule"}
+          skippedNudge={
+            scheduleState === "skipped" && crewState === "complete" ? (
+              <p className="text-[11px]" style={{ color: "var(--color-bt-warning)" }}>
+                Your crew won&apos;t know what&apos;s planned
+              </p>
+            ) : undefined
+          }
         />
       </div>
 
       {/* ── Dates accordion ─────────────────────────────────────────────── */}
-      {datesPanelOpen && canEdit && datesState === "empty" && (
+      {datesPanelOpen && canEdit && (
         <div
           className="overflow-hidden rounded-xl"
           style={{
@@ -504,7 +531,7 @@ export function PlanningGrid({
                     : { background: "transparent", color: "var(--color-bt-text-dim)" }
                 }
               >
-                <Calendar size={12} />
+                <CalendarRange size={12} />
                 Pick your Dates
               </button>
               <button
@@ -637,19 +664,28 @@ export function PlanningGrid({
 
       {/* ── View Itinerary ─────────────────────────────────────────────── */}
       {isOwner && (
-        <div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {allResolved ? (
+              <>
+                Everything&apos;s set —{" "}
+                <span style={{ color: "var(--color-bt-accent)" }}>let&apos;s make it official</span>
+              </>
+            ) : (
+              "Complete or skip all four areas to continue"
+            )}
+          </p>
           <button
             type="button"
             data-testid="view-itinerary-btn"
             disabled={!allResolved}
             onClick={allResolved ? onAdvanceToGoing : undefined}
-            className="flex w-full items-center justify-center gap-2 rounded-xl px-6 py-4 text-base font-bold"
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold"
             style={
               allResolved
                 ? {
                     background: "var(--color-bt-accent)",
                     color: "var(--color-bt-base)",
-                    border: "1px solid var(--color-bt-accent)",
                     cursor: "pointer",
                   }
                 : {
@@ -661,21 +697,10 @@ export function PlanningGrid({
             }
           >
             View Itinerary
-            <ArrowRight size={16} />
+            <ArrowRight size={14} />
           </button>
-          <p className="mt-2 text-center text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {allResolved ? (
-              <>
-                Everything&apos;s set —{" "}
-                <span style={{ color: "var(--color-bt-accent)" }}>let&apos;s make it official</span>
-              </>
-            ) : (
-              "Complete or skip all four areas to continue"
-            )}
-          </p>
         </div>
       )}
     </div>
   );
 }
-
