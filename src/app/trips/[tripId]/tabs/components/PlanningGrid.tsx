@@ -958,7 +958,7 @@ export function PlanningGrid({
                 directStart >= directEnd ||
                 lockDates.isPending
               }
-              className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+              className="flex-shrink-0 rounded-lg border border-transparent px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               {datesLocked ? "Update" : "Set"}
