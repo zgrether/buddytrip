@@ -553,6 +553,32 @@ export function PlanningGrid({
     },
   });
 
+  // ── Switch-to-poll prompt ───────────────────────────────────────────────
+  // Shown when the user clicks "Poll the Crew" while dates are already set
+  // directly. Offers to carry the current dates over as the first window so
+  // they don't have to reset and re-enter.
+  const [showPollSwitchPrompt, setShowPollSwitchPrompt] = useState(false);
+
+  const addPollWindow = trpc.datePoll.addWindow.useMutation({
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  const handleSwitchToPoll = () => {
+    addPollWindow.mutate(
+      { tripId, id: crypto.randomUUID(), startDate: directStart, endDate: directEnd },
+      {
+        onSuccess() {
+          setPollActive.mutate({ tripId, pollMode: true });
+          unlockDates.mutate({ tripId });
+          setDateMode("poll");
+          setShowPollSwitchPrompt(false);
+        },
+      },
+    );
+  };
+
   const handleSet = () => {
     if (!directStart || !directEnd || directStart >= directEnd) return;
     if (pollMode) setPollActive.mutate({ tripId, pollMode: false });
@@ -840,7 +866,7 @@ export function PlanningGrid({
         >
           <button
             type="button"
-            onClick={() => setDateMode("set")}
+            onClick={() => { setDateMode("set"); setShowPollSwitchPrompt(false); }}
             data-active={dateMode === "set"}
             className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold"
             style={
@@ -858,8 +884,15 @@ export function PlanningGrid({
           </button>
           <button
             type="button"
-            onClick={() => setDateMode("poll")}
-            disabled={crewState === "skipped" || (datesLocked && !pollMode)}
+            onClick={() => {
+              if (datesLocked && !pollMode) {
+                setShowPollSwitchPrompt(true);
+              } else {
+                setDateMode("poll");
+                setShowPollSwitchPrompt(false);
+              }
+            }}
+            disabled={crewState === "skipped"}
             data-active={dateMode === "poll"}
             className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             style={
@@ -877,6 +910,48 @@ export function PlanningGrid({
           </button>
         </div>
       </div>
+
+      {/* Switch-to-poll prompt */}
+      {showPollSwitchPrompt && datesLocked && !pollMode && (
+        <div className="px-4 pb-3">
+          <div
+            className="space-y-3 rounded-xl border p-3"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              borderColor: "var(--color-bt-border)",
+            }}
+          >
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+              Switch to polling?{" "}
+              <span style={{ color: "var(--color-bt-accent)" }}>{lockedDateLabel}</span>
+              {" "}will become your first option — add more from there.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSwitchToPoll}
+                disabled={addPollWindow.isPending}
+                className="flex-1 rounded-lg border border-transparent py-1.5 text-xs font-semibold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {addPollWindow.isPending ? "Switching…" : "Yes, start a poll"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPollSwitchPrompt(false)}
+                className="flex-1 rounded-lg border py-1.5 text-xs font-semibold"
+                style={{
+                  background: "transparent",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Body */}
       {dateMode === "set" ? (
