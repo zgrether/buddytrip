@@ -184,7 +184,7 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             <Send size={15} />
-            {advance.isPending ? "Sending..." : "Let's Go! 🎉"}
+            {advance.isPending ? "Sending..." : "View Itinerary →"}
           </button>
         )}
         <button
