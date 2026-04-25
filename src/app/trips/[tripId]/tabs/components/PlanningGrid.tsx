@@ -908,11 +908,14 @@ export function PlanningGrid({
     // Same px-4 py-4 wrapper as crew / lodging / schedule panels.
     <div data-testid="planning-dates-panel" className="px-4 py-4">
       <h2
-        className="mb-4 text-xs font-semibold uppercase tracking-wider"
+        className="mb-1.5 text-xs font-semibold uppercase tracking-wider"
         style={{ color: panelTitleColor(datesState) }}
       >
         Dates
       </h2>
+      <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        Lock in dates directly, or poll the crew to find a window that works for everyone.
+      </p>
 
       {/* Segmented control — natural width, left-aligned */}
       <div className="mb-3">
@@ -1108,10 +1111,7 @@ export function PlanningGrid({
           </div>
         </div>
       ) : hasCrew ? (
-        // Negative margin lets the scroll container bleed to the panel edge;
-        // inner px-4 restores the content padding. No border-t separator.
-        <div className="overflow-x-auto -mx-4 px-4">
-          <div className="min-w-[480px] space-y-3">
+        <div className="space-y-3">
             {/* Locked-from-poll banner */}
             {datesLocked && (
               <div
@@ -1156,7 +1156,6 @@ export function PlanningGrid({
               onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
             />
           </div>
-        </div>
       ) : (
         <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
           Add crew members first —{" "}
@@ -1410,7 +1409,7 @@ export function PlanningGrid({
                   </div>
                 )}
                 {canEdit && (
-                  <div className="border-t px-4 py-3" style={{ borderColor: "var(--color-bt-border)" }}>
+                  <div className="mx-4 border-t py-3" style={{ borderColor: "var(--color-bt-border)" }}>
                     <button type="button" onClick={() => handleSkip("dates")} disabled={pendingTile === "dates"}
                       className="text-xs disabled:opacity-40"
                       style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
