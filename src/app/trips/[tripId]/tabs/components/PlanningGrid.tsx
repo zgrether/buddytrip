@@ -1206,13 +1206,16 @@ export function PlanningGrid({
     <div className="space-y-4">
       {/* ── Section header — visible on all breakpoints ──────────────────── */}
       <div>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Planning
-          </h2>
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Planning
+        </h2>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            Destination locked in — now let&apos;s get the details sorted.
+          </p>
           {canEdit && (
             <button
               type="button"
@@ -1227,9 +1230,6 @@ export function PlanningGrid({
             </button>
           )}
         </div>
-        <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-          Destination locked in — now let&apos;s get the details sorted.
-        </p>
       </div>
 
       {/* ── DESKTOP / TABLET: tile grid + expanded panel (sm+) ──────────── */}
@@ -1414,13 +1414,23 @@ export function PlanningGrid({
                 )}
               </div>
             ) : (
-              datesPanelBody ?? (
-                <div className="px-4 py-6 text-center">
-                  <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
-                  </p>
-                </div>
-              )
+              <>
+                {datesPanelBody ?? (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
+                    </p>
+                  </div>
+                )}
+                {canEdit && (
+                  <div className="border-t px-4 py-3" style={{ borderColor: "var(--color-bt-border)" }}>
+                    <button type="button" onClick={() => handleSkip("dates")} disabled={pendingTile === "dates"}
+                      className="text-xs disabled:opacity-40"
+                      style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
+                    >Opt out</button>
+                  </div>
+                )}
+              </>
             )
           )}
           {mobileActiveTab === "crew" && (
@@ -1438,6 +1448,14 @@ export function PlanningGrid({
               <div className="px-4 py-4">
                 <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(crewState) }}>Crew</h2>
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+                {canEdit && (
+                  <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
+                    <button type="button" onClick={() => handleSkip("crew")} disabled={pendingTile === "crew"}
+                      className="text-xs disabled:opacity-40"
+                      style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
+                    >Opt out</button>
+                  </div>
+                )}
               </div>
             )
           )}
@@ -1456,6 +1474,14 @@ export function PlanningGrid({
               <div className="px-4 py-4">
                 <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(lodgingState) }}>Lodging</h2>
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+                {canEdit && (
+                  <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
+                    <button type="button" onClick={() => handleSkip("lodging")} disabled={pendingTile === "lodging"}
+                      className="text-xs disabled:opacity-40"
+                      style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
+                    >Opt out</button>
+                  </div>
+                )}
               </div>
             )
           )}
@@ -1474,6 +1500,14 @@ export function PlanningGrid({
               <div className="px-4 py-4">
                 <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(scheduleState) }}>Schedule</h2>
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+                {canEdit && (
+                  <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
+                    <button type="button" onClick={() => handleSkip("schedule")} disabled={pendingTile === "schedule"}
+                      className="text-xs disabled:opacity-40"
+                      style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
+                    >Opt out</button>
+                  </div>
+                )}
               </div>
             )
           )}
