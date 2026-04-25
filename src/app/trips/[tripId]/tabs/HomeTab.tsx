@@ -11,9 +11,9 @@ import { trpc } from "@/lib/trpc-client";
 import { getTripStatus } from "@/components/StatusBadge";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import IdeaZonePanel from "../components/IdeaZonePanel";
-import { ActionCenter } from "./components/ActionCenter";
 import { ItineraryPanel } from "../components/ItineraryPanel";
 import { PlanningGrid } from "./components/PlanningGrid";
+import { ItineraryView } from "./components/ItineraryView";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps, TripData } from "./types";
 
@@ -332,15 +332,20 @@ export function HomeTab({
         />
       )}
 
-      {/* ── Action Center — GOING only (idea is handled above; planning
-              now uses PlanningGrid). Still renders for the going-stage
-              travel + invitation cards.                                   */}
-      {stage === "going" && (
-        <ActionCenter trip={trip} isOwner={!!isOwner} canEdit={canEditProp} onTabChange={onTabChange} onWriteInvitation={onWriteInvitation} titleAction={actionCenterTitleAction} />
+      {/* ── GOING / NOW stage: consolidated ItineraryView (owner nudge +
+              Getting There + filter pills + day-by-day timeline).          */}
+      {stage === "going" && (status === "going" || status === "now") && (
+        <ItineraryView
+          trip={trip}
+          isOwner={!!isOwner}
+          onTabChange={onTabChange}
+        />
       )}
 
-      {/* ── Itinerary panel — read-only confirmed-only timeline ── */}
-      {stage !== "idea" && stage !== "planning" && (
+      {/* ── PAST / SAVED: keep the existing ItineraryPanel; it's read-only
+              and its bucketed layout is still useful after the trip. The
+              ActionCenter stays off — there's no action to take.           */}
+      {stage !== "idea" && stage !== "planning" && status !== "going" && status !== "now" && (
         <ItineraryPanel
           tripId={trip.id}
           tripStartDate={trip.start_date}
@@ -349,6 +354,7 @@ export function HomeTab({
           onTabChange={onTabChange}
         />
       )}
+
 
       {/* ── Lodging moved to its own Lodging tab (between Crew and   ── */}
       {/*    Schedule). Home deliberately doesn't render it anymore so ── */}

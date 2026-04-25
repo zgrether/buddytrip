@@ -290,14 +290,16 @@ export function PlanningGrid({
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
-  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
+  const { data: logisticsItems = [] } = trpc.logistics.list.useQuery({ tripId });
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
 
   // ── Derived counts + locked date ───────────────────────────────────────
   const crewCount = members.length;
   const hasCrew = crewCount > 1; // more than just the owner
 
-  const lodgingItems = (reservations as Array<{ type: string; is_confirmed?: boolean | null }>).filter(
+  // Lodging lives on the logistics_items table under type='lodging';
+  // reservations is for tee-times/restaurants/transport.
+  const lodgingItems = (logisticsItems as Array<{ type: string; is_confirmed?: boolean | null }>).filter(
     (r) => r.type === "lodging",
   );
   const lodgingCount = lodgingItems.length;
