@@ -871,12 +871,12 @@ export function PlanningGrid({
           </button>
           <button
             type="button"
-            onClick={() => crewState !== "skipped" && setDateMode("poll")}
-            disabled={crewState === "skipped"}
+            onClick={() => setDateMode("poll")}
+            disabled={crewState === "skipped" || (datesLocked && !pollMode)}
             data-active={dateMode === "poll"}
             className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             style={
-              dateMode === "poll" && crewState !== "skipped"
+              dateMode === "poll"
                 ? {
                     background: "var(--color-bt-card)",
                     color: "var(--color-bt-text)",
@@ -897,11 +897,24 @@ export function PlanningGrid({
           className="px-4 pb-4 pt-2"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
-          <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {datesLocked
-              ? "Dates are set — update them below or clear to start over."
-              : "Already know the dates? Lock them in directly."}
-          </p>
+          {datesLocked ? (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2.5"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+              }}
+            >
+              <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
+              <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-accent)" }}>
+                Dates are set — update them below or clear to start over.
+              </p>
+            </div>
+          ) : (
+            <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Already know the dates? Lock them in directly.
+            </p>
+          )}
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[140px] flex-1">
               <label
