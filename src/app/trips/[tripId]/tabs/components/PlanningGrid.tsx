@@ -644,7 +644,16 @@ export function PlanningGrid({
   };
   const handleUnskip = (tile: TileKey) => {
     setPendingTile(tile);
-    unskipTile.mutate({ tripId, tile });
+    unskipTile.mutate({ tripId, tile }, {
+      onSuccess() {
+        // Auto-open the re-enabled tile if no panel is already open.
+        // Capture activePanel at call time — if the user opened something
+        // else during the round-trip we leave that panel alone.
+        if (activePanel === null) {
+          handleTileClick(tile);
+        }
+      },
+    });
   };
 
   // ── Rich tile previews ─────────────────────────────────────────────────
