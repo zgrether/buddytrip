@@ -54,8 +54,9 @@ function tileWrapperClass(
   const dim = anyPanelOpen && !isActive && state !== "skipped" ? "opacity-70" : "";
 
   if (isActive) {
-    // Active: card-raised bg + normal border; flat bottom corners + borderBottom:none set via inline style
-    return `${shared} ${cursor} bg-[var(--color-bt-card-raised)] border-[var(--color-bt-border)]`;
+    // Active: solid accent bg — unmistakably "selected" vs complete (accent-faint).
+    // Flat bottom corners + borderBottom:none set via inline style to connect to the expanded panel.
+    return `${shared} ${cursor} bg-[var(--color-bt-accent)] border-[var(--color-bt-accent)]`;
   }
   if (state === "complete") {
     return `${shared} ${cursor} ${dim} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)] hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]`;
@@ -71,7 +72,15 @@ function iconLabelColors(
   state: TileState,
   isActive: boolean,
 ): { iconBg: string; iconColor: string; labelColor: string } {
-  if (isActive || state === "complete") {
+  if (isActive) {
+    // On solid accent bg — dark-tinted icon well + white (base) text for contrast.
+    return {
+      iconBg: "rgba(0,0,0,0.15)",
+      iconColor: "var(--color-bt-base)",
+      labelColor: "var(--color-bt-base)",
+    };
+  }
+  if (state === "complete") {
     return {
       iconBg: "var(--color-bt-accent-faint)",
       iconColor: "var(--color-bt-accent)",
@@ -166,7 +175,10 @@ function Tile({
         {state === "complete" && (
           <span
             className="ml-auto flex h-5 w-5 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            style={{
+              background: isActive ? "rgba(0,0,0,0.15)" : "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+            }}
             aria-label="Complete"
           >
             <Check size={11} strokeWidth={3} />
@@ -199,7 +211,7 @@ function Tile({
         {state === "complete" && (
           <span
             className="flex-shrink-0 text-[11px] opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}
           >
             {editLabel} →
           </span>
@@ -212,12 +224,13 @@ function Tile({
           {completeValue && (
             <p
               className="truncate text-sm font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
+              style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text)" }}
             >
               {completeValue}
             </p>
           )}
-          {completeSub && (
+          {/* Hide completeSub when active — the open panel has full detail */}
+          {completeSub && !isActive && (
             <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {completeSub}
             </p>
@@ -225,13 +238,13 @@ function Tile({
         </>
       ) : state === "skipped" ? (
         <div className="space-y-1">
-          <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="text-xs italic" style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}>
             Not needed for this trip
           </p>
-          {skippedNudge}
+          {!isActive && skippedNudge}
         </div>
       ) : (
-        <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="text-xs italic" style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}>
           {emptyDescription}
         </p>
       )}
@@ -250,7 +263,7 @@ function Tile({
             {clickable ? (
               <span
                 className="flex items-center gap-1 text-[11px] font-semibold"
-                style={{ color: "var(--color-bt-accent)" }}
+                style={{ color: isActive ? "var(--color-bt-base)" : "var(--color-bt-accent)" }}
               >
                 {emptyCTA}
                 <ChevronRight size={10} />
@@ -268,7 +281,7 @@ function Tile({
                 disabled={skipping}
                 className="text-[11px] disabled:opacity-40"
                 style={{
-                  color: "var(--color-bt-text-dim)",
+                  color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
                   background: "transparent",
                   border: "none",
                   textDecoration: "underline dotted",
@@ -290,7 +303,7 @@ function Tile({
             disabled={skipping}
             className="ml-auto text-[11px] disabled:opacity-40"
             style={{
-              color: "var(--color-bt-text-dim)",
+              color: isActive ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
               background: "transparent",
               border: "none",
               textDecoration: "underline dotted",
@@ -1114,7 +1127,6 @@ export function PlanningGrid({
             style={{
               border: "1px solid var(--color-bt-border)",
               borderTop: "2px solid var(--color-bt-accent)",
-              background: "var(--color-bt-card-raised)",
             }}
             data-testid="planning-expanded-panel"
           >
@@ -1157,10 +1169,10 @@ export function PlanningGrid({
                   className="flex h-11 w-11 items-center justify-center rounded-xl"
                   style={{
                     background: active
-                      ? "var(--color-bt-accent-faint)"
+                      ? "var(--color-bt-accent)"
                       : "var(--color-bt-card-raised)",
                     color: active
-                      ? "var(--color-bt-accent)"
+                      ? "var(--color-bt-base)"
                       : "var(--color-bt-text-dim)",
                   }}
                 >
@@ -1184,7 +1196,6 @@ export function PlanningGrid({
           style={{
             border: "1px solid var(--color-bt-border)",
             borderTop: "2px solid var(--color-bt-accent)",
-            background: "var(--color-bt-card-raised)",
           }}
           data-testid="planning-mobile-panel"
         >
