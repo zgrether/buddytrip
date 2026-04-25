@@ -351,6 +351,15 @@ interface GridPollWindow {
   votes: GridPollVote[];
 }
 
+// ── Mobile planning tabs (below sm breakpoint) ────────────────────────────
+
+const PLANNING_MOBILE_TABS = [
+  { id: "dates" as const, label: "Dates", Icon: CalendarRange },
+  { id: "crew" as const, label: "Crew", Icon: Users },
+  { id: "lodging" as const, label: "Lodging", Icon: Hotel },
+  { id: "schedule" as const, label: "Schedule", Icon: Calendar },
+];
+
 // ── Main grid ─────────────────────────────────────────────────────────────
 
 /**
@@ -455,6 +464,9 @@ export function PlanningGrid({
   };
 
   const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
+
+  // ── Mobile active tab — default to dates; no persistence needed ───────────
+  const [mobileActiveTab, setMobileActiveTab] = useState<TileKey>("dates");
 
   // Auto-close dates panel when dates are resolved.
   useEffect(() => {
@@ -761,10 +773,195 @@ export function PlanningGrid({
     );
   }, [typedSchedule]);
 
+  // ── Dates panel body — shared by desktop panel and mobile tab ─────────────
+  const datesPanelBody = canEdit ? (
+    <div data-testid="planning-dates-panel" style={{ background: "var(--color-bt-card)" }}>
+      {/* Segmented control */}
+      <div className="p-3">
+        <div
+          className="flex rounded-xl p-1"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setDateMode("set")}
+            data-active={dateMode === "set"}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
+            style={
+              dateMode === "set"
+                ? {
+                    background: "var(--color-bt-card)",
+                    color: "var(--color-bt-text)",
+                    boxShadow: "var(--shadow-card)",
+                  }
+                : { background: "transparent", color: "var(--color-bt-text-dim)" }
+            }
+          >
+            <CalendarRange size={12} />
+            Pick your Dates
+          </button>
+          <button
+            type="button"
+            onClick={() => hasCrew && setDateMode("poll")}
+            disabled={!hasCrew}
+            data-active={dateMode === "poll"}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            style={
+              dateMode === "poll" && hasCrew
+                ? {
+                    background: "var(--color-bt-card)",
+                    color: "var(--color-bt-text)",
+                    boxShadow: "var(--shadow-card)",
+                  }
+                : { background: "transparent", color: "var(--color-bt-text-dim)" }
+            }
+          >
+            <Users size={12} />
+            Poll the Crew
+          </button>
+        </div>
+
+        {!hasCrew && (
+          <p className="mt-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Add crew members first —{" "}
+            <button
+              type="button"
+              onClick={() => handleTileClick("crew")}
+              className="font-semibold underline"
+              style={{
+                color: "var(--color-bt-accent)",
+                background: "transparent",
+                border: "none",
+              }}
+            >
+              open Crew →
+            </button>
+          </p>
+        )}
+      </div>
+
+      {/* Body */}
+      {dateMode === "set" ? (
+        <div
+          className="border-t px-3 pb-3 pt-3"
+          style={{ borderColor: "var(--color-bt-border)" }}
+        >
+          <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Already know the dates? Lock them in directly.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[140px] flex-1">
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Start date
+              </label>
+              <input
+                type="date"
+                value={directStart}
+                onChange={(e) => setDirectStart(e.target.value)}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+            </div>
+            <div className="min-w-[140px] flex-1">
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                End date
+              </label>
+              <input
+                type="date"
+                value={directEnd}
+                onChange={(e) => setDirectEnd(e.target.value)}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+            </div>
+            {!confirmClearPoll && (
+              <button
+                type="button"
+                onClick={handleSet}
+                disabled={
+                  !directStart ||
+                  !directEnd ||
+                  directStart >= directEnd ||
+                  lockDates.isPending
+                }
+                className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                Set
+              </button>
+            )}
+          </div>
+
+          {confirmClearPoll && (
+            <div
+              className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[13px]"
+              style={{
+                background: "var(--color-bt-warning-faint)",
+                borderColor: "var(--color-bt-warning-border)",
+              }}
+            >
+              <span style={{ color: "var(--color-bt-text)" }}>
+                This will clear the poll. Are you sure?
+              </span>
+              <button
+                type="button"
+                onClick={() => setConfirmClearPoll(false)}
+                className="ml-auto rounded-lg px-3 py-1 text-xs font-semibold"
+                style={{
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSet}
+                disabled={lockDates.isPending || setPollActive.isPending}
+                className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                Confirm
+              </button>
+            </div>
+          )}
+        </div>
+      ) : hasCrew ? (
+        <div
+          className="border-t px-3 pb-3 pt-3"
+          style={{ borderColor: "var(--color-bt-border)" }}
+        >
+          <DatePollCard
+            trip={trip}
+            isOwner={isOwner}
+            onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
+          />
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* ── Section header — matches Crew / Lodging / Schedule tab style ── */}
+      {/* ── Section header — visible on all breakpoints ──────────────────── */}
       <div>
         <h2
           className="mb-2 text-xs font-semibold uppercase tracking-wider"
@@ -777,8 +974,9 @@ export function PlanningGrid({
         </p>
       </div>
 
-      {/* ── Responsive grid: 1-col → 2×2 → 4×1 ──────────────────────── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* ── DESKTOP / TABLET: tile grid + expanded panel (sm+) ──────────── */}
+      <div className="hidden sm:block">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile
           testId="planning-tile-dates"
           icon={CalendarRange}
@@ -886,256 +1084,86 @@ export function PlanningGrid({
         />
       </div>
 
-      {/* ── Expanded panel — only one open at a time ─────────────────────── */}
-      {activePanel !== null && (
-        <div
-          className="mt-2 overflow-hidden rounded-xl"
-          style={{
-            border: "1px solid var(--color-bt-border)",
-            borderTop: "2px solid var(--color-bt-accent)",
-            background: "var(--color-bt-card-raised)",
-          }}
-          data-testid="planning-expanded-panel"
-        >
-          {/* ── Crew panel ──────────────────────────────────────────────── */}
-          {activePanel === "crew" && (
-            <div
-              className="px-4 py-4"
-              style={{ background: "var(--color-bt-card)" }}
-            >
-              <CrewTab
-                trip={trip}
-                role={null}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                embedded={true}
-              />
-            </div>
-          )}
+        {/* ── Expanded panel — only one open at a time ──────────────────── */}
+        {activePanel !== null && (
+          <div
+            className="mt-2 overflow-hidden rounded-xl"
+            style={{
+              border: "1px solid var(--color-bt-border)",
+              borderTop: "2px solid var(--color-bt-accent)",
+              background: "var(--color-bt-card-raised)",
+            }}
+            data-testid="planning-expanded-panel"
+          >
+            {activePanel === "crew" && (
+              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+                <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+              </div>
+            )}
+            {activePanel === "lodging" && (
+              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+                <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+              </div>
+            )}
+            {activePanel === "schedule" && (
+              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+                <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+              </div>
+            )}
+            {activePanel === "dates" && datesPanelBody}
+          </div>
+        )}
+      </div>
 
-          {/* ── Lodging panel ────────────────────────────────────────────── */}
-          {activePanel === "lodging" && (
-            <div
-              className="px-4 py-4"
-              style={{ background: "var(--color-bt-card)" }}
-            >
-              <LodgingTab
-                trip={trip}
-                role={null}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                embedded={true}
-              />
-            </div>
-          )}
-
-          {/* ── Schedule panel ───────────────────────────────────────────── */}
-          {activePanel === "schedule" && (
-            <div
-              className="px-4 py-4"
-              style={{ background: "var(--color-bt-card)" }}
-            >
-              <ScheduleTab
-                trip={trip}
-                role={null}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                embedded={true}
-              />
-            </div>
-          )}
-
-          {/* ── Dates panel ──────────────────────────────────────────────── */}
-          {activePanel === "dates" && canEdit && (
-        <div
-          data-testid="planning-dates-panel"
-          style={{ background: "var(--color-bt-card)" }}
-        >
-          {/* Segmented control */}
-          <div className="p-3">
-            <div
-              className="flex rounded-xl p-1"
+      {/* ── MOBILE: tab bar + content (hidden sm+) ──────────────────────── */}
+      <div className="sm:hidden">
+        {/* Inline mobile tab bar */}
+        <div className="flex border-b" style={{ borderColor: "var(--color-bt-border)" }}>
+          {PLANNING_MOBILE_TABS.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              data-testid={`mobile-planning-tab-${id}`}
+              onClick={() => setMobileActiveTab(id)}
+              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
               style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
+                color: mobileActiveTab === id ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                background: "transparent",
+                border: "none",
+                borderBottom: `2px solid ${mobileActiveTab === id ? "var(--color-bt-accent)" : "transparent"}`,
+                marginBottom: "-1px",
               }}
             >
-              <button
-                type="button"
-                onClick={() => setDateMode("set")}
-                data-active={dateMode === "set"}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
-                style={
-                  dateMode === "set"
-                    ? {
-                        background: "var(--color-bt-card)",
-                        color: "var(--color-bt-text)",
-                        boxShadow: "var(--shadow-card)",
-                      }
-                    : { background: "transparent", color: "var(--color-bt-text-dim)" }
-                }
-              >
-                <CalendarRange size={12} />
-                Pick your Dates
-              </button>
-              <button
-                type="button"
-                onClick={() => hasCrew && setDateMode("poll")}
-                disabled={!hasCrew}
-                data-active={dateMode === "poll"}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-                style={
-                  dateMode === "poll" && hasCrew
-                    ? {
-                        background: "var(--color-bt-card)",
-                        color: "var(--color-bt-text)",
-                        boxShadow: "var(--shadow-card)",
-                      }
-                    : { background: "transparent", color: "var(--color-bt-text-dim)" }
-                }
-              >
-                <Users size={12} />
-                Poll the Crew
-              </button>
-            </div>
-
-            {!hasCrew && (
-              <p className="mt-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                Add crew members first —{" "}
-                <button
-                  type="button"
-                  onClick={() => handleTileClick("crew")}
-                  className="font-semibold underline"
-                  style={{
-                    color: "var(--color-bt-accent)",
-                    background: "transparent",
-                    border: "none",
-                  }}
-                >
-                  open Crew →
-                </button>
-              </p>
-            )}
-          </div>
-
-          {/* Body */}
-          {dateMode === "set" ? (
-            <div
-              className="border-t px-3 pb-3 pt-3"
-              style={{ borderColor: "var(--color-bt-border)" }}
-            >
-              <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                Already know the dates? Lock them in directly.
-              </p>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="min-w-[140px] flex-1">
-                  <label
-                    className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    Start date
-                  </label>
-                  <input
-                    type="date"
-                    value={directStart}
-                    onChange={(e) => setDirectStart(e.target.value)}
-                    className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-                    style={{
-                      background: "var(--color-bt-base)",
-                      borderColor: "var(--color-bt-border)",
-                      color: "var(--color-bt-text)",
-                    }}
-                  />
-                </div>
-                <div className="min-w-[140px] flex-1">
-                  <label
-                    className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    End date
-                  </label>
-                  <input
-                    type="date"
-                    value={directEnd}
-                    onChange={(e) => setDirectEnd(e.target.value)}
-                    className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-                    style={{
-                      background: "var(--color-bt-base)",
-                      borderColor: "var(--color-bt-border)",
-                      color: "var(--color-bt-text)",
-                    }}
-                  />
-                </div>
-                {!confirmClearPoll && (
-                  <button
-                    type="button"
-                    onClick={handleSet}
-                    disabled={
-                      !directStart ||
-                      !directEnd ||
-                      directStart >= directEnd ||
-                      lockDates.isPending
-                    }
-                    className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                  >
-                    Set
-                  </button>
-                )}
-              </div>
-
-              {confirmClearPoll && (
-                <div
-                  className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[13px]"
-                  style={{
-                    background: "var(--color-bt-warning-faint)",
-                    borderColor: "var(--color-bt-warning-border)",
-                  }}
-                >
-                  <span style={{ color: "var(--color-bt-text)" }}>
-                    This will clear the poll. Are you sure?
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmClearPoll(false)}
-                    className="ml-auto rounded-lg px-3 py-1 text-xs font-semibold"
-                    style={{
-                      color: "var(--color-bt-text-dim)",
-                      border: "1px solid var(--color-bt-border)",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSet}
-                    disabled={lockDates.isPending || setPollActive.isPending}
-                    className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                  >
-                    Confirm
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : hasCrew ? (
-            <div
-              className="border-t px-3 pb-3 pt-3"
-              style={{ borderColor: "var(--color-bt-border)" }}
-            >
-              <DatePollCard
-                trip={trip}
-                isOwner={isOwner}
-                onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
-              />
-            </div>
-          ) : null}
+              <Icon size={15} />
+              {label}
+            </button>
+          ))}
         </div>
+        {/* Tab content */}
+        <div className="mt-3">
+          {mobileActiveTab === "dates" && (
+            datesPanelBody ?? (
+              <p
+                className="px-4 py-6 text-center text-sm italic"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
+              </p>
+            )
+          )}
+          {mobileActiveTab === "crew" && (
+            <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+          )}
+          {mobileActiveTab === "lodging" && (
+            <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
+          )}
+          {mobileActiveTab === "schedule" && (
+            <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
           )}
         </div>
-      )}
+      </div>
 
-      {/* ── View Itinerary — right-aligned, normal size ──────────────── */}
+      {/* ── View Itinerary — always visible, all breakpoints ────────────── */}
       {isOwner && (
         <div className="flex items-center justify-between gap-3">
           <p className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
