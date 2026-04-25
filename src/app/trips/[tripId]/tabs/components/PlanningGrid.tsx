@@ -844,7 +844,7 @@ export function PlanningGrid({
           </button>
         </div>
 
-        {!hasCrew && (
+        {!hasCrew && dateMode === "poll" && (
           <p className="mt-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             Add crew members first —{" "}
             <button
