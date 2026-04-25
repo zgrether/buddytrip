@@ -54,9 +54,8 @@ function tileWrapperClass(
   const dim = anyPanelOpen && !isActive && state !== "skipped" ? "opacity-70" : "";
 
   if (isActive) {
-    // Active: card bg + 2px teal border; solid accent icon square is the selection signal.
-    // Flat bottom corners + borderBottom:none via inline style to connect to the expanded panel.
-    return `${shared} ${cursor} bg-[var(--color-bt-card)] border-2 border-[var(--color-bt-accent)]`;
+    // Active: card-raised bg + 2px teal border, fully rounded — no flat-bottom trick.
+    return `${shared} ${cursor} bg-[var(--color-bt-card-raised)] border-2 border-[var(--color-bt-accent)]`;
   }
   if (state === "complete") {
     return `${shared} ${cursor} ${dim} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)] hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]`;
@@ -157,11 +156,7 @@ function Tile({
       data-active={isActive ? "true" : undefined}
       onClick={clickable ? onClick : undefined}
       className={tileWrapperClass(state, !!isActive, clickable, !!anyPanelOpen)}
-      style={
-        isActive
-          ? { minHeight: 130, borderRadius: "12px 12px 0 0", borderBottom: "none", zIndex: 1 }
-          : { minHeight: 130 }
-      }
+      style={{ minHeight: 130 }}
     >
       {/* ── Top row: icon + status badge (ml-auto) ───────────────────── */}
       <div className="mb-2 flex items-center">
@@ -1127,8 +1122,9 @@ export function PlanningGrid({
           <div
             className="mt-2 overflow-hidden rounded-xl"
             style={{
+              background: "transparent",
               border: "1px solid var(--color-bt-border)",
-              borderTop: "2px solid var(--color-bt-accent)",
+              borderTop: "3px solid var(--color-bt-accent)",
             }}
             data-testid="planning-expanded-panel"
           >
@@ -1196,8 +1192,9 @@ export function PlanningGrid({
         <div
           className="mt-3 overflow-hidden rounded-xl"
           style={{
+            background: "transparent",
             border: "1px solid var(--color-bt-border)",
-            borderTop: "2px solid var(--color-bt-accent)",
+            borderTop: "3px solid var(--color-bt-accent)",
           }}
           data-testid="planning-mobile-panel"
         >
