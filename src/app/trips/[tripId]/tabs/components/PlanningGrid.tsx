@@ -58,7 +58,7 @@ function tileWrapperClass(
     return `${shared} ${cursor} bg-[var(--color-bt-card-raised)] border-2 border-[var(--color-bt-accent)]`;
   }
   if (state === "complete") {
-    return `${shared} ${cursor} ${dim} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:border-[var(--color-bt-accent-border)]`;
+    return `${shared} ${cursor} ${dim} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)] hover:border-[var(--color-bt-accent-border)]`;
   }
   if (state === "skipped") {
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] opacity-60`;
