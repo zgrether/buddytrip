@@ -319,7 +319,7 @@ export function HomeTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 px-4">
       {/* ── PLANNING stage: 2×2 tile grid + dates accordion + View Itinerary.
               Replaces the old ActionCenter / PlanningSection treatment.      */}
       {stage === "planning" && (
