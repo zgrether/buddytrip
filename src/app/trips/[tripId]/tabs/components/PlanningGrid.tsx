@@ -71,8 +71,8 @@ function iconLabelColors(
 ): { iconBg: string; iconColor: string; labelColor: string; iconBorder?: string } {
   if (isActive) {
     return {
-      iconBg: "var(--color-bt-accent)",
-      iconColor: "var(--color-bt-base)",
+      iconBg: "var(--color-bt-accent-faint)",
+      iconColor: "var(--color-bt-accent)",
       labelColor: "var(--color-bt-text-dim)",
     };
   }
