@@ -799,19 +799,22 @@ export function PlanningGrid({
 
   const datesPanelBody = canEdit && datesState !== "skipped" ? (
     <div data-testid="planning-dates-panel">
-      {/* Panel title */}
-      <div className="px-4 pt-4">
+      {/* Panel title + blurb */}
+      <div className="px-4 pt-4 pb-3">
         <h2
-          className="text-xs font-semibold uppercase tracking-wider"
+          className="mb-1.5 text-xs font-semibold uppercase tracking-wider"
           style={{ color: panelTitleColor(datesState) }}
         >
           Dates
         </h2>
+        <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+          Lock in dates directly, or poll the crew to find a window that works for everyone.
+        </p>
       </div>
-      {/* Segmented control */}
-      <div className="px-4 py-3">
+      {/* Segmented control — natural width, left-aligned */}
+      <div className="px-4 pb-3">
         <div
-          className="flex rounded-xl p-1"
+          className="inline-flex rounded-xl p-1"
           style={{
             background: "var(--color-bt-card-raised)",
             border: "1px solid var(--color-bt-border)",
@@ -821,7 +824,7 @@ export function PlanningGrid({
             type="button"
             onClick={() => setDateMode("set")}
             data-active={dateMode === "set"}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
+            className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold"
             style={
               dateMode === "set"
                 ? {
@@ -840,7 +843,7 @@ export function PlanningGrid({
             onClick={() => crewState !== "skipped" && setDateMode("poll")}
             disabled={crewState === "skipped"}
             data-active={dateMode === "poll"}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             style={
               dateMode === "poll" && crewState !== "skipped"
                 ? {
@@ -959,14 +962,16 @@ export function PlanningGrid({
         </div>
       ) : hasCrew ? (
         <div
-          className="border-t px-4 pb-4 pt-4"
+          className="border-t overflow-x-auto"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
-          <DatePollCard
-            trip={trip}
-            isOwner={isOwner}
-            onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
-          />
+          <div className="min-w-[480px] px-4 pb-4 pt-4">
+            <DatePollCard
+              trip={trip}
+              isOwner={isOwner}
+              onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
+            />
+          </div>
         </div>
       ) : (
         <div
