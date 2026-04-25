@@ -330,13 +330,15 @@ export default function TripDetailPage() {
                   <QuickInfoSection tripId={tripId} isOwner={isOwner} />
                 </div>
               )}
-              <TripTabBar
-                activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab)}
-                showComp={showComp}
-                canEdit={canEdit}
-                stage={stage}
-              />
+              {stage !== "planning" && (
+                <TripTabBar
+                  activeTab={activeTab}
+                  onTabChange={(tab) => setActiveTab(tab)}
+                  showComp={showComp}
+                  canEdit={canEdit}
+                  stage={stage}
+                />
+              )}
               <div className="pt-4 pb-24">
                 {tripIsReadOnly && activeTab === "home" && (
                   <div
