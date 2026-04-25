@@ -513,6 +513,22 @@ export function PlanningGrid({
     if (!hasCrew || crewState === "skipped") setDateMode("set");
   }, [hasCrew, crewState]);
 
+  // Auto-switch to poll tab whenever a poll is active — handles both the
+  // initial open and the moment pollMode flips true after switching.
+  // Also clears the switch-to-poll prompt since the switch already happened.
+  useEffect(() => {
+    if (pollMode) {
+      setDateMode("poll");
+      setShowPollSwitchPrompt(false);
+    }
+  }, [pollMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dismiss the switch-to-poll prompt whenever the dates panel closes so it
+  // doesn't linger and reappear the next time the panel is opened.
+  useEffect(() => {
+    if (activePanel !== "dates") setShowPollSwitchPrompt(false);
+  }, [activePanel]);
+
   // Pick-your-dates form state — seeded from locked dates so reopening the panel shows current values
   const [directStart, setDirectStart] = useState(trip.start_date ?? "");
   const [directEnd, setDirectEnd] = useState(trip.end_date ?? "");
