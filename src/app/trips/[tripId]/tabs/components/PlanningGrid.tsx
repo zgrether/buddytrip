@@ -1173,6 +1173,21 @@ export function PlanningGrid({
           </button>
         </p>
       )}
+
+      {/* Opt-out — mobile only (sm:hidden); desktop uses the tile's footer */}
+      {canEdit && (
+        <div className="mt-4 border-t pt-3 sm:hidden" style={{ borderColor: "var(--color-bt-border)" }}>
+          <button
+            type="button"
+            onClick={() => handleSkip("dates")}
+            disabled={pendingTile === "dates"}
+            className="text-xs disabled:opacity-40"
+            style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
+          >
+            Opt out
+          </button>
+        </div>
+      )}
     </div>
   ) : null;
 
@@ -1400,23 +1415,13 @@ export function PlanningGrid({
                 )}
               </div>
             ) : (
-              <>
-                {datesPanelBody ?? (
-                  <div className="px-4 py-6 text-center">
-                    <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
-                    </p>
-                  </div>
-                )}
-                {canEdit && (
-                  <div className="mx-4 border-t py-3" style={{ borderColor: "var(--color-bt-border)" }}>
-                    <button type="button" onClick={() => handleSkip("dates")} disabled={pendingTile === "dates"}
-                      className="text-xs disabled:opacity-40"
-                      style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
-                    >Opt out</button>
-                  </div>
-                )}
-              </>
+              datesPanelBody ?? (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
+                  </p>
+                </div>
+              )
             )
           )}
           {mobileActiveTab === "crew" && (
