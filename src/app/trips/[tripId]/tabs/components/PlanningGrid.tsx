@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Calendar,
@@ -87,24 +87,24 @@ interface TileProps {
   icon: LucideIcon;
   label: string;
   state: TileState;
-  /** Visual-only override — true when the dates tile has its accordion
-   *  expanded, so it picks up the active styling. */
+  /** Visual-only override — true when the dates tile has its accordion expanded. */
   isActive?: boolean;
-  /** Empty-state body. */
   emptyDescription: string;
   emptyCTA: string;
-  /** Complete-state body. */
   completeValue?: string;
   completeSub?: React.ReactNode;
   /** canEdit gates the Skip affordance. */
   canEdit: boolean;
-  /** Called when the tile body (not the skip button) is clicked. */
   onClick?: () => void;
   onSkip: () => void;
   onUnskip: () => void;
   skipping: boolean;
-  /** Optional warning shown below "Not needed for this trip" when skipped. */
+  /** Warning shown below "Not needed for this trip" when skipped + crew complete. */
   skippedNudge?: React.ReactNode;
+  /** Short action label for Edit/Manage link, e.g. "Edit dates", "Manage crew" */
+  editLabel: string;
+  /** Rich preview content — rendered on sm+ breakpoint, hidden on mobile. */
+  preview?: React.ReactNode;
   testId?: string;
 }
 
@@ -123,11 +123,12 @@ function Tile({
   onUnskip,
   skipping,
   skippedNudge,
+  editLabel,
+  preview,
   testId,
 }: TileProps) {
   const styling = stylingForState(state, !!isActive);
-  // All tiles are navigable regardless of state — checkmark means "addressed",
-  // not "locked". onClick prop being set is the only gate.
+  // All tiles always navigable — checkmark means "addressed", not locked.
   const clickable = !!onClick;
 
   return (
@@ -136,7 +137,7 @@ function Tile({
       data-state={state}
       data-active={isActive ? "true" : undefined}
       onClick={clickable ? onClick : undefined}
-      className="relative flex flex-col rounded-xl p-3 transition-colors"
+      className="group relative flex flex-col rounded-xl p-3 transition-all duration-150 hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
       style={{
         background: styling.background,
         border: styling.border,
@@ -145,7 +146,7 @@ function Tile({
         cursor: clickable ? "pointer" : "default",
       }}
     >
-      {/* Top row: icon + status indicator */}
+      {/* Top row: icon + badge column (badge + edit/manage link) */}
       <div className="mb-2 flex items-start justify-between">
         <span
           className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
@@ -154,28 +155,38 @@ function Tile({
           <Icon size={22} strokeWidth={1.75} />
         </span>
 
-        {state === "complete" && (
+        {/* Right column: status badge + edit link */}
+        <div className="flex flex-col items-end gap-0.5">
+          {state === "complete" && (
+            <span
+              className="flex h-5 w-5 items-center justify-center rounded-full"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              aria-label="Complete"
+            >
+              <Check size={11} strokeWidth={3} />
+            </span>
+          )}
+          {state === "skipped" && (
+            <span
+              className="flex h-5 w-5 items-center justify-center rounded-full"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-text-dim)",
+              }}
+              aria-label="Skipped"
+            >
+              <X size={11} strokeWidth={2.5} />
+            </span>
+          )}
+          {/* Edit/Manage link — always visible on mobile, fades in on desktop hover */}
           <span
-            className="flex h-5 w-5 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            aria-label="Complete"
+            className="text-[11px] transition-opacity duration-150 lg:opacity-0 lg:group-hover:opacity-100"
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
-            <Check size={11} strokeWidth={3} />
+            {editLabel} →
           </span>
-        )}
-        {state === "skipped" && (
-          <span
-            className="flex h-5 w-5 items-center justify-center rounded-full"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-              color: "var(--color-bt-text-dim)",
-            }}
-            aria-label="Skipped"
-          >
-            <X size={11} strokeWidth={2.5} />
-          </span>
-        )}
+        </div>
       </div>
 
       {/* Label */}
@@ -213,7 +224,14 @@ function Tile({
         </p>
       )}
 
-      {/* Footer: CTA + Skip (empty), or Undo (skipped) */}
+      {/* Rich preview — hidden on mobile, shown on sm+ */}
+      {preview && (
+        <div className="mt-2 hidden flex-col gap-1.5 sm:flex">
+          {preview}
+        </div>
+      )}
+
+      {/* Footer */}
       <div className="mt-auto flex items-end justify-between gap-2 pt-2">
         {state === "empty" && (
           <>
@@ -250,6 +268,11 @@ function Tile({
             )}
           </>
         )}
+        {state === "complete" && (
+          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            {editLabel} →
+          </span>
+        )}
         {state === "skipped" && canEdit && (
           <button
             type="button"
@@ -273,6 +296,39 @@ function Tile({
       </div>
     </div>
   );
+}
+
+// ── Local helpers ─────────────────────────────────────────────────────────
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0][0]!.toUpperCase();
+  return (words[0][0]! + words[1][0]!).toUpperCase();
+}
+
+// ── Typed member / item shapes ────────────────────────────────────────────
+
+interface GridMember {
+  memberId: string;
+  user_id: string | null;
+  displayName: string;
+  role: string;
+  isGuest: boolean;
+}
+
+interface GridLogisticsItem {
+  id?: string;
+  type: string;
+  property_name?: string | null;
+  is_confirmed?: boolean | null;
+}
+
+interface GridScheduleItem {
+  id: string;
+  title: string;
+  scheduled_time?: string | null;
+  is_confirmed: boolean;
 }
 
 // ── Main grid ─────────────────────────────────────────────────────────────
@@ -301,20 +357,23 @@ export function PlanningGrid({
   const { data: logisticsItems = [] } = trpc.logistics.list.useQuery({ tripId });
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
 
-  // ── Derived counts + locked date ───────────────────────────────────────
-  const crewCount = members.length;
-  const hasCrew = crewCount > 1; // more than just the owner
+  // ── Typed data ─────────────────────────────────────────────────────────
+  const typedMembers = members as unknown as GridMember[];
+  const typedLogistics = logisticsItems as unknown as GridLogisticsItem[];
+  const typedSchedule = scheduleItems as unknown as GridScheduleItem[];
 
-  // Lodging lives on the logistics_items table under type='lodging';
-  // reservations is for tee-times/restaurants/transport.
-  const lodgingItems = (logisticsItems as Array<{ type: string; is_confirmed?: boolean | null }>).filter(
-    (r) => r.type === "lodging",
-  );
+  // ── Derived counts ─────────────────────────────────────────────────────
+  const crewCount = typedMembers.length;
+  const hasCrew = crewCount > 1;
+  const plannerCount = typedMembers.filter((m) => m.role === "Planner").length;
+  const noEmailCount = typedMembers.filter((m) => m.isGuest).length;
+
+  const lodgingItems = typedLogistics.filter((r) => r.type === "lodging");
   const lodgingCount = lodgingItems.length;
   const lodgingConfirmed = lodgingItems.filter((r) => r.is_confirmed).length;
   const lodgingPending = lodgingCount - lodgingConfirmed;
 
-  const scheduleCount = (scheduleItems as Array<unknown>).length;
+  const scheduleCount = typedSchedule.length;
 
   const datesLocked = !!(trip.start_date && trip.end_date);
   const pollMode = !!trip.poll_mode;
@@ -324,7 +383,9 @@ export function PlanningGrid({
   );
 
   // ── Tile states ────────────────────────────────────────────────────────
-  const planningSkipped: string[] = Array.isArray((trip as unknown as { planning_skipped?: unknown }).planning_skipped)
+  const planningSkipped: string[] = Array.isArray(
+    (trip as unknown as { planning_skipped?: unknown }).planning_skipped,
+  )
     ? ((trip as unknown as { planning_skipped: string[] }).planning_skipped ?? [])
     : [];
 
@@ -343,16 +404,43 @@ export function PlanningGrid({
     (s) => s === "complete" || s === "skipped",
   );
 
-  // ── Dates accordion ────────────────────────────────────────────────────
-  const [datesPanelOpen, setDatesPanelOpen] = useState(false);
+  // ── Date poll (for dates tile preview when poll is active) ─────────────
+  const { data: datePoll } = trpc.datePoll.get.useQuery(
+    { tripId },
+    { enabled: pollMode && datesState !== "complete" },
+  );
+
+  // ── Dates accordion — persisted to localStorage so it survives tab switches ──
+  const storageKey = `bt-dates-panel-open-${tripId}`;
+  const [datesPanelOpen, setDatesPanelOpen] = useState(() => {
+    try {
+      return localStorage.getItem(storageKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleDatesPanel = useCallback(() => {
+    setDatesPanelOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(storageKey, String(next));
+      } catch {}
+      return next;
+    });
+  }, [storageKey]);
+
   const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
 
-  // Close the panel when the user skips dates.
+  // Auto-close + clear localStorage when dates are resolved.
   useEffect(() => {
-    if (datesState === "skipped") {
+    if (datesState === "complete" || datesState === "skipped") {
       setDatesPanelOpen(false);
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {}
     }
-  }, [datesState]);
+  }, [datesState, storageKey]);
 
   // Pick-your-dates form state
   const [directStart, setDirectStart] = useState("");
@@ -386,9 +474,6 @@ export function PlanningGrid({
   };
 
   // ── Skip / unskip ──────────────────────────────────────────────────────
-  // Track which tile is currently mutating so only that tile's button
-  // dims — otherwise all four buttons would flash together while a single
-  // mutation is in flight.
   const [pendingTile, setPendingTile] = useState<TileKey | null>(null);
   const skipTile = trpc.trips.skipPlanningTile.useMutation({
     onSettled() {
@@ -412,14 +497,216 @@ export function PlanningGrid({
     unskipTile.mutate({ tripId, tile });
   };
 
+  // ── Rich tile previews ─────────────────────────────────────────────────
+
+  // Dates: show poll vote pips when poll is active and windows exist.
+  const datesPreview = useMemo(() => {
+    if (!pollMode || !datePoll || datePoll.windows.length === 0) return null;
+    return (
+      <div className="space-y-1">
+        {datePoll.windows.slice(0, 3).map((w) => {
+          const yes = w.votes.filter((v: { answer: string }) => v.answer === "yes").length;
+          const maybe = w.votes.filter((v: { answer: string }) => v.answer === "maybe").length;
+          const no = w.votes.filter((v: { answer: string }) => v.answer === "no").length;
+          return (
+            <div key={w.id} className="flex items-center gap-1.5">
+              <span
+                className="flex-1 truncate text-[11px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {formatDateRangeCompact(w.start_date, w.end_date)}
+              </span>
+              <div className="flex items-center gap-1 text-[10px] font-semibold">
+                <span style={{ color: "var(--color-bt-accent)" }}>✓{yes}</span>
+                <span style={{ color: "var(--color-bt-warning)" }}>~{maybe}</span>
+                <span style={{ color: "var(--color-bt-danger)" }}>✕{no}</span>
+              </div>
+            </div>
+          );
+        })}
+        {datePoll.windows.length > 3 && (
+          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            +{datePoll.windows.length - 3} more options
+          </p>
+        )}
+      </div>
+    );
+  }, [pollMode, datePoll]);
+
+  // Crew: avatar chips + planner count + missing email tally.
+  const crewPreview = useMemo(() => {
+    if (crewCount === 0) return null;
+    const visible = typedMembers.slice(0, 6);
+    const extra = crewCount - visible.length;
+    return (
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center gap-1">
+          {visible.map((m) => (
+            <span
+              key={m.memberId}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+                color: "var(--color-bt-accent)",
+              }}
+              title={m.displayName}
+            >
+              {initials(m.displayName)}
+            </span>
+          ))}
+          {extra > 0 && (
+            <span
+              className="flex h-6 items-center justify-center rounded-full px-1.5 text-[9px] font-bold"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              +{extra}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 text-[10px]">
+          {plannerCount > 0 && (
+            <span style={{ color: "var(--color-bt-text-dim)" }}>
+              {plannerCount} {plannerCount === 1 ? "planner" : "planners"}
+            </span>
+          )}
+          {noEmailCount > 0 && (
+            <span style={{ color: "var(--color-bt-warning)" }}>
+              {noEmailCount} missing email
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }, [typedMembers, crewCount, plannerCount, noEmailCount]);
+
+  // Lodging: first 2 properties with confirmed/pending distinction.
+  const lodgingPreview = useMemo(() => {
+    if (lodgingItems.length === 0) return null;
+    const visible = lodgingItems.slice(0, 2);
+    const extra = lodgingItems.length - visible.length;
+    return (
+      <div className="space-y-1">
+        {visible.map((item, i) => (
+          <div
+            key={item.id ?? i}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1"
+            style={{
+              background: item.is_confirmed
+                ? "var(--color-bt-accent-faint)"
+                : "var(--color-bt-warning-faint)",
+              border: `1px solid ${
+                item.is_confirmed
+                  ? "var(--color-bt-accent-border)"
+                  : "var(--color-bt-warning-border)"
+              }`,
+            }}
+          >
+            <span
+              className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+              style={{
+                background: item.is_confirmed
+                  ? "var(--color-bt-accent)"
+                  : "var(--color-bt-warning)",
+              }}
+            />
+            <span
+              className="flex-1 truncate text-[11px]"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {item.property_name ?? "Lodging option"}
+            </span>
+            <span
+              className="flex-shrink-0 text-[10px]"
+              style={{
+                color: item.is_confirmed
+                  ? "var(--color-bt-accent)"
+                  : "var(--color-bt-warning)",
+              }}
+            >
+              {item.is_confirmed ? "confirmed" : "pending"}
+            </span>
+          </div>
+        ))}
+        {extra > 0 && (
+          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            +{extra} more
+          </p>
+        )}
+      </div>
+    );
+  }, [lodgingItems]);
+
+  // Schedule: first 3 items with confirmed/unconfirmed dots.
+  const schedulePreview = useMemo(() => {
+    if (typedSchedule.length === 0) return null;
+    const visible = typedSchedule.slice(0, 3);
+    const extra = typedSchedule.length - visible.length;
+    return (
+      <div className="space-y-1">
+        {visible.map((item) => (
+          <div key={item.id} className="flex items-center gap-1.5">
+            <span
+              className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+              style={{
+                background: item.is_confirmed
+                  ? "var(--color-bt-accent)"
+                  : "var(--color-bt-border)",
+              }}
+            />
+            <span
+              className="flex-1 truncate text-[11px]"
+              style={{
+                color: item.is_confirmed
+                  ? "var(--color-bt-text)"
+                  : "var(--color-bt-text-dim)",
+              }}
+            >
+              {item.title}
+            </span>
+            {item.scheduled_time && (
+              <span
+                className="flex-shrink-0 text-[10px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {item.scheduled_time}
+              </span>
+            )}
+          </div>
+        ))}
+        {extra > 0 && (
+          <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            +{extra} more
+          </p>
+        )}
+      </div>
+    );
+  }, [typedSchedule]);
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* Orientation copy — always visible */}
-      <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        Destination locked in — now let&apos;s get the details sorted.
-      </p>
+      {/* ── Section header — matches Crew / Lodging / Schedule tab style ── */}
+      <div>
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Planning
+        </h2>
+        <p
+          className="text-[13px] leading-relaxed"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Destination locked in — now let&apos;s get the details sorted.
+        </p>
+      </div>
 
+      {/* ── 2×2 tile grid ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
         <Tile
           testId="planning-tile-dates"
@@ -430,8 +717,10 @@ export function PlanningGrid({
           emptyDescription="Not set yet"
           emptyCTA="Set dates"
           completeValue={lockedDateLabel ?? undefined}
+          editLabel="Edit dates"
+          preview={datesPreview}
           canEdit={canEdit}
-          onClick={canEdit ? () => setDatesPanelOpen((v) => !v) : undefined}
+          onClick={canEdit ? toggleDatesPanel : undefined}
           onSkip={() => handleSkip("dates")}
           onUnskip={() => handleUnskip("dates")}
           skipping={pendingTile === "dates"}
@@ -444,6 +733,8 @@ export function PlanningGrid({
           emptyDescription="No one added yet"
           emptyCTA="Add crew"
           completeValue={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
+          editLabel="Manage crew"
+          preview={crewPreview}
           canEdit={canEdit}
           onClick={() => onTabChange?.("crew")}
           onSkip={() => handleSkip("crew")}
@@ -461,12 +752,18 @@ export function PlanningGrid({
           completeSub={
             lodgingCount > 0 ? (
               <>
-                <span style={{ color: "var(--color-bt-accent)" }}>{lodgingConfirmed} confirmed</span>
+                <span style={{ color: "var(--color-bt-accent)" }}>
+                  {lodgingConfirmed} confirmed
+                </span>
                 {" · "}
-                <span style={{ color: "var(--color-bt-warning)" }}>{lodgingPending} pending</span>
+                <span style={{ color: "var(--color-bt-warning)" }}>
+                  {lodgingPending} pending
+                </span>
               </>
             ) : null
           }
+          editLabel="Manage lodging"
+          preview={lodgingPreview}
           canEdit={canEdit}
           onClick={() => onTabChange?.("lodging")}
           onSkip={() => handleSkip("lodging")}
@@ -488,6 +785,8 @@ export function PlanningGrid({
           emptyDescription="Nothing planned yet"
           emptyCTA="Add items"
           completeValue={`${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`}
+          editLabel="Manage schedule"
+          preview={schedulePreview}
           canEdit={canEdit}
           onClick={() => onTabChange?.("schedule")}
           onSkip={() => handleSkip("schedule")}
@@ -518,7 +817,10 @@ export function PlanningGrid({
           <div className="p-3">
             <div
               className="flex rounded-xl p-1"
-              style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+              }}
             >
               <button
                 type="button"
@@ -527,7 +829,11 @@ export function PlanningGrid({
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
                 style={
                   dateMode === "set"
-                    ? { background: "var(--color-bt-card)", color: "var(--color-bt-text)", boxShadow: "var(--shadow-card)" }
+                    ? {
+                        background: "var(--color-bt-card)",
+                        color: "var(--color-bt-text)",
+                        boxShadow: "var(--shadow-card)",
+                      }
                     : { background: "transparent", color: "var(--color-bt-text-dim)" }
                 }
               >
@@ -542,7 +848,11 @@ export function PlanningGrid({
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                 style={
                   dateMode === "poll" && hasCrew
-                    ? { background: "var(--color-bt-card)", color: "var(--color-bt-text)", boxShadow: "var(--shadow-card)" }
+                    ? {
+                        background: "var(--color-bt-card)",
+                        color: "var(--color-bt-text)",
+                        boxShadow: "var(--shadow-card)",
+                      }
                     : { background: "transparent", color: "var(--color-bt-text-dim)" }
                 }
               >
@@ -558,7 +868,11 @@ export function PlanningGrid({
                   type="button"
                   onClick={() => onTabChange?.("crew")}
                   className="font-semibold underline"
-                  style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none" }}
+                  style={{
+                    color: "var(--color-bt-accent)",
+                    background: "transparent",
+                    border: "none",
+                  }}
                 >
                   go to Crew tab →
                 </button>
@@ -568,13 +882,19 @@ export function PlanningGrid({
 
           {/* Body */}
           {dateMode === "set" ? (
-            <div className="border-t px-3 pb-3 pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
+            <div
+              className="border-t px-3 pb-3 pt-3"
+              style={{ borderColor: "var(--color-bt-border)" }}
+            >
               <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
                 Already know the dates? Lock them in directly.
               </p>
               <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-[140px] flex-1">
-                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                  <label
+                    className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
                     Start date
                   </label>
                   <input
@@ -590,7 +910,10 @@ export function PlanningGrid({
                   />
                 </div>
                 <div className="min-w-[140px] flex-1">
-                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                  <label
+                    className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
                     End date
                   </label>
                   <input
@@ -624,8 +947,12 @@ export function PlanningGrid({
               </div>
 
               {confirmClearPoll && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ background: "var(--color-bt-warning-faint)", borderColor: "var(--color-bt-warning-border)" }}
+                <div
+                  className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[13px]"
+                  style={{
+                    background: "var(--color-bt-warning-faint)",
+                    borderColor: "var(--color-bt-warning-border)",
+                  }}
                 >
                   <span style={{ color: "var(--color-bt-text)" }}>
                     This will clear the poll. Are you sure?
@@ -634,7 +961,10 @@ export function PlanningGrid({
                     type="button"
                     onClick={() => setConfirmClearPoll(false)}
                     className="ml-auto rounded-lg px-3 py-1 text-xs font-semibold"
-                    style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
+                    style={{
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
                   >
                     Cancel
                   </button>
@@ -651,7 +981,10 @@ export function PlanningGrid({
               )}
             </div>
           ) : hasCrew ? (
-            <div className="border-t px-3 pb-3 pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
+            <div
+              className="border-t px-3 pb-3 pt-3"
+              style={{ borderColor: "var(--color-bt-border)" }}
+            >
               <DatePollCard
                 trip={trip}
                 isOwner={isOwner}
@@ -662,14 +995,16 @@ export function PlanningGrid({
         </div>
       )}
 
-      {/* ── View Itinerary ─────────────────────────────────────────────── */}
+      {/* ── View Itinerary — right-aligned, normal size ──────────────── */}
       {isOwner && (
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {allResolved ? (
               <>
                 Everything&apos;s set —{" "}
-                <span style={{ color: "var(--color-bt-accent)" }}>let&apos;s make it official</span>
+                <span style={{ color: "var(--color-bt-accent)" }}>
+                  let&apos;s make it official
+                </span>
               </>
             ) : (
               "Complete or skip all four areas to continue"
