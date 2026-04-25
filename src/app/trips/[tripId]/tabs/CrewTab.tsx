@@ -519,7 +519,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             column so its content height doesn't stretch the grid row — the left
             column dictates panel height. Below 640px the grid collapses and it
             stacks under the crew list. */}
-        {isOwner && (
+        {isOwner && members.length > 1 && (
           <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[360px]">
             <h2
               className="mb-2 text-xs font-semibold uppercase tracking-wider"
