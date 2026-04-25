@@ -1121,11 +1121,7 @@ export function PlanningGrid({
         {activePanel !== null && (
           <div
             className="mt-2 overflow-hidden rounded-xl"
-            style={{
-              background: "transparent",
-              border: "1px solid var(--color-bt-border)",
-              borderTop: "3px solid var(--color-bt-accent)",
-            }}
+            style={{ border: "1px solid var(--color-bt-border)" }}
             data-testid="planning-expanded-panel"
           >
             {activePanel === "crew" && (
@@ -1191,11 +1187,7 @@ export function PlanningGrid({
         {/* Tab content — same panel structure as desktop expanded panel */}
         <div
           className="mt-3 overflow-hidden rounded-xl"
-          style={{
-            background: "transparent",
-            border: "1px solid var(--color-bt-border)",
-            borderTop: "3px solid var(--color-bt-accent)",
-          }}
+          style={{ border: "1px solid var(--color-bt-border)" }}
           data-testid="planning-mobile-panel"
         >
           {mobileActiveTab === "dates" && (
