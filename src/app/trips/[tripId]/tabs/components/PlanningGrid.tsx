@@ -825,12 +825,11 @@ export function PlanningGrid({
           </button>
           <button
             type="button"
-            onClick={() => hasCrew && setDateMode("poll")}
-            disabled={!hasCrew}
+            onClick={() => setDateMode("poll")}
             data-active={dateMode === "poll"}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
             style={
-              dateMode === "poll" && hasCrew
+              dateMode === "poll"
                 ? {
                     background: "var(--color-bt-card)",
                     color: "var(--color-bt-text)",
@@ -843,24 +842,6 @@ export function PlanningGrid({
             Poll the Crew
           </button>
         </div>
-
-        {!hasCrew && dateMode === "poll" && (
-          <p className="mt-2 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Add crew members first —{" "}
-            <button
-              type="button"
-              onClick={() => handleTileClick("crew")}
-              className="font-semibold underline"
-              style={{
-                color: "var(--color-bt-accent)",
-                background: "transparent",
-                border: "none",
-              }}
-            >
-              open Crew →
-            </button>
-          </p>
-        )}
       </div>
 
       {/* Body */}
@@ -974,7 +955,28 @@ export function PlanningGrid({
             onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
           />
         </div>
-      ) : null}
+      ) : (
+        <div
+          className="border-t px-3 pb-3 pt-3"
+          style={{ borderColor: "var(--color-bt-border)" }}
+        >
+          <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Add crew members first —{" "}
+            <button
+              type="button"
+              onClick={() => handleTileClick("crew")}
+              className="font-semibold underline"
+              style={{
+                color: "var(--color-bt-accent)",
+                background: "transparent",
+                border: "none",
+              }}
+            >
+              open Crew →
+            </button>
+          </p>
+        </div>
+      )}
     </div>
   ) : null;
 
