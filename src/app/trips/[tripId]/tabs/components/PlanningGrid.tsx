@@ -1069,7 +1069,45 @@ export function PlanningGrid({
           className="border-t overflow-x-auto"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
-          <div className="min-w-[480px] px-4 pb-4 pt-4">
+          <div className="min-w-[480px] px-4 pb-4 pt-4 space-y-3">
+            {/* Locked-from-poll banner — mirrors the set tab's teal banner */}
+            {datesLocked && (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2.5"
+                style={{
+                  background: "var(--color-bt-accent-faint)",
+                  border: "1px solid var(--color-bt-accent-border)",
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+                  <p className="text-[13px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
+                    {lockedDateLabel} — locked in from this poll
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setDateMode("set"); setShowPollSwitchPrompt(false); }}
+                    className="text-xs font-semibold"
+                    style={{ background: "transparent", border: "none", color: "var(--color-bt-accent)", cursor: "pointer" }}
+                  >
+                    Update
+                  </button>
+                  <span style={{ color: "var(--color-bt-accent-border)" }}>·</span>
+                  <button
+                    type="button"
+                    onClick={() => unlockDates.mutate({ tripId })}
+                    disabled={unlockDates.isPending}
+                    className="flex items-center gap-1 text-xs font-semibold disabled:opacity-40"
+                    style={{ background: "transparent", border: "none", color: "var(--color-bt-text-dim)", cursor: "pointer" }}
+                  >
+                    <RotateCcw size={11} />
+                    {unlockDates.isPending ? "Clearing…" : "Reset"}
+                  </button>
+                </div>
+              </div>
+            )}
             <DatePollCard
               trip={trip}
               isOwner={isOwner}
