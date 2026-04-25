@@ -523,11 +523,9 @@ export function PlanningGrid({
   // Pick-your-dates form state — seeded from locked dates so reopening the panel shows current values
   const [directStart, setDirectStart] = useState(trip.start_date ?? "");
   const [directEnd, setDirectEnd] = useState(trip.end_date ?? "");
-  const [confirmClearPoll, setConfirmClearPoll] = useState(false);
 
   const lockDates = trpc.trips.lockDates.useMutation({
     onSuccess() {
-      setConfirmClearPoll(false);
       utils.trips.getById.invalidate({ tripId });
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -564,10 +562,6 @@ export function PlanningGrid({
 
   const handleSet = () => {
     if (!directStart || !directEnd || directStart >= directEnd) return;
-    if (pollMode && !confirmClearPoll) {
-      setConfirmClearPoll(true);
-      return;
-    }
     if (pollMode) setPollActive.mutate({ tripId, pollMode: false });
     lockDates.mutate({ tripId, startDate: directStart, endDate: directEnd });
   };
@@ -954,74 +948,36 @@ export function PlanningGrid({
                 }}
               />
             </div>
-            {!confirmClearPoll && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleSet}
-                  disabled={
-                    !directStart ||
-                    !directEnd ||
-                    directStart >= directEnd ||
-                    lockDates.isPending
-                  }
-                  className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
-                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                >
-                  {datesLocked ? "Update" : "Set"}
-                </button>
-                {datesLocked && (
-                  <button
-                    type="button"
-                    onClick={() => unlockDates.mutate({ tripId })}
-                    disabled={unlockDates.isPending}
-                    className="flex-shrink-0 rounded-lg border px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
-                    style={{
-                      background: "transparent",
-                      borderColor: "var(--color-bt-border)",
-                      color: "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    {unlockDates.isPending ? "Clearing…" : "Reset"}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-
-          {confirmClearPoll && (
-            <div
-              className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[13px]"
-              style={{
-                background: "var(--color-bt-warning-faint)",
-                borderColor: "var(--color-bt-warning-border)",
-              }}
+            <button
+              type="button"
+              onClick={handleSet}
+              disabled={
+                !directStart ||
+                !directEnd ||
+                directStart >= directEnd ||
+                lockDates.isPending
+              }
+              className="flex-shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
-              <span style={{ color: "var(--color-bt-text)" }}>
-                This will clear the poll. Are you sure?
-              </span>
+              {datesLocked ? "Update" : "Set"}
+            </button>
+            {datesLocked && (
               <button
                 type="button"
-                onClick={() => setConfirmClearPoll(false)}
-                className="ml-auto rounded-lg px-3 py-1 text-xs font-semibold"
+                onClick={() => unlockDates.mutate({ tripId })}
+                disabled={unlockDates.isPending}
+                className="flex-shrink-0 rounded-lg border px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
                 style={{
+                  background: "transparent",
+                  borderColor: "var(--color-bt-border)",
                   color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
                 }}
               >
-                Cancel
+                {unlockDates.isPending ? "Clearing…" : "Reset"}
               </button>
-              <button
-                type="button"
-                onClick={handleSet}
-                disabled={lockDates.isPending || setPollActive.isPending}
-                className="rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                Confirm
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       ) : hasCrew ? (
         <div
