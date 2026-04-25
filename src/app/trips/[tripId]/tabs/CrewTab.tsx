@@ -406,9 +406,20 @@ export function CrewTab({ trip }: TabProps) {
   const plannersSorted = sorted.filter((m) => m.role === "Owner" || m.role === "Planner");
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
+  // Show the right-side Notify Crew panel only after the trip moves past the
+  // Planning stage. While destinations + dates are still being figured out
+  // there's no useful blast to send.
+  const showEmailPanel = isOwner && trip.stage !== "planning";
+
   return (
     <div className="@container px-4">
-      <div className="@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5">
+      <div
+        className={
+          showEmailPanel
+            ? "@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5"
+            : ""
+        }
+      >
         <div className="min-w-0 space-y-4">
           {/* ── PLANNERS section ── */}
           <div>
@@ -459,7 +470,10 @@ export function CrewTab({ trip }: TabProps) {
             </h2>
             {isOwner && (
               <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-                BuddyTrip members get access as soon as you add them. Guests without an account need an email invite — use the panel on the right.
+                BuddyTrip members get access as soon as you add them.
+                {showEmailPanel
+                  ? " Guests without an account need an email invite — use the panel on the right."
+                  : " Guests without an account will get an email invite once you lock the destination and dates."}
               </p>
             )}
             {crewSorted.some((m) => m.isGuest) && (
@@ -514,12 +528,14 @@ export function CrewTab({ trip }: TabProps) {
           </div>
         </div>
 
-        {/* Email panel — owner-only.
+        {/* Email panel — owner-only. Hidden during the Planning stage —
+            destinations and dates aren't locked yet, so a "save the date"
+            blast is premature.
             At ≥640px container width it's absolutely positioned in the right
             column so its content height doesn't stretch the grid row — the left
             column dictates panel height. Below 640px the grid collapses and it
             stacks under the crew list. */}
-        {isOwner && (
+        {showEmailPanel && (
           <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[360px]">
             <h2
               className="mb-2 text-xs font-semibold uppercase tracking-wider"
