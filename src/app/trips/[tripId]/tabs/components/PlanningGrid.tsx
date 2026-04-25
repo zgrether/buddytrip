@@ -484,15 +484,10 @@ export function PlanningGrid({
     } catch {}
   };
 
-  // Track the previous datesState so we only auto-close the dates panel on the
-  // transition to complete, not every time the user reopens it while already complete.
-  const prevDatesStateRef = useRef<TileState>(datesState);
-
-  // Auto-close the active panel when its tile is skipped, or when dates are first locked in.
+  // Auto-close the active panel only when its tile is opted out (skipped).
+  // Dates locking no longer auto-closes — the banner and tile update are
+  // sufficient feedback; other panels don't close on completion either.
   useEffect(() => {
-    const prevDatesState = prevDatesStateRef.current;
-    prevDatesStateRef.current = datesState;
-
     if (activePanel === null) return;
     const stateMap: Record<TileKey, TileState> = {
       dates: datesState,
@@ -500,10 +495,7 @@ export function PlanningGrid({
       lodging: lodgingState,
       schedule: scheduleState,
     };
-    const panelState = stateMap[activePanel];
-    const datesJustLocked =
-      activePanel === "dates" && panelState === "complete" && prevDatesState !== "complete";
-    if (panelState === "skipped" || datesJustLocked) {
+    if (stateMap[activePanel] === "skipped") {
       setActivePanel(null);
       try { localStorage.removeItem(datesStorageKey); } catch {}
     }
