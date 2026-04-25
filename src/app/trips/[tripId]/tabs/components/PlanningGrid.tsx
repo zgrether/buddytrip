@@ -426,10 +426,17 @@ export function PlanningGrid({
   );
 
   // ── Date poll (for dates tile preview when poll is active) ─────────────
+  // Fetch whenever the dates panel is relevant — not just when pollMode is on.
+  // We need the windows list to determine whether the "switch to poll" prompt
+  // should show (only when there are no existing windows).
   const { data: datePoll } = trpc.datePoll.get.useQuery(
     { tripId },
-    { enabled: pollMode && datesState !== "complete" },
+    { enabled: datesState !== "skipped" },
   );
+
+  // True if there are any poll windows already (dates came from a poll, or user
+  // has started a poll previously). Used to gate the switch-to-poll prompt.
+  const hasPollWindows = (datePoll?.windows?.length ?? 0) > 0;
 
   // ── Active panel — unified state replacing datesPanelOpen ────────────
   // Dates panel persists to localStorage; crew/lodging/schedule do not.
@@ -582,8 +589,14 @@ export function PlanningGrid({
   });
 
   const handleSwitchToPoll = () => {
+    // Capture current values then clear the form immediately so the
+    // "Pick your Dates" tab no longer shows the old directly-set dates.
+    const start = directStart;
+    const end = directEnd;
+    setDirectStart("");
+    setDirectEnd("");
     addPollWindow.mutate(
-      { tripId, id: crypto.randomUUID(), startDate: directStart, endDate: directEnd },
+      { tripId, id: crypto.randomUUID(), startDate: start, endDate: end },
       {
         onSuccess() {
           setPollActive.mutate({ tripId, pollMode: true });
@@ -901,7 +914,10 @@ export function PlanningGrid({
           <button
             type="button"
             onClick={() => {
-              if (datesLocked && !pollMode) {
+              // Only offer the "switch to poll" prompt when dates were set
+              // directly (no existing poll windows). If windows already exist
+              // the user has already set up a poll — just switch to that tab.
+              if (datesLocked && !pollMode && !hasPollWindows) {
                 setShowPollSwitchPrompt(true);
               } else {
                 setDateMode("poll");
@@ -927,8 +943,8 @@ export function PlanningGrid({
         </div>
       </div>
 
-      {/* Switch-to-poll prompt */}
-      {showPollSwitchPrompt && datesLocked && !pollMode && (
+      {/* Switch-to-poll prompt — only when dates were set directly (no windows yet) */}
+      {showPollSwitchPrompt && datesLocked && !pollMode && !hasPollWindows && (
         <div className="px-4 pb-3">
           <div
             className="space-y-3 rounded-xl border p-3"
