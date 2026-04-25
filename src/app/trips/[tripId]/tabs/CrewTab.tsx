@@ -518,15 +518,6 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             sits in the right grid column at ≥640px. */}
         {isOwner && members.length > 1 && (
           <div className="mt-6 @[640px]:mt-0">
-            <h2
-              className="mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Notify crew
-            </h2>
-            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Send your first invite, then keep everyone in the loop as the trip gets closer.
-            </p>
             <CrewEmailPanel trip={trip} isOwner={isOwner} />
           </div>
         )}

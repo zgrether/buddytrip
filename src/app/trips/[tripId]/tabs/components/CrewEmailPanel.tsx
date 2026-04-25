@@ -176,6 +176,11 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
         )}
       </div>
 
+      {/* Blurb */}
+      <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        Send your first invite, then keep everyone in the loop as the trip gets closer.
+      </p>
+
       {/* Editable message */}
       <div
         className="mb-3 rounded-xl px-3 py-2.5"
