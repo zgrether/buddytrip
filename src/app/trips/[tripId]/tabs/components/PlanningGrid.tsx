@@ -595,17 +595,26 @@ export function PlanningGrid({
     const end = directEnd;
     setDirectStart("");
     setDirectEnd("");
-    addPollWindow.mutate(
-      { tripId, id: crypto.randomUUID(), startDate: start, endDate: end },
-      {
-        onSuccess() {
-          setPollActive.mutate({ tripId, pollMode: true });
-          unlockDates.mutate({ tripId });
-          setDateMode("poll");
-          setShowPollSwitchPrompt(false);
-        },
-      },
-    );
+
+    const afterWindowReady = () => {
+      setPollActive.mutate({ tripId, pollMode: true });
+      unlockDates.mutate({ tripId });
+      setDateMode("poll");
+      setShowPollSwitchPrompt(false);
+    };
+
+    // If this exact window already exists in the poll, skip adding a duplicate.
+    const alreadyExists = (datePoll?.windows as unknown as GridPollWindow[] | undefined)
+      ?.some((w) => w.start_date === start && w.end_date === end) ?? false;
+
+    if (alreadyExists) {
+      afterWindowReady();
+    } else {
+      addPollWindow.mutate(
+        { tripId, id: crypto.randomUUID(), startDate: start, endDate: end },
+        { onSuccess: afterWindowReady },
+      );
+    }
   };
 
   const handleSet = () => {
