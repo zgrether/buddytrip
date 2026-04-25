@@ -808,7 +808,7 @@ export function PlanningGrid({
 
   // ── Dates panel body — shared by desktop panel and mobile tab ─────────────
   const datesPanelBody = canEdit ? (
-    <div data-testid="planning-dates-panel" style={{ background: "var(--color-bt-card)" }}>
+    <div data-testid="planning-dates-panel">
       {/* Segmented control */}
       <div className="p-3">
         <div
@@ -1125,17 +1125,17 @@ export function PlanningGrid({
             data-testid="planning-expanded-panel"
           >
             {activePanel === "crew" && (
-              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <div className="px-4 py-4">
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )}
             {activePanel === "lodging" && (
-              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <div className="px-4 py-4">
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )}
             {activePanel === "schedule" && (
-              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <div className="px-4 py-4">
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )}
@@ -1192,7 +1192,7 @@ export function PlanningGrid({
         >
           {mobileActiveTab === "dates" && (
             datesState === "skipped" ? (
-              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+              <div className="flex flex-col items-center gap-3 px-6 py-8">
                 <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of dates</p>
                 {canEdit && (
                   <button type="button" onClick={() => handleUnskip("dates")} disabled={pendingTile === "dates"}
@@ -1203,7 +1203,7 @@ export function PlanningGrid({
               </div>
             ) : (
               datesPanelBody ?? (
-                <div className="px-4 py-6 text-center" style={{ background: "var(--color-bt-card)" }}>
+                <div className="px-4 py-6 text-center">
                   <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
                     {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
                   </p>
@@ -1213,7 +1213,7 @@ export function PlanningGrid({
           )}
           {mobileActiveTab === "crew" && (
             crewState === "skipped" ? (
-              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+              <div className="flex flex-col items-center gap-3 px-6 py-8">
                 <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of crew</p>
                 {canEdit && (
                   <button type="button" onClick={() => handleUnskip("crew")} disabled={pendingTile === "crew"}
@@ -1223,14 +1223,14 @@ export function PlanningGrid({
                 )}
               </div>
             ) : (
-              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <div className="px-4 py-4">
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )
           )}
           {mobileActiveTab === "lodging" && (
             lodgingState === "skipped" ? (
-              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+              <div className="flex flex-col items-center gap-3 px-6 py-8">
                 <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of lodging</p>
                 {canEdit && (
                   <button type="button" onClick={() => handleUnskip("lodging")} disabled={pendingTile === "lodging"}
@@ -1240,14 +1240,14 @@ export function PlanningGrid({
                 )}
               </div>
             ) : (
-              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <div className="px-4 py-4">
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )
           )}
           {mobileActiveTab === "schedule" && (
             scheduleState === "skipped" ? (
-              <div className="flex flex-col items-center gap-3 px-6 py-8" style={{ background: "var(--color-bt-card)" }}>
+              <div className="flex flex-col items-center gap-3 px-6 py-8">
                 <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of schedule</p>
                 {canEdit && (
                   <button type="button" onClick={() => handleUnskip("schedule")} disabled={pendingTile === "schedule"}
@@ -1257,7 +1257,7 @@ export function PlanningGrid({
                 )}
               </div>
             ) : (
-              <div className="px-4 py-4" style={{ background: "var(--color-bt-card)" }}>
+              <div className="px-4 py-4">
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             )
