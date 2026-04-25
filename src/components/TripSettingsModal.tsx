@@ -188,15 +188,15 @@ export function TripSettingsModal({
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
       <div
-        className="absolute inset-0"
-        style={{ background: "var(--color-bt-overlay)" }}
-        onClick={onClose}
-      />
-      <div
-        className="relative w-full max-w-[480px] max-h-[85vh] overflow-y-auto rounded-xl p-5"
+        className="w-full max-w-[480px] max-h-[85vh] overflow-y-auto rounded-t-2xl p-5 lg:rounded-2xl"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ────────────────────────────────────────────────── */}
         <div className="mb-4 flex items-center justify-between">
