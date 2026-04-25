@@ -1117,27 +1117,43 @@ export function PlanningGrid({
 
       {/* ── MOBILE: tab bar + content (hidden sm+) ──────────────────────── */}
       <div className="sm:hidden">
-        {/* Inline mobile tab bar */}
-        <div className="flex border-b" style={{ borderColor: "var(--color-bt-border)" }}>
-          {PLANNING_MOBILE_TABS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              data-testid={`mobile-planning-tab-${id}`}
-              onClick={() => setMobileActiveTab(id)}
-              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
-              style={{
-                color: mobileActiveTab === id ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                background: "transparent",
-                border: "none",
-                borderBottom: `2px solid ${mobileActiveTab === id ? "var(--color-bt-accent)" : "transparent"}`,
-                marginBottom: "-1px",
-              }}
-            >
-              <Icon size={15} />
-              {label}
-            </button>
-          ))}
+        {/* Inline mobile tab bar — tile-style icon squares */}
+        <div className="flex">
+          {PLANNING_MOBILE_TABS.map(({ id, label, Icon }) => {
+            const active = mobileActiveTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                data-testid={`mobile-planning-tab-${id}`}
+                onClick={() => setMobileActiveTab(id)}
+                className="flex flex-1 flex-col items-center gap-1.5 py-3"
+                style={{ background: "transparent", border: "none" }}
+              >
+                <span
+                  className="flex h-11 w-11 items-center justify-center rounded-xl"
+                  style={{
+                    background: active
+                      ? "var(--color-bt-accent-faint)"
+                      : "var(--color-bt-card-raised)",
+                    color: active
+                      ? "var(--color-bt-accent)"
+                      : "var(--color-bt-text-dim)",
+                  }}
+                >
+                  <Icon size={22} strokeWidth={1.75} />
+                </span>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider"
+                  style={{
+                    color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                  }}
+                >
+                  {label}
+                </span>
+              </button>
+            );
+          })}
         </div>
         {/* Tab content */}
         <div className="mt-3">
