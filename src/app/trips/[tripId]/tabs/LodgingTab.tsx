@@ -17,9 +17,9 @@ import type { TabProps } from "./types";
  * working through all post-idea stages — in going/now/past it still
  * surfaces the same cards, just with confirmation already done.
  */
-export function LodgingTab({ trip, canEdit }: TabProps) {
+export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: boolean }) {
   return (
-    <div className="px-4">
+    <div className={embedded ? undefined : "px-4"}>
       <LodgingPanel
         tripId={trip.id}
         canEdit={canEdit}

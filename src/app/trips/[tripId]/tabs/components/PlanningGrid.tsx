@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Calendar,
@@ -15,12 +15,17 @@ import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRangeCompact, fmtTime12 } from "@/lib/dates";
 import type { TripData } from "../types";
+import type { TabProps } from "../types";
 import { DatePollCard } from "./DatePollCard";
+import { CrewTab } from "../CrewTab";
+import { LodgingTab } from "../LodgingTab";
+import { ScheduleTab } from "../ScheduleTab";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export type TileKey = "dates" | "crew" | "lodging" | "schedule";
 export type TileState = "empty" | "complete" | "skipped";
+type PanelType = TileKey | null;
 
 export interface PlanningGridProps {
   trip: TripData;
@@ -416,37 +421,42 @@ export function PlanningGrid({
     { enabled: pollMode && datesState !== "complete" },
   );
 
-  // ── Dates accordion — persisted to localStorage ────────────────────────
-  const storageKey = `bt-dates-panel-open-${tripId}`;
-  const [datesPanelOpen, setDatesPanelOpen] = useState<boolean>(() => {
+  // ── Active panel — unified state replacing datesPanelOpen ────────────
+  // Dates panel persists to localStorage; crew/lodging/schedule do not.
+  const datesStorageKey = `bt-dates-panel-open-${tripId}`;
+  const [activePanel, setActivePanel] = useState<PanelType>(() => {
     try {
-      return localStorage.getItem(storageKey) === "true";
+      return localStorage.getItem(datesStorageKey) === "true" ? "dates" : null;
     } catch {
-      return false;
+      return null;
     }
   });
 
-  const toggleDatesPanel = useCallback(() => {
-    setDatesPanelOpen((prev) => {
-      const next = !prev;
+  const handleTileClick = (tile: PanelType) => {
+    setActivePanel((prev) => {
+      const next = prev === tile ? null : tile;
       try {
-        localStorage.setItem(storageKey, String(next));
+        if (next === "dates") {
+          localStorage.setItem(datesStorageKey, "true");
+        } else {
+          localStorage.removeItem(datesStorageKey);
+        }
       } catch {}
       return next;
     });
-  }, [storageKey]);
+  };
 
   const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
 
-  // Auto-close + clear localStorage when dates are resolved.
+  // Auto-close dates panel when dates are resolved.
   useEffect(() => {
     if (datesState === "complete" || datesState === "skipped") {
-      setDatesPanelOpen(false);
+      setActivePanel((prev) => (prev === "dates" ? null : prev));
       try {
-        localStorage.removeItem(storageKey);
+        localStorage.removeItem(datesStorageKey);
       } catch {}
     }
-  }, [datesState, storageKey]);
+  }, [datesState, datesStorageKey]);
 
   // Pick-your-dates form state
   const [directStart, setDirectStart] = useState("");
@@ -766,14 +776,14 @@ export function PlanningGrid({
           icon={CalendarRange}
           label="Dates"
           state={datesState}
-          isActive={datesPanelOpen}
+          isActive={activePanel === "dates"}
           emptyDescription="Not set yet"
           emptyCTA="Set dates"
           completeValue={lockedDateLabel ?? undefined}
           editLabel="Edit dates"
           preview={datesPreview}
           canEdit={canEdit}
-          onClick={canEdit ? toggleDatesPanel : undefined}
+          onClick={() => handleTileClick("dates")}
           onSkip={() => handleSkip("dates")}
           onUnskip={() => handleUnskip("dates")}
           skipping={pendingTile === "dates"}
@@ -783,13 +793,14 @@ export function PlanningGrid({
           icon={Users}
           label="Crew"
           state={crewState}
+          isActive={activePanel === "crew"}
           emptyDescription="No one added yet"
           emptyCTA="Add crew"
           completeValue={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
           editLabel="Manage crew"
           preview={crewPreview}
           canEdit={canEdit}
-          onClick={() => onTabChange?.("crew")}
+          onClick={() => handleTileClick("crew")}
           onSkip={() => handleSkip("crew")}
           onUnskip={() => handleUnskip("crew")}
           skipping={pendingTile === "crew"}
@@ -799,6 +810,7 @@ export function PlanningGrid({
           icon={Hotel}
           label="Lodging"
           state={lodgingState}
+          isActive={activePanel === "lodging"}
           emptyDescription="Nothing added yet"
           emptyCTA="Add property"
           completeValue={`${lodgingCount} ${lodgingCount === 1 ? "option" : "options"}`}
@@ -818,7 +830,7 @@ export function PlanningGrid({
           editLabel="Manage lodging"
           preview={lodgingPreview}
           canEdit={canEdit}
-          onClick={() => onTabChange?.("lodging")}
+          onClick={() => handleTileClick("lodging")}
           onSkip={() => handleSkip("lodging")}
           onUnskip={() => handleUnskip("lodging")}
           skipping={pendingTile === "lodging"}
@@ -838,13 +850,14 @@ export function PlanningGrid({
           icon={Calendar}
           label="Schedule"
           state={scheduleState}
+          isActive={activePanel === "schedule"}
           emptyDescription="Nothing planned yet"
           emptyCTA="Add items"
           completeValue={`${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`}
           editLabel="Manage schedule"
           preview={schedulePreview}
           canEdit={canEdit}
-          onClick={() => onTabChange?.("schedule")}
+          onClick={() => handleTileClick("schedule")}
           onSkip={() => handleSkip("schedule")}
           onUnskip={() => handleUnskip("schedule")}
           skipping={pendingTile === "schedule"}
@@ -861,16 +874,69 @@ export function PlanningGrid({
         />
       </div>
 
-      {/* ── Dates accordion ─────────────────────────────────────────────── */}
-      {datesPanelOpen && canEdit && (
+      {/* ── Expanded panel — only one open at a time ─────────────────────── */}
+      {activePanel !== null && (
         <div
           className="overflow-hidden rounded-xl"
           style={{
-            background: "var(--color-bt-card)",
             border: "1px solid var(--color-bt-border)",
             boxShadow: "var(--shadow-raised)",
           }}
+          data-testid="planning-expanded-panel"
+        >
+          {/* ── Crew panel ──────────────────────────────────────────────── */}
+          {activePanel === "crew" && (
+            <div
+              className="px-4 py-4"
+              style={{ background: "var(--color-bt-card)" }}
+            >
+              <CrewTab
+                trip={trip}
+                role={null}
+                canEdit={canEdit}
+                isOwner={isOwner}
+                embedded={true}
+              />
+            </div>
+          )}
+
+          {/* ── Lodging panel ────────────────────────────────────────────── */}
+          {activePanel === "lodging" && (
+            <div
+              className="px-4 py-4"
+              style={{ background: "var(--color-bt-card)" }}
+            >
+              <LodgingTab
+                trip={trip}
+                role={null}
+                canEdit={canEdit}
+                isOwner={isOwner}
+                embedded={true}
+              />
+            </div>
+          )}
+
+          {/* ── Schedule panel ───────────────────────────────────────────── */}
+          {activePanel === "schedule" && (
+            <div
+              className="px-4 py-4"
+              style={{ background: "var(--color-bt-card)" }}
+            >
+              <ScheduleTab
+                trip={trip}
+                role={null}
+                canEdit={canEdit}
+                isOwner={isOwner}
+                embedded={true}
+              />
+            </div>
+          )}
+
+          {/* ── Dates panel ──────────────────────────────────────────────── */}
+          {activePanel === "dates" && canEdit && (
+        <div
           data-testid="planning-dates-panel"
+          style={{ background: "var(--color-bt-card)" }}
         >
           {/* Segmented control */}
           <div className="p-3">
@@ -925,7 +991,7 @@ export function PlanningGrid({
                 Add crew members first —{" "}
                 <button
                   type="button"
-                  onClick={() => onTabChange?.("crew")}
+                  onClick={() => handleTileClick("crew")}
                   className="font-semibold underline"
                   style={{
                     color: "var(--color-bt-accent)",
@@ -933,7 +999,7 @@ export function PlanningGrid({
                     border: "none",
                   }}
                 >
-                  go to Crew tab →
+                  open Crew →
                 </button>
               </p>
             )}
@@ -1047,10 +1113,12 @@ export function PlanningGrid({
               <DatePollCard
                 trip={trip}
                 isOwner={isOwner}
-                onManageCrew={canEdit && onTabChange ? () => onTabChange("crew") : undefined}
+                onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
               />
             </div>
           ) : null}
+        </div>
+          )}
         </div>
       )}
 

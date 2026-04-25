@@ -385,7 +385,7 @@ function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => voi
 
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
-export function CrewTab({ trip }: TabProps) {
+export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const tripId = trip.id;
@@ -407,7 +407,7 @@ export function CrewTab({ trip }: TabProps) {
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
-    <div className="@container px-4">
+    <div className={embedded ? "@container" : "@container px-4"}>
       <div className="@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5">
         <div className="min-w-0 space-y-4">
           {/* ── PLANNERS section ── */}

@@ -311,7 +311,7 @@ function ScheduleItemRow({
 
 type AddMode = "general" | "golf" | null;
 
-export function ScheduleTab({ trip, canEdit }: TabProps) {
+export function ScheduleTab({ trip, canEdit, embedded }: TabProps & { embedded?: boolean }) {
   const tripId = trip.id;
   const stage = trip.stage ?? "idea";
   const utils = trpc.useUtils();
@@ -523,14 +523,16 @@ export function ScheduleTab({ trip, canEdit }: TabProps) {
   };
 
   return (
-    <div className="px-4">
+    <div className={embedded ? undefined : "px-4"}>
       <section>
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Schedule
-        </h2>
+        {!embedded && (
+          <h2
+            className="mb-2 text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Schedule
+          </h2>
+        )}
 
         {/* Guidance text — stage-aware */}
         <p
