@@ -505,10 +505,10 @@ export function PlanningGrid({
     }
   }, [hasCrew, pollMode, tripId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset date mode UI when crew disappears.
+  // Reset date mode UI when crew disappears or crew is opted out.
   useEffect(() => {
-    if (!hasCrew) setDateMode("set");
-  }, [hasCrew]);
+    if (!hasCrew || crewState === "skipped") setDateMode("set");
+  }, [hasCrew, crewState]);
 
   // Pick-your-dates form state
   const [directStart, setDirectStart] = useState("");
@@ -825,11 +825,12 @@ export function PlanningGrid({
           </button>
           <button
             type="button"
-            onClick={() => setDateMode("poll")}
+            onClick={() => crewState !== "skipped" && setDateMode("poll")}
+            disabled={crewState === "skipped"}
             data-active={dateMode === "poll"}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             style={
-              dateMode === "poll"
+              dateMode === "poll" && crewState !== "skipped"
                 ? {
                     background: "var(--color-bt-card)",
                     color: "var(--color-bt-text)",
