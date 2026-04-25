@@ -10,6 +10,7 @@ import {
   Hotel,
   Pencil,
   Users,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -544,7 +545,9 @@ export function PlanningGrid({
 
   // ── Destination editing modal ──────────────────────────────────────────
   const [showDestModal, setShowDestModal] = useState(false);
-  const [destDraft, setDestDraft] = useState(trip.locked_destination_title ?? "");
+  const [destDraft, setDestDraft] = useState(
+    trip.locked_destination_location ?? trip.locked_destination_title ?? "",
+  );
 
   const changeDestination = trpc.trips.changeDestination.useMutation({
     onSuccess() {
@@ -1077,13 +1080,15 @@ export function PlanningGrid({
           <button
             type="button"
             onClick={() => {
-              setDestDraft(trip.locked_destination_title ?? "");
+              setDestDraft(trip.locked_destination_location ?? trip.locked_destination_title ?? "");
               setShowDestModal(true);
             }}
             className="flex flex-shrink-0 items-center gap-1 text-xs font-medium transition-opacity hover:opacity-70"
             style={{ background: "transparent", border: "none", color: "var(--color-bt-text-dim)", cursor: "pointer" }}
           >
-            <span style={{ color: "var(--color-bt-accent)" }}>{trip.locked_destination_title}</span>
+            <span style={{ color: "var(--color-bt-accent)" }}>
+              {trip.locked_destination_location ?? trip.locked_destination_title}
+            </span>
             <Pencil size={11} />
           </button>
         )}
@@ -1339,23 +1344,42 @@ export function PlanningGrid({
 
       {/* ── Destination edit modal ──────────────────────────────────────── */}
       {showDestModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.5)" }}
-          onClick={() => setShowDestModal(false)}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="w-full max-w-md rounded-2xl p-6 space-y-4"
-            style={{ background: "var(--color-bt-card-float)", boxShadow: "var(--shadow-float)" }}
-            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0"
+            style={{ background: "var(--color-bt-overlay)" }}
+            onClick={() => setShowDestModal(false)}
+          />
+          <div
+            className="relative w-full max-w-[440px] rounded-xl p-5 space-y-4"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
           >
-            <h3
-              className="text-sm font-bold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Edit Destination
-            </h3>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <h2
+                className="text-base font-medium"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                Edit destination
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowDestModal(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text-dim)",
+                  border: "none",
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
 
+            {/* Warning */}
             <div
               className="flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] leading-relaxed"
               style={{
@@ -1370,41 +1394,28 @@ export function PlanningGrid({
               </span>
             </div>
 
-            <div>
+            {/* Input */}
+            <div className="space-y-2">
               <label
-                className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider"
+                className="text-xs font-medium"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                Destination
+                Location
               </label>
               <input
                 type="text"
                 value={destDraft}
                 onChange={(e) => setDestDraft(e.target.value)}
-                placeholder="Where are you headed?"
-                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                placeholder="e.g. Bandon, OR"
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
                 style={{
-                  background: "var(--color-bt-base)",
+                  background: "var(--color-bt-card-raised)",
                   borderColor: "var(--color-bt-border)",
                   color: "var(--color-bt-text)",
                 }}
+                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
               />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setShowDestModal(false)}
-                className="rounded-lg px-4 py-1.5 text-sm font-semibold"
-                style={{
-                  color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                  background: "transparent",
-                }}
-              >
-                Cancel
-              </button>
               <button
                 type="button"
                 onClick={() =>
@@ -1412,13 +1423,14 @@ export function PlanningGrid({
                 }
                 disabled={
                   !destDraft.trim() ||
-                  destDraft.trim() === trip.locked_destination_title ||
+                  destDraft.trim() ===
+                    (trip.locked_destination_location ?? trip.locked_destination_title ?? "") ||
                   changeDestination.isPending
                 }
-                className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                 style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
               >
-                {changeDestination.isPending ? "Saving…" : "Save"}
+                {changeDestination.isPending ? "Saving…" : "Update destination"}
               </button>
             </div>
           </div>
