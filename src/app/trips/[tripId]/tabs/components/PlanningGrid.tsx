@@ -461,12 +461,35 @@ export function PlanningGrid({
       } catch {}
       return next;
     });
+    // Keep mobile tab in sync so resizing preserves the selection.
+    if (tile !== null) setMobileActiveTab(tile);
   };
 
   const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
 
-  // ── Mobile active tab — default to dates; no persistence needed ───────────
-  const [mobileActiveTab, setMobileActiveTab] = useState<TileKey>("dates");
+  // ── Mobile active tab — synced with desktop activePanel ──────────────────
+  const [mobileActiveTab, setMobileActiveTab] = useState<TileKey>(() => {
+    // Initialise from localStorage so first render matches desktop.
+    try {
+      return localStorage.getItem(datesStorageKey) === "true" ? "dates" : "dates";
+    } catch {
+      return "dates";
+    }
+  });
+
+  /** Select a mobile tab and mirror the choice to the desktop panel state. */
+  const handleMobileTabChange = (tab: TileKey) => {
+    setMobileActiveTab(tab);
+    // Open the matching desktop panel so resizing up preserves the selection.
+    setActivePanel(tab);
+    try {
+      if (tab === "dates") {
+        localStorage.setItem(datesStorageKey, "true");
+      } else {
+        localStorage.removeItem(datesStorageKey);
+      }
+    } catch {}
+  };
 
   // Auto-close dates panel when dates are resolved.
   useEffect(() => {
@@ -1126,7 +1149,7 @@ export function PlanningGrid({
                 key={id}
                 type="button"
                 data-testid={`mobile-planning-tab-${id}`}
-                onClick={() => setMobileActiveTab(id)}
+                onClick={() => handleMobileTabChange(id)}
                 className="flex flex-1 flex-col items-center gap-1.5 py-3"
                 style={{ background: "transparent", border: "none" }}
               >
