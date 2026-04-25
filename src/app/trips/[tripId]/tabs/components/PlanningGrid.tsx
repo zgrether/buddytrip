@@ -117,8 +117,6 @@ interface TileProps {
   onSkip: () => void;
   onUnskip: () => void;
   skipping: boolean;
-  /** Warning shown below "Not needed for this trip" when skipped + crew complete. */
-  skippedNudge?: React.ReactNode;
   /**
    * Short action label used in the label row for complete tiles, e.g.
    * "Edit dates", "Manage crew". The " →" arrow is appended automatically.
@@ -143,7 +141,6 @@ function Tile({
   onSkip,
   onUnskip,
   skipping,
-  skippedNudge,
   editLabel,
   preview,
   testId,
@@ -226,7 +223,6 @@ function Tile({
           <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
             Not needed for this trip
           </p>
-          {skippedNudge}
         </div>
       ) : (
         <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1065,16 +1061,6 @@ export function PlanningGrid({
           onSkip={() => handleSkip("lodging")}
           onUnskip={() => handleUnskip("lodging")}
           skipping={pendingTile === "lodging"}
-          skippedNudge={
-            lodgingState === "skipped" && crewState === "complete" ? (
-              <span
-                className="mt-1 block text-[11px]"
-                style={{ color: "var(--color-bt-warning)" }}
-              >
-                Your crew won&apos;t know where you&apos;re staying
-              </span>
-            ) : undefined
-          }
         />
         <Tile
           testId="planning-tile-schedule"
@@ -1093,16 +1079,6 @@ export function PlanningGrid({
           onSkip={() => handleSkip("schedule")}
           onUnskip={() => handleUnskip("schedule")}
           skipping={pendingTile === "schedule"}
-          skippedNudge={
-            scheduleState === "skipped" && crewState === "complete" ? (
-              <span
-                className="mt-1 block text-[11px]"
-                style={{ color: "var(--color-bt-warning)" }}
-              >
-                Your crew won&apos;t know what&apos;s planned
-              </span>
-            ) : undefined
-          }
         />
       </div>
 
