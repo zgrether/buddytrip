@@ -408,7 +408,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
-      <div className="@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5">
+      <div className={isOwner && members.length > 1 ? "@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
         <div className="min-w-0 space-y-4">
           {/* ── PLANNERS section ── */}
           <div>
