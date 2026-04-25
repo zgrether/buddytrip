@@ -1120,7 +1120,7 @@ export function PlanningGrid({
         {/* ── Expanded panel — only one open at a time ──────────────────── */}
         {activePanel !== null && (
           <div
-            className="mt-2 overflow-hidden rounded-xl"
+            className="mt-2 rounded-xl"
             style={{ border: "1px solid var(--color-bt-border)" }}
             data-testid="planning-expanded-panel"
           >
@@ -1186,7 +1186,7 @@ export function PlanningGrid({
         </div>
         {/* Tab content — same panel structure as desktop expanded panel */}
         <div
-          className="mt-3 overflow-hidden rounded-xl"
+          className="mt-3 rounded-xl"
           style={{ border: "1px solid var(--color-bt-border)" }}
           data-testid="planning-mobile-panel"
         >
