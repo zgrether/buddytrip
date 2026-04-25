@@ -39,30 +39,31 @@ export interface PlanningGridProps {
 // ── Tile styling helpers ──────────────────────────────────────────────────
 
 /** CSS class string for the tile wrapper — handles hover states via className
- *  so Tailwind hover variants can override them (style prop can't be hovered). */
+ *  so Tailwind hover variants can override them (style prop can't be hovered).
+ *  `anyPanelOpen` dims inactive tiles when a panel is expanded. */
 function tileWrapperClass(
   state: TileState,
   isActive: boolean,
   clickable: boolean,
+  anyPanelOpen: boolean,
 ): string {
   const shared =
     "group relative flex flex-col rounded-xl border p-3 transition-all duration-150";
   const cursor = clickable ? "cursor-pointer" : "cursor-default";
+  // Inactive tiles dim when any panel is open (skip skipped — already at 60%)
+  const dim = anyPanelOpen && !isActive && state !== "skipped" ? "opacity-70" : "";
 
   if (isActive) {
-    // Dates panel open — accent styling, no hover needed
-    return `${shared} ${cursor} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)]`;
+    // Active: card-raised bg + normal border; flat bottom corners + borderBottom:none set via inline style
+    return `${shared} ${cursor} bg-[var(--color-bt-card-raised)] border-[var(--color-bt-border)]`;
   }
   if (state === "complete") {
-    // Teal tint base; subtle ring on hover to signal interactivity
-    return `${shared} ${cursor} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)] hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]`;
+    return `${shared} ${cursor} ${dim} bg-[var(--color-bt-accent-faint)] border-[var(--color-bt-accent-border)] hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]`;
   }
   if (state === "skipped") {
-    // Dimmed — no hover affordance
     return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] opacity-60`;
   }
-  // empty — raised background + accent border on hover
-  return `${shared} ${cursor} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)] hover:border-[var(--color-bt-accent-border)]`;
+  return `${shared} ${cursor} ${dim} bg-[var(--color-bt-card)] border-[var(--color-bt-border)] hover:bg-[var(--color-bt-card-raised)] hover:border-[var(--color-bt-accent-border)]`;
 }
 
 /** Icon and label colors only (background/border handled via className above). */
@@ -111,6 +112,8 @@ interface TileProps {
   editLabel: string;
   /** Rich preview content — rendered on sm+ breakpoint, hidden on mobile. */
   preview?: React.ReactNode;
+  /** True when any panel (not necessarily this tile's) is open — dims inactive tiles. */
+  anyPanelOpen?: boolean;
   testId?: string;
 }
 
@@ -131,6 +134,7 @@ function Tile({
   skippedNudge,
   editLabel,
   preview,
+  anyPanelOpen,
   testId,
 }: TileProps) {
   const colors = iconLabelColors(state, !!isActive);
@@ -143,8 +147,12 @@ function Tile({
       data-state={state}
       data-active={isActive ? "true" : undefined}
       onClick={clickable ? onClick : undefined}
-      className={tileWrapperClass(state, !!isActive, clickable)}
-      style={{ minHeight: 130 }}
+      className={tileWrapperClass(state, !!isActive, clickable, !!anyPanelOpen)}
+      style={
+        isActive
+          ? { minHeight: 130, borderRadius: "12px 12px 0 0", borderBottom: "none", zIndex: 1 }
+          : { minHeight: 130 }
+      }
     >
       {/* ── Top row: icon + status badge (ml-auto) ───────────────────── */}
       <div className="mb-2 flex items-center">
@@ -777,6 +785,7 @@ export function PlanningGrid({
           label="Dates"
           state={datesState}
           isActive={activePanel === "dates"}
+          anyPanelOpen={!!activePanel}
           emptyDescription="Not set yet"
           emptyCTA="Set dates"
           completeValue={lockedDateLabel ?? undefined}
@@ -794,6 +803,7 @@ export function PlanningGrid({
           label="Crew"
           state={crewState}
           isActive={activePanel === "crew"}
+          anyPanelOpen={!!activePanel}
           emptyDescription="No one added yet"
           emptyCTA="Add crew"
           completeValue={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
@@ -829,6 +839,7 @@ export function PlanningGrid({
           }
           editLabel="Manage lodging"
           preview={lodgingPreview}
+          anyPanelOpen={!!activePanel}
           canEdit={canEdit}
           onClick={() => handleTileClick("lodging")}
           onSkip={() => handleSkip("lodging")}
@@ -856,6 +867,7 @@ export function PlanningGrid({
           completeValue={`${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`}
           editLabel="Manage schedule"
           preview={schedulePreview}
+          anyPanelOpen={!!activePanel}
           canEdit={canEdit}
           onClick={() => handleTileClick("schedule")}
           onSkip={() => handleSkip("schedule")}
@@ -877,10 +889,11 @@ export function PlanningGrid({
       {/* ── Expanded panel — only one open at a time ─────────────────────── */}
       {activePanel !== null && (
         <div
-          className="overflow-hidden rounded-xl"
+          className="mt-2 overflow-hidden rounded-xl"
           style={{
             border: "1px solid var(--color-bt-border)",
-            boxShadow: "var(--shadow-raised)",
+            borderTop: "2px solid var(--color-bt-accent)",
+            background: "var(--color-bt-card-raised)",
           }}
           data-testid="planning-expanded-panel"
         >
