@@ -965,6 +965,17 @@ export function PlanningGrid({
     </div>
   ) : null;
 
+  // ── Panel border color — teal when the active tile is complete ────────
+  const tileStateMap: Record<TileKey, TileState> = {
+    dates: datesState, crew: crewState, lodging: lodgingState, schedule: scheduleState,
+  };
+  const activePanelBorder = activePanel && tileStateMap[activePanel] === "complete"
+    ? "1px solid var(--color-bt-accent-border)"
+    : "1px solid var(--color-bt-border)";
+  const mobilePanelBorder = tileStateMap[mobileActiveTab] === "complete"
+    ? "1px solid var(--color-bt-accent-border)"
+    : "1px solid var(--color-bt-border)";
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -1079,7 +1090,7 @@ export function PlanningGrid({
         {activePanel !== null && (
           <div
             className="mt-2 rounded-xl"
-            style={{ border: "1px solid var(--color-bt-border)" }}
+            style={{ border: activePanelBorder }}
             data-testid="planning-expanded-panel"
           >
             {activePanel === "crew" && (
@@ -1145,7 +1156,7 @@ export function PlanningGrid({
         {/* Tab content — same panel structure as desktop expanded panel */}
         <div
           className="mt-3 rounded-xl"
-          style={{ border: "1px solid var(--color-bt-border)" }}
+          style={{ border: mobilePanelBorder }}
           data-testid="planning-mobile-panel"
         >
           {mobileActiveTab === "dates" && (
