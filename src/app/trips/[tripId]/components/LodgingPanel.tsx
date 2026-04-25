@@ -223,6 +223,8 @@ interface LodgingPanelProps {
    * PlanningRow behaviour for going/now/past.
    */
   inline?: boolean;
+  /** Suppress the inline section header — used when an outer panel already provides the title. */
+  hideHeader?: boolean;
 }
 
 export function LodgingPanel({
@@ -231,6 +233,7 @@ export function LodgingPanel({
   isOpen,
   onToggle,
   inline = false,
+  hideHeader = false,
 }: LodgingPanelProps) {
   const utils = trpc.useUtils();
 
@@ -352,12 +355,14 @@ export function LodgingPanel({
     return (
       <>
         <section>
-          <h2
-            className="mb-2 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Lodging
-          </h2>
+          {!hideHeader && (
+            <h2
+              className="mb-2 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Lodging
+            </h2>
+          )}
 
           <p
             className="mb-3 text-[13px] leading-relaxed"

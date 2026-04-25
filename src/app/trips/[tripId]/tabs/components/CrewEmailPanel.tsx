@@ -176,6 +176,11 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
         )}
       </div>
 
+      {/* Blurb */}
+      <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        Send your first invite, then keep everyone in the loop as the trip gets closer.
+      </p>
+
       {/* Editable message */}
       <div
         className="mb-3 rounded-xl px-3 py-2.5"
@@ -197,11 +202,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
       </div>
 
       {/* Recipient list */}
-      {withEmail.length === 0 ? (
-        <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          No one on your crew has an email yet — add one below.
-        </p>
-      ) : (
+      {withEmail.length > 0 && (
         <>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -306,7 +307,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
 
       {/* No-email divider + static chips. Adding emails happens in the
           crew list dropdown, so chips here are display-only. */}
-      {withEmail.length > 0 && withoutEmail.length > 0 && (
+      {withoutEmail.length > 0 && (
         <div className="mb-3 flex items-center gap-2">
           <div className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
           <span

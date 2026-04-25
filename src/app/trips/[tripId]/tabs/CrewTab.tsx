@@ -385,7 +385,7 @@ function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => voi
 
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
-export function CrewTab({ trip }: TabProps) {
+export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const tripId = trip.id;
@@ -407,9 +407,16 @@ export function CrewTab({ trip }: TabProps) {
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
 
   return (
-    <div className="@container px-4">
-      <div className="@[640px]:relative @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5">
+    <div className={embedded ? "@container" : "@container px-4"}>
+      <div className={isOwner && members.length > 1 ? "@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
         <div className="min-w-0 space-y-4">
+          {/* ── Cohesive blurb — sits between the outer CREW panel title and PLANNERS ── */}
+          {isOwner && (
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away. Guests without an account can be reached via the email panel.
+            </p>
+          )}
+
           {/* ── PLANNERS section ── */}
           <div>
             <h2
@@ -418,11 +425,6 @@ export function CrewTab({ trip }: TabProps) {
             >
               Planners
             </h2>
-            {isOwner && (
-              <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-                Co-planners can help manage the trip alongside you. Promote any crew member with a BuddyTrip account.
-              </p>
-            )}
             <div
               className="overflow-hidden rounded-xl"
               style={{
@@ -450,32 +452,29 @@ export function CrewTab({ trip }: TabProps) {
           </div>
 
           {/* ── REST OF THE CREW section ── */}
-          <div className="pt-4">
-            <h2
-              className="mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Rest of the crew
-            </h2>
-            {isOwner && (
-              <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-                BuddyTrip members get access as soon as you add them. Guests without an account need an email invite — use the panel on the right.
-              </p>
-            )}
-            {crewSorted.some((m) => m.isGuest) && (
-              <div
-                className="mb-2 flex items-center gap-2 text-[12px]"
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2
+                className="text-xs font-semibold uppercase tracking-wider"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                <span
-                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-                  style={{ background: "var(--color-bt-border)" }}
+                Rest of the crew
+              </h2>
+              {crewSorted.some((m) => m.isGuest) && (
+                <div
+                  className="flex items-center gap-1.5 text-[11px]"
+                  style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  <Ghost size={11} />
-                </span>
-                <span>= hasn&apos;t joined BuddyTrip yet</span>
-              </div>
-            )}
+                  <span
+                    className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
+                    style={{ background: "var(--color-bt-border)" }}
+                  >
+                    <Ghost size={10} />
+                  </span>
+                  <span>= not a BuddyTrip member</span>
+                </div>
+              )}
+            </div>
             <div
               className="overflow-hidden rounded-xl"
               style={{
@@ -514,22 +513,10 @@ export function CrewTab({ trip }: TabProps) {
           </div>
         </div>
 
-        {/* Email panel — owner-only.
-            At ≥640px container width it's absolutely positioned in the right
-            column so its content height doesn't stretch the grid row — the left
-            column dictates panel height. Below 640px the grid collapses and it
-            stacks under the crew list. */}
-        {isOwner && (
-          <div className="mt-6 @[640px]:mt-0 @[640px]:absolute @[640px]:inset-y-0 @[640px]:right-0 @[640px]:w-[360px]">
-            <h2
-              className="mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Notify crew
-            </h2>
-            <p className="mb-2 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Send your first invite, then keep everyone in the loop as the trip gets closer.
-            </p>
+        {/* Email panel — owner-only. Stacks below crew list on small containers,
+            sits in the right grid column at ≥640px. */}
+        {isOwner && members.length > 1 && (
+          <div className="mt-6 @[640px]:mt-0">
             <CrewEmailPanel trip={trip} isOwner={isOwner} />
           </div>
         )}

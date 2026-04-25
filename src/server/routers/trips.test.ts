@@ -545,3 +545,81 @@ describe("trips router — setOwnerAlert", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
+
+// ── skipPlanningTile / unskipPlanningTile ────────────────────────────────
+
+describe("trips router — planning tile skip", () => {
+  let ctx: TestContext;
+  let skipTripId: string;
+
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+    skipTripId = await ctx.createTrip("Skip Tile Test");
+    await ctx.addTripMember(skipTripId, "planner", "Planner");
+    await ctx.addTripMember(skipTripId, "member", "Member");
+  });
+
+  afterAll(async () => {
+    await ctx.cleanup();
+  });
+
+  it("skipPlanningTile — planner can skip a tile", async () => {
+    const caller = ctx.callerAs("planner");
+    const res = await caller.trips.skipPlanningTile({
+      tripId: skipTripId,
+      tile: "lodging",
+    });
+    expect(res.planning_skipped).toEqual(["lodging"]);
+  });
+
+  it("skipPlanningTile — idempotent (same tile twice does not duplicate)", async () => {
+    const caller = ctx.callerAs("planner");
+    const res = await caller.trips.skipPlanningTile({
+      tripId: skipTripId,
+      tile: "lodging",
+    });
+    expect(res.planning_skipped).toEqual(["lodging"]);
+  });
+
+  it("skipPlanningTile — stacks multiple tiles", async () => {
+    const caller = ctx.callerAs("planner");
+    const res = await caller.trips.skipPlanningTile({
+      tripId: skipTripId,
+      tile: "schedule",
+    });
+    expect(res.planning_skipped).toEqual(expect.arrayContaining(["lodging", "schedule"]));
+    expect(res.planning_skipped).toHaveLength(2);
+  });
+
+  it("skipPlanningTile — member is FORBIDDEN", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.trips.skipPlanningTile({ tripId: skipTripId, tile: "crew" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("unskipPlanningTile — planner can unskip", async () => {
+    const caller = ctx.callerAs("planner");
+    const res = await caller.trips.unskipPlanningTile({
+      tripId: skipTripId,
+      tile: "lodging",
+    });
+    expect(res.planning_skipped).toEqual(["schedule"]);
+  });
+
+  it("unskipPlanningTile — idempotent on missing tile", async () => {
+    const caller = ctx.callerAs("planner");
+    const res = await caller.trips.unskipPlanningTile({
+      tripId: skipTripId,
+      tile: "dates",
+    });
+    expect(res.planning_skipped).toEqual(["schedule"]);
+  });
+
+  it("unskipPlanningTile — member is FORBIDDEN", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.trips.unskipPlanningTile({ tripId: skipTripId, tile: "schedule" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});

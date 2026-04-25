@@ -1007,4 +1007,102 @@ export const tripsRouter = router({
 
       return data;
     }),
+
+  // -----------------------------------------------------------------------
+  // skipPlanningTile — mark a planning tile as explicitly skipped.
+  //
+  // The planning Home tab renders a 2×2 tile grid (dates/crew/lodging/
+  // schedule). Each can be "empty", "complete" (data present), or
+  // "skipped". Skipped tiles count as resolved for the View Itinerary
+  // gate, letting the owner advance even when an area doesn't apply.
+  //
+  // Storage: trips.planning_skipped is a JSONB array of tile keys.
+  // We do a read-modify-write rather than an array concat so callers can
+  // invoke this idempotently without creating duplicates.
+  // -----------------------------------------------------------------------
+  skipPlanningTile: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        tile: z.enum(["dates", "crew", "lodging", "schedule"]),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: trip, error: fetchErr } = await ctx.supabase
+        .from("trips")
+        .select("planning_skipped")
+        .eq("id", ctx.tripId)
+        .single();
+
+      if (fetchErr || !trip) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      }
+
+      const current: string[] = Array.isArray(trip.planning_skipped)
+        ? (trip.planning_skipped as string[])
+        : [];
+      const next = current.includes(input.tile) ? current : [...current, input.tile];
+
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({ planning_skipped: next })
+        .eq("id", ctx.tripId)
+        .select("id, planning_skipped")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to skip planning tile",
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // unskipPlanningTile — remove a tile from the skipped list.
+  // Mirror of skipPlanningTile; idempotent on missing entries.
+  // -----------------------------------------------------------------------
+  unskipPlanningTile: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        tile: z.enum(["dates", "crew", "lodging", "schedule"]),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: trip, error: fetchErr } = await ctx.supabase
+        .from("trips")
+        .select("planning_skipped")
+        .eq("id", ctx.tripId)
+        .single();
+
+      if (fetchErr || !trip) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      }
+
+      const current: string[] = Array.isArray(trip.planning_skipped)
+        ? (trip.planning_skipped as string[])
+        : [];
+      const next = current.filter((t) => t !== input.tile);
+
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({ planning_skipped: next })
+        .eq("id", ctx.tripId)
+        .select("id, planning_skipped")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to unskip planning tile",
+        });
+      }
+
+      return data;
+    }),
 });

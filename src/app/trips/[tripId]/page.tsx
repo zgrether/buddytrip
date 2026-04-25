@@ -330,13 +330,15 @@ export default function TripDetailPage() {
                   <QuickInfoSection tripId={tripId} isOwner={isOwner} />
                 </div>
               )}
-              <TripTabBar
-                activeTab={activeTab}
-                onTabChange={(tab) => setActiveTab(tab)}
-                showComp={showComp}
-                canEdit={canEdit}
-                stage={stage}
-              />
+              {stage !== "planning" && (
+                <TripTabBar
+                  activeTab={activeTab}
+                  onTabChange={(tab) => setActiveTab(tab)}
+                  showComp={showComp}
+                  canEdit={canEdit}
+                  stage={stage}
+                />
+              )}
               <div className="pt-4 pb-24">
                 {tripIsReadOnly && activeTab === "home" && (
                   <div
@@ -360,6 +362,7 @@ export default function TripDetailPage() {
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                     onOpenChat={() => setChatOpen(true)}
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
+                    onAdvanceToGoing={isOwner ? () => setShowInvitationModal(true) : undefined}
                     actionCenterTitleAction={summaryButton}
                   />
                 )}
