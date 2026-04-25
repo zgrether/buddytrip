@@ -633,7 +633,7 @@ export function PlanningGrid({
 
   // Crew: avatar chips + planner count + missing email tally.
   const crewPreview = useMemo(() => {
-    if (crewCount === 0) return null;
+    if (!hasCrew) return null;
     const visible = typedMembers.slice(0, 6);
     const extra = crewCount - visible.length;
     return (
