@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Hotel,
   Users,
-  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -174,19 +173,6 @@ function Tile({
             aria-label="Complete"
           >
             <Check size={11} strokeWidth={3} />
-          </span>
-        )}
-        {state === "skipped" && (
-          <span
-            className="ml-auto flex h-5 w-5 items-center justify-center rounded-full"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-              color: "var(--color-bt-text-dim)",
-            }}
-            aria-label="Skipped"
-          >
-            <X size={11} strokeWidth={2.5} />
           </span>
         )}
       </div>
