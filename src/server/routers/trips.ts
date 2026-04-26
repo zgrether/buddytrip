@@ -835,37 +835,6 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // updateActionCenterSettings — Owner/Planner toggles Travel collection on
-  // the going-stage Action Center. Opt-in: false means the travel section
-  // doesn't render at all.
-  // -----------------------------------------------------------------------
-  updateActionCenterSettings: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        travelEnabled: z.boolean(),
-      })
-    )
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({ travel_enabled: input.travelEnabled })
-        .eq("id", ctx.tripId)
-        .select("id, travel_enabled")
-        .single();
-
-      if (error || !data) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update Action Center settings",
-        });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
   // updateAboutMessage — Owner/Planner can update about_message on a GOING+ trip
   // -----------------------------------------------------------------------
   updateAboutMessage: authedProcedure

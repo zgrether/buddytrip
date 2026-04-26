@@ -325,7 +325,10 @@ export default function TripDetailPage() {
             />
 
             <div className="mt-4">
-              {(stage === "going" || stage === "now" || stage === "past" || stage === "saved") && (
+              {/* TODO: stage derivation from trip dates — currently only 'idea'/'planning'/'going' exist
+                   in the DB. 'now' and 'past' are computed status values (getTripStatus), not raw
+                   stage values; the old checks for stage === "now"/"past"/"saved" were unreachable. */}
+              {stage === "going" && (
                 <div className="mb-4">
                   <QuickInfoSection tripId={tripId} isOwner={isOwner} />
                 </div>
