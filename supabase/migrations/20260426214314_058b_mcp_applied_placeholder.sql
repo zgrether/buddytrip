@@ -1,0 +1,10 @@
+-- Migration history reconciliation placeholder.
+--
+-- When migration 058 (drop_stage_transition_trigger) was applied via the
+-- Supabase MCP tool during development, it was recorded in the remote
+-- schema_migrations table with the wall-clock timestamp 20260426214314
+-- rather than the filename timestamp 20260426220000.
+--
+-- This file exists solely to align local migration history with the remote
+-- record so that `supabase db push` does not report a version mismatch.
+-- No schema changes are made here — the actual DDL is in 058.
