@@ -1,15 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight, ChevronRight, Trophy } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
+import { ArrowRight, Trophy } from "lucide-react";
 import { CompetitionIntroModal } from "../modals/CompetitionIntroModal";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
 interface CompetitionPanelProps {
-  tripId: string;
   isOwner: boolean;
   /** True once the trip has an event_id (i.e. competition has been set up). */
   isActivated: boolean;
@@ -20,101 +17,29 @@ interface CompetitionPanelProps {
 // ── Component ────────────────────────────────────────────────────────────
 
 /**
- * CompetitionPanel — home tab panel for competition / leaderboard.
+ * CompetitionPanel — home tab panel for the competition setup CTA.
  *
  * State machine:
- *   1. Member, not activated  → render nothing
- *   2. Owner, not activated   → invitation card → opens CompetitionIntroModal
- *   3. Activated              → live leaderboard summary in CardShell
+ *   1. Activated              → render nothing (live leaderboard is now
+ *                                rendered by the persistent CompetitionStrip
+ *                                between TripHeader and TripTabBar)
+ *   2. Member, not activated  → render nothing
+ *   3. Owner, not activated   → invitation card → opens CompetitionIntroModal
  */
 export function CompetitionPanel({
-  tripId,
   isOwner,
   isActivated,
   onSetupComp,
 }: CompetitionPanelProps) {
-  const router = useRouter();
   const [introOpen, setIntroOpen] = useState(false);
 
-  const { data: event } = trpc.events.getByTrip.useQuery(
-    { tripId },
-    { enabled: isActivated }
-  );
+  // ── State 1: activated — strip handles it ─────────────────────────────
+  if (isActivated) return null;
 
-  const knownEventId = event?.id ?? "";
-  const { data: teams = [] } = trpc.teams.list.useQuery(
-    { tripId, eventId: knownEventId },
-    { enabled: !!knownEventId }
-  );
-  const { data: scoreRows = [] } = trpc.groupResults.listScoresByEvent.useQuery(
-    { tripId, eventId: knownEventId },
-    { enabled: !!knownEventId }
-  );
+  // ── State 2: member, not activated ───────────────────────────────────
+  if (!isOwner) return null;
 
-  // ── State 3: live ────────────────────────────────────────────────────
-  if (isActivated && event) {
-    const teamTotals = teams
-      .map((t) => ({
-        ...t,
-        total: scoreRows
-          .filter((r) => r.team_id === t.id)
-          .reduce((sum, r) => sum + (r.total_points ?? 0), 0),
-      }))
-      .sort((a, b) => b.total - a.total);
-
-    return (
-      <CardShell
-        title={event.title ?? "Competition"}
-        subtitle="Leaderboard"
-        onClick={() => router.push(`/trips/${tripId}/leaderboard`)}
-      >
-        {teamTotals.length > 0 ? (
-          <div className="flex gap-2">
-            {teamTotals.map((team) => (
-              <div
-                key={team.id}
-                className="flex-1 rounded-lg p-2 text-center"
-                style={{
-                  background: "var(--color-bt-base)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                <p
-                  className="mb-0.5 truncate text-[10px] font-semibold"
-                  style={{ color: team.color }}
-                >
-                  {team.short_name}
-                </p>
-                <p
-                  className="text-lg font-bold"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {team.total}
-                </p>
-                <p
-                  className="text-[10px]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  pts
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            No scores yet
-          </p>
-        )}
-      </CardShell>
-    );
-  }
-
-  // ── State 1: member, not activated ───────────────────────────────────
-  if (!isOwner) {
-    return null;
-  }
-
-  // ── State 2: owner, not activated, invitation ────────────────────────
+  // ── State 3: owner, not activated, invitation ────────────────────────
   return (
     <>
       <InvitationCard
@@ -200,72 +125,3 @@ function InvitationCard({
   );
 }
 
-// ── CardShell ────────────────────────────────────────────────────────────
-
-function CardShell({
-  title,
-  subtitle,
-  children,
-  onClick,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  onClick?: () => void;
-}) {
-  const Inner = (
-    <>
-      <div
-        className="flex items-center gap-2 px-4 py-3"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <Trophy size={14} style={{ color: "var(--color-bt-accent)" }} />
-        <p
-          className="text-[13px] font-bold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {title}
-        </p>
-        {subtitle && (
-          <p
-            className="ml-auto flex items-center gap-0.5 text-[11px] font-semibold"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            {subtitle}
-            {onClick && <ChevronRight size={12} />}
-          </p>
-        )}
-      </div>
-      <div className="px-4 py-4">{children}</div>
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        data-testid="competition-panel"
-        className="w-full overflow-hidden rounded-xl text-left"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {Inner}
-      </button>
-    );
-  }
-
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      {Inner}
-    </div>
-  );
-}

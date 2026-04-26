@@ -111,7 +111,6 @@ export function HomeTab({
             isOwner={!!isOwner}
           />
           <CompetitionPanel
-            tripId={trip.id}
             isOwner={!!isOwner}
             isActivated={!!trip.event_id}
             onSetupComp={onEnableComp}
@@ -133,7 +132,6 @@ export function HomeTab({
             onTabChange={onTabChange}
           />
           <CompetitionPanel
-            tripId={trip.id}
             isOwner={!!isOwner}
             isActivated={!!trip.event_id}
             onSetupComp={onEnableComp}

@@ -23,6 +23,7 @@ import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
+import { CompetitionStrip } from "./components/CompetitionStrip";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -320,6 +321,16 @@ export default function TripDetailPage() {
               {/* Quick Info has moved into the home tab panel system —
                    no longer rendered above the tab bar. The QuickInfoSection
                    data hooks are still used by QuickInfoPanel inside HomeTab. */}
+
+              {/* Competition strip — persistent across all tabs once a comp
+                   is set up. Replaces the home-tab CompetitionPanel's live
+                   state so the leaderboard is reachable from any tab. */}
+              {trip.event_id && stage !== "idea" && stage !== "planning" && (
+                <div className="mb-3">
+                  <CompetitionStrip tripId={tripId} eventId={trip.event_id} />
+                </div>
+              )}
+
               {stage !== "planning" && (
                 <TripTabBar
                   activeTab={activeTab}
