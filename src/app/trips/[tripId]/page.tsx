@@ -21,7 +21,6 @@ import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
-import { QuickInfoSection } from "./components/QuickInfoSection";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
 
@@ -318,14 +317,9 @@ export default function TripDetailPage() {
             />
 
             <div className="mt-4">
-              {/* TODO: stage derivation from trip dates — currently only 'idea'/'planning'/'going' exist
-                   in the DB. 'now' and 'past' are computed status values (getTripStatus), not raw
-                   stage values; the old checks for stage === "now"/"past"/"saved" were unreachable. */}
-              {stage === "going" && (
-                <div className="mb-4">
-                  <QuickInfoSection tripId={tripId} isOwner={isOwner} />
-                </div>
-              )}
+              {/* Quick Info has moved into the home tab panel system —
+                   no longer rendered above the tab bar. The QuickInfoSection
+                   data hooks are still used by QuickInfoPanel inside HomeTab. */}
               {stage !== "planning" && (
                 <TripTabBar
                   activeTab={activeTab}
