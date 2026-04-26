@@ -55,9 +55,9 @@ export function UnlockAdvancedModal({
 }: UnlockAdvancedModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
 
-  // Reset to step 1 every time the modal opens so a re-open never starts mid-flow.
+  // Reset to step 1 when the modal closes so a re-open always starts at step 1.
   useEffect(() => {
-    if (isOpen) setStep(1);
+    if (!isOpen) setStep(1);
   }, [isOpen]);
 
   useModalBackButton(isOpen ? onClose : () => {});

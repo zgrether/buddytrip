@@ -609,7 +609,7 @@ export function ScheduleTab({
             </span>
             <div>
               <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                {undatedCount} item{undatedCount !== 1 ? "s" : ""} haven't been assigned to a day
+                {undatedCount} item{undatedCount !== 1 ? "s" : ""} haven&apos;t been assigned to a day
               </p>
               <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
                 Drag or move items from the Unscheduled group onto a day
