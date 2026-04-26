@@ -75,7 +75,7 @@ function AlertToggle({ value, onChange }: { value: boolean; onChange: (next: boo
 
 // ── AddTileModal ─────────────────────────────────────────────────────────
 
-function AddTileModal({
+export function AddTileModal({
   tripId,
   onClose,
 }: {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowRight, Info } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { QuickInfoSection } from "../../../components/QuickInfoSection";
+import { AddTileModal, QuickInfoSection } from "../../../components/QuickInfoSection";
 import { QuickInfoIntroModal } from "../modals/QuickInfoIntroModal";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ interface QuickInfoPanelProps {
  */
 export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
   const [introOpen, setIntroOpen] = useState(false);
+  const [addTileOpen, setAddTileOpen] = useState(false);
   const { data: tiles = [] } = trpc.quickInfoTiles.list.useQuery({ tripId });
   const hasItems = tiles.length > 0;
 
@@ -62,19 +63,16 @@ export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
         isOpen={introOpen}
         onClose={() => setIntroOpen(false)}
         onActivate={() => {
-          // Quick Info has no enable flag — the modal CTA closes itself
-          // and surfaces the existing QuickInfoSection empty-state add
-          // affordance on the next render. We simply close the modal;
-          // the user then taps the dashed "Add Quick Info" button rendered
-          // by QuickInfoSection (which we now show by switching panels).
+          // Drop straight into the add-first-tile flow — close the intro
+          // and open AddTileModal back to back.
           setIntroOpen(false);
-          // Open the existing add-tile modal directly by clicking the
-          // empty-state button programmatically. Simplest path: dispatch
-          // a custom event that QuickInfoSection's empty button observes.
-          // For now, the next-render empty state lives inline anyway.
+          setAddTileOpen(true);
         }}
         isActivating={false}
       />
+      {addTileOpen && (
+        <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
+      )}
     </>
   );
 }
