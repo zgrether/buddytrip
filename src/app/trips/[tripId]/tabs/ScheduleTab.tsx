@@ -17,6 +17,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import { DatesModal } from "./components/DatesModal";
 import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
@@ -311,11 +312,17 @@ function ScheduleItemRow({
 
 type AddMode = "general" | "golf" | null;
 
-export function ScheduleTab({ trip, canEdit, embedded }: TabProps & { embedded?: boolean }) {
+export function ScheduleTab({
+  trip,
+  canEdit,
+  embedded,
+  onNavigateToDates,
+}: TabProps & { embedded?: boolean; onNavigateToDates?: () => void }) {
   const tripId = trip.id;
   const stage = trip.stage ?? "idea";
   const utils = trpc.useUtils();
   const [addMode, setAddMode] = useState<AddMode>(null);
+  const [datesModalOpen, setDatesModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
@@ -543,6 +550,77 @@ export function ScheduleTab({ trip, canEdit, embedded }: TabProps & { embedded?:
             ? "Start adding items to your schedule — you can edit and reorganize at any time. All confirmed items will appear on the official schedule for the crew once the trip has been officially kicked off."
             : "Keep your schedule up to date — any confirmed items will be shown on the crew's official schedule."}
         </p>
+
+        {/* Dates dependency notice — appears when no dates are set */}
+        {!trip.start_date && (
+          <div
+            className="mb-4 flex items-center justify-between rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-warning-faint)",
+              border: "1px solid var(--color-bt-warning-border)",
+            }}
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                style={{ color: "var(--color-bt-warning)", flexShrink: 0 }}
+              >
+                <circle cx="8" cy="8" r="6.5" />
+                <path d="M8 5v3.5M8 10.5v.5" />
+              </svg>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "var(--color-bt-warning)" }}>
+                  Items are unscheduled
+                </p>
+                <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Set trip dates to assign items to specific days
+                </p>
+              </div>
+            </div>
+
+            {trip.planning_tier === "basic" ? (
+              <button
+                onClick={onNavigateToDates}
+                className="ml-4 flex-shrink-0 text-xs font-semibold"
+                style={{
+                  color: "var(--color-bt-accent)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Set dates &rarr;
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setDatesModalOpen(true)}
+                  className="ml-4 flex-shrink-0 text-xs font-semibold"
+                  style={{
+                    color: "var(--color-bt-accent)",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Set dates &rarr;
+                </button>
+                <DatesModal
+                  isOpen={datesModalOpen}
+                  onClose={() => setDatesModalOpen(false)}
+                  tripId={tripId}
+                  initialStartDate={null}
+                  initialEndDate={null}
+                />
+              </>
+            )}
+          </div>
+        )}
 
         {/* Type selector — add buttons */}
         {canEdit && (

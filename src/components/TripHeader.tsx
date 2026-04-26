@@ -1,6 +1,6 @@
 "use client";
 
-import type { FC } from "react";
+import { useState, type FC } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Calendar, Settings } from "lucide-react";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -8,8 +8,10 @@ import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
 import type { TripRole } from "@/server/middleware";
 import { getTripCountdown, type CountdownResult } from "@/lib/tripCountdown";
+import { DatesModal } from "@/app/trips/[tripId]/tabs/components/DatesModal";
 
 interface TripHeaderProps {
+  tripId?: string;
   tripName: string;
   status: TripDisplayStatus;
   location?: string | null;
@@ -32,6 +34,8 @@ interface TripHeaderProps {
   myRole?: TripRole | null;
   /** Owner-only — when provided, renders the gear button top-right (not in idea stage). */
   onSettingsClick?: () => void;
+  /** Planning tier — "advanced" shows "Set dates →" link when dates are missing. */
+  planningTier?: string | null;
 }
 
 // ── Settings gear button (absolute top-right) ────────────────────────────
@@ -131,6 +135,7 @@ const IdeaHeader: FC<{ tripName: string; myRole?: TripRole | null }> = ({
 // ── Plain card (no locked destination, non-idea stage) ───────────────────
 
 const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCountdown | null }> = ({
+  tripId,
   tripName,
   status,
   location,
@@ -138,64 +143,99 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
   myRole,
   onSettingsClick,
   countdown,
-}) => (
-  <div
-    className="relative overflow-hidden rounded-2xl border"
-    style={{
-      background: "var(--color-bt-card)",
-      borderColor: status !== "past"
-        ? "var(--color-bt-accent-border)"
-        : "var(--color-bt-border)",
-      boxShadow: status !== "past"
-        ? "var(--shadow-raised)"
-        : "var(--shadow-card)",
-    }}
-    data-testid="trip-header-plain"
-  >
-    {onSettingsClick && (
-      <div className="absolute right-3 top-3 z-20">
-        <SettingsGear onClick={onSettingsClick} />
-      </div>
-    )}
-    <div className="p-5 pr-12">
-      <div className="flex min-w-0 items-center gap-2">
-        {myRole && <RoleBadge role={myRole} />}
-        <h1
-          data-testid="trip-title"
-          className="truncate text-xl font-bold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {tripName}
-        </h1>
-      </div>
+  tripStartDate,
+  planningTier,
+}) => {
+  const [datesModalOpen, setDatesModalOpen] = useState(false);
+  const showSetDatesLink = !tripStartDate && planningTier === "advanced" && !!tripId;
 
-      {location && (
-        <div
-          className="mt-2 flex items-center gap-1 text-sm"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          <MapPin size={13} />
-          <span>{location}</span>
+  return (
+    <div
+      className="relative overflow-hidden rounded-2xl border"
+      style={{
+        background: "var(--color-bt-card)",
+        borderColor: status !== "past"
+          ? "var(--color-bt-accent-border)"
+          : "var(--color-bt-border)",
+        boxShadow: status !== "past"
+          ? "var(--shadow-raised)"
+          : "var(--shadow-card)",
+      }}
+      data-testid="trip-header-plain"
+    >
+      {onSettingsClick && (
+        <div className="absolute right-3 top-3 z-20">
+          <SettingsGear onClick={onSettingsClick} />
         </div>
       )}
-
-      {dateRange && dateRange !== "Dates TBD" && (
-        <div
-          className="mt-1 flex items-center gap-1 text-xs"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          <Calendar size={11} />
-          <span>{dateRange}</span>
+      <div className="p-5 pr-12">
+        <div className="flex min-w-0 items-center gap-2">
+          {myRole && <RoleBadge role={myRole} />}
+          <h1
+            data-testid="trip-title"
+            className="truncate text-xl font-bold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {tripName}
+          </h1>
         </div>
-      )}
+
+        {location && (
+          <div
+            className="mt-2 flex items-center gap-1 text-sm"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <MapPin size={13} />
+            <span>{location}</span>
+          </div>
+        )}
+
+        {dateRange && dateRange !== "Dates TBD" && (
+          <div
+            className="mt-1 flex items-center gap-1 text-xs"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <Calendar size={11} />
+            <span>{dateRange}</span>
+          </div>
+        )}
+
+        {/* Advanced mode: "Set dates →" link when dates are missing */}
+        {showSetDatesLink && (
+          <>
+            <button
+              onClick={() => setDatesModalOpen(true)}
+              className="mt-1 flex items-center gap-1.5 text-xs"
+              style={{
+                color: "var(--color-bt-accent)",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <Calendar size={12} />
+              Set dates &rarr;
+            </button>
+            <DatesModal
+              isOpen={datesModalOpen}
+              onClose={() => setDatesModalOpen(false)}
+              tripId={tripId!}
+              initialStartDate={null}
+              initialEndDate={null}
+            />
+          </>
+        )}
+      </div>
+      {countdown && <CountdownBar countdown={countdown} />}
     </div>
-    {countdown && <CountdownBar countdown={countdown} />}
-  </div>
-);
+  );
+};
 
 // ── Hero card (locked destination) ───────────────────────────────────────
 
 const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCountdown | null }> = ({
+  tripId,
   tripName,
   status,
   location,
@@ -208,13 +248,17 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
   myRole,
   onSettingsClick,
   countdown,
+  planningTier,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+  const [datesModalOpen, setDatesModalOpen] = useState(false);
 
   const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
   const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
   const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
+
+  const showSetDatesLink = !tripStartDate && planningTier === "advanced" && !!tripId;
 
   // Prefer location (locked_destination_location from parent) over lockedTitle
   // (locked_destination_title). Both now hold the same value after the
@@ -255,6 +299,33 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
               <Calendar size={11} className="shrink-0" />
               <span>{dateRange}</span>
             </div>
+          )}
+
+          {/* Advanced mode: "Set dates →" link when dates are missing */}
+          {showSetDatesLink && (
+            <>
+              <button
+                onClick={() => setDatesModalOpen(true)}
+                className="mt-1 flex items-center gap-1.5 text-xs"
+                style={{
+                  color: "var(--color-bt-accent)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                <Calendar size={12} />
+                Set dates &rarr;
+              </button>
+              <DatesModal
+                isOpen={datesModalOpen}
+                onClose={() => setDatesModalOpen(false)}
+                tripId={tripId!}
+                initialStartDate={null}
+                initialEndDate={null}
+              />
+            </>
           )}
         </>
       }

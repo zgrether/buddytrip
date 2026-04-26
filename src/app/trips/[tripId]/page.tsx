@@ -225,6 +225,7 @@ export default function TripDetailPage() {
         <>
           <div className="mx-auto max-w-[1280px] px-4 pt-4">
             <TripHeader
+              tripId={trip.id}
               tripName={trip.title}
               status={status}
               location={destLocation}
@@ -236,6 +237,7 @@ export default function TripDetailPage() {
               myRole={role}
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
+              planningTier={trip.planning_tier}
               onSettingsClick={onSettingsClick}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
@@ -272,6 +274,7 @@ export default function TripDetailPage() {
         >
           <div className={chatOpen ? "lg:mr-[380px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
             <TripHeader
+              tripId={trip.id}
               tripName={trip.title}
               status={status}
               location={destLocation}
@@ -283,6 +286,7 @@ export default function TripDetailPage() {
               myRole={role}
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
+              planningTier={trip.planning_tier}
               onSettingsClick={onSettingsClick}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
@@ -340,7 +344,13 @@ export default function TripDetailPage() {
                   />
                 )}
                 {activeTab === "schedule" && (
-                  <ScheduleTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                  <ScheduleTab
+                    trip={trip}
+                    role={role}
+                    canEdit={effectiveCanEdit}
+                    isOwner={tripIsReadOnly ? false : isOwner}
+                    onNavigateToDates={() => setActiveTab("home")}
+                  />
                 )}
                 {activeTab === "crew" && (
                   <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
