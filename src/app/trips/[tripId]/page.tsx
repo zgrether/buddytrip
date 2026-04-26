@@ -278,6 +278,7 @@ export default function TripDetailPage() {
                 displayStatus={status}
                 onTabChange={(tab) => setActiveTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                compActivated={showComp}
                 onOpenChat={() => setChatOpen(true)}
               />
             )}
@@ -362,6 +363,7 @@ export default function TripDetailPage() {
                     displayStatus={status}
                     onTabChange={(tab) => setActiveTab(tab as TabId)}
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                compActivated={showComp}
                     onOpenChat={() => setChatOpen(true)}
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
                     onAdvanceToGoing={isOwner ? () => setShowInvitationModal(true) : undefined}

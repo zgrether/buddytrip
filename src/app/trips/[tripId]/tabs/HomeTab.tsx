@@ -20,11 +20,12 @@ export function HomeTab({
   isOwner,
   onTabChange,
   onEnableComp,
+  compActivated,
   onOpenChat,
   onWriteInvitation,
   onAdvanceToGoing,
   actionCenterTitleAction,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
   trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId: trip.id });
@@ -112,7 +113,7 @@ export function HomeTab({
           />
           <CompetitionPanel
             isOwner={!!isOwner}
-            isActivated={!!trip.event_id}
+            isActivated={!!trip.event_id || !!compActivated}
             onSetupComp={onEnableComp}
           />
         </>
@@ -133,7 +134,7 @@ export function HomeTab({
           />
           <CompetitionPanel
             isOwner={!!isOwner}
-            isActivated={!!trip.event_id}
+            isActivated={!!trip.event_id || !!compActivated}
             onSetupComp={onEnableComp}
           />
         </>
