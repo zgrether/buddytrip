@@ -737,10 +737,10 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // Fetch current trip state
+      // Fetch current trip state (dates + skipped array so we can validate in one round-trip)
       const { data: trip, error: fetchErr } = await ctx.supabase
         .from("trips")
-        .select("stage")
+        .select("stage, start_date, end_date, planning_skipped")
         .eq("id", ctx.tripId)
         .single();
 
@@ -755,28 +755,44 @@ export const tripsRouter = router({
         });
       }
 
-      // Check for locked date
-      const { data: poll } = await ctx.supabase
-        .from("date_polls")
-        .select("locked_window_id")
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+      // Dates are required unless the owner explicitly opted out of them.
+      // Accept any of:
+      //   a) dates set directly on the trip (start_date + end_date)
+      //   b) dates tile explicitly skipped via planning_skipped
+      //   c) a date poll with a locked window
+      const planningSkipped: string[] = Array.isArray(trip.planning_skipped)
+        ? (trip.planning_skipped as string[])
+        : [];
+      const hasDirectDates = !!(trip.start_date && trip.end_date);
+      const datesOptedOut = planningSkipped.includes("dates");
 
-      if (!poll?.locked_window_id) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Lock a date before advancing — your crew will want to know when.",
-        });
+      if (!hasDirectDates && !datesOptedOut) {
+        const { data: poll } = await ctx.supabase
+          .from("date_polls")
+          .select("locked_window_id")
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle();
+
+        if (!poll?.locked_window_id) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Set dates before advancing — your crew will want to know when.",
+          });
+        }
       }
 
       const trimmedAboutMessage = input.aboutMessage?.trim() ?? "";
       const stageUpdate: {
         stage: "going";
         stage_advanced_to_going_at: string;
+        planning_tier: "advanced";
         about_message?: string;
       } = {
         stage: "going",
         stage_advanced_to_going_at: new Date().toISOString(),
+        // Stamp planning_tier = advanced so the settings modal and any
+        // other consumers that read this column reflect the graduated state.
+        planning_tier: "advanced",
       };
       if (trimmedAboutMessage) {
         stageUpdate.about_message = trimmedAboutMessage;
@@ -874,6 +890,44 @@ export const tripsRouter = router({
 
       if (error || !data) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update about message" });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // updatePlanningTier — Owner toggles planning_tier between basic / advanced.
+  // Currently surfaced as a dev-only toggle in TripSettingsModal; the
+  // 'advanced' tier is the future paywall seam (basic = four-tile grid,
+  // advanced = full tab view).
+  //
+  // Cascades stage so the dev toggle works as a full time-machine:
+  //   basic    → stage reverts to "planning" (re-enables the grid + modal flow)
+  //   advanced → stage advances to "going"   (shows the tab/itinerary view)
+  // -----------------------------------------------------------------------
+  updatePlanningTier: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        tier: z.enum(["basic", "advanced"]),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const stageForTier = input.tier === "basic" ? "planning" : "going";
+
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({ planning_tier: input.tier, stage: stageForTier })
+        .eq("id", ctx.tripId)
+        .select("id, planning_tier, stage")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update planning tier",
+        });
       }
 
       return data;

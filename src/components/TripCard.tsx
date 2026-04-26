@@ -12,6 +12,8 @@ import { trpc } from "@/lib/trpc-client";
 import type { TripRole } from "@/server/middleware";
 import { getLocationInfo } from "@/lib/locationUtils";
 import { temporalGradient } from "@/lib/temporalGradient";
+import { getTripCountdown } from "@/lib/tripCountdown";
+import { CountdownBar } from "@/components/TripHeader";
 
 interface Trip {
   id: string;
@@ -40,14 +42,6 @@ function formatDateRange(start?: string | null, end?: string | null): string {
   if (start && end) return `${fmt(start)} – ${fmt(end)}`;
   if (start) return `From ${fmt(start)}`;
   return `Until ${fmt(end!)}`;
-}
-
-function getDaysUntil(dateStr: string): number {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const target = parseLocalDate(dateStr);
-  target.setHours(0, 0, 0, 0);
-  return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
@@ -85,11 +79,24 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
     router.push(`/trips/${trip.id}`);
   };
 
+  // Countdown — derived from trip dates + stage. Rendered as a flush bar at
+  // the bottom of the card; the same component lives in TripHeader so the
+  // dashboard and trip detail surfaces stay visually consistent.
+  const countdownResult = getTripCountdown(
+    trip.start_date,
+    trip.end_date,
+    trip.stage ?? "idea",
+  );
+  const countdown =
+    countdownResult.type === "idea" || countdownResult.type === "no_dates"
+      ? null
+      : countdownResult;
+
   return (
     <button
       data-testid={`trip-card-${trip.id}`}
       onClick={handleClick}
-      className="relative w-full overflow-hidden rounded-xl p-4 text-left transition-all"
+      className="relative w-full overflow-hidden rounded-xl text-left transition-all"
       style={{
         background: isDark
           ? (status === "past" ? "var(--color-bt-card)" : temporalGradient(null, true))
@@ -117,6 +124,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
             : "var(--shadow-card)";
       }}
     >
+      <div className="relative p-4">
       {/* State outline watermark — fixed size, clips overflow */}
       {outline && (
         <div
@@ -149,7 +157,15 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
 
       {/* Badges — absolute top right, above silhouette */}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-        <StatusBadge status={status} />
+        {/* "now" is conveyed by the Live countdown bar — no redundant badge needed */}
+        {status !== "now" && (
+          <StatusBadge
+            status={status}
+            // "going" + a future/present countdown → label as UPCOMING so it's
+            // clear the trip hasn't started yet vs. actively happening.
+            label={status === "going" && countdown !== null ? "UPCOMING" : undefined}
+          />
+        )}
         {unreadCount > 0 && (
           <span
             className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
@@ -185,17 +201,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
         <span>{formatDateRange(trip.start_date, trip.end_date)}</span>
       </div>
 
-      {/* Countdown strip for going/now trips */}
-      {(status === "going" || status === "now") && trip.start_date && (
-        <div
-          className="mt-3 rounded-md px-3 py-1.5 text-center text-xs font-medium"
-          style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
-        >
-          {getDaysUntil(trip.start_date) <= 0
-            ? "Starting today!"
-            : `${getDaysUntil(trip.start_date)} days until departure`}
-        </div>
-      )}
+      </div>
+      {countdown && <CountdownBar countdown={countdown} />}
     </button>
   );
 };

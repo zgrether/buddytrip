@@ -21,6 +21,7 @@ import { DatePollCard } from "./DatePollCard";
 import { CrewTab } from "../CrewTab";
 import { LodgingTab } from "../LodgingTab";
 import { ScheduleTab } from "../ScheduleTab";
+import { UnlockAdvancedModal } from "./UnlockAdvancedModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -828,7 +829,10 @@ export function PlanningGrid({
   canEdit,
   isOwner,
   onTabChange,
-  onAdvanceToGoing,
+  // Legacy prop — the View Itinerary button now opens UnlockAdvancedModal
+  // locally instead of routing through the parent. Kept on the interface so
+  // page.tsx → HomeTab → PlanningGrid wiring stays untouched.
+  onAdvanceToGoing: _onAdvanceToGoing,
 }: PlanningGridProps) {
   const tripId = trip.id;
   const utils = trpc.useUtils();
@@ -991,6 +995,23 @@ export function PlanningGrid({
     onSuccess() {
       utils.trips.getById.invalidate({ tripId });
       setShowDestModal(false);
+    },
+  });
+
+  // ── Unlock-advanced (two-step modal) ────────────────────────────────────
+  // Replaces the direct call to onAdvanceToGoing — the modal owns the
+  // step flow and fires advanceToGoing itself on the "Make it Official" tap.
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const advanceToGoing = trpc.trips.advanceToGoing.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      setShowUnlockModal(false);
+    },
+    onError(err) {
+      // Surface server rejections so they're not silently swallowed.
+      console.error("[advanceToGoing]", err.message);
+      alert(err.message);
     },
   });
 
@@ -1704,7 +1725,7 @@ export function PlanningGrid({
             type="button"
             data-testid="view-itinerary-btn"
             disabled={!allResolved}
-            onClick={allResolved ? onAdvanceToGoing : undefined}
+            onClick={allResolved ? () => setShowUnlockModal(true) : undefined}
             className="flex flex-shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
             style={
               allResolved
@@ -1726,6 +1747,25 @@ export function PlanningGrid({
           </button>
         </div>
       )}
+
+      {/* ── Unlock-advanced two-step modal — owns the advanceToGoing call ── */}
+      <UnlockAdvancedModal
+        isOpen={showUnlockModal}
+        onClose={() => setShowUnlockModal(false)}
+        onConfirm={() => advanceToGoing.mutate({ tripId })}
+        isConfirming={advanceToGoing.isPending}
+        trip={{
+          destination:
+            trip.locked_destination_location ?? trip.locked_destination_title ?? null,
+          start_date: trip.start_date ?? null,
+          end_date: trip.end_date ?? null,
+          crew_count: crewCount,
+          lodging_count: lodgingCount,
+          lodging_first_name: lodgingItems[0]?.property_name ?? null,
+          lodging_confirmed_count: lodgingConfirmed,
+          schedule_count: scheduleCount,
+        }}
+      />
     </div>
   );
 }

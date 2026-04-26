@@ -229,12 +229,22 @@ export default function DashboardClient() {
               />
             )}
 
-            {/* Active — groups IDEA + PLANNING + GOING */}
+            {/* Active — groups PLANNING + GOING (idea trips have their own
+                "Ideas" section below so they don't disappear into the main flow). */}
             <TripSection
               label="Active"
-              trips={[...sections.going, ...sections.planning, ...sections.idea]}
+              trips={[...sections.going, ...sections.planning]}
               unreadByTrip={unreadByTrip}
             />
+
+            {/* Ideas — trips still in the idea/comparison phase */}
+            {sections.idea.length > 0 && (
+              <TripSection
+                label="Ideas"
+                trips={sections.idea}
+                unreadByTrip={unreadByTrip}
+              />
+            )}
 
             {sections.saved.length > 0 && (
               <TripSection

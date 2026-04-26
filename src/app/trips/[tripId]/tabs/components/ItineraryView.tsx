@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import {
   Clock,
   Home,
-  Mail,
   Plane,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -45,37 +44,26 @@ function categoryOf(event: ItineraryEvent): EventCategory {
 export interface ItineraryViewProps {
   trip: TripData;
   isOwner: boolean;
-  onTabChange?: (tab: string) => void;
 }
 
 /**
  * ItineraryView — the Home tab surface during the GOING / NOW stages.
  *
  * Replaces the old ActionCenter + ItineraryPanel pair with:
- *   1. Owner-only nudge strip when there are crew members who haven't
- *      joined BuddyTrip yet.
- *   2. Getting There section (per-user travel row + owner pending tally).
- *   3. Filter pills: All / Lodging / Travel / Events (multi-select).
- *   4. Day-by-day timeline from trip start through trip end, pulling from
+ *   1. Getting There section (per-user travel row + owner pending tally).
+ *   2. Filter pills: All / Lodging / Travel / Events (multi-select).
+ *   3. Day-by-day timeline from trip start through trip end, pulling from
  *      confirmed schedule items, lodging check-in/out, and shared travel
  *      arrivals — the same data ItineraryPanel was built on, but laid out
  *      as a continuous day-by-day reel.
  */
-export function ItineraryView({ trip, isOwner, onTabChange }: ItineraryViewProps) {
+export function ItineraryView({ trip, isOwner }: ItineraryViewProps) {
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const { data: logisticsItems = [] } = trpc.logistics.list.useQuery({ tripId });
-
-  const unlinkedCrewCount = useMemo(
-    () =>
-      (members as Array<{ isGuest?: boolean; user?: { is_guest?: boolean } | null }>).filter(
-        (m) => m.isGuest || m.user?.is_guest,
-      ).length,
-    [members],
-  );
 
   // ── Itinerary events ───────────────────────────────────────────────────
   const events = useMemo(
@@ -141,10 +129,6 @@ export function ItineraryView({ trip, isOwner, onTabChange }: ItineraryViewProps
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {isOwner && unlinkedCrewCount > 0 && (
-        <UnlinkedCrewNudge count={unlinkedCrewCount} onGoToCrew={() => onTabChange?.("crew")} />
-      )}
-
       <GettingThereSection tripId={tripId} isOwner={isOwner} />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -177,51 +161,6 @@ export function ItineraryView({ trip, isOwner, onTabChange }: ItineraryViewProps
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-// ── UnlinkedCrewNudge ─────────────────────────────────────────────────────
-
-function UnlinkedCrewNudge({ count, onGoToCrew }: { count: number; onGoToCrew: () => void }) {
-  return (
-    <div
-      className="flex items-center justify-between gap-3 rounded-xl px-4 py-3"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-      data-testid="unlinked-crew-nudge"
-    >
-      <div className="flex items-center gap-3">
-        <span
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-          style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
-        >
-          <Mail size={14} />
-        </span>
-        <div>
-          <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-            {count} {count === 1 ? "person hasn't" : "people haven't"} joined yet
-          </p>
-          <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-            Send them an email so they can see the plan
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onGoToCrew}
-        className="flex-shrink-0 text-xs font-semibold"
-        style={{
-          color: "var(--color-bt-accent)",
-          background: "transparent",
-          border: "none",
-          whiteSpace: "nowrap",
-        }}
-      >
-        Go to Crew →
-      </button>
     </div>
   );
 }
