@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, X, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { Ghost, Mail, X, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -405,11 +405,38 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   const plannersSorted = sorted.filter((m) => m.role === "Owner" || m.role === "Planner");
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
+  const unlinkedCount = members.filter((m) => m.isGuest).length;
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
       <div className={isOwner && members.length > 1 ? "@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
         <div className="min-w-0 space-y-4">
+          {/* ── Unlinked crew nudge — owner sees this when guests haven't joined ── */}
+          {isOwner && unlinkedCount > 0 && (
+            <div
+              className="flex items-center gap-3 rounded-xl px-4 py-3"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <span
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+              >
+                <Mail size={14} />
+              </span>
+              <div>
+                <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                  {unlinkedCount} {unlinkedCount === 1 ? "person hasn't" : "people haven't"} joined yet
+                </p>
+                <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Send them an email so they can see the plan
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* ── Cohesive blurb — sits between the outer CREW panel title and PLANNERS ── */}
           {isOwner && (
             <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
