@@ -306,10 +306,8 @@ function LoadingSkeleton() {
 
 function EmptyState({
   onTabChange,
-  planning,
 }: {
   onTabChange?: (tab: string) => void;
-  planning: boolean;
 }) {
   return (
     <div
@@ -334,11 +332,9 @@ function EmptyState({
         className="mt-0.5 text-xs"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        {planning
-          ? "Confirmed items will show up here as they get locked in."
-          : "Planners can confirm items in the Schedule tab."}
+        Planners can confirm items in the Schedule tab.
       </p>
-      {!planning && onTabChange && (
+      {onTabChange && (
         <button
           type="button"
           onClick={() => onTabChange("schedule")}
@@ -348,34 +344,6 @@ function EmptyState({
           Open the Schedule tab
         </button>
       )}
-    </div>
-  );
-}
-
-function WipBanner() {
-  return (
-    <div
-      className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2"
-      style={{
-        background: "var(--color-bt-warning-faint)",
-        border: "1px solid var(--color-bt-warning)",
-      }}
-    >
-      <Sparkles
-        size={14}
-        className="mt-0.5 flex-shrink-0"
-        style={{ color: "var(--color-bt-warning)" }}
-        aria-hidden
-      />
-      <p
-        className="text-xs leading-snug"
-        style={{ color: "var(--color-bt-warning)" }}
-      >
-        <span className="font-semibold">Schedule is a work in progress.</span>{" "}
-        <span style={{ color: "var(--color-bt-text-dim)" }}>
-          Planners are still finalizing details — confirmed items are shown below.
-        </span>
-      </p>
     </div>
   );
 }
@@ -391,11 +359,6 @@ export function ItineraryPanel({
 }: ItineraryPanelProps) {
   // Hidden entirely during the idea stage.
   const hidden = stage === "idea";
-
-  // Planning stage still shows confirmed items, with a "work in progress"
-  // banner so viewers know details may change.
-  const planning =
-    !hidden && stage === "planning" && status !== "now" && status !== "past";
 
   // Always call hooks in the same order.
   const scheduleQuery = trpc.schedule.list.useQuery(
@@ -441,12 +404,10 @@ export function ItineraryPanel({
     <PanelShell>
       <PanelHeader />
 
-      {planning && <WipBanner />}
-
       {isLoading ? (
         <LoadingSkeleton />
       ) : events.length === 0 ? (
-        <EmptyState onTabChange={onTabChange} planning={planning} />
+        <EmptyState onTabChange={onTabChange} />
       ) : (
         <div className="space-y-4">
           {/* Past — collapsed behind <details> */}
