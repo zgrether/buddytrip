@@ -652,8 +652,9 @@ export function ScheduleTab({
           </div>
         )}
 
-        {/* Unconfirmed banner */}
-        {canEdit && unconfirmedCount > 0 && (
+        {/* Unconfirmed banner — only meaningful once dates are set (items can't
+            be assigned to a day without dates, so the alert would be noise). */}
+        {canEdit && unconfirmedCount > 0 && !!trip.start_date && (
           <div
             className="mb-4 flex items-center gap-2 rounded-xl px-4 py-2.5"
             style={{
