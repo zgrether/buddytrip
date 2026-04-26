@@ -71,6 +71,10 @@ export default function TripDetailPage() {
     { enabled: !!prefetchEventId }
   );
 
+  // ── Background prefetch for tab badge conditions ───────────────────────
+  // Not added to dataLoading — loads in parallel, dot appears when ready.
+  const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
+
   // ── Prefetch sub-page queries so Messages/Leaderboard get cache hits ─────
   // These all need eventId, which we already have above.
   trpc.teamAssignments.list.useQuery(
@@ -172,6 +176,18 @@ export default function TripDetailPage() {
 
   // Effective canEdit: forced false when read-only
   const effectiveCanEdit = tripIsReadOnly ? false : canEdit;
+
+  // ── Tab badge conditions ──────────────────────────────────────────────
+  // crewDot: owner sees a dot when any member hasn't joined yet (guest/placeholder)
+  const crewDot = isOwner && (members as Array<{ isGuest?: boolean }>).some((m) => m.isGuest);
+  // scheduleDot: editors see a dot when dates are set but some items are still unconfirmed
+  const scheduleDot =
+    effectiveCanEdit &&
+    !!trip.start_date &&
+    (prefetchedSchedule as Array<{ is_confirmed: boolean }>).some((item) => !item.is_confirmed);
+  const tabBadges: Partial<Record<TabId, boolean>> = {};
+  if (crewDot) tabBadges.crew = true;
+  if (scheduleDot) tabBadges.schedule = true;
 
   // Settings gear is now rendered INSIDE TripHeader (top-right). The header
   // calls `onSettingsClick` when tapped — pass it through only when the owner
@@ -314,6 +330,7 @@ export default function TripDetailPage() {
                   showComp={showComp}
                   canEdit={canEdit}
                   stage={stage}
+                  badges={tabBadges}
                 />
               )}
               <div className="pt-4 pb-24">

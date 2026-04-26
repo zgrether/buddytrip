@@ -26,6 +26,8 @@ interface TripTabBarProps {
   canEdit?: boolean;
   /** Trip stage — used to disable Expenses in PLANNING and hide Competition */
   stage?: string;
+  /** Tabs that have a notification dot. Dot is hidden when the tab is active. */
+  badges?: Partial<Record<TabId, boolean>>;
 }
 
 export const TripTabBar: FC<TripTabBarProps> = ({
@@ -34,6 +36,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({
   showComp = false,
   canEdit = false,
   stage,
+  badges,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [iconMode, setIconMode] = useState(false);
@@ -71,7 +74,10 @@ export const TripTabBar: FC<TripTabBarProps> = ({
     >
       {tabs.map(({ id, label, Icon }) => {
         const active = activeTab === id;
-          return (
+        // Hide dot once the user is on that tab — no need to call attention
+        // to something they're already looking at.
+        const hasBadge = !active && !!badges?.[id];
+        return (
           <button
             key={id}
             data-testid={`tab-${id}`}
@@ -84,14 +90,17 @@ export const TripTabBar: FC<TripTabBarProps> = ({
                 : "2px solid transparent",
             }}
           >
-            {iconMode ? (
-              <Icon size={18} />
-            ) : (
-              <>
-                <Icon size={14} />
-                <span>{label}</span>
-              </>
-            )}
+            {/* Icon wrapped in relative container so the dot can be positioned */}
+            <span className="relative inline-flex items-center justify-center">
+              <Icon size={iconMode ? 18 : 14} />
+              {hasBadge && (
+                <span
+                  className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full"
+                  style={{ background: "var(--color-bt-accent)" }}
+                />
+              )}
+            </span>
+            {!iconMode && <span>{label}</span>}
           </button>
         );
       })}

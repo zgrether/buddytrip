@@ -354,7 +354,6 @@ export function HomeTab({
         <ItineraryView
           trip={trip}
           isOwner={!!isOwner}
-          onTabChange={onTabChange}
         />
       )}
 
