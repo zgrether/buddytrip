@@ -55,6 +55,14 @@ const SettingsGear: FC<{ onClick: () => void }> = ({ onClick }) => (
 
 type LabelledCountdown = Exclude<CountdownResult, { type: "idea" } | { type: "no_dates" }>;
 
+/**
+ * Countdown bar — full-width strip that sits flush at the bottom of a card.
+ * Used by both TripHeader (trip detail) and TripCard (dashboard) so the
+ * countdown treatment stays consistent across surfaces.
+ *
+ * Token-based colors so it reads correctly on both white (light mode) and
+ * dark gradient (dark mode) parent surfaces.
+ */
 function CountdownBar({ countdown }: { countdown: LabelledCountdown }) {
   const isHappening = countdown.type === "happening";
   const isPast = countdown.type === "past" || countdown.type === "past_distant";
@@ -63,12 +71,12 @@ function CountdownBar({ countdown }: { countdown: LabelledCountdown }) {
     <div
       className="flex items-center justify-center gap-2 px-4 py-2.5"
       style={{
-        borderTop: "1px solid rgba(255,255,255,0.08)",
+        borderTop: "1px solid var(--color-bt-border)",
         background: isHappening
           ? "var(--color-bt-accent-faint)"
           : isPast
-            ? "rgba(148,163,184,0.06)"
-            : "rgba(255,255,255,0.04)",
+            ? "var(--color-bt-card-raised)"
+            : "var(--color-bt-hover)",
       }}
     >
       {isHappening && (
@@ -80,11 +88,7 @@ function CountdownBar({ countdown }: { countdown: LabelledCountdown }) {
       <span
         className="text-xs font-semibold tracking-wide"
         style={{
-          color: isHappening
-            ? "var(--color-bt-accent)"
-            : isPast
-              ? "var(--color-bt-text-dim)"
-              : "rgba(241,245,249,0.75)",
+          color: isHappening ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
         }}
       >
         {countdown.label}
