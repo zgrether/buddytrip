@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   Calendar,
@@ -55,6 +55,11 @@ export function UnlockAdvancedModal({
 }: UnlockAdvancedModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
 
+  // Reset to step 1 every time the modal opens so a re-open never starts mid-flow.
+  useEffect(() => {
+    if (isOpen) setStep(1);
+  }, [isOpen]);
+
   useModalBackButton(isOpen ? onClose : () => {});
 
   if (!isOpen) return null;
@@ -84,22 +89,24 @@ export function UnlockAdvancedModal({
           boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
         }}
       >
-        {/* Step indicator dots */}
-        <div className="flex justify-center gap-1.5 pb-1 pt-3">
-          <span
+        {/* Step indicator — animated pills: active step widens to 24px */}
+        <div className="flex items-center justify-center gap-2 pb-1 pt-3">
+          <div
             style={{
-              width: 20,
               height: 3,
               borderRadius: 2,
+              transition: "all 0.2s",
+              width: step === 1 ? 24 : 16,
               background:
                 step === 1 ? "var(--color-bt-accent)" : "var(--color-bt-border)",
             }}
           />
-          <span
+          <div
             style={{
-              width: 20,
               height: 3,
               borderRadius: 2,
+              transition: "all 0.2s",
+              width: step === 2 ? 24 : 16,
               background:
                 step === 2 ? "var(--color-bt-accent)" : "var(--color-bt-border)",
             }}
@@ -117,6 +124,7 @@ export function UnlockAdvancedModal({
           <Step2Pitch
             trip={trip}
             dateLabel={dateLabel}
+            onBack={() => setStep(1)}
             onClose={onClose}
             onConfirm={onConfirm}
             isConfirming={isConfirming}
@@ -231,25 +239,34 @@ function Step1Summary({
         />
       </div>
 
-      <button
-        onClick={onNext}
-        data-testid="unlock-step1-next-btn"
-        className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
-        style={{
-          background: "var(--color-bt-accent)",
-          color: "var(--color-bt-base)",
-        }}
-      >
-        See what&apos;s next
-        <ArrowRight size={15} />
-      </button>
-      <button
-        onClick={onClose}
-        className="mt-2 w-full rounded-xl py-2 text-sm transition-opacity hover:opacity-80"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Not yet
-      </button>
+      <div className="mt-5 flex items-center justify-between">
+        <button
+          onClick={onClose}
+          className="rounded-lg px-3 py-2.5 text-sm transition-opacity hover:opacity-80"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          Not yet
+        </button>
+        <button
+          onClick={onNext}
+          data-testid="unlock-step1-next-btn"
+          className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
+          style={{
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-base)",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          See what&apos;s next
+          <ArrowRight size={15} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -329,12 +346,14 @@ function SummaryRow({
 function Step2Pitch({
   trip,
   dateLabel,
+  onBack,
   onClose,
   onConfirm,
   isConfirming,
 }: {
   trip: UnlockAdvancedModalProps["trip"];
   dateLabel: string | null;
+  onBack: () => void;
   onClose: () => void;
   onConfirm: () => void;
   isConfirming: boolean;
@@ -349,6 +368,30 @@ function Step2Pitch({
 
   return (
     <>
+      {/* Back link — sits above the hero so the gradient doesn't bleed onto it */}
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1.5 px-4 pb-0 pt-3"
+        style={{
+          color: "var(--color-bt-text-dim)",
+          fontSize: "13px",
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M9 2L4 7l5 5" />
+        </svg>
+        Back
+      </button>
       {/* Hero — gradient background with two radial blobs */}
       <div
         className="relative overflow-hidden px-6 pb-5 pt-4"
