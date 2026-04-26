@@ -387,9 +387,10 @@ export function ScheduleTab({
     return groups;
   }, [visibleItems, trip.start_date, trip.end_date]);
 
-  // Only count items that have been assigned to a day — those are the ones
-  // the confirm button appears on. Unscheduled items are also unconfirmed,
-  // but can't be confirmed until they have a date, so they shouldn't count.
+  // Items that exist but haven't been dragged to a specific day yet
+  // (trip has dates, but item.scheduled_date is still null).
+  const undatedCount = allItems.filter((i) => !i.scheduled_date).length;
+  // Items assigned to a day but not yet confirmed.
   const unconfirmedCount = allItems.filter((i) => !i.is_confirmed && !!i.scheduled_date).length;
 
   const confirmItem = trpc.schedule.confirm.useMutation({
@@ -589,6 +590,31 @@ export function ScheduleTab({
                 />
               </>
             )}
+          </div>
+        )}
+
+        {canEdit && !!trip.start_date && undatedCount > 0 && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+            >
+              <Calendar size={14} />
+            </span>
+            <div>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                {undatedCount} item{undatedCount !== 1 ? "s" : ""} haven't been assigned to a day
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                Drag or move items from the Unscheduled group onto a day
+              </p>
+            </div>
           </div>
         )}
 
