@@ -902,7 +902,11 @@ function DevPlanningTierToggle({
   trip?: TripData;
 }) {
   const utils = trpc.useUtils();
-  const currentTier = trip?.planning_tier ?? "basic";
+  // A trip is in "advanced" mode when it's in the going stage OR planning_tier
+  // is explicitly set to advanced. Stage is the authoritative signal — a trip
+  // that advanced before planning_tier was stamped will still read correctly.
+  const isAdvanced = trip?.stage === "going" || trip?.planning_tier === "advanced";
+  const currentTier = isAdvanced ? "advanced" : "basic";
   const nextTier = currentTier === "basic" ? "advanced" : "basic";
 
   const updateTier = trpc.trips.updatePlanningTier.useMutation({
