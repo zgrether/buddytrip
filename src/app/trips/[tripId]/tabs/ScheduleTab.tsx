@@ -534,7 +534,64 @@ export function ScheduleTab({
   return (
     <div className={embedded ? undefined : "px-4"}>
       <section>
-        {/* ── Unconfirmed nudge — same card style as Crew nudge, at top of tab ── */}
+        {/* ── Nudges — both at top, both dot-driven, mutually exclusive ──────
+            "unscheduled": no trip dates → items can't be assigned to a day yet
+            "unconfirmed": dates set + items assigned → need to be locked in
+            Both use the same card style so they read consistently.           */}
+
+        {canEdit && !trip.start_date && allItems.length > 0 && (
+          <div
+            className="mb-4 flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+              >
+                <Calendar size={14} />
+              </span>
+              <div>
+                <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                  Items are unscheduled
+                </p>
+                <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Set trip dates to assign items to specific days
+                </p>
+              </div>
+            </div>
+            {trip.planning_tier === "basic" ? (
+              <button
+                onClick={onNavigateToDates}
+                className="flex-shrink-0 text-xs font-semibold"
+                style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
+              >
+                Set dates &rarr;
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => setDatesModalOpen(true)}
+                  className="flex-shrink-0 text-xs font-semibold"
+                  style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
+                >
+                  Set dates &rarr;
+                </button>
+                <DatesModal
+                  isOpen={datesModalOpen}
+                  onClose={() => setDatesModalOpen(false)}
+                  tripId={tripId}
+                  initialStartDate={null}
+                  initialEndDate={null}
+                />
+              </>
+            )}
+          </div>
+        )}
+
         {canEdit && unconfirmedCount > 0 && !!trip.start_date && (
           <div
             className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
@@ -578,79 +635,6 @@ export function ScheduleTab({
             ? "Start adding items to your schedule — you can edit and reorganize at any time. All confirmed items will appear on the official schedule for the crew once the trip has been officially kicked off."
             : "Keep your schedule up to date — any confirmed items will be shown on the crew's official schedule."}
         </p>
-
-        {/* Dates dependency notice — only shows when no dates are set (mutually
-            exclusive with the unconfirmed nudge above). Not dot-driven — it's a
-            prerequisite notice, not an action-required state. */}
-        {!trip.start_date && (
-          <div
-            className="mb-4 flex items-center justify-between rounded-xl px-4 py-3"
-            style={{
-              background: "var(--color-bt-warning-faint)",
-              border: "1px solid var(--color-bt-warning-border)",
-            }}
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                style={{ color: "var(--color-bt-warning)", flexShrink: 0 }}
-              >
-                <circle cx="8" cy="8" r="6.5" />
-                <path d="M8 5v3.5M8 10.5v.5" />
-              </svg>
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "var(--color-bt-warning)" }}>
-                  Items are unscheduled
-                </p>
-                <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Set trip dates to assign items to specific days
-                </p>
-              </div>
-            </div>
-
-            {trip.planning_tier === "basic" ? (
-              <button
-                onClick={onNavigateToDates}
-                className="ml-4 flex-shrink-0 text-xs font-semibold"
-                style={{
-                  color: "var(--color-bt-accent)",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                Set dates &rarr;
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => setDatesModalOpen(true)}
-                  className="ml-4 flex-shrink-0 text-xs font-semibold"
-                  style={{
-                    color: "var(--color-bt-accent)",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  Set dates &rarr;
-                </button>
-                <DatesModal
-                  isOpen={datesModalOpen}
-                  onClose={() => setDatesModalOpen(false)}
-                  tripId={tripId}
-                  initialStartDate={null}
-                  initialEndDate={null}
-                />
-              </>
-            )}
-          </div>
-        )}
 
         {/* Type selector — add buttons */}
         {canEdit && (

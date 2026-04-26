@@ -180,14 +180,13 @@ export default function TripDetailPage() {
   // ── Tab badge conditions ──────────────────────────────────────────────
   // crewDot: owner sees a dot when any member hasn't joined yet (guest/placeholder)
   const crewDot = isOwner && (members as Array<{ isGuest?: boolean }>).some((m) => m.isGuest);
-  // scheduleDot: editors see a dot when some scheduled items (assigned to a day)
-  // still need confirmation. Unscheduled items don't count — they can't be
-  // confirmed until they have a date, so they're not actionable yet.
+  // scheduleDot: fires when any item is incomplete — either has no date assigned
+  // (unscheduled) OR has a date but hasn't been confirmed yet. Both states need
+  // action before the item can appear on the crew's official itinerary.
   const scheduleDot =
     effectiveCanEdit &&
-    !!trip.start_date &&
     (prefetchedSchedule as Array<{ is_confirmed: boolean; scheduled_date?: string | null }>).some(
-      (item) => !item.is_confirmed && !!item.scheduled_date
+      (item) => !item.scheduled_date || !item.is_confirmed
     );
   const tabBadges: Partial<Record<TabId, boolean>> = {};
   if (crewDot) tabBadges.crew = true;
