@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ArrowRight,
   Calendar,
@@ -55,12 +55,10 @@ export function UnlockAdvancedModal({
 }: UnlockAdvancedModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
 
-  // Reset to step 1 when the modal closes so a re-open always starts at step 1.
-  useEffect(() => {
-    if (!isOpen) setStep(1);
-  }, [isOpen]);
+  // Reset step when closing so a re-open always starts at step 1.
+  const handleClose = () => { setStep(1); onClose(); };
 
-  useModalBackButton(isOpen ? onClose : () => {});
+  useModalBackButton(isOpen ? handleClose : () => {});
 
   if (!isOpen) return null;
 
@@ -73,7 +71,7 @@ export function UnlockAdvancedModal({
     <div
       className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
+      onClick={handleClose}
       data-testid="unlock-advanced-modal"
     >
       <div
@@ -161,14 +159,14 @@ export function UnlockAdvancedModal({
           <Step1Summary
             trip={trip}
             dateLabel={dateLabel}
-            onClose={onClose}
+            onClose={handleClose}
             onNext={() => setStep(2)}
           />
         ) : (
           <Step2Pitch
             trip={trip}
             dateLabel={dateLabel}
-            onClose={onClose}
+            onClose={handleClose}
             onConfirm={onConfirm}
             isConfirming={isConfirming}
           />
