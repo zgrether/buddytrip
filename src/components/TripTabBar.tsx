@@ -74,9 +74,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({
     >
       {tabs.map(({ id, label, Icon }) => {
         const active = activeTab === id;
-        // Hide dot once the user is on that tab — no need to call attention
-        // to something they're already looking at.
-        const hasBadge = !active && !!badges?.[id];
+        const hasBadge = !!badges?.[id];
         return (
           <button
             key={id}
