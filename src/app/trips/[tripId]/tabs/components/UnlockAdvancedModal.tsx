@@ -90,7 +90,7 @@ export function UnlockAdvancedModal({
         }}
       >
         {/* Nav row: back link (step 2 only) | clickable step pills | spacer */}
-        <div className="flex items-center px-4 pb-1 pt-3">
+        <div className="flex items-center px-4 pb-3 pt-3">
           {/* Left slot — back link on step 2, invisible spacer on step 1 */}
           <div style={{ width: 56, flexShrink: 0 }}>
             {step === 2 && (
