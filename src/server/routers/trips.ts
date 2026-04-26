@@ -880,6 +880,38 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // updatePlanningTier — Owner toggles planning_tier between basic / advanced.
+  // Currently surfaced as a dev-only toggle in TripSettingsModal; the
+  // 'advanced' tier is the future paywall seam (basic = four-tile grid,
+  // advanced = full tab view).
+  // -----------------------------------------------------------------------
+  updatePlanningTier: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        tier: z.enum(["basic", "advanced"]),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .update({ planning_tier: input.tier })
+        .eq("id", ctx.tripId)
+        .select("id, planning_tier")
+        .single();
+
+      if (error || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update planning tier",
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
   // changeDestination — Owner/Planner can change destination in PLANNING stage
   // Resets date poll votes since dates may change
   // -----------------------------------------------------------------------

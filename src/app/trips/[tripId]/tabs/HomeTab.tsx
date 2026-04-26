@@ -320,9 +320,25 @@ export function HomeTab({
 
   return (
     <div className="space-y-4 px-4">
-      {/* ── PLANNING stage: 2×2 tile grid + dates accordion + View Itinerary.
+      {/* ── PLANNING stage: planning_tier picks the surface.
+              - basic    → four-tile PlanningGrid (current default)
+              - advanced → full tab view (PAYWALL SEAM — not yet implemented;
+                renders PlanningGrid as a fallback so the tier is end-to-end
+                exercisable from the dev toggle until the upgrade flow exists).
               Replaces the old ActionCenter / PlanningSection treatment.      */}
-      {stage === "planning" && (
+      {stage === "planning" && (trip.planning_tier ?? "basic") === "basic" && (
+        <PlanningGrid
+          trip={trip}
+          canEdit={canEditProp}
+          isOwner={!!isOwner}
+          onTabChange={onTabChange}
+          onAdvanceToGoing={onAdvanceToGoing}
+        />
+      )}
+      {stage === "planning" && trip.planning_tier === "advanced" && (
+        // PAYWALL SEAM: planning_tier === 'advanced' unlocks full tab view.
+        // Until that view is built, fall through to the basic grid so the
+        // dev toggle has visible effect once the advanced surface lands.
         <PlanningGrid
           trip={trip}
           canEdit={canEditProp}

@@ -878,6 +878,80 @@ export function TripSettingsModal({
             </div>
           </>
         )}
+
+        {/* DEV ONLY — remove before launch.
+            Surfaces the planning_tier toggle so the basic-grid vs advanced-tab
+            split can be exercised end-to-end without a real paywall in place. */}
+        {isOwner && process.env.NODE_ENV === "development" && (
+          <DevPlanningTierToggle tripId={tripId} trip={trip} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Dev-only planning tier toggle ──────────────────────────────────────────
+
+function DevPlanningTierToggle({
+  tripId,
+  trip,
+}: {
+  tripId: string;
+  trip?: TripData;
+}) {
+  const utils = trpc.useUtils();
+  const currentTier = trip?.planning_tier ?? "basic";
+  const nextTier = currentTier === "basic" ? "advanced" : "basic";
+
+  const updateTier = trpc.trips.updatePlanningTier.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+    },
+  });
+
+  const handleTierToggle = () => {
+    updateTier.mutate({ tripId, tier: nextTier });
+  };
+
+  return (
+    <div
+      className="mt-6 pt-4"
+      style={{ borderTop: "1px solid var(--color-bt-border)" }}
+    >
+      <p
+        className="mb-3 text-[10px] font-bold uppercase tracking-widest"
+        style={{ color: "var(--color-bt-warning)" }}
+      >
+        ⚠ Dev only
+      </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+            Planning tier
+          </p>
+          <p
+            className="mt-0.5 text-xs"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {currentTier === "basic"
+              ? "Basic — four-tile grid view"
+              : "Advanced — full tab view"}
+          </p>
+        </div>
+        <button
+          onClick={handleTierToggle}
+          disabled={updateTier.isPending}
+          data-testid="dev-tier-toggle"
+          className="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            color: "var(--color-bt-text-dim)",
+            border: "0.5px solid var(--color-bt-border)",
+          }}
+        >
+          Switch to {nextTier === "basic" ? "Basic" : "Advanced"}
+        </button>
       </div>
     </div>
   );
