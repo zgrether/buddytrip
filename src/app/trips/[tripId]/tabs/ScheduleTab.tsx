@@ -13,7 +13,6 @@ import {
   GripVertical,
   ChevronUp,
   ChevronDown,
-  AlertTriangle,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -532,6 +531,32 @@ export function ScheduleTab({
   return (
     <div className={embedded ? undefined : "px-4"}>
       <section>
+        {/* ── Unconfirmed nudge — same card style as Crew nudge, at top of tab ── */}
+        {canEdit && unconfirmedCount > 0 && !!trip.start_date && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+            >
+              <Calendar size={14} />
+            </span>
+            <div>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                Confirm items to lock them into the schedule
+              </p>
+            </div>
+          </div>
+        )}
+
         {!embedded && (
           <h2
             className="mb-2 text-xs font-semibold uppercase tracking-wider"
@@ -551,7 +576,9 @@ export function ScheduleTab({
             : "Keep your schedule up to date — any confirmed items will be shown on the crew's official schedule."}
         </p>
 
-        {/* Dates dependency notice — appears when no dates are set */}
+        {/* Dates dependency notice — only shows when no dates are set (mutually
+            exclusive with the unconfirmed nudge above). Not dot-driven — it's a
+            prerequisite notice, not an action-required state. */}
         {!trip.start_date && (
           <div
             className="mb-4 flex items-center justify-between rounded-xl px-4 py-3"
@@ -649,23 +676,6 @@ export function ScheduleTab({
               <Flag size={15} />
               <Plus size={12} /> Golf
             </button>
-          </div>
-        )}
-
-        {/* Unconfirmed banner — only meaningful once dates are set (items can't
-            be assigned to a day without dates, so the alert would be noise). */}
-        {canEdit && unconfirmedCount > 0 && !!trip.start_date && (
-          <div
-            className="mb-4 flex items-center gap-2 rounded-xl px-4 py-2.5"
-            style={{
-              background: "var(--color-bt-warning-faint)",
-              color: "var(--color-bt-warning)",
-            }}
-          >
-            <AlertTriangle size={14} />
-            <span className="text-[13px] font-medium">
-              {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
-            </span>
           </div>
         )}
 
