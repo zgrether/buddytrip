@@ -1008,6 +1008,11 @@ export function PlanningGrid({
       utils.trips.list.invalidate();
       setShowUnlockModal(false);
     },
+    onError(err) {
+      // Surface server rejections so they're not silently swallowed.
+      console.error("[advanceToGoing]", err.message);
+      alert(err.message);
+    },
   });
 
   // ── Skip / unskip ──────────────────────────────────────────────────────

@@ -737,10 +737,10 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // Fetch current trip state
+      // Fetch current trip state (dates + skipped array so we can validate in one round-trip)
       const { data: trip, error: fetchErr } = await ctx.supabase
         .from("trips")
-        .select("stage")
+        .select("stage, start_date, end_date, planning_skipped")
         .eq("id", ctx.tripId)
         .single();
 
@@ -755,18 +755,30 @@ export const tripsRouter = router({
         });
       }
 
-      // Check for locked date
-      const { data: poll } = await ctx.supabase
-        .from("date_polls")
-        .select("locked_window_id")
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+      // Dates are required unless the owner explicitly opted out of them.
+      // Accept any of:
+      //   a) dates set directly on the trip (start_date + end_date)
+      //   b) dates tile explicitly skipped via planning_skipped
+      //   c) a date poll with a locked window
+      const planningSkipped: string[] = Array.isArray(trip.planning_skipped)
+        ? (trip.planning_skipped as string[])
+        : [];
+      const hasDirectDates = !!(trip.start_date && trip.end_date);
+      const datesOptedOut = planningSkipped.includes("dates");
 
-      if (!poll?.locked_window_id) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Lock a date before advancing — your crew will want to know when.",
-        });
+      if (!hasDirectDates && !datesOptedOut) {
+        const { data: poll } = await ctx.supabase
+          .from("date_polls")
+          .select("locked_window_id")
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle();
+
+        if (!poll?.locked_window_id) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Set dates before advancing — your crew will want to know when.",
+          });
+        }
       }
 
       const trimmedAboutMessage = input.aboutMessage?.trim() ?? "";
