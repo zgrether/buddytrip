@@ -478,10 +478,12 @@ export const tripMembersRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // Fetch trip for email content
+      // Fetch trip for email content. locked_destination_location is the
+      // real-world location string ("Bandon, OR") that buildCannedInvitation
+      // prefers over the cute locked_destination_title ("Bandon Dunes").
       const { data: trip } = await ctx.supabase
         .from("trips")
-        .select("title, about_message, location, locked_destination_title, start_date, end_date")
+        .select("title, about_message, location, locked_destination_location, locked_destination_title, start_date, end_date")
         .eq("id", ctx.tripId)
         .single();
 

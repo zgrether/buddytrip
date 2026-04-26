@@ -10,6 +10,14 @@ export interface TripSummaryModalProps {
   trip: {
     title?: string | null;
     about_message?: string | null;
+    /**
+     * Real-world location of the destination, e.g. "Bandon, OR". This is what
+     * crew actually need to know — not the cute idea name (which is just a
+     * holdover from the idea-comparison stage and may not validate to anything
+     * geographic). Always prefer this over locked_destination_title past the
+     * idea phase; title is kept as a fallback for legacy data only.
+     */
+    locked_destination_location?: string | null;
     locked_destination_title?: string | null;
     start_date?: string | null;
     end_date?: string | null;
@@ -52,7 +60,10 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
 
   useModalBackButton(onClose);
 
-  const destination = trip.locked_destination_title ?? "";
+  // Prefer the real location ("Bandon, OR") over the idea title ("Bandon Dunes"),
+  // which is the cute holdover from the idea phase and doesn't help the crew
+  // know where they're actually going.
+  const destination = trip.locked_destination_location ?? trip.locked_destination_title ?? "";
   const hasDestination = destination.trim().length > 0;
   const dateRange = formatDateRange(trip.start_date, trip.end_date);
   const crewCount = members.length;

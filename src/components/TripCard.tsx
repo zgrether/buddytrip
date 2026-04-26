@@ -19,6 +19,8 @@ interface Trip {
   location?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  /** Real-world location string ("Bandon, OR"); preferred over the cute idea title. */
+  locked_destination_location?: string | null;
   locked_destination_title?: string | null;
   trip_status_override?: string | null;
   stage?: string | null;
@@ -56,11 +58,14 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const status = getTripStatus(trip);
   const grayscale = checkGrayscale(trip);
 
-  // Show locked destination when locked; suppress trip.location when in comparison mode
-  // (same logic as the trip detail page to avoid stale destination bleeding through
-  // after an owner reopens discussion — lockDestination writes to trip.location but
-  // unlockDestination doesn't clear it).
-  const displayDest = trip.locked_destination_title
+  // Prefer the real location ("Bandon, OR") — the locked title is the cute
+  // idea name and isn't useful past the idea phase. Suppress trip.location
+  // when in comparison mode (same logic as the trip detail page to avoid
+  // stale destination bleeding through after an owner reopens discussion —
+  // lockDestination writes to trip.location but unlockDestination doesn't
+  // clear it).
+  const displayDest = trip.locked_destination_location
+    ?? trip.locked_destination_title
     ?? (trip.comparison_mode ? null : trip.location);
 
   const { outline, cityPin, showPin, rotation } = getLocationInfo(displayDest ?? "");

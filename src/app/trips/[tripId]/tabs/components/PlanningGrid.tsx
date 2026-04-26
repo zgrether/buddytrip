@@ -344,6 +344,466 @@ interface GridPollWindow {
   votes: GridPollVote[];
 }
 
+// ── DatesPanelContent ─────────────────────────────────────────────────────
+// Self-contained dates panel — owns its own state, mutations, and effects.
+// Used by both the desktop expanded panel and the mobile tab content. Mirrors
+// the px-4 py-4 outer wrapper that crew / lodging / schedule panels use.
+//
+// Why a component (vs. inline JSX): the dates surface is the only planning
+// tile whose content is defined inline in PlanningGrid rather than delegated
+// to a TabProps-shaped child. That made it awkward to keep its padding,
+// effects, and opt-out alongside the same shape that the other three panels
+// have. As a component it owns its own state/effects and accepts callbacks
+// for the few things that have to coordinate with the parent (skip, open
+// crew). PlanningGrid passes the trip + the bits of derived state it already
+// has so DatesPanelContent doesn't have to recompute them.
+
+interface DatesPanelContentProps {
+  tripId: string;
+  trip: TripData;
+  canEdit: boolean;
+  isOwner: boolean;
+  crewState: TileState;
+  datesState: TileState;
+  pollMode: boolean;
+  hasCrew: boolean;
+  /** Whether the dates panel is the currently-open desktop panel. Used to
+   *  dismiss the switch-to-poll prompt when the user closes the panel. */
+  isPanelOpen: boolean;
+  pendingTile: TileKey | null;
+  /** Triggered by the mobile-only "Opt out" button. */
+  onSkip: () => void;
+  /** Opens the Crew panel — used by the "no crew yet" nudge and the
+   *  DatePollCard's manage-crew action. */
+  onOpenCrew: () => void;
+}
+
+function DatesPanelContent({
+  tripId,
+  trip,
+  canEdit,
+  isOwner,
+  crewState,
+  datesState,
+  pollMode,
+  hasCrew,
+  isPanelOpen,
+  pendingTile,
+  onSkip,
+  onOpenCrew,
+}: DatesPanelContentProps) {
+  const utils = trpc.useUtils();
+
+  const datesLocked = !!(trip.start_date && trip.end_date);
+  const lockedDateLabel = useMemo(
+    () => (datesLocked ? formatDateRangeCompact(trip.start_date, trip.end_date) : null),
+    [datesLocked, trip.start_date, trip.end_date],
+  );
+  const titleColor =
+    datesState === "complete" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
+
+  // Same datePoll query as PlanningGrid — TanStack dedupes by key.
+  const { data: datePoll } = trpc.datePoll.get.useQuery(
+    { tripId },
+    { enabled: datesState !== "skipped" },
+  );
+  const hasPollWindows = (datePoll?.windows?.length ?? 0) > 0;
+
+  // ── Internal UI state ────────────────────────────────────────────────────
+  const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
+  const [showPollSwitchPrompt, setShowPollSwitchPrompt] = useState(false);
+  // Pick-your-dates form — seeded from the trip so reopening shows current values.
+  const [directStart, setDirectStart] = useState(trip.start_date ?? "");
+  const [directEnd, setDirectEnd] = useState(trip.end_date ?? "");
+
+  // ── Mutations ────────────────────────────────────────────────────────────
+  const lockDates = trpc.trips.lockDates.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  const unlockDates = trpc.datePoll.unlock.useMutation({
+    onSuccess() {
+      setDirectStart("");
+      setDirectEnd("");
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  const setPollActive = trpc.datePoll.setPollMode.useMutation({
+    onSuccess() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  const addPollWindow = trpc.datePoll.addWindow.useMutation({
+    onSettled() {
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  // ── Effects ──────────────────────────────────────────────────────────────
+  // Auto-disable poll mode when there's no crew left to poll. Fires only
+  // while the panel is mounted — but that's fine: the next time the user
+  // opens the panel it tidies up immediately if needed.
+  useEffect(() => {
+    if (!hasCrew && pollMode) {
+      setPollActive.mutate({ tripId, pollMode: false });
+    }
+  }, [hasCrew, pollMode, tripId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset date mode UI when crew disappears or is opted out.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!hasCrew || crewState === "skipped") setDateMode("set");
+  }, [hasCrew, crewState]);
+
+  // Auto-switch to poll tab whenever a poll is active.
+  useEffect(() => {
+    if (pollMode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDateMode("poll");
+      setShowPollSwitchPrompt(false);
+    }
+  }, [pollMode]);
+
+  // Dismiss the switch-to-poll prompt whenever the dates panel closes.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!isPanelOpen) setShowPollSwitchPrompt(false);
+  }, [isPanelOpen]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+  const handleSwitchToPoll = () => {
+    // Capture the form values then clear immediately — Pick your Dates should
+    // not still show the old directly-set dates while the mutation is in flight.
+    const start = directStart;
+    const end = directEnd;
+    setDirectStart("");
+    setDirectEnd("");
+
+    const afterWindowReady = () => {
+      setPollActive.mutate({ tripId, pollMode: true });
+      unlockDates.mutate({ tripId });
+      setDateMode("poll");
+      setShowPollSwitchPrompt(false);
+    };
+
+    // If this exact window already exists in the poll, skip adding a duplicate.
+    const alreadyExists =
+      (datePoll?.windows as unknown as GridPollWindow[] | undefined)?.some(
+        (w) => w.start_date === start && w.end_date === end,
+      ) ?? false;
+
+    if (alreadyExists) {
+      afterWindowReady();
+    } else {
+      addPollWindow.mutate(
+        { tripId, id: crypto.randomUUID(), startDate: start, endDate: end },
+        { onSuccess: afterWindowReady },
+      );
+    }
+  };
+
+  const handleSet = () => {
+    if (!directStart || !directEnd || directStart >= directEnd) return;
+    if (pollMode) setPollActive.mutate({ tripId, pollMode: false });
+    lockDates.mutate({ tripId, startDate: directStart, endDate: directEnd });
+  };
+
+  if (!canEdit || datesState === "skipped") return null;
+
+  return (
+    <div data-testid="planning-dates-panel" className="px-4 py-4">
+      <h2
+        className="mb-1.5 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: titleColor }}
+      >
+        Dates
+      </h2>
+      <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+        Lock in dates directly, or poll the crew to find a window that works for everyone.
+      </p>
+
+      {/* Segmented control — natural width, left-aligned */}
+      <div className="mb-3">
+        <div
+          className="inline-flex rounded-xl p-1"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => { setDateMode("set"); setShowPollSwitchPrompt(false); }}
+            data-active={dateMode === "set"}
+            className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold"
+            style={
+              dateMode === "set"
+                ? {
+                    background: "var(--color-bt-card)",
+                    color: "var(--color-bt-text)",
+                    boxShadow: "var(--shadow-card)",
+                  }
+                : { background: "transparent", color: "var(--color-bt-text-dim)" }
+            }
+          >
+            <CalendarRange size={12} />
+            Pick your Dates
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Only offer the "switch to poll" prompt when dates were set
+              // directly (no existing poll windows). If windows already exist
+              // the user has already set up a poll — just switch to that tab.
+              if (datesLocked && !pollMode && !hasPollWindows) {
+                setShowPollSwitchPrompt(true);
+              } else {
+                setDateMode("poll");
+                setShowPollSwitchPrompt(false);
+              }
+            }}
+            disabled={crewState === "skipped"}
+            data-active={dateMode === "poll"}
+            className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            style={
+              dateMode === "poll"
+                ? {
+                    background: "var(--color-bt-card)",
+                    color: "var(--color-bt-text)",
+                    boxShadow: "var(--shadow-card)",
+                  }
+                : { background: "transparent", color: "var(--color-bt-text-dim)" }
+            }
+          >
+            <Users size={12} />
+            Poll the Crew
+          </button>
+        </div>
+      </div>
+
+      {/* Switch-to-poll prompt — only when dates were set directly (no windows yet) */}
+      {showPollSwitchPrompt && datesLocked && !pollMode && !hasPollWindows && (
+        <div className="mb-3">
+          <div
+            className="space-y-3 rounded-xl border p-3"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              borderColor: "var(--color-bt-border)",
+            }}
+          >
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+              Switch to polling?{" "}
+              <span style={{ color: "var(--color-bt-accent)" }}>{lockedDateLabel}</span>
+              {" "}will become your first option — add more from there.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleSwitchToPoll}
+                disabled={addPollWindow.isPending}
+                className="flex-1 rounded-lg border border-transparent py-1.5 text-xs font-semibold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {addPollWindow.isPending ? "Switching…" : "Yes, start a poll"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPollSwitchPrompt(false)}
+                className="flex-1 rounded-lg border py-1.5 text-xs font-semibold"
+                style={{
+                  background: "transparent",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Body */}
+      {dateMode === "set" ? (
+        <div>
+          {datesLocked ? (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2.5"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+              }}
+            >
+              <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
+              <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-accent)" }}>
+                Dates are set — update them below or reset to start over.
+              </p>
+            </div>
+          ) : (
+            <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Already know the dates? Lock them in directly.
+            </p>
+          )}
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[140px] flex-1">
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Start date
+              </label>
+              <input
+                type="date"
+                value={directStart}
+                onChange={(e) => setDirectStart(e.target.value)}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+            </div>
+            <div className="min-w-[140px] flex-1">
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                End date
+              </label>
+              <input
+                type="date"
+                value={directEnd}
+                onChange={(e) => setDirectEnd(e.target.value)}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleSet}
+              disabled={
+                !directStart ||
+                !directEnd ||
+                directStart >= directEnd ||
+                lockDates.isPending
+              }
+              className="flex-shrink-0 rounded-lg border border-transparent px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              {datesLocked ? "Update" : "Set"}
+            </button>
+            {datesLocked && (
+              <button
+                type="button"
+                onClick={() => unlockDates.mutate({ tripId })}
+                disabled={unlockDates.isPending}
+                className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                <RotateCcw size={13} />
+                {unlockDates.isPending ? "Clearing…" : "Reset"}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : hasCrew ? (
+        <div className="space-y-3">
+          {/* Locked-from-poll banner */}
+          {datesLocked && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2.5"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
+                <p className="text-[13px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
+                  {lockedDateLabel} — locked in from this poll
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setDateMode("set"); setShowPollSwitchPrompt(false); }}
+                  className="text-xs font-semibold"
+                  style={{ background: "transparent", border: "none", color: "var(--color-bt-accent)", cursor: "pointer" }}
+                >
+                  Update
+                </button>
+                <span style={{ color: "var(--color-bt-accent-border)" }}>·</span>
+                <button
+                  type="button"
+                  onClick={() => unlockDates.mutate({ tripId })}
+                  disabled={unlockDates.isPending}
+                  className="flex items-center gap-1 text-xs font-semibold disabled:opacity-40"
+                  style={{ background: "transparent", border: "none", color: "var(--color-bt-text-dim)", cursor: "pointer" }}
+                >
+                  <RotateCcw size={11} />
+                  {unlockDates.isPending ? "Clearing…" : "Reset"}
+                </button>
+              </div>
+            </div>
+          )}
+          <DatePollCard
+            trip={trip}
+            isOwner={isOwner}
+            onManageCrew={canEdit ? onOpenCrew : undefined}
+          />
+        </div>
+      ) : (
+        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Add crew members first —{" "}
+          <button
+            type="button"
+            onClick={onOpenCrew}
+            className="font-semibold underline"
+            style={{
+              color: "var(--color-bt-accent)",
+              background: "transparent",
+              border: "none",
+            }}
+          >
+            open Crew →
+          </button>
+        </p>
+      )}
+
+      {/* Opt-out — mobile only (sm:hidden); desktop uses the tile's footer */}
+      {canEdit && (
+        <div className="mt-4 border-t pt-3 sm:hidden" style={{ borderColor: "var(--color-bt-border)" }}>
+          <button
+            type="button"
+            onClick={onSkip}
+            disabled={pendingTile === "dates"}
+            className="text-xs disabled:opacity-40"
+            style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
+          >
+            Opt out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Mobile planning tabs (below sm breakpoint) ────────────────────────────
 
 const PLANNING_MOBILE_TABS = [
@@ -434,10 +894,6 @@ export function PlanningGrid({
     { enabled: datesState !== "skipped" },
   );
 
-  // True if there are any poll windows already (dates came from a poll, or user
-  // has started a poll previously). Used to gate the switch-to-poll prompt.
-  const hasPollWindows = (datePoll?.windows?.length ?? 0) > 0;
-
   // ── Active panel — unified state replacing datesPanelOpen ────────────
   // Dates panel persists to localStorage; crew/lodging/schedule do not.
   const datesStorageKey = `bt-dates-panel-open-${tripId}`;
@@ -464,19 +920,6 @@ export function PlanningGrid({
     // Keep mobile tab in sync so resizing preserves the selection.
     if (tile !== null) setMobileActiveTab(tile);
   };
-
-  const [dateMode, setDateMode] = useState<"set" | "poll">(pollMode ? "poll" : "set");
-
-  // Declared early so the effects below can reference them without
-  // triggering react-hooks/immutability "access before declaration" errors.
-  const [showPollSwitchPrompt, setShowPollSwitchPrompt] = useState(false);
-
-  const setPollActive = trpc.datePoll.setPollMode.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
 
   // ── Mobile active tab — synced with desktop activePanel ──────────────────
   const [mobileActiveTab, setMobileActiveTab] = useState<TileKey>(() => {
@@ -538,54 +981,6 @@ export function PlanningGrid({
     }
   }, [datesState, crewState, lodgingState, scheduleState, activePanel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-disable poll mode when there's no crew left to poll.
-  useEffect(() => {
-    if (!hasCrew && pollMode) {
-      setPollActive.mutate({ tripId, pollMode: false });
-    }
-  }, [hasCrew, pollMode, tripId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Reset date mode UI when crew disappears or crew is opted out.
-  useEffect(() => {
-    if (!hasCrew || crewState === "skipped") setDateMode("set");
-  }, [hasCrew, crewState]);
-
-  // Auto-switch to poll tab whenever a poll is active — handles both the
-  // initial open and the moment pollMode flips true after switching.
-  // Also clears the switch-to-poll prompt since the switch already happened.
-  useEffect(() => {
-    if (pollMode) {
-      setDateMode("poll");
-      setShowPollSwitchPrompt(false);
-    }
-  }, [pollMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Dismiss the switch-to-poll prompt whenever the dates panel closes so it
-  // doesn't linger and reappear the next time the panel is opened.
-  useEffect(() => {
-    if (activePanel !== "dates") setShowPollSwitchPrompt(false);
-  }, [activePanel]);
-
-  // Pick-your-dates form state — seeded from locked dates so reopening the panel shows current values
-  const [directStart, setDirectStart] = useState(trip.start_date ?? "");
-  const [directEnd, setDirectEnd] = useState(trip.end_date ?? "");
-
-  const lockDates = trpc.trips.lockDates.useMutation({
-    onSuccess() {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
-  const unlockDates = trpc.datePoll.unlock.useMutation({
-    onSuccess() {
-      setDirectStart("");
-      setDirectEnd("");
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
   // ── Destination editing modal ──────────────────────────────────────────
   const [showDestModal, setShowDestModal] = useState(false);
   const [destDraft, setDestDraft] = useState(
@@ -598,51 +993,6 @@ export function PlanningGrid({
       setShowDestModal(false);
     },
   });
-
-  // ── Switch-to-poll prompt ───────────────────────────────────────────────
-  // Shown when the user clicks "Poll the Crew" while dates are already set
-  // directly. Offers to carry the current dates over as the first window so
-  // they don't have to reset and re-enter.
-  const addPollWindow = trpc.datePoll.addWindow.useMutation({
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
-  const handleSwitchToPoll = () => {
-    // Capture current values then clear the form immediately so the
-    // "Pick your Dates" tab no longer shows the old directly-set dates.
-    const start = directStart;
-    const end = directEnd;
-    setDirectStart("");
-    setDirectEnd("");
-
-    const afterWindowReady = () => {
-      setPollActive.mutate({ tripId, pollMode: true });
-      unlockDates.mutate({ tripId });
-      setDateMode("poll");
-      setShowPollSwitchPrompt(false);
-    };
-
-    // If this exact window already exists in the poll, skip adding a duplicate.
-    const alreadyExists = (datePoll?.windows as unknown as GridPollWindow[] | undefined)
-      ?.some((w) => w.start_date === start && w.end_date === end) ?? false;
-
-    if (alreadyExists) {
-      afterWindowReady();
-    } else {
-      addPollWindow.mutate(
-        { tripId, id: crypto.randomUUID(), startDate: start, endDate: end },
-        { onSuccess: afterWindowReady },
-      );
-    }
-  };
-
-  const handleSet = () => {
-    if (!directStart || !directEnd || directStart >= directEnd) return;
-    if (pollMode) setPollActive.mutate({ tripId, pollMode: false });
-    lockDates.mutate({ tripId, startDate: directStart, endDate: directEnd });
-  };
 
   // ── Skip / unskip ──────────────────────────────────────────────────────
   const [pendingTile, setPendingTile] = useState<TileKey | null>(null);
@@ -902,297 +1252,29 @@ export function PlanningGrid({
     );
   }, [typedSchedule]);
 
-  // ── Dates panel body — shared by desktop panel and mobile tab ─────────────
-  // Guard against skipped state — content should never show when opted out.
+  // ── Panel header colour helper — teal when the panel's tile is complete ──
   const panelTitleColor = (state: TileState) =>
     state === "complete" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
 
-  const datesPanelBody = canEdit && datesState !== "skipped" ? (
-    // Same px-4 py-4 wrapper as crew / lodging / schedule panels.
-    <div data-testid="planning-dates-panel" className="px-4 py-4">
-      <h2
-        className="mb-1.5 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: panelTitleColor(datesState) }}
-      >
-        Dates
-      </h2>
-      <p className="mb-3 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        Lock in dates directly, or poll the crew to find a window that works for everyone.
-      </p>
-
-      {/* Segmented control — natural width, left-aligned */}
-      <div className="mb-3">
-        <div
-          className="inline-flex rounded-xl p-1"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => { setDateMode("set"); setShowPollSwitchPrompt(false); }}
-            data-active={dateMode === "set"}
-            className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold"
-            style={
-              dateMode === "set"
-                ? {
-                    background: "var(--color-bt-card)",
-                    color: "var(--color-bt-text)",
-                    boxShadow: "var(--shadow-card)",
-                  }
-                : { background: "transparent", color: "var(--color-bt-text-dim)" }
-            }
-          >
-            <CalendarRange size={12} />
-            Pick your Dates
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              // Only offer the "switch to poll" prompt when dates were set
-              // directly (no existing poll windows). If windows already exist
-              // the user has already set up a poll — just switch to that tab.
-              if (datesLocked && !pollMode && !hasPollWindows) {
-                setShowPollSwitchPrompt(true);
-              } else {
-                setDateMode("poll");
-                setShowPollSwitchPrompt(false);
-              }
-            }}
-            disabled={crewState === "skipped"}
-            data-active={dateMode === "poll"}
-            className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-            style={
-              dateMode === "poll"
-                ? {
-                    background: "var(--color-bt-card)",
-                    color: "var(--color-bt-text)",
-                    boxShadow: "var(--shadow-card)",
-                  }
-                : { background: "transparent", color: "var(--color-bt-text-dim)" }
-            }
-          >
-            <Users size={12} />
-            Poll the Crew
-          </button>
-        </div>
-      </div>
-
-      {/* Switch-to-poll prompt — only when dates were set directly (no windows yet) */}
-      {showPollSwitchPrompt && datesLocked && !pollMode && !hasPollWindows && (
-        <div className="mb-3">
-          <div
-            className="space-y-3 rounded-xl border p-3"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              borderColor: "var(--color-bt-border)",
-            }}
-          >
-            <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-              Switch to polling?{" "}
-              <span style={{ color: "var(--color-bt-accent)" }}>{lockedDateLabel}</span>
-              {" "}will become your first option — add more from there.
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleSwitchToPoll}
-                disabled={addPollWindow.isPending}
-                className="flex-1 rounded-lg border border-transparent py-1.5 text-xs font-semibold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {addPollWindow.isPending ? "Switching…" : "Yes, start a poll"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPollSwitchPrompt(false)}
-                className="flex-1 rounded-lg border py-1.5 text-xs font-semibold"
-                style={{
-                  background: "transparent",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Body */}
-      {dateMode === "set" ? (
-        <div>
-          {datesLocked ? (
-            <div
-              className="mb-3 flex items-start gap-2 rounded-xl px-3 py-2.5"
-              style={{
-                background: "var(--color-bt-accent-faint)",
-                border: "1px solid var(--color-bt-accent-border)",
-              }}
-            >
-              <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
-              <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-accent)" }}>
-                Dates are set — update them below or reset to start over.
-              </p>
-            </div>
-          ) : (
-            <p className="mb-2 text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              Already know the dates? Lock them in directly.
-            </p>
-          )}
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[140px] flex-1">
-              <label
-                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Start date
-              </label>
-              <input
-                type="date"
-                value={directStart}
-                onChange={(e) => setDirectStart(e.target.value)}
-                className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-                style={{
-                  background: "var(--color-bt-base)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-            </div>
-            <div className="min-w-[140px] flex-1">
-              <label
-                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                End date
-              </label>
-              <input
-                type="date"
-                value={directEnd}
-                onChange={(e) => setDirectEnd(e.target.value)}
-                className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-                style={{
-                  background: "var(--color-bt-base)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleSet}
-              disabled={
-                !directStart ||
-                !directEnd ||
-                directStart >= directEnd ||
-                lockDates.isPending
-              }
-              className="flex-shrink-0 rounded-lg border border-transparent px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              {datesLocked ? "Update" : "Set"}
-            </button>
-            {datesLocked && (
-              <button
-                type="button"
-                onClick={() => unlockDates.mutate({ tripId })}
-                disabled={unlockDates.isPending}
-                className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border px-4 py-1.5 text-sm font-semibold disabled:opacity-40"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-              >
-                <RotateCcw size={13} />
-                {unlockDates.isPending ? "Clearing…" : "Reset"}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : hasCrew ? (
-        <div className="space-y-3">
-            {/* Locked-from-poll banner */}
-            {datesLocked && (
-              <div
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2.5"
-                style={{
-                  background: "var(--color-bt-accent-faint)",
-                  border: "1px solid var(--color-bt-accent-border)",
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <Check size={14} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
-                  <p className="text-[13px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
-                    {lockedDateLabel} — locked in from this poll
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setDateMode("set"); setShowPollSwitchPrompt(false); }}
-                    className="text-xs font-semibold"
-                    style={{ background: "transparent", border: "none", color: "var(--color-bt-accent)", cursor: "pointer" }}
-                  >
-                    Update
-                  </button>
-                  <span style={{ color: "var(--color-bt-accent-border)" }}>·</span>
-                  <button
-                    type="button"
-                    onClick={() => unlockDates.mutate({ tripId })}
-                    disabled={unlockDates.isPending}
-                    className="flex items-center gap-1 text-xs font-semibold disabled:opacity-40"
-                    style={{ background: "transparent", border: "none", color: "var(--color-bt-text-dim)", cursor: "pointer" }}
-                  >
-                    <RotateCcw size={11} />
-                    {unlockDates.isPending ? "Clearing…" : "Reset"}
-                  </button>
-                </div>
-              </div>
-            )}
-            <DatePollCard
-              trip={trip}
-              isOwner={isOwner}
-              onManageCrew={canEdit ? () => handleTileClick("crew") : undefined}
-            />
-          </div>
-      ) : (
-        <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Add crew members first —{" "}
-          <button
-            type="button"
-            onClick={() => handleTileClick("crew")}
-            className="font-semibold underline"
-            style={{
-              color: "var(--color-bt-accent)",
-              background: "transparent",
-              border: "none",
-            }}
-          >
-            open Crew →
-          </button>
-        </p>
-      )}
-
-      {/* Opt-out — mobile only (sm:hidden); desktop uses the tile's footer */}
-      {canEdit && (
-        <div className="mt-4 border-t pt-3 sm:hidden" style={{ borderColor: "var(--color-bt-border)" }}>
-          <button
-            type="button"
-            onClick={() => handleSkip("dates")}
-            disabled={pendingTile === "dates"}
-            className="text-xs disabled:opacity-40"
-            style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none", textDecoration: "underline dotted", textUnderlineOffset: 2 }}
-          >
-            Opt out
-          </button>
-        </div>
-      )}
-    </div>
-  ) : null;
+  // ── Dates panel content — extracted into DatesPanelContent component ─────
+  // Renders the segmented control, switch-to-poll prompt, set/poll body, and
+  // mobile opt-out. Owns its own state, mutations, and effects.
+  const datesPanelEl = (
+    <DatesPanelContent
+      tripId={tripId}
+      trip={trip}
+      canEdit={canEdit}
+      isOwner={isOwner}
+      crewState={crewState}
+      datesState={datesState}
+      pollMode={pollMode}
+      hasCrew={hasCrew}
+      isPanelOpen={activePanel === "dates"}
+      pendingTile={pendingTile}
+      onSkip={() => handleSkip("dates")}
+      onOpenCrew={() => handleTileClick("crew")}
+    />
+  );
 
   // ── Panel border color — teal when the active tile is complete ────────
   const tileStateMap: Record<TileKey, TileState> = {
@@ -1355,7 +1437,7 @@ export function PlanningGrid({
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             ))}
-            {activePanel === "dates" && datesPanelBody}
+            {activePanel === "dates" && datesState !== "skipped" && canEdit && datesPanelEl}
           </div>
         )}
       </div>
@@ -1417,14 +1499,14 @@ export function PlanningGrid({
                   >Opt in</button>
                 )}
               </div>
+            ) : canEdit ? (
+              datesPanelEl
             ) : (
-              datesPanelBody ?? (
-                <div className="px-4 py-6 text-center">
-                  <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
-                  </p>
-                </div>
-              )
+              <div className="px-4 py-6 text-center">
+                <p className="text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {datesLocked ? lockedDateLabel : "Dates not yet confirmed"}
+                </p>
+              </div>
             )
           )}
           {mobileActiveTab === "crew" && (

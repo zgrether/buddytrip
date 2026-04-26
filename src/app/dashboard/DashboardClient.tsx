@@ -16,6 +16,8 @@ interface TripRow {
   location?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  /** Real-world location string ("Bandon, OR"); preferred over the cute idea title. */
+  locked_destination_location?: string | null;
   locked_destination_title?: string | null;
   trip_status_override?: string | null;
   stage?: string | null;
