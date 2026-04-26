@@ -387,7 +387,10 @@ export function ScheduleTab({
     return groups;
   }, [visibleItems, trip.start_date, trip.end_date]);
 
-  const unconfirmedCount = allItems.filter((i) => !i.is_confirmed).length;
+  // Only count items that have been assigned to a day — those are the ones
+  // the confirm button appears on. Unscheduled items are also unconfirmed,
+  // but can't be confirmed until they have a date, so they shouldn't count.
+  const unconfirmedCount = allItems.filter((i) => !i.is_confirmed && !!i.scheduled_date).length;
 
   const confirmItem = trpc.schedule.confirm.useMutation({
     async onMutate(vars) {
