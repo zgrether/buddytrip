@@ -25,6 +25,9 @@ export interface TripData {
   about_message?: string | null;
   /** "basic" (four-tile grid) | "advanced" (full tab view — paywall seam). */
   planning_tier?: "basic" | "advanced" | null;
+  /** Panel activation flags — owner taps the invitation card to flip these on. */
+  itinerary_enabled?: boolean | null;
+  getting_there_enabled?: boolean | null;
   owner_alert?: string | null;
   owner_alert_set_at?: string | null;
   owner_alert_set_by?: string | null;
