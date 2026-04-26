@@ -881,8 +881,10 @@ export function TripSettingsModal({
 
         {/* DEV ONLY — remove before launch.
             Surfaces the planning_tier toggle so the basic-grid vs advanced-tab
-            split can be exercised end-to-end without a real paywall in place. */}
-        {isOwner && process.env.NODE_ENV === "development" && (
+            split can be exercised end-to-end without a real paywall in place.
+            Only shown during planning stage — once a trip advances to going the
+            tier is fixed at "advanced" and the toggle is irrelevant. */}
+        {isOwner && process.env.NODE_ENV === "development" && stage === "planning" && (
           <DevPlanningTierToggle tripId={tripId} trip={trip} />
         )}
       </div>

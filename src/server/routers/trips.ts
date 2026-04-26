@@ -785,10 +785,14 @@ export const tripsRouter = router({
       const stageUpdate: {
         stage: "going";
         stage_advanced_to_going_at: string;
+        planning_tier: "advanced";
         about_message?: string;
       } = {
         stage: "going",
         stage_advanced_to_going_at: new Date().toISOString(),
+        // Stamp planning_tier = advanced so the settings modal and any
+        // other consumers that read this column reflect the graduated state.
+        planning_tier: "advanced",
       };
       if (trimmedAboutMessage) {
         stageUpdate.about_message = trimmedAboutMessage;
