@@ -113,6 +113,7 @@ export function DatesModal({
             onSave={handleSave}
             isSaving={lockDates.isPending}
             onCancel={onClose}
+            showDescription={false}
           />
         </div>
       </div>

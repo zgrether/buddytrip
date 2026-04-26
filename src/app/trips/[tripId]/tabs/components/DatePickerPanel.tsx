@@ -17,6 +17,11 @@ export interface DatePickerPanelProps {
   isSaving: boolean;
   /** When provided, renders a ghost "Cancel" button. */
   onCancel?: () => void;
+  /**
+   * Show the "Already know the dates? Lock them in directly." description.
+   * Default true. Pass false when a parent modal already provides context.
+   */
+  showDescription?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -50,6 +55,7 @@ export function DatePickerPanel({
   onSave,
   isSaving,
   onCancel,
+  showDescription = true,
 }: DatePickerPanelProps) {
   const [directStart, setDirectStart] = useState(initialStartDate ?? "");
   const [directEnd, setDirectEnd] = useState(initialEndDate ?? "");
@@ -69,10 +75,12 @@ export function DatePickerPanel({
 
   return (
     <div className="space-y-3">
-      {/* Description */}
-      <p className="text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-        Already know the dates? Lock them in directly.
-      </p>
+      {/* Description — suppressed when a parent modal already provides context */}
+      {showDescription && (
+        <p className="text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          Already know the dates? Lock them in directly.
+        </p>
+      )}
 
       {/* Date inputs */}
       <div className="flex gap-3">
