@@ -157,7 +157,15 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
 
       {/* Badges — absolute top right, above silhouette */}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
-        <StatusBadge status={status} />
+        {/* "now" is conveyed by the Live countdown bar — no redundant badge needed */}
+        {status !== "now" && (
+          <StatusBadge
+            status={status}
+            // "going" + a future/present countdown → label as UPCOMING so it's
+            // clear the trip hasn't started yet vs. actively happening.
+            label={status === "going" && countdown !== null ? "UPCOMING" : undefined}
+          />
+        )}
         {unreadCount > 0 && (
           <span
             className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
