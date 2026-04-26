@@ -14,8 +14,10 @@ interface LocationHeroProps {
   tripStartDate?: string | null;
   /** Top rows (title, location, dates) — the state watermark is vertically centered behind these. */
   topContent: ReactNode;
-  /** Optional content rendered full-width below the top rows (e.g. progress stepper). */
+  /** Optional content rendered full-width below the top rows (e.g. countdown bar). */
   children?: ReactNode;
+  /** Optional element absolutely positioned at the top-right corner of the card (e.g. settings gear). */
+  topRightAction?: ReactNode;
 }
 
 /**
@@ -43,7 +45,7 @@ export function parseLocation(location: string): { city: string; region: string 
  * outline of the destination state and a pin on the city (US only).
  * Falls back to a subtle large pin icon for unrecognised/international locations.
  */
-export function LocationHero({ location, tripName, tripStartDate, topContent, children }: LocationHeroProps) {
+export function LocationHero({ location, tripName, tripStartDate, topContent, children, topRightAction }: LocationHeroProps) {
   const { resolvedTheme } = useTheme();
   const { outline, cityPin, showPin, rotation } = getLocationInfo(location);
 
@@ -67,10 +69,17 @@ export function LocationHero({ location, tripName, tripStartDate, topContent, ch
       style={isDark ? darkStyle : lightStyle}
       data-testid="location-hero"
     >
-      <div className="relative z-10 px-5 py-4">
+      {/* Absolute top-right action slot — sits above all content, doesn't affect layout. */}
+      {topRightAction && (
+        <div className="absolute right-3 top-3 z-20">
+          {topRightAction}
+        </div>
+      )}
+      <div className="relative z-10">
+        <div className="px-5 py-4">
         {/* Top block: title / location / dates. The state watermark is
             vertically centered within this block so it doesn't shift based on
-            whether the progress stepper is rendered below. */}
+            whether content (e.g. the countdown bar) is rendered below. */}
         <div className="relative">
           {outline ? (
             <div
@@ -118,6 +127,7 @@ export function LocationHero({ location, tripName, tripStartDate, topContent, ch
             </svg>
           )}
           {topContent}
+        </div>
         </div>
         {children}
       </div>

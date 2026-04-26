@@ -2,14 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Settings, Lock, Sparkles } from "lucide-react";
+import { Lock, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TripBottomNav, type TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
-import { ProgressStepper } from "@/components/ProgressStepper";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
@@ -21,7 +20,7 @@ import { LodgingTab } from "./tabs/LodgingTab";
 import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
-import { isReadOnly as checkReadOnly, countdownLabel } from "@/lib/tripStatus";
+import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { QuickInfoSection } from "./components/QuickInfoSection";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
@@ -174,17 +173,12 @@ export default function TripDetailPage() {
   // Effective canEdit: forced false when read-only
   const effectiveCanEdit = tripIsReadOnly ? false : canEdit;
 
-  const settingsButton = (isOwner && !tripIsReadOnly) ? (
-    <button
-      data-testid="trip-settings-btn"
-      onClick={() => setShowSettings(true)}
-      className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-      style={{ color: "var(--color-bt-text-dim)" }}
-      aria-label="Trip settings"
-    >
-      <Settings size={18} />
-    </button>
-  ) : null;
+  // Settings gear is now rendered INSIDE TripHeader (top-right). The header
+  // calls `onSettingsClick` when tapped — pass it through only when the owner
+  // can actually edit the trip.
+  const onSettingsClick = (isOwner && !tripIsReadOnly)
+    ? () => setShowSettings(true)
+    : undefined;
 
   // Trip summary — compact labelled pill for the owner once the trip is past
   // idea stage. Filled when the prereqs to advance (destination + dates locked)
@@ -230,20 +224,6 @@ export default function TripDetailPage() {
         /* Idea stage: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
         <>
           <div className="mx-auto max-w-[1280px] px-4 pt-4">
-            {/* ── Owner toolbar: progress stepper + settings ── */}
-            {isOwner && (
-              <div className="mb-3 flex items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <ProgressStepper
-                    stage={stage}
-                    displayStatus={status}
-                    countdownText={countdownLabel(trip)}
-                  />
-                </div>
-                {settingsButton}
-              </div>
-            )}
-
             <TripHeader
               tripName={trip.title}
               status={status}
@@ -251,9 +231,12 @@ export default function TripDetailPage() {
               lockedTitle={trip.locked_destination_title}
               dateRange={formatDateRange(trip.start_date, trip.end_date)}
               isLocked={isLocked}
+              stage={stage}
               canEdit={canEdit}
               myRole={role}
               tripStartDate={trip.start_date}
+              tripEndDate={trip.end_date}
+              onSettingsClick={onSettingsClick}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
                   tripId: trip.id,
@@ -288,22 +271,6 @@ export default function TripDetailPage() {
           style={{ marginRight: chatOpen ? undefined : undefined }}
         >
           <div className={chatOpen ? "lg:mr-[380px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
-            {/* ── Owner toolbar: progress stepper + settings ──
-                The Trip Summary button lives inline with the Action
-                Center title; see HomeTab below. */}
-            {isOwner && (
-              <div className="mb-3 flex items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <ProgressStepper
-                    stage={stage}
-                    displayStatus={status}
-                    countdownText={countdownLabel(trip)}
-                  />
-                </div>
-                {settingsButton}
-              </div>
-            )}
-
             <TripHeader
               tripName={trip.title}
               status={status}
@@ -311,9 +278,12 @@ export default function TripDetailPage() {
               lockedTitle={trip.locked_destination_title}
               dateRange={formatDateRange(trip.start_date, trip.end_date)}
               isLocked={isLocked}
+              stage={stage}
               canEdit={canEdit}
               myRole={role}
               tripStartDate={trip.start_date}
+              tripEndDate={trip.end_date}
+              onSettingsClick={onSettingsClick}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
                   tripId: trip.id,
