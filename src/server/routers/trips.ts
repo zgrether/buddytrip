@@ -900,6 +900,10 @@ export const tripsRouter = router({
   // Currently surfaced as a dev-only toggle in TripSettingsModal; the
   // 'advanced' tier is the future paywall seam (basic = four-tile grid,
   // advanced = full tab view).
+  //
+  // Cascades stage so the dev toggle works as a full time-machine:
+  //   basic    → stage reverts to "planning" (re-enables the grid + modal flow)
+  //   advanced → stage advances to "going"   (shows the tab/itinerary view)
   // -----------------------------------------------------------------------
   updatePlanningTier: authedProcedure
     .input(
@@ -910,11 +914,13 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      const stageForTier = input.tier === "basic" ? "planning" : "going";
+
       const { data, error } = await ctx.supabase
         .from("trips")
-        .update({ planning_tier: input.tier })
+        .update({ planning_tier: input.tier, stage: stageForTier })
         .eq("id", ctx.tripId)
-        .select("id, planning_tier")
+        .select("id, planning_tier, stage")
         .single();
 
       if (error || !data) {
