@@ -76,7 +76,7 @@ export function getTripCountdown(
       type: "happening",
       dayNumber,
       totalDays,
-      label: `Happening now · Day ${dayNumber} of ${totalDays}`,
+      label: `Live · Day ${dayNumber} of ${totalDays}`,
     };
   }
 

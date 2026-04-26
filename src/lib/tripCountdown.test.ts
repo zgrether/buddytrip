@@ -87,7 +87,7 @@ describe("getTripCountdown", () => {
       type: "happening",
       dayNumber: 3,
       totalDays: 5,
-      label: "Happening now · Day 3 of 5",
+      label: "Live · Day 3 of 5",
     });
   });
 
@@ -104,7 +104,7 @@ describe("getTripCountdown", () => {
       type: "happening",
       dayNumber: 5,
       totalDays: 5,
-      label: "Happening now · Day 5 of 5",
+      label: "Live · Day 5 of 5",
     });
   });
 
