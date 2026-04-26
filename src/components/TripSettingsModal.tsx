@@ -911,8 +911,15 @@ function DevPlanningTierToggle({
 
   const updateTier = trpc.trips.updatePlanningTier.useMutation({
     onSuccess: () => {
+      // Invalidate both queries then do a hard reload so the page re-mounts
+      // with the correct stage/tier view. (Dev-only — UX cost is acceptable.)
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
+      window.location.reload();
+    },
+    onError: (err) => {
+      console.error("[updatePlanningTier]", err.message);
+      alert(`Failed to switch tier: ${err.message}`);
     },
   });
 
