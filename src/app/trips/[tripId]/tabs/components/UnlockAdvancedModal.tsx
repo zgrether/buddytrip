@@ -89,28 +89,72 @@ export function UnlockAdvancedModal({
           boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
         }}
       >
-        {/* Step indicator — animated pills: active step widens to 24px */}
-        <div className="flex items-center justify-center gap-2 pb-1 pt-3">
-          <div
-            style={{
-              height: 3,
-              borderRadius: 2,
-              transition: "all 0.2s",
-              width: step === 1 ? 24 : 16,
-              background:
-                step === 1 ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-            }}
-          />
-          <div
-            style={{
-              height: 3,
-              borderRadius: 2,
-              transition: "all 0.2s",
-              width: step === 2 ? 24 : 16,
-              background:
-                step === 2 ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-            }}
-          />
+        {/* Nav row: back link (step 2 only) | clickable step pills | spacer */}
+        <div className="flex items-center px-4 pb-1 pt-3">
+          {/* Left slot — back link on step 2, invisible spacer on step 1 */}
+          <div style={{ width: 56, flexShrink: 0 }}>
+            {step === 2 && (
+              <button
+                onClick={() => setStep(1)}
+                className="flex items-center gap-1"
+                style={{
+                  color: "var(--color-bt-text-dim)",
+                  fontSize: "13px",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                >
+                  <path d="M9 2L4 7l5 5" />
+                </svg>
+                Back
+              </button>
+            )}
+          </div>
+
+          {/* Center — clickable step pills */}
+          <div className="flex flex-1 items-center justify-center gap-2">
+            <div
+              role="button"
+              aria-label="Step 1"
+              onClick={() => setStep(1)}
+              style={{
+                height: 3,
+                borderRadius: 2,
+                transition: "all 0.2s",
+                width: step === 1 ? 24 : 16,
+                background:
+                  step === 1 ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                cursor: step === 2 ? "pointer" : "default",
+              }}
+            />
+            <div
+              role="button"
+              aria-label="Step 2"
+              onClick={() => setStep(2)}
+              style={{
+                height: 3,
+                borderRadius: 2,
+                transition: "all 0.2s",
+                width: step === 2 ? 24 : 16,
+                background:
+                  step === 2 ? "var(--color-bt-accent)" : "var(--color-bt-border)",
+                cursor: step === 1 ? "pointer" : "default",
+              }}
+            />
+          </div>
+
+          {/* Right spacer — mirrors left slot width to keep pills truly centered */}
+          <div style={{ width: 56, flexShrink: 0 }} />
         </div>
 
         {step === 1 ? (
@@ -124,7 +168,6 @@ export function UnlockAdvancedModal({
           <Step2Pitch
             trip={trip}
             dateLabel={dateLabel}
-            onBack={() => setStep(1)}
             onClose={onClose}
             onConfirm={onConfirm}
             isConfirming={isConfirming}
@@ -346,14 +389,12 @@ function SummaryRow({
 function Step2Pitch({
   trip,
   dateLabel,
-  onBack,
   onClose,
   onConfirm,
   isConfirming,
 }: {
   trip: UnlockAdvancedModalProps["trip"];
   dateLabel: string | null;
-  onBack: () => void;
   onClose: () => void;
   onConfirm: () => void;
   isConfirming: boolean;
@@ -368,30 +409,6 @@ function Step2Pitch({
 
   return (
     <>
-      {/* Back link — sits above the hero so the gradient doesn't bleed onto it */}
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 px-4 pb-0 pt-3"
-        style={{
-          color: "var(--color-bt-text-dim)",
-          fontSize: "13px",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 14 14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="M9 2L4 7l5 5" />
-        </svg>
-        Back
-      </button>
       {/* Hero — gradient background with two radial blobs */}
       <div
         className="relative overflow-hidden px-6 pb-5 pt-4"
@@ -564,7 +581,7 @@ function Step2Pitch({
           className="mt-2 w-full rounded-xl py-2 text-sm transition-opacity hover:opacity-80"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Not yet
+          Not yet, stick to the basics
         </button>
       </div>
     </>
