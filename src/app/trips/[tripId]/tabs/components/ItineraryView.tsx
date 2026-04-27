@@ -154,14 +154,18 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
   const isEmpty = days.length === 0 || events.length === 0;
 
   // ── Render ─────────────────────────────────────────────────────────────
+  // Header only appears once there's content — when the panel is showing
+  // its empty-state mock-up, the dashed card stands on its own.
   return (
     <div className="space-y-3">
-      <h2
-        className="text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Itinerary
-      </h2>
+      {!isEmpty && (
+        <h2
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Itinerary
+        </h2>
+      )}
 
       {showFilterPills && (
         <div className="flex flex-wrap items-center gap-2">

@@ -69,27 +69,29 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const [expanded, setExpanded] = useState(false);
 
   const hasMyTravel = !!myMember?.travel_mode;
+  const showEmptyState = !!myMember && !hasMyTravel && !expanded;
 
   // ── Render ──────────────────────────────────────────────────────────────
   // Section header + content render directly (no outer card shell) so the
-  // panel-less treatment matches the rest of the home tab. The empty-state
-  // mock-up + your row + pending tally sit inside a card surface below.
+  // panel-less treatment matches the rest of the home tab. The header only
+  // appears once the user has shared travel — when the empty-state mock-up
+  // is visible, the dashed card stands on its own.
   return (
     <div className="space-y-3" data-testid="getting-there-section">
-      <h2
-        className="text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Getting there
-      </h2>
+      {!showEmptyState && (
+        <h2
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Getting there
+        </h2>
+      )}
 
       {/* Empty state mock-up — only when the user hasn't shared travel yet
           AND they're not currently editing. Mirrors the Itinerary empty
           state pattern: dashed card + icon + heading + description + faded
           skeleton preview of populated arrival rows. */}
-      {myMember && !hasMyTravel && !expanded && (
-        <EmptyArrivalsState onCancel={onCancel} />
-      )}
+      {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
 
       <div
         className="overflow-hidden rounded-xl"

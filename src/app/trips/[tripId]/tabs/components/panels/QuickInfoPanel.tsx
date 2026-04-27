@@ -1,16 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Info } from "lucide-react";
+import { Info, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { AddTileModal, QuickInfoSection } from "../../../components/QuickInfoSection";
 import { QuickInfoIntroModal } from "../modals/QuickInfoIntroModal";
+import type { TripData } from "../../types";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
 interface QuickInfoPanelProps {
   tripId: string;
   isOwner: boolean;
+  /** Owner has X'd out the empty state — panel renders nothing. */
+  isDismissed: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -31,69 +34,108 @@ interface QuickInfoPanelProps {
  *                           already gated by isOwner so member-mode just
  *                           drops them automatically.
  */
-export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
+export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelProps) {
   const [introOpen, setIntroOpen] = useState(false);
   const [addTileOpen, setAddTileOpen] = useState(false);
   const { data: tiles = [] } = trpc.quickInfoTiles.list.useQuery({ tripId });
   const hasItems = tiles.length > 0;
+  const utils = trpc.useUtils();
+
+  const dismissQuickInfo = trpc.trips.dismissQuickInfo.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, quick_info_dismissed: true } : old
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.trips.getById.setData({ tripId }, ctx.prev);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+    },
+  });
 
   // ── State 3: live (no panel shell — section is its own surface) ──────
   if (hasItems) {
     return <QuickInfoSection tripId={tripId} isOwner={isOwner} />;
   }
 
-  // ── State 1: member, no tiles ────────────────────────────────────────
-  if (!isOwner) {
+  // ── State 1: member, no tiles, OR dismissed ─────────────────────────
+  if (!isOwner || isDismissed) {
     return null;
   }
 
   // ── State 2: owner, no tiles, invitation w/ skeleton mock-up ─────────
+  // Empty state matches Itinerary / Getting There: dashed card on the
+  // base surface (not surface-invitation), 1px border, X in top-right
+  // to dismiss.
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIntroOpen(true)}
-        data-testid="quick-info-invitation"
-        className="w-full rounded-xl p-4 text-left transition-colors"
+      <div
+        className="relative rounded-xl p-4"
         style={{
-          background: "var(--color-bt-surface-invitation)",
-          border: "1.5px dashed var(--color-bt-border)",
-          cursor: "pointer",
+          background: "var(--color-bt-base)",
+          border: "1px dashed var(--color-bt-border)",
         }}
+        data-testid="quick-info-invitation"
       >
-        <div className="flex flex-col items-center text-center">
-          <div
-            className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"
-            style={{
-              background: "var(--color-bt-accent-faint)",
-              color: "var(--color-bt-accent)",
-            }}
-          >
-            <Info size={22} />
-          </div>
-          <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
-            Pin the stuff everyone asks about
-          </p>
-          <p
-            className="mt-1 max-w-[280px] text-xs leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Door codes, check-in times, WiFi passwords, addresses — anything
-            the crew will need at a glance.
-          </p>
-        </div>
-
-        {/* Skeleton tile preview — 4-col grid mirroring the live state */}
-        <div
-          className="mt-4 grid grid-cols-4 gap-2"
-          style={{ opacity: 0.65 }}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            dismissQuickInfo.mutate({ tripId });
+          }}
+          aria-label="Dismiss Quick Info"
+          data-testid="quick-info-empty-cancel"
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
-          <SkeletonTile label="Door code" value="1234#" />
-          <SkeletonTile label="Check-in" value="3:00 PM" />
-          <SkeletonTile label="WiFi" value="BT_Guest" />
-          <SkeletonTile label="Address" value="42 Oak St" />
-        </div>
-      </button>
+          <X size={14} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIntroOpen(true)}
+          className="block w-full text-left"
+          style={{ background: "transparent", border: "none", cursor: "pointer" }}
+        >
+          <div className="flex flex-col items-center text-center">
+            <div
+              className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                color: "var(--color-bt-accent)",
+              }}
+            >
+              <Info size={22} />
+            </div>
+            <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
+              Pin the stuff everyone asks about
+            </p>
+            <p
+              className="mt-1 max-w-[280px] text-xs leading-snug"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Door codes, check-in times, WiFi passwords, addresses — anything
+              the crew will need at a glance.
+            </p>
+          </div>
+
+          {/* Skeleton tile preview — 4-col grid mirroring the live state */}
+          <div
+            className="mt-4 grid grid-cols-4 gap-2"
+            style={{ opacity: 0.65 }}
+          >
+            <SkeletonTile label="Door code" value="1234#" />
+            <SkeletonTile label="Check-in" value="3:00 PM" />
+            <SkeletonTile label="WiFi" value="BT_Guest" />
+            <SkeletonTile label="Address" value="42 Oak St" />
+          </div>
+        </button>
+      </div>
 
       <QuickInfoIntroModal
         isOpen={introOpen}

@@ -814,6 +814,30 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // dismissQuickInfo — owner taps the X on the Quick Info empty state.
+  // Flag stays set until a tile is created (server-side) or the trip is
+  // reset. Idempotent.
+  // -----------------------------------------------------------------------
+  dismissQuickInfo: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ quick_info_dismissed: true })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to dismiss quick info: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
   // Requires: at least one date is locked. aboutMessage is optional — when
   // supplied, it's saved to trip.about_message; no email blast is sent.

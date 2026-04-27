@@ -97,6 +97,7 @@ export function HomeTab({
           <QuickInfoPanel
             tripId={trip.id}
             isOwner={!!isOwner}
+            isDismissed={!!trip.quick_info_dismissed}
           />
           <ItineraryPanel
             tripId={trip.id}
