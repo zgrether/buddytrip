@@ -85,12 +85,34 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
     return null;
   }
 
-  // ── State 4: owner, dismissed — original "Add Quick Info" CTA card ──
-  // Smaller-footprint invitation card (matches the original pre-rich-
-  // mock-up pattern). Tapping it un-dismisses, bringing the rich empty
-  // state back.
+  // ── State 4: owner, dismissed — "Enable Quick Info Tiles" CTA card ──
+  // Smaller-footprint invitation card. Tap fires both: un-dismiss (so the
+  // rich state is what's behind the modal) AND opens the intro modal — so
+  // the click does what the user expects (start the add-tile flow), not
+  // just toggle a flag silently.
   if (isDismissed) {
-    return <DismissedInvitationCard onClick={() => restoreQuickInfo.mutate({ tripId })} />;
+    return (
+      <>
+        <DismissedInvitationCard
+          onClick={() => {
+            restoreQuickInfo.mutate({ tripId });
+            setIntroOpen(true);
+          }}
+        />
+        <QuickInfoIntroModal
+          isOpen={introOpen}
+          onClose={() => setIntroOpen(false)}
+          onActivate={() => {
+            setIntroOpen(false);
+            setAddTileOpen(true);
+          }}
+          isActivating={false}
+        />
+        {addTileOpen && (
+          <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
+        )}
+      </>
+    );
   }
 
   // ── State 2: owner, no tiles, invitation w/ skeleton mock-up ─────────
@@ -217,7 +239,7 @@ function DismissedInvitationCard({ onClick }: { onClick: () => void }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
-            Add Quick Info
+            Enable Quick Info Tiles
           </p>
           <p
             className="mt-1 text-xs leading-snug"

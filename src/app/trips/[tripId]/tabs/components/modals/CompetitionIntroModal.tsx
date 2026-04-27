@@ -126,7 +126,7 @@ export function CompetitionIntroModal({
               backgroundClip: "text",
             }}
           >
-            Add a Competition
+            Enable Competition Mode
           </h2>
 
           <p

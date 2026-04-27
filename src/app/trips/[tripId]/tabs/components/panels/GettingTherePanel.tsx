@@ -114,7 +114,7 @@ export function GettingTherePanel({
     <>
       <InvitationCard
         Icon={Plane}
-        title="Add Travel Coordination"
+        title="Coordinate Travel Plans"
         body="Share travel plans so the crew can coordinate arrivals and no one's left waiting at the airport."
         onClick={() => setIntroOpen(true)}
         testId="getting-there-invitation"
