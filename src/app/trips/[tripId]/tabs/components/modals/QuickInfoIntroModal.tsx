@@ -264,7 +264,7 @@ export function QuickInfoIntroModal({
             ) : (
               <ArrowRight size={16} />
             )}
-            Add Quick Info
+            Enable Quick Info Tiles
           </button>
           <button
             onClick={onClose}

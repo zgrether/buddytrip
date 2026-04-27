@@ -126,7 +126,7 @@ export function CompetitionIntroModal({
               backgroundClip: "text",
             }}
           >
-            Add a Competition
+            Crown a Champion
           </h2>
 
           <p
@@ -249,7 +249,7 @@ export function CompetitionIntroModal({
             ) : (
               <ArrowRight size={16} />
             )}
-            Let&apos;s Go!
+            Enable Competition Mode
           </button>
           <button
             onClick={onClose}

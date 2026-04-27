@@ -43,19 +43,21 @@ export function CompetitionPanel({
   return (
     <>
       <InvitationCard
-        title="Add a Competition"
+        title="Enable Competition Mode"
         body="Your group already has a rivalry. Give it a scoreboard, teams, and a live leaderboard."
         onClick={() => setIntroOpen(true)}
       />
-      <CompetitionIntroModal
-        isOpen={introOpen}
-        onClose={() => setIntroOpen(false)}
-        onActivate={() => {
-          setIntroOpen(false);
-          onSetupComp?.();
-        }}
-        isActivating={false}
-      />
+      {introOpen && (
+        <CompetitionIntroModal
+          isOpen
+          onClose={() => setIntroOpen(false)}
+          onActivate={() => {
+            setIntroOpen(false);
+            onSetupComp?.();
+          }}
+          isActivating={false}
+        />
+      )}
     </>
   );
 }

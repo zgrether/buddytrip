@@ -7,6 +7,7 @@ import {
   Home,
   MapPin,
   Plane,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -45,25 +46,31 @@ function categoryOf(event: ItineraryEvent): EventCategory {
 export interface ItineraryViewProps {
   trip: TripData;
   isOwner: boolean;
+  /** When provided (owner only), shows an X button on the empty-state
+      mock-up that backs out of the activation. */
+  onCancel?: () => void;
 }
 
 /**
  * ItineraryView — the live content of the home-tab Itinerary panel.
  *
- *   1. Filter pills: All / Lodging / Travel / Events. Each non-All pill
+ *   1. ITINERARY section header (sits at the top of the view, mirroring
+ *      Schedule / Crew tab headers).
+ *   2. Filter pills: All / Lodging / Travel / Events. Each non-All pill
  *      only renders when that category has at least one event AND, for
  *      Travel, when getting_there_enabled is on (don't tease a filter
  *      for a feature the owner hasn't activated).
- *   2. Day-by-day timeline from trip start through trip end, pulling from
+ *   3. Day-by-day timeline from trip start through trip end, pulling from
  *      confirmed schedule items, lodging check-in/out, and shared travel
  *      arrivals.
- *   3. When activated but no content exists, a visually appealing empty
- *      state mirrors the intro modal preview.
+ *   4. When activated but no content exists, a visually appealing empty
+ *      state mirrors the intro modal preview. Owners get an X button
+ *      that backs out of the activation entirely.
  *
  * Getting There used to render here too — it now lives in its own panel
  * (GettingTherePanel), so it's no longer included.
  */
-export function ItineraryView({ trip, isOwner: _isOwner }: ItineraryViewProps) {
+export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryViewProps) {
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -144,9 +151,22 @@ export function ItineraryView({ trip, isOwner: _isOwner }: ItineraryViewProps) {
     (hasLodging ? 1 : 0) + (hasTravel && gettingThereEnabled ? 1 : 0) + (hasEvents ? 1 : 0);
   const showFilterPills = visibleCategoryCount > 1;
 
+  const isEmpty = days.length === 0 || events.length === 0;
+
   // ── Render ─────────────────────────────────────────────────────────────
+  // Header only appears once there's content — when the panel is showing
+  // its empty-state mock-up, the dashed card stands on its own.
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      {!isEmpty && (
+        <h2
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Itinerary
+        </h2>
+      )}
+
       {showFilterPills && (
         <div className="flex flex-wrap items-center gap-2">
           <FilterPill label="All" active={activeFilters.has("all")} onClick={() => toggleFilter("all")} />
@@ -174,8 +194,8 @@ export function ItineraryView({ trip, isOwner: _isOwner }: ItineraryViewProps) {
         </div>
       )}
 
-      {days.length === 0 || events.length === 0 ? (
-        <EmptyItineraryState />
+      {isEmpty ? (
+        <EmptyItineraryState onCancel={onCancel} />
       ) : (
         <div className="space-y-4">
           {days.map((date, i) => (
@@ -197,16 +217,30 @@ export function ItineraryView({ trip, isOwner: _isOwner }: ItineraryViewProps) {
 // Shown when the panel is activated but there are no lodging / travel /
 // schedule events to thread together yet. Mirrors the intro modal preview
 // so the empty state still hints at what the populated view will look like.
+// When onCancel is provided (owner), an X button in the top-right backs
+// out of the activation entirely.
 
-function EmptyItineraryState() {
+function EmptyItineraryState({ onCancel }: { onCancel?: () => void }) {
   return (
     <div
-      className="rounded-xl p-4"
+      className="relative rounded-xl p-4"
       style={{
         background: "var(--color-bt-base)",
         border: "1px dashed var(--color-bt-border)",
       }}
     >
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Cancel itinerary"
+          data-testid="itinerary-empty-cancel"
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <X size={14} />
+        </button>
+      )}
       <div className="flex flex-col items-center text-center">
         <div
           className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"

@@ -769,6 +769,97 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // disableItinerary — inverse of enableItinerary. Used when the user
+  // backs out of an activated-but-empty panel via the X button.
+  // -----------------------------------------------------------------------
+  disableItinerary: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ itinerary_enabled: false })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to disable itinerary: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // disableGettingThere — inverse of enableGettingThere.
+  // -----------------------------------------------------------------------
+  disableGettingThere: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ getting_there_enabled: false })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to disable getting there: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // dismissQuickInfo — owner taps the X on the Quick Info empty state.
+  // Flag stays set until restored. Idempotent.
+  // -----------------------------------------------------------------------
+  dismissQuickInfo: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ quick_info_dismissed: true })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to dismiss quick info: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // restoreQuickInfo — inverse of dismissQuickInfo. Flips the flag back
+  // to false so the empty-state invitation reappears on the home tab.
+  // -----------------------------------------------------------------------
+  restoreQuickInfo: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ quick_info_dismissed: false })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to restore quick info: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
   // Requires: at least one date is locked. aboutMessage is optional — when
   // supplied, it's saved to trip.about_message; no email blast is sent.

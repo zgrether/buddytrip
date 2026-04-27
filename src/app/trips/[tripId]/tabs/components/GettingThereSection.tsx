@@ -7,6 +7,7 @@ import {
   HelpCircle,
   Plane,
   Plus,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -31,6 +32,9 @@ interface TripMemberLite {
 export interface GettingThereSectionProps {
   tripId: string;
   isOwner: boolean;
+  /** When provided (owner only), shows an X on the empty-state mock-up
+      that backs out of the activation entirely. */
+  onCancel?: () => void;
 }
 
 /**
@@ -47,7 +51,7 @@ export interface GettingThereSectionProps {
  * in the Action Center still exists for older callers; this component
  * writes to the same `tripMembers.updateTravel` mutation.
  */
-export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProps) {
+export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereSectionProps) {
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -64,28 +68,178 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   // panel default to a half-filled form for users who hadn't engaged yet.
   const [expanded, setExpanded] = useState(false);
 
-  // ── Render ──────────────────────────────────────────────────────────────
-  // Title + outer card chrome are now provided by the wrapping
-  // GettingTherePanel CardShell — this section is just the inner content
-  // (your row + pending tally) so the same component can sit cleanly
-  // inside the panel surface.
-  return (
-    <div data-testid="getting-there-section">
-      {myMember ? (
-        <YourTravelRow
-          tripId={tripId}
-          member={myMember}
-          expanded={expanded}
-          onToggleExpanded={() => setExpanded((v) => !v)}
-          onSaved={() => {
-            utils.tripMembers.list.invalidate({ tripId });
-            setExpanded(false);
-          }}
-        />
-      ) : null}
+  const hasMyTravel = !!myMember?.travel_mode;
+  const showEmptyState = !!myMember && !hasMyTravel && !expanded;
 
-      {/* Owner-only pending tally */}
-      {isOwner && <PendingTravelRow members={otherMembers} />}
+  // ── Render ──────────────────────────────────────────────────────────────
+  // Section header + content render directly (no outer card shell) so the
+  // panel-less treatment matches the rest of the home tab. The header only
+  // appears once the user has shared travel — when the empty-state mock-up
+  // is visible, the dashed card stands on its own.
+  return (
+    <div className="space-y-3" data-testid="getting-there-section">
+      {!showEmptyState && (
+        <h2
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Getting there
+        </h2>
+      )}
+
+      {/* Empty state mock-up — only when the user hasn't shared travel yet
+          AND they're not currently editing. Mirrors the Itinerary empty
+          state pattern: dashed card + icon + heading + description + faded
+          skeleton preview of populated arrival rows. */}
+      {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
+
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        {myMember ? (
+          <YourTravelRow
+            tripId={tripId}
+            member={myMember}
+            expanded={expanded}
+            onToggleExpanded={() => setExpanded((v) => !v)}
+            onSaved={() => {
+              utils.tripMembers.list.invalidate({ tripId });
+              setExpanded(false);
+            }}
+          />
+        ) : null}
+
+        {/* Owner-only pending tally */}
+        {isOwner && <PendingTravelRow members={otherMembers} />}
+      </div>
+    </div>
+  );
+}
+
+// ── EmptyArrivalsState ───────────────────────────────────────────────────
+// Shown inside the GettingThere panel when the user hasn't shared their
+// travel yet. Same shape as the Itinerary panel empty state: dashed card
+// + centered icon/heading/description + faded skeleton preview of what
+// populated arrival rows will look like.
+
+function EmptyArrivalsState({ onCancel }: { onCancel?: () => void }) {
+  return (
+    <div
+      className="relative rounded-xl p-4"
+      style={{
+        background: "var(--color-bt-base)",
+        border: "1px dashed var(--color-bt-border)",
+      }}
+    >
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Cancel Getting There"
+          data-testid="getting-there-empty-cancel"
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <X size={14} />
+        </button>
+      )}
+      <div className="flex flex-col items-center text-center">
+        <div
+          className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+          }}
+        >
+          <Plane size={22} />
+        </div>
+        <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Crew arrivals will weave together here
+        </p>
+        <p
+          className="mt-1 max-w-[280px] text-xs leading-snug"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Share your travel and the crew can coordinate pickups, dinner
+          times, and tee slots around real arrival times.
+        </p>
+      </div>
+
+      {/* Skeleton arrivals — three faded rows mirroring the intro modal */}
+      <div
+        className="mt-4 overflow-hidden rounded-lg"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          opacity: 0.65,
+        }}
+      >
+        <SkeletonArrival name="Zach" detail="Delta 1733" time="3:42 PM" mode="flying" />
+        <SkeletonArrival name="Brad" detail="driving from Charlotte" time="~6:00 PM" mode="driving" />
+        <SkeletonArrival name="Rob" detail="Delta 847" time="5:30 PM" mode="flying" last />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonArrival({
+  name,
+  detail,
+  time,
+  mode,
+  last,
+}: {
+  name: string;
+  detail: string;
+  time: string;
+  mode: "flying" | "driving";
+  last?: boolean;
+}) {
+  const isFlying = mode === "flying";
+  const Icon = isFlying ? Plane : Car;
+  const badgeStyle = isFlying
+    ? {
+        background: "var(--color-bt-accent-faint)",
+        color: "var(--color-bt-accent)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }
+    : {
+        background: "var(--color-bt-warning-faint)",
+        color: "var(--color-bt-warning)",
+        border: "1px solid var(--color-bt-warning-border)",
+      };
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2"
+      style={{
+        borderBottom: last ? undefined : "1px solid var(--color-bt-border)",
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <p
+          className="text-[12px] font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {name}{" "}
+          <span style={{ fontWeight: 400, color: "var(--color-bt-text-dim)" }}>
+            · {detail}
+          </span>
+        </p>
+        <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          {time}
+        </p>
+      </div>
+      <span
+        className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+        style={badgeStyle}
+      >
+        <Icon size={9} />
+        {isFlying ? "Flying" : "Driving"}
+      </span>
     </div>
   );
 }

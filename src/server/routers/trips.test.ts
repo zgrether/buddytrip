@@ -432,6 +432,61 @@ describe("trips router — stage model", () => {
       memberCaller.trips.enableGettingThere({ tripId: stageTrip })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("disableItinerary — owner flips itinerary_enabled back to false", async () => {
+    const caller = ctx.caller();
+    const res = await caller.trips.disableItinerary({ tripId: stageTrip });
+    expect(res.success).toBe(true);
+    const { data } = await ctx.admin
+      .from("trips")
+      .select("itinerary_enabled")
+      .eq("id", stageTrip)
+      .single();
+    expect(data?.itinerary_enabled).toBe(false);
+  });
+
+  it("disableGettingThere — owner flips getting_there_enabled back to false", async () => {
+    const caller = ctx.caller();
+    const res = await caller.trips.disableGettingThere({ tripId: stageTrip });
+    expect(res.success).toBe(true);
+    const { data } = await ctx.admin
+      .from("trips")
+      .select("getting_there_enabled")
+      .eq("id", stageTrip)
+      .single();
+    expect(data?.getting_there_enabled).toBe(false);
+  });
+
+  it("dismissQuickInfo — owner flips quick_info_dismissed to true", async () => {
+    const caller = ctx.caller();
+    const res = await caller.trips.dismissQuickInfo({ tripId: stageTrip });
+    expect(res.success).toBe(true);
+    const { data } = await ctx.admin
+      .from("trips")
+      .select("quick_info_dismissed")
+      .eq("id", stageTrip)
+      .single();
+    expect(data?.quick_info_dismissed).toBe(true);
+  });
+
+  it("dismissQuickInfo — member is FORBIDDEN", async () => {
+    const memberCaller = ctx.callerAs("member");
+    await expect(
+      memberCaller.trips.dismissQuickInfo({ tripId: stageTrip })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("restoreQuickInfo — owner flips quick_info_dismissed back to false", async () => {
+    const caller = ctx.caller();
+    const res = await caller.trips.restoreQuickInfo({ tripId: stageTrip });
+    expect(res.success).toBe(true);
+    const { data } = await ctx.admin
+      .from("trips")
+      .select("quick_info_dismissed")
+      .eq("id", stageTrip)
+      .single();
+    expect(data?.quick_info_dismissed).toBe(false);
+  });
 });
 
 // ── setPollMode — poll mode toggle ────────────────────────────────────────
