@@ -409,6 +409,15 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
+      {!embedded && (
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Crew
+        </h2>
+      )}
+
       {/* ── Unlinked crew nudge — spans full width above the grid ── */}
       {isOwner && unlinkedCount > 0 && (
         <div
