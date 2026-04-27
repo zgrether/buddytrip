@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Car,
   ChevronDown,
@@ -58,16 +58,11 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   const otherMembers = (members as TripMemberLite[]).filter(
     (m) => m.user_id !== currentUser?.id,
   );
-  const hasMyTravel = !!myMember?.travel_mode;
 
-  const [expanded, setExpanded] = useState(!hasMyTravel);
-
-  // Re-sync expanded state when the underlying travel data changes — e.g.
-  // user saves, member row refetches, expanded can close automatically.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (hasMyTravel) setExpanded(false);
-  }, [hasMyTravel]);
+  // Always start collapsed — the user opens the row deliberately by
+  // tapping. Auto-expanding when empty was visually noisy and made the
+  // panel default to a half-filled form for users who hadn't engaged yet.
+  const [expanded, setExpanded] = useState(false);
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (

@@ -24,10 +24,12 @@ interface QuickInfoPanelProps {
  *   2. Owner, no tiles   → invitation card → opens QuickInfoIntroModal,
  *                           which routes through to the existing
  *                           QuickInfoSection's empty-state add flow
- *   3. Tiles exist       → live QuickInfoSection in CardShell
- *
- * QuickInfoSection handles its own list/edit/add modals — this panel
- * just supplies the shell + activation gating.
+ *   3. Tiles exist       → render QuickInfoSection directly (no panel
+ *                           shell). The section already owns its QUICK INFO
+ *                           header + add button + tile grid; the +Add and
+ *                           edit affordances inside QuickInfoSection are
+ *                           already gated by isOwner so member-mode just
+ *                           drops them automatically.
  */
 export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
   const [introOpen, setIntroOpen] = useState(false);
@@ -35,13 +37,9 @@ export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
   const { data: tiles = [] } = trpc.quickInfoTiles.list.useQuery({ tripId });
   const hasItems = tiles.length > 0;
 
-  // ── State 3: live ────────────────────────────────────────────────────
+  // ── State 3: live (no panel shell — section is its own surface) ──────
   if (hasItems) {
-    return (
-      <CardShell title="Quick Info" subtitle={`${tiles.length} item${tiles.length !== 1 ? "s" : ""}`}>
-        <QuickInfoSection tripId={tripId} isOwner={isOwner} />
-      </CardShell>
-    );
+    return <QuickInfoSection tripId={tripId} isOwner={isOwner} />;
   }
 
   // ── State 1: member, no tiles ────────────────────────────────────────
@@ -146,43 +144,3 @@ function InvitationCard({
   );
 }
 
-// ── CardShell ────────────────────────────────────────────────────────────
-
-function CardShell({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <div
-        className="flex items-center gap-2 px-4 py-3"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <Info size={14} style={{ color: "var(--color-bt-accent)" }} />
-        <p className="text-[13px] font-bold" style={{ color: "var(--color-bt-text)" }}>
-          {title}
-        </p>
-        {subtitle && (
-          <p
-            className="ml-auto text-[11px]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {subtitle}
-          </p>
-        )}
-      </div>
-      <div className="px-4 py-4">{children}</div>
-    </div>
-  );
-}
