@@ -815,8 +815,7 @@ export const tripsRouter = router({
 
   // -----------------------------------------------------------------------
   // dismissQuickInfo — owner taps the X on the Quick Info empty state.
-  // Flag stays set until a tile is created (server-side) or the trip is
-  // reset. Idempotent.
+  // Flag stays set until restored. Idempotent.
   // -----------------------------------------------------------------------
   dismissQuickInfo: authedProcedure
     .input(z.object({ tripId: z.string() }))
@@ -831,6 +830,29 @@ export const tripsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to dismiss quick info: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // restoreQuickInfo — inverse of dismissQuickInfo. Flips the flag back
+  // to false so the empty-state invitation reappears on the home tab.
+  // -----------------------------------------------------------------------
+  restoreQuickInfo: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ quick_info_dismissed: false })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to restore quick info: ${error.message}`,
         });
       }
 

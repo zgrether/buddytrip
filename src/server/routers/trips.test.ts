@@ -475,6 +475,18 @@ describe("trips router — stage model", () => {
       memberCaller.trips.dismissQuickInfo({ tripId: stageTrip })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("restoreQuickInfo — owner flips quick_info_dismissed back to false", async () => {
+    const caller = ctx.caller();
+    const res = await caller.trips.restoreQuickInfo({ tripId: stageTrip });
+    expect(res.success).toBe(true);
+    const { data } = await ctx.admin
+      .from("trips")
+      .select("quick_info_dismissed")
+      .eq("id", stageTrip)
+      .single();
+    expect(data?.quick_info_dismissed).toBe(false);
+  });
 });
 
 // ── setPollMode — poll mode toggle ────────────────────────────────────────

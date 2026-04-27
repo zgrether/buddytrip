@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Info, X } from "lucide-react";
+import { ArrowRight, Info, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { AddTileModal, QuickInfoSection } from "../../../components/QuickInfoSection";
 import { QuickInfoIntroModal } from "../modals/QuickInfoIntroModal";
@@ -58,14 +58,39 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
     },
   });
 
+  const restoreQuickInfo = trpc.trips.restoreQuickInfo.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, quick_info_dismissed: false } : old
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.trips.getById.setData({ tripId }, ctx.prev);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+    },
+  });
+
   // ── State 3: live (no panel shell — section is its own surface) ──────
   if (hasItems) {
     return <QuickInfoSection tripId={tripId} isOwner={isOwner} />;
   }
 
-  // ── State 1: member, no tiles, OR dismissed ─────────────────────────
-  if (!isOwner || isDismissed) {
+  // ── State 1: member, no tiles ────────────────────────────────────────
+  if (!isOwner) {
     return null;
+  }
+
+  // ── State 4: owner, dismissed — original "Add Quick Info" CTA card ──
+  // Smaller-footprint invitation card (matches the original pre-rich-
+  // mock-up pattern). Tapping it un-dismisses, bringing the rich empty
+  // state back.
+  if (isDismissed) {
+    return <DismissedInvitationCard onClick={() => restoreQuickInfo.mutate({ tripId })} />;
   }
 
   // ── State 2: owner, no tiles, invitation w/ skeleton mock-up ─────────
@@ -152,6 +177,67 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
         <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
       )}
     </>
+  );
+}
+
+// ── DismissedInvitationCard ──────────────────────────────────────────────
+// Smaller "Add Quick Info" CTA card shown when the owner has dismissed the
+// rich empty-state mock-up. Same shape as the Itinerary / Getting There
+// invitation cards. Tap → un-dismiss, the rich mock-up reappears.
+
+function DismissedInvitationCard({ onClick }: { onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      data-testid="quick-info-restore"
+      className="w-full rounded-xl px-4 py-5 text-left transition-colors"
+      style={{
+        background: hover
+          ? "var(--color-bt-accent-faint)"
+          : "var(--color-bt-surface-invitation)",
+        border: `1.5px dashed ${
+          hover ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"
+        }`,
+        cursor: "pointer",
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+          }}
+        >
+          <Info size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
+            Add Quick Info
+          </p>
+          <p
+            className="mt-1 text-xs leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Door codes, check-in times — the stuff everyone asks about,
+            pinned for the crew.
+          </p>
+        </div>
+        <ArrowRight
+          size={16}
+          style={{
+            color: "var(--color-bt-accent)",
+            flexShrink: 0,
+            opacity: hover ? 1 : 0,
+            transition: "opacity 150ms",
+          }}
+        />
+      </div>
+    </button>
   );
 }
 
