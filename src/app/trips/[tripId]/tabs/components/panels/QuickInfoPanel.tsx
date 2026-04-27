@@ -86,23 +86,20 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
   }
 
   // ── State 4: owner, dismissed — "Enable Quick Info Tiles" CTA card ──
-  // Smaller-footprint invitation card. Tap fires both: un-dismiss (so the
-  // rich state is what's behind the modal) AND opens the intro modal — so
-  // the click does what the user expects (start the add-tile flow), not
-  // just toggle a flag silently.
+  // Tapping the CTA opens the intro modal but does NOT change any flags
+  // yet — the user needs to confirm via the modal's "Add Quick Info" CTA.
+  // Cancel → stay dismissed. Confirm → un-dismiss + open AddTileModal.
   if (isDismissed) {
     return (
       <>
-        <DismissedInvitationCard
-          onClick={() => {
-            restoreQuickInfo.mutate({ tripId });
-            setIntroOpen(true);
-          }}
-        />
+        <DismissedInvitationCard onClick={() => setIntroOpen(true)} />
         <QuickInfoIntroModal
           isOpen={introOpen}
           onClose={() => setIntroOpen(false)}
           onActivate={() => {
+            // Confirmation via the modal — now flip the flag and drop into
+            // the add-first-tile flow.
+            restoreQuickInfo.mutate({ tripId });
             setIntroOpen(false);
             setAddTileOpen(true);
           }}
