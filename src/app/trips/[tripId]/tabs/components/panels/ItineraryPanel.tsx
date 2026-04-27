@@ -115,7 +115,7 @@ export function ItineraryPanel({
     <>
       <InvitationCard
         Icon={Calendar}
-        title="Add an Itinerary"
+        title="Add Itinerary"
         body="Set your trip dates and your lodging, schedule, and travel info all slot into a day-by-day view."
         onClick={() => setIntroOpen(true)}
         testId="itinerary-invitation"

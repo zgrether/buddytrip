@@ -247,7 +247,7 @@ export function GettingThereIntroModal({
             ) : (
               <ArrowRight size={16} />
             )}
-            Set Up Getting There
+            Coordinate Travel Plans
           </button>
           <button
             onClick={onClose}
