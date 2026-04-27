@@ -769,6 +769,51 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // disableItinerary — inverse of enableItinerary. Used when the user
+  // backs out of an activated-but-empty panel via the X button.
+  // -----------------------------------------------------------------------
+  disableItinerary: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ itinerary_enabled: false })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to disable itinerary: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // disableGettingThere — inverse of enableGettingThere.
+  // -----------------------------------------------------------------------
+  disableGettingThere: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ getting_there_enabled: false })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to disable getting there: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
   // Requires: at least one date is locked. aboutMessage is optional — when
   // supplied, it's saved to trip.about_message; no email blast is sent.

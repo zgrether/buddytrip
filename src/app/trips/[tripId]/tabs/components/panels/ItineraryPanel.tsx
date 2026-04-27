@@ -29,7 +29,9 @@ interface ItineraryPanelProps {
  *   2. Owner, no content      → dim "locked" card with lock icon, no CTA
  *   3. Owner, has content,
  *      not activated          → invitation card, opens ItineraryIntroModal
- *   4. Activated              → live ItineraryView wrapped in card-live shell
+ *   4. Activated              → ItineraryView renders directly (no panel
+ *                               container). When activated-but-empty, the
+ *                               empty state gets an X button to back out.
  */
 export function ItineraryPanel({
   tripId,
@@ -61,12 +63,31 @@ export function ItineraryPanel({
     },
   });
 
-  // ── State 4: live ────────────────────────────────────────────────────
+  const disableItinerary = trpc.trips.disableItinerary.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, itinerary_enabled: false } : old
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.trips.getById.setData({ tripId }, ctx.prev);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+    },
+  });
+
+  // ── State 4: live (no panel shell — view renders directly) ──────────
   if (isActivated) {
     return (
-      <CardShell title="Itinerary" subtitle={liveSubtitle(trip)}>
-        <ItineraryView trip={trip} isOwner={isOwner} />
-      </CardShell>
+      <ItineraryView
+        trip={trip}
+        isOwner={isOwner}
+        onCancel={isOwner ? () => disableItinerary.mutate({ tripId }) : undefined}
+      />
     );
   }
 
@@ -107,22 +128,6 @@ export function ItineraryPanel({
       />
     </>
   );
-}
-
-// ── Helpers (shared with other panels in spirit; kept local for clarity) ─
-
-function liveSubtitle(trip: TripData): string {
-  const parts: string[] = [];
-  if (trip.start_date && trip.end_date) {
-    const start = new Date(trip.start_date + "T00:00:00");
-    const end = new Date(trip.end_date + "T00:00:00");
-    const startLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const endLabel = end.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    parts.push(`${startLabel}–${endLabel}`);
-    const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
-    parts.push(`${days} day${days !== 1 ? "s" : ""}`);
-  }
-  return parts.join(" · ");
 }
 
 // ── DimPlaceholder ───────────────────────────────────────────────────────
@@ -219,49 +224,5 @@ function InvitationCard({
         />
       </div>
     </button>
-  );
-}
-
-// ── CardShell ────────────────────────────────────────────────────────────
-
-function CardShell({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <div
-        className="flex items-center gap-2 px-4 py-3"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <Calendar size={14} style={{ color: "var(--color-bt-accent)" }} />
-        <p
-          className="text-[13px] font-bold"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {title}
-        </p>
-        {subtitle && (
-          <p
-            className="ml-auto text-[11px]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {subtitle}
-          </p>
-        )}
-      </div>
-      <div className="px-4 py-4">{children}</div>
-    </div>
   );
 }

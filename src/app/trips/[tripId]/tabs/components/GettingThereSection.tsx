@@ -7,6 +7,7 @@ import {
   HelpCircle,
   Plane,
   Plus,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -31,6 +32,9 @@ interface TripMemberLite {
 export interface GettingThereSectionProps {
   tripId: string;
   isOwner: boolean;
+  /** When provided (owner only), shows an X on the empty-state mock-up
+      that backs out of the activation entirely. */
+  onCancel?: () => void;
 }
 
 /**
@@ -47,7 +51,7 @@ export interface GettingThereSectionProps {
  * in the Action Center still exists for older callers; this component
  * writes to the same `tripMembers.updateTravel` mutation.
  */
-export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProps) {
+export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereSectionProps) {
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -67,37 +71,49 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   const hasMyTravel = !!myMember?.travel_mode;
 
   // ── Render ──────────────────────────────────────────────────────────────
-  // Title + outer card chrome are now provided by the wrapping
-  // GettingTherePanel CardShell — this section is just the inner content
-  // (your row + pending tally) so the same component can sit cleanly
-  // inside the panel surface.
+  // Section header + content render directly (no outer card shell) so the
+  // panel-less treatment matches the rest of the home tab. The empty-state
+  // mock-up + your row + pending tally sit inside a card surface below.
   return (
-    <div data-testid="getting-there-section">
+    <div className="space-y-3" data-testid="getting-there-section">
+      <h2
+        className="text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Getting there
+      </h2>
+
       {/* Empty state mock-up — only when the user hasn't shared travel yet
           AND they're not currently editing. Mirrors the Itinerary empty
           state pattern: dashed card + icon + heading + description + faded
           skeleton preview of populated arrival rows. */}
       {myMember && !hasMyTravel && !expanded && (
-        <div className="px-4 pt-4">
-          <EmptyArrivalsState />
-        </div>
+        <EmptyArrivalsState onCancel={onCancel} />
       )}
 
-      {myMember ? (
-        <YourTravelRow
-          tripId={tripId}
-          member={myMember}
-          expanded={expanded}
-          onToggleExpanded={() => setExpanded((v) => !v)}
-          onSaved={() => {
-            utils.tripMembers.list.invalidate({ tripId });
-            setExpanded(false);
-          }}
-        />
-      ) : null}
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        {myMember ? (
+          <YourTravelRow
+            tripId={tripId}
+            member={myMember}
+            expanded={expanded}
+            onToggleExpanded={() => setExpanded((v) => !v)}
+            onSaved={() => {
+              utils.tripMembers.list.invalidate({ tripId });
+              setExpanded(false);
+            }}
+          />
+        ) : null}
 
-      {/* Owner-only pending tally */}
-      {isOwner && <PendingTravelRow members={otherMembers} />}
+        {/* Owner-only pending tally */}
+        {isOwner && <PendingTravelRow members={otherMembers} />}
+      </div>
     </div>
   );
 }
@@ -108,15 +124,27 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
 // + centered icon/heading/description + faded skeleton preview of what
 // populated arrival rows will look like.
 
-function EmptyArrivalsState() {
+function EmptyArrivalsState({ onCancel }: { onCancel?: () => void }) {
   return (
     <div
-      className="rounded-xl p-4"
+      className="relative rounded-xl p-4"
       style={{
         background: "var(--color-bt-base)",
         border: "1px dashed var(--color-bt-border)",
       }}
     >
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Cancel Getting There"
+          data-testid="getting-there-empty-cancel"
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <X size={14} />
+        </button>
+      )}
       <div className="flex flex-col items-center text-center">
         <div
           className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"

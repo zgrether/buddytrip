@@ -61,12 +61,31 @@ export function GettingTherePanel({
     },
   });
 
-  // ── State 4: live ────────────────────────────────────────────────────
+  const disableGettingThere = trpc.trips.disableGettingThere.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, getting_there_enabled: false } : old
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined) utils.trips.getById.setData({ tripId }, ctx.prev);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+    },
+  });
+
+  // ── State 4: live (no panel shell — section renders directly) ───────
   if (isActivated) {
     return (
-      <CardShell title="Getting There">
-        <GettingThereSection tripId={tripId} isOwner={isOwner} />
-      </CardShell>
+      <GettingThereSection
+        tripId={tripId}
+        isOwner={isOwner}
+        onCancel={isOwner ? () => disableGettingThere.mutate({ tripId }) : undefined}
+      />
     );
   }
 
@@ -225,37 +244,3 @@ function InvitationCard({
   );
 }
 
-// ── CardShell ────────────────────────────────────────────────────────────
-// Familiar panel chrome: rounded card + accent-icon header + bordered
-// content area. Body has no padding — the inner GettingThereSection rows
-// already supply their own px-4 py-3, and they should flow edge-to-edge
-// inside the panel like the prior design.
-
-function CardShell({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <div
-        className="flex items-center gap-2 px-4 py-3"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <Plane size={14} style={{ color: "var(--color-bt-accent)" }} />
-        <p className="text-[13px] font-bold" style={{ color: "var(--color-bt-text)" }}>
-          {title}
-        </p>
-      </div>
-      {children}
-    </div>
-  );
-}
