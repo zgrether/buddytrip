@@ -65,44 +65,28 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   const [expanded, setExpanded] = useState(false);
 
   // ── Render ──────────────────────────────────────────────────────────────
+  // Title + outer card chrome are now provided by the wrapping
+  // GettingTherePanel CardShell — this section is just the inner content
+  // (your row + pending tally) so the same component can sit cleanly
+  // inside the panel surface.
   return (
-    <section className="space-y-2">
-      <h2
-        className="text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Getting there
-      </h2>
-      <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        Share your travel plans so the crew can coordinate arrivals.
-      </p>
+    <div data-testid="getting-there-section">
+      {myMember ? (
+        <YourTravelRow
+          tripId={tripId}
+          member={myMember}
+          expanded={expanded}
+          onToggleExpanded={() => setExpanded((v) => !v)}
+          onSaved={() => {
+            utils.tripMembers.list.invalidate({ tripId });
+            setExpanded(false);
+          }}
+        />
+      ) : null}
 
-      <div
-        className="overflow-hidden rounded-xl"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-        data-testid="getting-there-section"
-      >
-        {/* Your row */}
-        {myMember ? (
-          <YourTravelRow
-            tripId={tripId}
-            member={myMember}
-            expanded={expanded}
-            onToggleExpanded={() => setExpanded((v) => !v)}
-            onSaved={() => {
-              utils.tripMembers.list.invalidate({ tripId });
-              setExpanded(false);
-            }}
-          />
-        ) : null}
-
-        {/* Owner-only pending tally */}
-        {isOwner && <PendingTravelRow members={otherMembers} />}
-      </div>
-    </section>
+      {/* Owner-only pending tally */}
+      {isOwner && <PendingTravelRow members={otherMembers} />}
+    </div>
   );
 }
 
