@@ -75,7 +75,7 @@ function AlertToggle({ value, onChange }: { value: boolean; onChange: (next: boo
 
 // ── AddTileModal ─────────────────────────────────────────────────────────
 
-function AddTileModal({
+export function AddTileModal({
   tripId,
   onClose,
 }: {
@@ -370,10 +370,10 @@ export function QuickInfoSection({
           </p>
         </button>
       ) : (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {sortedTiles.map((tile) => {
             const alert = !!tile.is_alert;
-            // Alert tiles span two columns on the 3-col grid so they read
+            // Alert tiles span 2 of 4 columns (half-width) so they read
             // bigger without breaking the layout. They also use warning
             // tokens + left border stripe to match the prior OwnerAlertPanel.
             return (
@@ -408,7 +408,7 @@ export function QuickInfoSection({
                   </span>
                 </div>
                 <p
-                  className={`${alert ? "text-sm" : "text-xs"} font-medium pr-4`}
+                  className="text-sm font-medium pr-4"
                   style={{ color: "var(--color-bt-text)" }}
                 >
                   {tile.value}

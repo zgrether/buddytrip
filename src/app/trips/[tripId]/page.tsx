@@ -21,9 +21,9 @@ import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
-import { QuickInfoSection } from "./components/QuickInfoSection";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
+import { CompetitionStrip } from "./components/CompetitionStrip";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -278,6 +278,7 @@ export default function TripDetailPage() {
                 displayStatus={status}
                 onTabChange={(tab) => setActiveTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                compActivated={showComp}
                 onOpenChat={() => setChatOpen(true)}
               />
             )}
@@ -318,14 +319,19 @@ export default function TripDetailPage() {
             />
 
             <div className="mt-4">
-              {/* TODO: stage derivation from trip dates — currently only 'idea'/'planning'/'going' exist
-                   in the DB. 'now' and 'past' are computed status values (getTripStatus), not raw
-                   stage values; the old checks for stage === "now"/"past"/"saved" were unreachable. */}
-              {stage === "going" && (
-                <div className="mb-4">
-                  <QuickInfoSection tripId={tripId} isOwner={isOwner} />
+              {/* Quick Info has moved into the home tab panel system —
+                   no longer rendered above the tab bar. The QuickInfoSection
+                   data hooks are still used by QuickInfoPanel inside HomeTab. */}
+
+              {/* Competition strip — persistent across all tabs once a comp
+                   is set up. Replaces the home-tab CompetitionPanel's live
+                   state so the leaderboard is reachable from any tab. */}
+              {trip.event_id && stage !== "idea" && stage !== "planning" && (
+                <div className="mb-3">
+                  <CompetitionStrip tripId={tripId} eventId={trip.event_id} />
                 </div>
               )}
+
               {stage !== "planning" && (
                 <TripTabBar
                   activeTab={activeTab}
@@ -357,6 +363,7 @@ export default function TripDetailPage() {
                     displayStatus={status}
                     onTabChange={(tab) => setActiveTab(tab as TabId)}
                     onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
+                compActivated={showComp}
                     onOpenChat={() => setChatOpen(true)}
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
                     onAdvanceToGoing={isOwner ? () => setShowInvitationModal(true) : undefined}
@@ -391,11 +398,12 @@ export default function TripDetailPage() {
       )}
 
       {/* ── Bottom navigation ─────────────────────────────────────────────
-          Only surfaces once a competition exists (or has been unlocked) —
-          that's the point where leaderboard / messages / expenses start
-          carrying their own weight. Until then the trip lives entirely
-          inside the home tab + stage-aware sidebar. */}
-      {showComp && (
+          Only renders once a real competition exists (event_id set), not
+          merely when the user has clicked through the comp setup intent
+          (compUnlocked). Until then, there's nowhere to navigate to —
+          the second nav slot ("Live") would be the only destination, and
+          a bottom nav with one button is wasted chrome. */}
+      {!!trip.event_id && (
         <TripBottomNav tripId={tripId} eventId={trip.event_id} />
       )}
 

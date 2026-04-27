@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ghost, Mail, X, Crown, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { Ghost, Mail, X, Crown, ChevronDown, Plus, Trash2, Users } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -322,26 +322,28 @@ function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => voi
   };
 
   if (!isExpanded) {
+    // Pattern 1 button — matches Schedule "Item", Lodging "Property",
+    // Receipts "Receipt" styling so add-affordances are consistent
+    // across tabs.
     return (
       <button
         onClick={() => setIsExpanded(true)}
-        className="flex w-full items-center gap-3 py-2.5 px-3 transition-colors hover:bg-[var(--color-bt-hover)]"
-        style={{ color: "var(--color-bt-text-dim)" }}
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          color: "var(--color-bt-text)",
+          border: "1px solid var(--color-bt-border)",
+        }}
       >
-        <div
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-          style={{ border: "1px dashed var(--color-bt-border)" }}
-        >
-          <Plus size={14} />
-        </div>
-        <span className="text-sm">Add someone</span>
+        <Users size={15} />
+        <Plus size={12} /> Crew member
       </button>
     );
   }
 
   return (
     <div
-      className="space-y-2 rounded-lg px-3 py-2.5 my-1"
+      className="space-y-2 rounded-xl px-3 py-2.5"
       style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
     >
       <div className="flex gap-2">
@@ -409,6 +411,15 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
+      {!embedded && (
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Crew
+        </h2>
+      )}
+
       {/* ── Unlinked crew nudge — spans full width above the grid ── */}
       {isOwner && unlinkedCount > 0 && (
         <div
@@ -502,6 +513,18 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                 </div>
               )}
             </div>
+            {/* Add affordance — Pattern 1 button matching Schedule /
+                Lodging / Receipts add-on-top buttons. Placed above the
+                crew list (out of the list card) so it reads as a
+                top-level "add to this section" affordance, not a list row. */}
+            {isOwner && (
+              <div className="mb-2">
+                <AddSomeoneRow
+                  tripId={tripId}
+                  onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
+                />
+              </div>
+            )}
             <div
               className="overflow-hidden rounded-xl"
               style={{
@@ -524,13 +547,6 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                   />
                 );
               })}
-              {isOwner && (
-                <AddSomeoneRow
-                  tripId={tripId}
-                  onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
-                />
-              )}
-
               {crewSorted.length === 0 && !isOwner && (
                 <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
                   No crew members yet.

@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import {
+  Calendar,
   Clock,
   Home,
+  MapPin,
   Plane,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -21,7 +23,6 @@ import {
   type ItineraryTripMember,
 } from "../../components/itinerary";
 import type { TripData } from "../types";
-import { GettingThereSection } from "./GettingThereSection";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -47,17 +48,22 @@ export interface ItineraryViewProps {
 }
 
 /**
- * ItineraryView — the Home tab surface during the GOING / NOW stages.
+ * ItineraryView — the live content of the home-tab Itinerary panel.
  *
- * Replaces the old ActionCenter + ItineraryPanel pair with:
- *   1. Getting There section (per-user travel row + owner pending tally).
- *   2. Filter pills: All / Lodging / Travel / Events (multi-select).
- *   3. Day-by-day timeline from trip start through trip end, pulling from
+ *   1. Filter pills: All / Lodging / Travel / Events. Each non-All pill
+ *      only renders when that category has at least one event AND, for
+ *      Travel, when getting_there_enabled is on (don't tease a filter
+ *      for a feature the owner hasn't activated).
+ *   2. Day-by-day timeline from trip start through trip end, pulling from
  *      confirmed schedule items, lodging check-in/out, and shared travel
- *      arrivals — the same data ItineraryPanel was built on, but laid out
- *      as a continuous day-by-day reel.
+ *      arrivals.
+ *   3. When activated but no content exists, a visually appealing empty
+ *      state mirrors the intro modal preview.
+ *
+ * Getting There used to render here too — it now lives in its own panel
+ * (GettingTherePanel), so it's no longer included.
  */
-export function ItineraryView({ trip, isOwner }: ItineraryViewProps) {
+export function ItineraryView({ trip, isOwner: _isOwner }: ItineraryViewProps) {
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -126,28 +132,50 @@ export function ItineraryView({ trip, isOwner }: ItineraryViewProps) {
     return false;
   };
 
+  // Per-category counts drive whether each filter pill is shown.
+  // Don't tease a filter the user can't actually use.
+  const hasLodging = events.some((e) => categoryOf(e) === "lodging");
+  const hasTravel = events.some((e) => categoryOf(e) === "travel");
+  const hasEvents = events.some((e) => categoryOf(e) === "event");
+  const gettingThereEnabled = !!trip.getting_there_enabled;
+
+  // Show pill row only if there's >1 category to filter between
+  const visibleCategoryCount =
+    (hasLodging ? 1 : 0) + (hasTravel && gettingThereEnabled ? 1 : 0) + (hasEvents ? 1 : 0);
+  const showFilterPills = visibleCategoryCount > 1;
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      <GettingThereSection tripId={tripId} isOwner={isOwner} />
+      {showFilterPills && (
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterPill label="All" active={activeFilters.has("all")} onClick={() => toggleFilter("all")} />
+          {hasLodging && (
+            <FilterPill
+              label="Lodging"
+              active={activeFilters.has("lodging")}
+              onClick={() => toggleFilter("lodging")}
+            />
+          )}
+          {hasTravel && gettingThereEnabled && (
+            <FilterPill
+              label="Travel"
+              active={activeFilters.has("travel")}
+              onClick={() => toggleFilter("travel")}
+            />
+          )}
+          {hasEvents && (
+            <FilterPill
+              label="Events"
+              active={activeFilters.has("events")}
+              onClick={() => toggleFilter("events")}
+            />
+          )}
+        </div>
+      )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterPill label="All" active={activeFilters.has("all")} onClick={() => toggleFilter("all")} />
-        <FilterPill label="Lodging" active={activeFilters.has("lodging")} onClick={() => toggleFilter("lodging")} />
-        <FilterPill label="Travel" active={activeFilters.has("travel")} onClick={() => toggleFilter("travel")} />
-        <FilterPill label="Events" active={activeFilters.has("events")} onClick={() => toggleFilter("events")} />
-      </div>
-
-      {days.length === 0 ? (
-        <p className="rounded-xl p-4 text-center text-sm italic"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px dashed var(--color-bt-border)",
-            color: "var(--color-bt-text-dim)",
-          }}
-        >
-          Lock your dates to see a day-by-day itinerary.
-        </p>
+      {days.length === 0 || events.length === 0 ? (
+        <EmptyItineraryState />
       ) : (
         <div className="space-y-4">
           {days.map((date, i) => (
@@ -161,6 +189,116 @@ export function ItineraryView({ trip, isOwner }: ItineraryViewProps) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── EmptyItineraryState ─────────────────────────────────────────────────
+// Shown when the panel is activated but there are no lodging / travel /
+// schedule events to thread together yet. Mirrors the intro modal preview
+// so the empty state still hints at what the populated view will look like.
+
+function EmptyItineraryState() {
+  return (
+    <div
+      className="rounded-xl p-4"
+      style={{
+        background: "var(--color-bt-base)",
+        border: "1px dashed var(--color-bt-border)",
+      }}
+    >
+      <div className="flex flex-col items-center text-center">
+        <div
+          className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+          }}
+        >
+          <Calendar size={22} />
+        </div>
+        <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Your timeline will start to fill in
+        </p>
+        <p
+          className="mt-1 max-w-[280px] text-xs leading-snug"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Lodging check-ins, travel arrivals, and confirmed schedule items
+          will weave themselves into the timeline below.
+        </p>
+      </div>
+
+      {/* Skeleton preview — two-day mini stack mirroring the intro modal */}
+      <div
+        className="mt-4 space-y-2 rounded-lg p-3"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          opacity: 0.65,
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: "var(--color-bt-accent)" }}
+            aria-hidden
+          />
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            Day 1
+          </span>
+        </div>
+        <SkeletonRow Icon={Home} text="Lodging check-in" time="3:00 PM" iconColor="#60a5fa" />
+        <SkeletonRow
+          Icon={Plane}
+          text="Travel arrival"
+          time="5:30 PM"
+          iconColor="var(--color-bt-accent)"
+        />
+        <SkeletonRow Icon={MapPin} text="Welcome dinner" time="7:30 PM" iconColor="var(--color-bt-text-dim)" />
+
+        <div className="mt-3 flex items-center gap-1.5">
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Day 2
+          </span>
+        </div>
+        <SkeletonRow Icon={MapPin} text="Tee time" time="8:00 AM" iconColor="var(--color-bt-text-dim)" />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonRow({
+  Icon,
+  text,
+  time,
+  iconColor,
+}: {
+  Icon: LucideIcon;
+  text: string;
+  time: string;
+  iconColor: string;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5"
+      style={{ border: "1px solid var(--color-bt-border)" }}
+    >
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Icon size={11} style={{ color: iconColor }} />
+        <span className="truncate text-[11px]" style={{ color: "var(--color-bt-text)" }}>
+          {text}
+        </span>
+      </div>
+      <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        {time}
+      </span>
     </div>
   );
 }

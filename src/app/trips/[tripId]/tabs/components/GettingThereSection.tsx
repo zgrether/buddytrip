@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Car,
   ChevronDown,
@@ -58,56 +58,35 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   const otherMembers = (members as TripMemberLite[]).filter(
     (m) => m.user_id !== currentUser?.id,
   );
-  const hasMyTravel = !!myMember?.travel_mode;
 
-  const [expanded, setExpanded] = useState(!hasMyTravel);
-
-  // Re-sync expanded state when the underlying travel data changes — e.g.
-  // user saves, member row refetches, expanded can close automatically.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (hasMyTravel) setExpanded(false);
-  }, [hasMyTravel]);
+  // Always start collapsed — the user opens the row deliberately by
+  // tapping. Auto-expanding when empty was visually noisy and made the
+  // panel default to a half-filled form for users who hadn't engaged yet.
+  const [expanded, setExpanded] = useState(false);
 
   // ── Render ──────────────────────────────────────────────────────────────
+  // Title + outer card chrome are now provided by the wrapping
+  // GettingTherePanel CardShell — this section is just the inner content
+  // (your row + pending tally) so the same component can sit cleanly
+  // inside the panel surface.
   return (
-    <section className="space-y-2">
-      <h2
-        className="text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Getting there
-      </h2>
-      <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        Share your travel plans so the crew can coordinate arrivals.
-      </p>
+    <div data-testid="getting-there-section">
+      {myMember ? (
+        <YourTravelRow
+          tripId={tripId}
+          member={myMember}
+          expanded={expanded}
+          onToggleExpanded={() => setExpanded((v) => !v)}
+          onSaved={() => {
+            utils.tripMembers.list.invalidate({ tripId });
+            setExpanded(false);
+          }}
+        />
+      ) : null}
 
-      <div
-        className="overflow-hidden rounded-xl"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-        data-testid="getting-there-section"
-      >
-        {/* Your row */}
-        {myMember ? (
-          <YourTravelRow
-            tripId={tripId}
-            member={myMember}
-            expanded={expanded}
-            onToggleExpanded={() => setExpanded((v) => !v)}
-            onSaved={() => {
-              utils.tripMembers.list.invalidate({ tripId });
-              setExpanded(false);
-            }}
-          />
-        ) : null}
-
-        {/* Owner-only pending tally */}
-        {isOwner && <PendingTravelRow members={otherMembers} />}
-      </div>
-    </section>
+      {/* Owner-only pending tally */}
+      {isOwner && <PendingTravelRow members={otherMembers} />}
+    </div>
   );
 }
 
@@ -128,50 +107,56 @@ function YourTravelRow({
 }) {
   const hasTravel = !!member.travel_mode;
 
+  // ── No travel info yet — Pattern 1 add button + optional inline form ──
+  // Matches Schedule "Item", Lodging "Property", Receipts "Receipt", Crew
+  // "Crew member" so add-affordances are consistent across the trip.
+  if (!hasTravel) {
+    return (
+      <div className="px-4 py-3">
+        {expanded ? (
+          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
+        ) : (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <Plane size={15} />
+            <Plus size={12} /> Travel info
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // ── Has travel — existing row pattern (avatar + summary + badge + chevron) ─
   return (
     <div>
-      {/* Row header */}
       <button
         type="button"
         onClick={onToggleExpanded}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
       >
-        {hasTravel ? (
-          <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
-        ) : (
-          <span
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px dashed var(--color-bt-border)",
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            <Plus size={14} />
-          </span>
-        )}
+        <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
 
         <div className="min-w-0 flex-1">
-          {hasTravel ? (
-            <>
-              <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                {member.displayName}{" "}
-                <span className="text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>
-                  (you)
-                </span>
-              </p>
-              <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                {summarizeTravel(member)}
-              </p>
-            </>
-          ) : (
-            <p className="text-[13px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-              Add your travel info
-            </p>
-          )}
+          <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {member.displayName}{" "}
+            <span className="text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>
+              (you)
+            </span>
+          </p>
+          <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {summarizeTravel(member)}
+          </p>
         </div>
 
-        {hasTravel && <TravelModeBadge mode={member.travel_mode as TravelMode | null} />}
+        <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
 
         <ChevronDown
           size={16}
@@ -189,7 +174,7 @@ function YourTravelRow({
           className="border-t px-4 pb-4 pt-3"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
-          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} />
+          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
         </div>
       )}
     </div>
@@ -202,10 +187,12 @@ function TravelExpandForm({
   tripId,
   member,
   onSaved,
+  onCancel,
 }: {
   tripId: string;
   member: TripMemberLite;
   onSaved: () => void;
+  onCancel: () => void;
 }) {
   const [mode, setMode] = useState<TravelMode>(
     (member.travel_mode as TravelMode) ?? "driving",
@@ -337,6 +324,20 @@ function TravelExpandForm({
             }}
           />
         </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={updateTravel.isPending}
+          className="flex-shrink-0 rounded-lg border px-3 py-2 text-xs disabled:opacity-40"
+          style={{
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text-dim)",
+            background: "transparent",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Cancel
+        </button>
         <button
           type="button"
           onClick={handleSave}

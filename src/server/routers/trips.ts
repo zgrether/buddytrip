@@ -723,6 +723,52 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // enableItinerary — Owner or Planner activates the Itinerary panel.
+  // Idempotent: re-calling on an already-enabled trip is a no-op.
+  // -----------------------------------------------------------------------
+  enableItinerary: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ itinerary_enabled: true })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to enable itinerary: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // enableGettingThere — Owner or Planner activates the Getting There panel.
+  // Idempotent: re-calling on an already-enabled trip is a no-op.
+  // -----------------------------------------------------------------------
+  enableGettingThere: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ getting_there_enabled: true })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to enable getting there: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
   // Requires: at least one date is locked. aboutMessage is optional — when
   // supplied, it's saved to trip.about_message; no email blast is sent.
