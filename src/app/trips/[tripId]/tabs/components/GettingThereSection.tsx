@@ -114,7 +114,7 @@ function YourTravelRow({
     return (
       <div className="px-4 py-3">
         {expanded ? (
-          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} />
+          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
         ) : (
           <button
             type="button"
@@ -174,7 +174,7 @@ function YourTravelRow({
           className="border-t px-4 pb-4 pt-3"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
-          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} />
+          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
         </div>
       )}
     </div>
@@ -187,10 +187,12 @@ function TravelExpandForm({
   tripId,
   member,
   onSaved,
+  onCancel,
 }: {
   tripId: string;
   member: TripMemberLite;
   onSaved: () => void;
+  onCancel: () => void;
 }) {
   const [mode, setMode] = useState<TravelMode>(
     (member.travel_mode as TravelMode) ?? "driving",
@@ -322,6 +324,20 @@ function TravelExpandForm({
             }}
           />
         </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={updateTravel.isPending}
+          className="flex-shrink-0 rounded-lg border px-3 py-2 text-xs disabled:opacity-40"
+          style={{
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text-dim)",
+            background: "transparent",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Cancel
+        </button>
         <button
           type="button"
           onClick={handleSave}
