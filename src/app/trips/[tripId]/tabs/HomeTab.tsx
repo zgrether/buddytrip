@@ -92,6 +92,12 @@ export function HomeTab({
               tab (with a dot on the tab bar) — do not surface it here. */}
       {stage === "going" && (status === "going" || status === "now") && (
         <>
+          {/* Quick Info first — most-glanced surface (door codes, addresses
+              etc.); pin it above the larger Itinerary panel.                */}
+          <QuickInfoPanel
+            tripId={trip.id}
+            isOwner={!!isOwner}
+          />
           <ItineraryPanel
             tripId={trip.id}
             trip={trip}
@@ -106,10 +112,6 @@ export function HomeTab({
             isActivated={!!trip.getting_there_enabled}
             hasDates={!!trip.start_date}
             onOpenDatesModal={() => onTabChange?.("schedule")}
-          />
-          <QuickInfoPanel
-            tripId={trip.id}
-            isOwner={!!isOwner}
           />
           <CompetitionPanel
             isOwner={!!isOwner}

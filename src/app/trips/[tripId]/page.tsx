@@ -398,11 +398,12 @@ export default function TripDetailPage() {
       )}
 
       {/* ── Bottom navigation ─────────────────────────────────────────────
-          Only surfaces once a competition exists (or has been unlocked) —
-          that's the point where leaderboard / messages / expenses start
-          carrying their own weight. Until then the trip lives entirely
-          inside the home tab + stage-aware sidebar. */}
-      {showComp && (
+          Only renders once a real competition exists (event_id set), not
+          merely when the user has clicked through the comp setup intent
+          (compUnlocked). Until then, there's nowhere to navigate to —
+          the second nav slot ("Live") would be the only destination, and
+          a bottom nav with one button is wasted chrome. */}
+      {!!trip.event_id && (
         <TripBottomNav tripId={tripId} eventId={trip.event_id} />
       )}
 
