@@ -61,13 +61,9 @@ export function GettingTherePanel({
     },
   });
 
-  // ── State 4: live ────────────────────────────────────────────────────
+  // ── State 4: live (no panel shell — section owns its own header) ─────
   if (isActivated) {
-    return (
-      <CardShell title="Getting There">
-        <GettingThereSection tripId={tripId} isOwner={isOwner} />
-      </CardShell>
-    );
+    return <GettingThereSection tripId={tripId} isOwner={isOwner} />;
   }
 
   // ── State 1: no dates set ────────────────────────────────────────────
@@ -225,33 +221,3 @@ function InvitationCard({
   );
 }
 
-// ── CardShell ────────────────────────────────────────────────────────────
-
-function CardShell({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <div
-        className="flex items-center gap-2 px-4 py-3"
-        style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-      >
-        <Plane size={14} style={{ color: "var(--color-bt-accent)" }} />
-        <p className="text-[13px] font-bold" style={{ color: "var(--color-bt-text)" }}>
-          {title}
-        </p>
-      </div>
-      <div className="px-4 py-4">{children}</div>
-    </div>
-  );
-}
