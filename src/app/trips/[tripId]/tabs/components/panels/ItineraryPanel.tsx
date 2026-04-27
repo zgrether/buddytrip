@@ -120,12 +120,14 @@ export function ItineraryPanel({
         onClick={() => setIntroOpen(true)}
         testId="itinerary-invitation"
       />
-      <ItineraryIntroModal
-        isOpen={introOpen}
-        onClose={() => setIntroOpen(false)}
-        onActivate={() => enableItinerary.mutate({ tripId })}
-        isActivating={enableItinerary.isPending}
-      />
+      {introOpen && (
+        <ItineraryIntroModal
+          isOpen
+          onClose={() => setIntroOpen(false)}
+          onActivate={() => enableItinerary.mutate({ tripId })}
+          isActivating={enableItinerary.isPending}
+        />
+      )}
     </>
   );
 }

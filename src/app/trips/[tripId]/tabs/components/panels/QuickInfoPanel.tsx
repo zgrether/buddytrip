@@ -93,18 +93,20 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
     return (
       <>
         <DismissedInvitationCard onClick={() => setIntroOpen(true)} />
-        <QuickInfoIntroModal
-          isOpen={introOpen}
-          onClose={() => setIntroOpen(false)}
-          onActivate={() => {
-            // Confirmation via the modal — now flip the flag and drop into
-            // the add-first-tile flow.
-            restoreQuickInfo.mutate({ tripId });
-            setIntroOpen(false);
-            setAddTileOpen(true);
-          }}
-          isActivating={false}
-        />
+        {introOpen && (
+          <QuickInfoIntroModal
+            isOpen
+            onClose={() => setIntroOpen(false)}
+            onActivate={() => {
+              // Confirmation via the modal — now flip the flag and drop into
+              // the add-first-tile flow.
+              restoreQuickInfo.mutate({ tripId });
+              setIntroOpen(false);
+              setAddTileOpen(true);
+            }}
+            isActivating={false}
+          />
+        )}
         {addTileOpen && (
           <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
         )}
@@ -181,17 +183,19 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
         </button>
       </div>
 
-      <QuickInfoIntroModal
-        isOpen={introOpen}
-        onClose={() => setIntroOpen(false)}
-        onActivate={() => {
-          // Drop straight into the add-first-tile flow — close the intro
-          // and open AddTileModal back to back.
-          setIntroOpen(false);
-          setAddTileOpen(true);
-        }}
-        isActivating={false}
-      />
+      {introOpen && (
+        <QuickInfoIntroModal
+          isOpen
+          onClose={() => setIntroOpen(false)}
+          onActivate={() => {
+            // Drop straight into the add-first-tile flow — close the intro
+            // and open AddTileModal back to back.
+            setIntroOpen(false);
+            setAddTileOpen(true);
+          }}
+          isActivating={false}
+        />
+      )}
       {addTileOpen && (
         <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
       )}

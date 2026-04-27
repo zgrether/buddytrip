@@ -119,12 +119,14 @@ export function GettingTherePanel({
         onClick={() => setIntroOpen(true)}
         testId="getting-there-invitation"
       />
-      <GettingThereIntroModal
-        isOpen={introOpen}
-        onClose={() => setIntroOpen(false)}
-        onActivate={() => enableGettingThere.mutate({ tripId })}
-        isActivating={enableGettingThere.isPending}
-      />
+      {introOpen && (
+        <GettingThereIntroModal
+          isOpen
+          onClose={() => setIntroOpen(false)}
+          onActivate={() => enableGettingThere.mutate({ tripId })}
+          isActivating={enableGettingThere.isPending}
+        />
+      )}
     </>
   );
 }
