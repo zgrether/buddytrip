@@ -80,7 +80,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({
             key={id}
             data-testid={`tab-${id}`}
             onClick={() => onTabChange(id)}
-            className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-medium transition-colors"
+            className="flex flex-1 flex-col items-center justify-center gap-1 py-2.5 transition-colors"
             style={{
               color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
               borderBottom: active
@@ -88,9 +88,11 @@ export const TripTabBar: FC<TripTabBarProps> = ({
                 : "2px solid transparent",
             }}
           >
-            {/* Icon wrapped in relative container so the dot can be positioned */}
+            {/* Icon wrapped in relative container so the dot can be positioned.
+                strokeWidth=1.75 matches the planning-grid mobile tab style for
+                visual consistency between basic and advanced modes. */}
             <span className="relative inline-flex items-center justify-center">
-              <Icon size={iconMode ? 18 : 14} />
+              <Icon size={iconMode ? 20 : 16} strokeWidth={1.75} />
               {hasBadge && (
                 <span
                   className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full"
@@ -98,7 +100,11 @@ export const TripTabBar: FC<TripTabBarProps> = ({
                 />
               )}
             </span>
-            {!iconMode && <span>{label}</span>}
+            {!iconMode && (
+              <span className="text-[10px] font-bold uppercase tracking-wider">
+                {label}
+              </span>
+            )}
           </button>
         );
       })}
