@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { AddTileModal, QuickInfoSection } from "../../../components/QuickInfoSection";
 import { QuickInfoIntroModal } from "../modals/QuickInfoIntroModal";
@@ -47,16 +47,54 @@ export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
     return null;
   }
 
-  // ── State 2: owner, no tiles, invitation ─────────────────────────────
+  // ── State 2: owner, no tiles, invitation w/ skeleton mock-up ─────────
   return (
     <>
-      <InvitationCard
-        Icon={Info}
-        title="Add Quick Info"
-        body="Door codes, check-in times — the stuff everyone asks about, pinned for the crew."
+      <button
+        type="button"
         onClick={() => setIntroOpen(true)}
-        testId="quick-info-invitation"
-      />
+        data-testid="quick-info-invitation"
+        className="w-full rounded-xl p-4 text-left transition-colors"
+        style={{
+          background: "var(--color-bt-surface-invitation)",
+          border: "1.5px dashed var(--color-bt-border)",
+          cursor: "pointer",
+        }}
+      >
+        <div className="flex flex-col items-center text-center">
+          <div
+            className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              color: "var(--color-bt-accent)",
+            }}
+          >
+            <Info size={22} />
+          </div>
+          <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
+            Pin the stuff everyone asks about
+          </p>
+          <p
+            className="mt-1 max-w-[280px] text-xs leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Door codes, check-in times, WiFi passwords, addresses — anything
+            the crew will need at a glance.
+          </p>
+        </div>
+
+        {/* Skeleton tile preview — 4-col grid mirroring the live state */}
+        <div
+          className="mt-4 grid grid-cols-4 gap-2"
+          style={{ opacity: 0.65 }}
+        >
+          <SkeletonTile label="Door code" value="1234#" />
+          <SkeletonTile label="Check-in" value="3:00 PM" />
+          <SkeletonTile label="WiFi" value="BT_Guest" />
+          <SkeletonTile label="Address" value="42 Oak St" />
+        </div>
+      </button>
+
       <QuickInfoIntroModal
         isOpen={introOpen}
         onClose={() => setIntroOpen(false)}
@@ -75,72 +113,29 @@ export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
   );
 }
 
-// ── InvitationCard ───────────────────────────────────────────────────────
+// ── SkeletonTile ─────────────────────────────────────────────────────────
+// Compact mock tile used in the invitation empty state. Mirrors the
+// live tile structure so the empty state hints at the populated shape.
 
-function InvitationCard({
-  Icon,
-  title,
-  body,
-  onClick,
-  testId,
-}: {
-  Icon: typeof Info;
-  title: string;
-  body: string;
-  onClick: () => void;
-  testId?: string;
-}) {
-  const [hover, setHover] = useState(false);
+function SkeletonTile({ label, value }: { label: string; value: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      data-testid={testId}
-      className="w-full rounded-xl px-4 py-5 text-left transition-colors"
+    <div
+      className="rounded-xl p-3"
       style={{
-        background: hover
-          ? "var(--color-bt-accent-faint)"
-          : "var(--color-bt-surface-invitation)",
-        border: `1.5px dashed ${
-          hover ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"
-        }`,
-        cursor: "pointer",
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
-      <div className="flex items-start gap-3">
-        <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-          }}
-        >
-          <Icon size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
-            {title}
-          </p>
-          <p
-            className="mt-1 text-xs leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {body}
-          </p>
-        </div>
-        <ArrowRight
-          size={16}
-          style={{
-            color: "var(--color-bt-accent)",
-            flexShrink: 0,
-            opacity: hover ? 1 : 0,
-            transition: "opacity 150ms",
-          }}
-        />
-      </div>
-    </button>
+      <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        {label}
+      </p>
+      <p
+        className="mt-0.5 text-sm font-medium"
+        style={{ color: "var(--color-bt-text)" }}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 

@@ -64,6 +64,8 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   // panel default to a half-filled form for users who hadn't engaged yet.
   const [expanded, setExpanded] = useState(false);
 
+  const hasMyTravel = !!myMember?.travel_mode;
+
   // ── Render ──────────────────────────────────────────────────────────────
   // Title + outer card chrome are now provided by the wrapping
   // GettingTherePanel CardShell — this section is just the inner content
@@ -71,6 +73,16 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
   // inside the panel surface.
   return (
     <div data-testid="getting-there-section">
+      {/* Empty state mock-up — only when the user hasn't shared travel yet
+          AND they're not currently editing. Mirrors the Itinerary empty
+          state pattern: dashed card + icon + heading + description + faded
+          skeleton preview of populated arrival rows. */}
+      {myMember && !hasMyTravel && !expanded && (
+        <div className="px-4 pt-4">
+          <EmptyArrivalsState />
+        </div>
+      )}
+
       {myMember ? (
         <YourTravelRow
           tripId={tripId}
@@ -86,6 +98,118 @@ export function GettingThereSection({ tripId, isOwner }: GettingThereSectionProp
 
       {/* Owner-only pending tally */}
       {isOwner && <PendingTravelRow members={otherMembers} />}
+    </div>
+  );
+}
+
+// ── EmptyArrivalsState ───────────────────────────────────────────────────
+// Shown inside the GettingThere panel when the user hasn't shared their
+// travel yet. Same shape as the Itinerary panel empty state: dashed card
+// + centered icon/heading/description + faded skeleton preview of what
+// populated arrival rows will look like.
+
+function EmptyArrivalsState() {
+  return (
+    <div
+      className="rounded-xl p-4"
+      style={{
+        background: "var(--color-bt-base)",
+        border: "1px dashed var(--color-bt-border)",
+      }}
+    >
+      <div className="flex flex-col items-center text-center">
+        <div
+          className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+          }}
+        >
+          <Plane size={22} />
+        </div>
+        <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Crew arrivals will weave together here
+        </p>
+        <p
+          className="mt-1 max-w-[280px] text-xs leading-snug"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Share your travel and the crew can coordinate pickups, dinner
+          times, and tee slots around real arrival times.
+        </p>
+      </div>
+
+      {/* Skeleton arrivals — three faded rows mirroring the intro modal */}
+      <div
+        className="mt-4 overflow-hidden rounded-lg"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          opacity: 0.65,
+        }}
+      >
+        <SkeletonArrival name="Zach" detail="Delta 1733" time="3:42 PM" mode="flying" />
+        <SkeletonArrival name="Brad" detail="driving from Charlotte" time="~6:00 PM" mode="driving" />
+        <SkeletonArrival name="Rob" detail="Delta 847" time="5:30 PM" mode="flying" last />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonArrival({
+  name,
+  detail,
+  time,
+  mode,
+  last,
+}: {
+  name: string;
+  detail: string;
+  time: string;
+  mode: "flying" | "driving";
+  last?: boolean;
+}) {
+  const isFlying = mode === "flying";
+  const Icon = isFlying ? Plane : Car;
+  const badgeStyle = isFlying
+    ? {
+        background: "var(--color-bt-accent-faint)",
+        color: "var(--color-bt-accent)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }
+    : {
+        background: "var(--color-bt-warning-faint)",
+        color: "var(--color-bt-warning)",
+        border: "1px solid var(--color-bt-warning-border)",
+      };
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2"
+      style={{
+        borderBottom: last ? undefined : "1px solid var(--color-bt-border)",
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <p
+          className="text-[12px] font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {name}{" "}
+          <span style={{ fontWeight: 400, color: "var(--color-bt-text-dim)" }}>
+            · {detail}
+          </span>
+        </p>
+        <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          {time}
+        </p>
+      </div>
+      <span
+        className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+        style={badgeStyle}
+      >
+        <Icon size={9} />
+        {isFlying ? "Flying" : "Driving"}
+      </span>
     </div>
   );
 }
