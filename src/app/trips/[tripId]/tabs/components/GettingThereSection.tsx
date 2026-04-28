@@ -64,11 +64,14 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const myMember = (members as TripMemberLite[]).find(
     (m) => m.user_id === currentUser?.id,
   );
+  // Travel coordination is for real BuddyTrip members — guests can't
+  // log in to share their plans, so excluding them from the pending
+  // tally and the read-only rows keeps the panel focused on actionable
+  // people. They'll still appear in the Crew tab; just not here.
   const otherMembers = (members as TripMemberLite[]).filter(
-    (m) => m.user_id !== currentUser?.id,
+    (m) => m.user_id !== currentUser?.id && !m.isGuest,
   );
-  // Crew (excluding the viewer) who have shared their travel — these
-  // render as read-only rows so everyone can see when teammates arrive.
+  // Crew (excluding the viewer and guests) who have shared their travel.
   const sharedOthers = otherMembers.filter((m) => !!m.travel_mode);
 
   // Always start collapsed — the user opens the row deliberately by

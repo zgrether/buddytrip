@@ -48,6 +48,8 @@ export interface ItineraryTripMember {
   flight_arrival_time?: string | null; // ISO timestamptz
   flight_airport?: string | null;
   travel_shared?: boolean | null;
+  /** Guest (placeholder) members can't share their own travel — exclude them. */
+  isGuest?: boolean | null;
   user?: { name?: string | null; nickname?: string | null } | null;
 }
 
@@ -203,6 +205,9 @@ export function buildItinerary(input: {
 
   // ── 3. Shared member arrivals ──
   for (const m of input.members) {
+    // Guest (non-BuddyTrip) members can't actually share travel for
+    // themselves — skip even if a stale travel_shared flag is set.
+    if (m.isGuest) continue;
     if (!m.travel_shared) continue;
     if (!m.flight_arrival_time) continue;
 
