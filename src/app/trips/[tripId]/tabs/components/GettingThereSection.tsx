@@ -62,6 +62,9 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const otherMembers = (members as TripMemberLite[]).filter(
     (m) => m.user_id !== currentUser?.id,
   );
+  // Crew (excluding the viewer) who have shared their travel — these
+  // render as read-only rows so everyone can see when teammates arrive.
+  const sharedOthers = otherMembers.filter((m) => !!m.travel_mode);
 
   // Always start collapsed — the user opens the row deliberately by
   // tapping. Auto-expanding when empty was visually noisy and made the
@@ -93,9 +96,9 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
           AND they're not currently editing. */}
       {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
 
-      {/* Compact mode (user has shared, not editing): row sits on its own
-          card with no header chrome above. Pending tally still surfaces
-          for owners. */}
+      {/* Compact mode (user has shared, not editing): rows sit on their
+          own card with no header chrome above. Pending tally still
+          surfaces for owners. */}
       {compact && myMember && (
         <div
           className="overflow-hidden rounded-xl"
@@ -114,6 +117,9 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
               setExpanded(false);
             }}
           />
+          {sharedOthers.map((m) => (
+            <CrewTravelRow key={m.memberId} member={m} />
+          ))}
           {isOwner && <PendingTravelRow members={otherMembers} />}
         </div>
       )}
@@ -141,10 +147,41 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
             />
           ) : null}
 
+          {sharedOthers.map((m) => (
+            <CrewTravelRow key={m.memberId} member={m} />
+          ))}
+
           {/* Owner-only pending tally */}
           {isOwner && <PendingTravelRow members={otherMembers} />}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── CrewTravelRow ─────────────────────────────────────────────────────────
+// Read-only row for any crew member (other than the viewer) who has shared
+// their travel info. Same shape as YourTravelRow's "has travel" branch but
+// without the chevron / expand affordance.
+
+function CrewTravelRow({ member }: { member: TripMemberLite }) {
+  return (
+    <div
+      className="flex w-full items-center gap-3 border-t px-4 py-3"
+      style={{ borderColor: "var(--color-bt-border)" }}
+    >
+      <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          {member.displayName}
+        </p>
+        <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          {summarizeTravel(member)}
+        </p>
+      </div>
+
+      <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
     </div>
   );
 }
