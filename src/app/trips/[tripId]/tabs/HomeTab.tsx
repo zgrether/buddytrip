@@ -92,20 +92,15 @@ export function HomeTab({
               tab (with a dot on the tab bar) — do not surface it here. */}
       {stage === "going" && (status === "going" || status === "now") && (
         <>
-          {/* Quick Info first — most-glanced surface (door codes, addresses
-              etc.); pin it above the larger Itinerary panel.                */}
+          {/* Quick Info — most-glanced surface (door codes, addresses) */}
           <QuickInfoPanel
             tripId={trip.id}
             isOwner={!!isOwner}
             isDismissed={!!trip.quick_info_dismissed}
           />
-          <ItineraryPanel
-            tripId={trip.id}
-            trip={trip}
-            isOwner={!!isOwner}
-            isActivated={!!trip.itinerary_enabled}
-            hasContent={hasItineraryContent}
-          />
+          {/* Getting There — sits between Quick Info and the bigger
+              Itinerary panel. Compresses down to the user's own arrival
+              row once they've shared. */}
           <GettingTherePanel
             tripId={trip.id}
             trip={trip}
@@ -113,6 +108,13 @@ export function HomeTab({
             isActivated={!!trip.getting_there_enabled}
             hasDates={!!trip.start_date}
             onOpenDatesModal={() => onTabChange?.("schedule")}
+          />
+          <ItineraryPanel
+            tripId={trip.id}
+            trip={trip}
+            isOwner={!!isOwner}
+            isActivated={!!trip.itinerary_enabled}
+            hasContent={hasItineraryContent}
           />
           <CompetitionPanel
             isOwner={!!isOwner}

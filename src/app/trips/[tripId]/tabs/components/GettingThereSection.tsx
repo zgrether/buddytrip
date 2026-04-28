@@ -70,15 +70,17 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 
   const hasMyTravel = !!myMember?.travel_mode;
   const showEmptyState = !!myMember && !hasMyTravel && !expanded;
+  // Once the user has shared their travel, the panel collapses to a
+  // compact form: no section header, no card wrapper around the row,
+  // and (for non-owners) no pending tally either. The owner still sees
+  // the pending tally beneath their compact row when crew haven't
+  // shared, so they can chase folks without losing the affordance.
+  const compact = hasMyTravel && !expanded;
 
   // ── Render ──────────────────────────────────────────────────────────────
-  // Section header + content render directly (no outer card shell) so the
-  // panel-less treatment matches the rest of the home tab. The header only
-  // appears once the user has shared travel — when the empty-state mock-up
-  // is visible, the dashed card stands on its own.
   return (
     <div className="space-y-3" data-testid="getting-there-section">
-      {!showEmptyState && (
+      {!compact && !showEmptyState && (
         <h2
           className="text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
@@ -88,19 +90,20 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
       )}
 
       {/* Empty state mock-up — only when the user hasn't shared travel yet
-          AND they're not currently editing. Mirrors the Itinerary empty
-          state pattern: dashed card + icon + heading + description + faded
-          skeleton preview of populated arrival rows. */}
+          AND they're not currently editing. */}
       {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
 
-      <div
-        className="overflow-hidden rounded-xl"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {myMember ? (
+      {/* Compact mode (user has shared, not editing): row sits on its own
+          card with no header chrome above. Pending tally still surfaces
+          for owners. */}
+      {compact && myMember && (
+        <div
+          className="overflow-hidden rounded-xl"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
           <YourTravelRow
             tripId={tripId}
             member={myMember}
@@ -111,11 +114,37 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
               setExpanded(false);
             }}
           />
-        ) : null}
+          {isOwner && <PendingTravelRow members={otherMembers} />}
+        </div>
+      )}
 
-        {/* Owner-only pending tally */}
-        {isOwner && <PendingTravelRow members={otherMembers} />}
-      </div>
+      {/* Editing / not-yet-shared mode: full card with empty state above
+          when applicable, and pending tally below. */}
+      {!compact && (
+        <div
+          className="overflow-hidden rounded-xl"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          {myMember ? (
+            <YourTravelRow
+              tripId={tripId}
+              member={myMember}
+              expanded={expanded}
+              onToggleExpanded={() => setExpanded((v) => !v)}
+              onSaved={() => {
+                utils.tripMembers.list.invalidate({ tripId });
+                setExpanded(false);
+              }}
+            />
+          ) : null}
+
+          {/* Owner-only pending tally */}
+          {isOwner && <PendingTravelRow members={otherMembers} />}
+        </div>
+      )}
     </div>
   );
 }
