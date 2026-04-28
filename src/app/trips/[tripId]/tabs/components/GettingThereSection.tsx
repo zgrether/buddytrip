@@ -412,9 +412,9 @@ function TravelExpandForm({
 
   return (
     <div className="space-y-3">
-      {/* Mode segmented control */}
+      {/* Mode segmented control — content-width pill, left-aligned. */}
       <div
-        className="flex rounded-xl p-1"
+        className="inline-flex rounded-xl p-1"
         style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
       >
         {(
@@ -430,7 +430,7 @@ function TravelExpandForm({
               key={value}
               type="button"
               onClick={() => setMode(value)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
               style={
                 active
                   ? {
