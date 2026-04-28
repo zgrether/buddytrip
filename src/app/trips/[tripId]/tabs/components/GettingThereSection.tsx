@@ -464,13 +464,34 @@ function TravelExpandForm({
   return (
     <div className="space-y-3">
       {arrivalBeforeTrip && (
-        <p
-          className="flex items-center gap-1.5 text-[11px]"
-          style={{ color: "var(--color-bt-warning)" }}
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
         >
-          <AlertTriangle size={11} />
-          Heads up — that arrival is before the trip starts.
-        </p>
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+          >
+            <AlertTriangle size={14} />
+          </span>
+          <div>
+            <p
+              className="text-[13px] font-semibold leading-tight"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Arrival is before the trip starts
+            </p>
+            <p
+              className="mt-0.5 text-[11px] leading-snug"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Double-check the month and day, or update the trip dates if entered wrong
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Mode segmented control — content-width pill, left-aligned. */}
