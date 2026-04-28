@@ -544,11 +544,10 @@ export function ScheduleTab({
 
   return (
     <div className={embedded ? undefined : "px-4"}>
-      <section>
-        {/* ── Nudges — both at top, both dot-driven, mutually exclusive ──────
-            "unscheduled": no trip dates → items can't be assigned to a day yet
-            "unconfirmed": dates set + items assigned → need to be locked in
-            Both use the same card style so they read consistently.           */}
+      {/* ── Nudges — sit above the section header so they read as
+          tab-level alerts, not section content. Multiple may stack:
+          unscheduled (no trip dates) / undated (item missing day) /
+          unconfirmed (item not locked) / out-of-range (date outside trip). */}
 
         {canEdit && !trip.start_date && allItems.length > 0 && (
           <div
@@ -678,6 +677,7 @@ export function ScheduleTab({
           </div>
         )}
 
+      <section>
         {!embedded && (
           <h2
             className="mb-2 text-xs font-semibold uppercase tracking-wider"

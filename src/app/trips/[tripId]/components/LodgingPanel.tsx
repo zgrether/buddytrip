@@ -374,6 +374,31 @@ export function LodgingPanel({
   if (inline) {
     return (
       <>
+        {canEdit && outOfRangeCount > 0 && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+            >
+              <Hotel size={14} />
+            </span>
+            <div>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                {outOfRangeCount} {outOfRangeCount === 1 ? "property has" : "properties have"} dates outside the trip
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                Double-check the check-in / check-out or update the trip dates if entered wrong
+              </p>
+            </div>
+          </div>
+        )}
+
         <section>
           {!hideHeader && (
             <h2
@@ -393,31 +418,6 @@ export function LodgingPanel({
             Confirm the winner once it&apos;s booked and it&apos;ll lock
             onto the official trip details.
           </p>
-
-          {canEdit && outOfRangeCount > 0 && (
-            <div
-              className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
-              style={{
-                background: "var(--color-bt-card)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <span
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
-              >
-                <Hotel size={14} />
-              </span>
-              <div>
-                <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                  {outOfRangeCount} {outOfRangeCount === 1 ? "property has" : "properties have"} dates outside the trip
-                </p>
-                <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Double-check the check-in / check-out or update the trip dates if entered wrong
-                </p>
-              </div>
-            </div>
-          )}
 
           {canEdit && (
             <button

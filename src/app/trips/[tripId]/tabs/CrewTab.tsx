@@ -411,16 +411,9 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
-      {!embedded && (
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Crew
-        </h2>
-      )}
-
-      {/* ── Unlinked crew nudge — spans full width above the grid ── */}
+      {/* ── Unlinked crew nudge — sits at the very top of the tab,
+          above the CREW header, so it reads as a tab-level alert
+          consistent with Schedule and Lodging. ── */}
       {isOwner && unlinkedCount > 0 && (
         <div
           className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
@@ -444,6 +437,15 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             </p>
           </div>
         </div>
+      )}
+
+      {!embedded && (
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Crew
+        </h2>
       )}
 
       <div className={isOwner && members.length > 1 ? "@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
