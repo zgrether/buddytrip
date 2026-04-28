@@ -97,19 +97,29 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
     return map;
   }, [events]);
 
-  // ── Day range: trip.start_date → trip.end_date inclusive ───────────────
+  // ── Day range: trip.start_date → trip.end_date inclusive, PLUS any
+  //               event dates that fall outside that range. Dropping
+  //               events that fall on the night-before-arrival or the
+  //               morning-after-checkout was hiding lodging items the
+  //               user had legitimately confirmed.
   const days = useMemo(() => {
-    if (!trip.start_date || !trip.end_date) return [];
-    const start = parseLocalDate(trip.start_date);
-    const end = parseLocalDate(trip.end_date);
-    const span = Math.max(0, differenceInDays(end, start));
-    const out: string[] = [];
-    for (let i = 0; i <= span; i++) {
-      const d = addDays(start, i);
-      out.push(d.toLocaleDateString("en-CA"));
+    const dateSet = new Set<string>();
+
+    if (trip.start_date && trip.end_date) {
+      const start = parseLocalDate(trip.start_date);
+      const end = parseLocalDate(trip.end_date);
+      const span = Math.max(0, differenceInDays(end, start));
+      for (let i = 0; i <= span; i++) {
+        dateSet.add(addDays(start, i).toLocaleDateString("en-CA"));
+      }
     }
-    return out;
-  }, [trip.start_date, trip.end_date]);
+
+    for (const event of events) {
+      dateSet.add(event.date);
+    }
+
+    return Array.from(dateSet).sort();
+  }, [trip.start_date, trip.end_date, events]);
 
   const today = todayLocalISO();
 
@@ -198,15 +208,22 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
         <EmptyItineraryState onCancel={onCancel} />
       ) : (
         <div className="space-y-4">
-          {days.map((date, i) => (
-            <DaySection
-              key={date}
-              date={date}
-              dayNumber={i + 1}
-              isToday={date === today}
-              events={(eventsByDate.get(date) ?? []).filter(showEvent)}
-            />
-          ))}
+          {days.map((date) => {
+            // Anchor day numbering on trip.start_date so dates outside
+            // the trip range read correctly (Day 0 = night before, etc.).
+            const dayNumber = trip.start_date
+              ? differenceInDays(parseLocalDate(date), parseLocalDate(trip.start_date)) + 1
+              : null;
+            return (
+              <DaySection
+                key={date}
+                date={date}
+                dayNumber={dayNumber}
+                isToday={date === today}
+                events={(eventsByDate.get(date) ?? []).filter(showEvent)}
+              />
+            );
+          })}
         </div>
       )}
     </div>
@@ -382,7 +399,7 @@ function DaySection({
   events,
 }: {
   date: string;
-  dayNumber: number;
+  dayNumber: number | null;
   isToday: boolean;
   events: ItineraryEvent[];
 }) {
@@ -391,6 +408,19 @@ function DaySection({
     month: "short",
     day: "numeric",
   });
+
+  // Day labels: positive numbers stay "Day N"; negative/zero numbers
+  // (event falls before trip starts) read as "Pre-trip"; numbers past
+  // the trip end read as "Post-trip" — keeps day-1, day-2 etc. anchored
+  // to the actual trip dates regardless of off-range events.
+  let dayLabel: string;
+  if (dayNumber === null) {
+    dayLabel = "";
+  } else if (dayNumber < 1) {
+    dayLabel = "Pre-trip · ";
+  } else {
+    dayLabel = `Day ${dayNumber} — `;
+  }
 
   return (
     <section data-testid={`day-section-${date}`} data-today={isToday ? "true" : undefined}>
@@ -408,7 +438,7 @@ function DaySection({
             color: isToday ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
           }}
         >
-          Day {dayNumber} — {dateLabel}
+          {dayLabel}{dateLabel}
         </p>
       </div>
       {events.length === 0 ? (
