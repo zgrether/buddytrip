@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  AlertTriangle,
   Car,
   ChevronDown,
   HelpCircle,
@@ -55,6 +56,10 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  // Trip query is cached from the parent page — use it to flag arrival
+  // dates that fall before the trip starts.
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
+  const tripStartDate = trip?.start_date ?? null;
 
   const myMember = (members as TripMemberLite[]).find(
     (m) => m.user_id === currentUser?.id,
@@ -108,6 +113,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
             <YourTravelRow
               tripId={tripId}
               member={myMember}
+              tripStartDate={tripStartDate}
               expanded={expanded}
               onToggleExpanded={() => setExpanded((v) => !v)}
               onSaved={() => {
@@ -285,12 +291,14 @@ function SkeletonArrival({
 function YourTravelRow({
   tripId,
   member,
+  tripStartDate,
   expanded,
   onToggleExpanded,
   onSaved,
 }: {
   tripId: string;
   member: TripMemberLite;
+  tripStartDate: string | null;
   expanded: boolean;
   onToggleExpanded: () => void;
   onSaved: () => void;
@@ -304,7 +312,7 @@ function YourTravelRow({
     return (
       <div className="px-4 py-3">
         {expanded ? (
-          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
+          <TravelExpandForm tripId={tripId} member={member} tripStartDate={tripStartDate} onSaved={onSaved} onCancel={onToggleExpanded} />
         ) : (
           <button
             type="button"
@@ -364,7 +372,7 @@ function YourTravelRow({
           className="border-t px-4 pb-4 pt-3"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
-          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
+          <TravelExpandForm tripId={tripId} member={member} tripStartDate={tripStartDate} onSaved={onSaved} onCancel={onToggleExpanded} />
         </div>
       )}
     </div>
@@ -376,11 +384,13 @@ function YourTravelRow({
 function TravelExpandForm({
   tripId,
   member,
+  tripStartDate,
   onSaved,
   onCancel,
 }: {
   tripId: string;
   member: TripMemberLite;
+  tripStartDate: string | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -446,8 +456,23 @@ function TravelExpandForm({
     }
   };
 
+  // Subtle heads-up when the entered arrival is before the trip starts
+  // (typo, wrong year, etc.). Just a small inline note — not blocking.
+  const arrivalBeforeTrip =
+    !!arrivalDate && !!tripStartDate && arrivalDate < tripStartDate;
+
   return (
     <div className="space-y-3">
+      {arrivalBeforeTrip && (
+        <p
+          className="flex items-center gap-1.5 text-[11px]"
+          style={{ color: "var(--color-bt-warning)" }}
+        >
+          <AlertTriangle size={11} />
+          Heads up — that arrival is before the trip starts.
+        </p>
+      )}
+
       {/* Mode segmented control — content-width pill, left-aligned. */}
       <div
         className="inline-flex rounded-xl p-1"
