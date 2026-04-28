@@ -31,6 +31,7 @@ function CrewMemberRow({
   isMe,
   isExpanded,
   isPlannerSection,
+  hidePlannerBadge,
   onToggle,
   onUpdated,
 }: {
@@ -40,6 +41,8 @@ function CrewMemberRow({
   isMe: boolean;
   isExpanded: boolean;
   isPlannerSection?: boolean;
+  /** Member view hides Planner badges — Owner badge still surfaces. */
+  hidePlannerBadge?: boolean;
   onToggle: () => void;
   onUpdated: () => void;
 }) {
@@ -158,7 +161,7 @@ function CrewMemberRow({
           )}
 
           {/* Planner badge / Planner × button */}
-          {isPlannerRow && (
+          {isPlannerRow && !hidePlannerBadge && (
             canActOnPlanner ? (
               <button
                 onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
@@ -387,7 +390,7 @@ function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => voi
 
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
-export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
+export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boolean }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
   const tripId = trip.id;
@@ -408,6 +411,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   const plannersSorted = sorted.filter((m) => m.role === "Owner" || m.role === "Planner");
   const crewSorted = sorted.filter((m) => m.role !== "Owner" && m.role !== "Planner");
   const unlinkedCount = members.filter((m) => m.isGuest).length;
+  const hasGuest = members.some((m) => m.isGuest);
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
@@ -448,6 +452,52 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
         </h2>
       )}
 
+      {/* Member view — single cohesive list, no Planners/Rest split,
+          no Planner badges. Owner badge + ghost-guest legend stay. */}
+      {!canEdit && (
+        <div>
+          {hasGuest && (
+            <div
+              className="mb-2 flex items-center justify-end gap-1.5 text-[11px]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <span
+                className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ background: "var(--color-bt-border)" }}
+              >
+                <Ghost size={10} />
+              </span>
+              <span>= not a BuddyTrip member</span>
+            </div>
+          )}
+          <div
+            className="overflow-hidden rounded-xl"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            {sorted.map((m) => {
+              const isMe = m.user_id === currentUser?.id;
+              return (
+                <CrewMemberRow
+                  key={m.memberId}
+                  member={m}
+                  tripId={tripId}
+                  isOwnerView={false}
+                  isMe={isMe}
+                  isExpanded={false}
+                  hidePlannerBadge
+                  onToggle={() => {}}
+                  onUpdated={() => {}}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {canEdit && (
       <div className={isOwner && members.length > 1 ? "@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
         <div className="min-w-0 space-y-4">
           {/* ── Cohesive blurb — sits between the outer CREW panel title and PLANNERS ── */}
@@ -566,6 +616,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
