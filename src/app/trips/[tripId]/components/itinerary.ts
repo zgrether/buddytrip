@@ -146,12 +146,10 @@ export function buildItinerary(input: {
     });
   }
 
-  // ── 2. Lodging — emit check-in + check-out events ──
-  // Confirmed flag is a planning-stage compare/lock concept; once the
-  // user is past planning the itinerary should reflect every lodging
-  // entry they've put in (LodgingPanel is the source of truth).
+  // ── 2. Confirmed lodging — emit check-in + check-out events ──
   for (const item of input.logisticsItems) {
     if (item.type !== "lodging") continue;
+    if (!item.is_confirmed) continue;
 
     const name = item.property_name ?? item.label ?? "Lodging";
     const subtitle = item.address ?? null;

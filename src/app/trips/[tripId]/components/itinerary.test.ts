@@ -86,14 +86,13 @@ describe("buildItinerary — filtering", () => {
     expect(events).toHaveLength(0);
   });
 
-  it("includes lodging regardless of is_confirmed (compare/lock is a planning-stage concept)", () => {
+  it("excludes unconfirmed lodging", () => {
     const events = buildItinerary({
       scheduleItems: [],
       logisticsItems: [lodgingItem({ is_confirmed: false })],
       members: [],
     });
-    // Default lodgingItem helper has check_in_time + check_out_time → 2 events
-    expect(events.length).toBeGreaterThan(0);
+    expect(events).toHaveLength(0);
   });
 
   it("excludes non-lodging logistics items", () => {
