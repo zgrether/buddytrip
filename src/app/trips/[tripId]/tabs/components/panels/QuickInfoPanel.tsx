@@ -143,7 +143,7 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
 
         <button
           type="button"
-          onClick={() => setIntroOpen(true)}
+          onClick={() => setAddTileOpen(true)}
           className="block w-full text-left"
           style={{ background: "transparent", border: "none", cursor: "pointer" }}
         >
@@ -182,19 +182,6 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
         </button>
       </div>
 
-      {introOpen && (
-        <QuickInfoIntroModal
-          isOpen
-          onClose={() => setIntroOpen(false)}
-          onActivate={() => {
-            // Drop straight into the add-first-tile flow — close the intro
-            // and open AddTileModal back to back.
-            setIntroOpen(false);
-            setAddTileOpen(true);
-          }}
-          isActivating={false}
-        />
-      )}
       {addTileOpen && (
         <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
       )}
