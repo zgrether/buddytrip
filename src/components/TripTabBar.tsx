@@ -52,6 +52,10 @@ export const TripTabBar: FC<TripTabBarProps> = ({
     // keep it out of the IDEA stage where the IdeaZonePanel owns the
     // surface and there's nothing to book against yet.
     if (t.id === "lodging" && stage === "idea") return false;
+    // Lodging and Schedule are owner/planner authoring surfaces; the
+    // confirmed content surfaces for members on the Home itinerary
+    // anyway, so showing dedicated tabs would just duplicate the view.
+    if ((t.id === "lodging" || t.id === "schedule") && !canEdit) return false;
     return true;
   });
 

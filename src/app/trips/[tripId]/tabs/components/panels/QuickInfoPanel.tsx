@@ -87,8 +87,13 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
 
   // ── State 4: owner, dismissed — "Enable Quick Info Tiles" CTA card ──
   // Tapping the CTA opens the intro modal but does NOT change any flags
-  // yet — the user needs to confirm via the modal's "Add Quick Info" CTA.
-  // Cancel → stay dismissed. Confirm → un-dismiss + open AddTileModal.
+  // yet — the user needs to confirm via the modal CTA.
+  //   - Cancel → stay dismissed.
+  //   - Confirm → un-dismiss + close modal. The user lands on the rich
+  //     empty state (the not-dismissed branch below). They can tap that
+  //     to open the modal again and add a tile if they want — this
+  //     deliberately doesn't auto-open AddTileModal so the user actually
+  //     sees the rich empty state they just enabled.
   if (isDismissed) {
     return (
       <>
@@ -98,17 +103,11 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
             isOpen
             onClose={() => setIntroOpen(false)}
             onActivate={() => {
-              // Confirmation via the modal — now flip the flag and drop into
-              // the add-first-tile flow.
               restoreQuickInfo.mutate({ tripId });
               setIntroOpen(false);
-              setAddTileOpen(true);
             }}
             isActivating={false}
           />
-        )}
-        {addTileOpen && (
-          <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
         )}
       </>
     );
@@ -144,7 +143,7 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
 
         <button
           type="button"
-          onClick={() => setIntroOpen(true)}
+          onClick={() => setAddTileOpen(true)}
           className="block w-full text-left"
           style={{ background: "transparent", border: "none", cursor: "pointer" }}
         >
@@ -183,19 +182,6 @@ export function QuickInfoPanel({ tripId, isOwner, isDismissed }: QuickInfoPanelP
         </button>
       </div>
 
-      {introOpen && (
-        <QuickInfoIntroModal
-          isOpen
-          onClose={() => setIntroOpen(false)}
-          onActivate={() => {
-            // Drop straight into the add-first-tile flow — close the intro
-            // and open AddTileModal back to back.
-            setIntroOpen(false);
-            setAddTileOpen(true);
-          }}
-          isActivating={false}
-        />
-      )}
       {addTileOpen && (
         <AddTileModal tripId={tripId} onClose={() => setAddTileOpen(false)} />
       )}

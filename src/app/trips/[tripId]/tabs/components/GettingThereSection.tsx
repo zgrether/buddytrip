@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  AlertTriangle,
   Car,
   ChevronDown,
   HelpCircle,
@@ -55,13 +56,23 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  // Trip query is cached from the parent page — use it to flag arrival
+  // dates that fall before the trip starts.
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
+  const tripStartDate = trip?.start_date ?? null;
 
   const myMember = (members as TripMemberLite[]).find(
     (m) => m.user_id === currentUser?.id,
   );
+  // Travel coordination is for real BuddyTrip members — guests can't
+  // log in to share their plans, so excluding them from the pending
+  // tally and the read-only rows keeps the panel focused on actionable
+  // people. They'll still appear in the Crew tab; just not here.
   const otherMembers = (members as TripMemberLite[]).filter(
-    (m) => m.user_id !== currentUser?.id,
+    (m) => m.user_id !== currentUser?.id && !m.isGuest,
   );
+  // Crew (excluding the viewer and guests) who have shared their travel.
+  const sharedOthers = otherMembers.filter((m) => !!m.travel_mode);
 
   // Always start collapsed — the user opens the row deliberately by
   // tapping. Auto-expanding when empty was visually noisy and made the
@@ -69,13 +80,17 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const [expanded, setExpanded] = useState(false);
 
   const hasMyTravel = !!myMember?.travel_mode;
-  const showEmptyState = !!myMember && !hasMyTravel && !expanded;
+  // Empty-state mock-up only shows when nobody on the trip has shared
+  // travel yet. As soon as anyone shares (the viewer or another crew
+  // member), real rows take its place.
+  const someoneShared = hasMyTravel || sharedOthers.length > 0;
+  const showEmptyState = !!myMember && !someoneShared && !expanded;
 
   // ── Render ──────────────────────────────────────────────────────────────
-  // Section header + content render directly (no outer card shell) so the
-  // panel-less treatment matches the rest of the home tab. The header only
-  // appears once the user has shared travel — when the empty-state mock-up
-  // is visible, the dashed card stands on its own.
+  // GETTING THERE header sits OUTSIDE the rows card so the card always
+  // reads as content under a labelled section, not a floating panel of
+  // text. Header hides only when the empty-state mock-up is showing —
+  // the dashed mock-up carries its own identity.
   return (
     <div className="space-y-3" data-testid="getting-there-section">
       {!showEmptyState && (
@@ -87,35 +102,65 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
         </h2>
       )}
 
-      {/* Empty state mock-up — only when the user hasn't shared travel yet
-          AND they're not currently editing. Mirrors the Itinerary empty
-          state pattern: dashed card + icon + heading + description + faded
-          skeleton preview of populated arrival rows. */}
       {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
 
-      <div
-        className="overflow-hidden rounded-xl"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {myMember ? (
-          <YourTravelRow
-            tripId={tripId}
-            member={myMember}
-            expanded={expanded}
-            onToggleExpanded={() => setExpanded((v) => !v)}
-            onSaved={() => {
-              utils.tripMembers.list.invalidate({ tripId });
-              setExpanded(false);
-            }}
-          />
-        ) : null}
+      {!showEmptyState && (
+        <div
+          className="overflow-hidden rounded-xl"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          {myMember && (
+            <YourTravelRow
+              tripId={tripId}
+              member={myMember}
+              tripStartDate={tripStartDate}
+              expanded={expanded}
+              onToggleExpanded={() => setExpanded((v) => !v)}
+              onSaved={() => {
+                utils.tripMembers.list.invalidate({ tripId });
+                setExpanded(false);
+              }}
+            />
+          )}
 
-        {/* Owner-only pending tally */}
-        {isOwner && <PendingTravelRow members={otherMembers} />}
+          {sharedOthers.map((m) => (
+            <CrewTravelRow key={m.memberId} member={m} />
+          ))}
+
+          {/* Owner-only pending tally */}
+          {isOwner && <PendingTravelRow members={otherMembers} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CrewTravelRow ─────────────────────────────────────────────────────────
+// Read-only row for any crew member (other than the viewer) who has shared
+// their travel info. Same shape as YourTravelRow's "has travel" branch but
+// without the chevron / expand affordance.
+
+function CrewTravelRow({ member }: { member: TripMemberLite }) {
+  return (
+    <div
+      className="flex w-full items-center gap-3 border-t px-4 py-3"
+      style={{ borderColor: "var(--color-bt-border)" }}
+    >
+      <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          {member.displayName}
+        </p>
+        <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          {summarizeTravel(member)}
+        </p>
       </div>
+
+      <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
     </div>
   );
 }
@@ -249,12 +294,14 @@ function SkeletonArrival({
 function YourTravelRow({
   tripId,
   member,
+  tripStartDate,
   expanded,
   onToggleExpanded,
   onSaved,
 }: {
   tripId: string;
   member: TripMemberLite;
+  tripStartDate: string | null;
   expanded: boolean;
   onToggleExpanded: () => void;
   onSaved: () => void;
@@ -268,7 +315,7 @@ function YourTravelRow({
     return (
       <div className="px-4 py-3">
         {expanded ? (
-          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
+          <TravelExpandForm tripId={tripId} member={member} tripStartDate={tripStartDate} onSaved={onSaved} onCancel={onToggleExpanded} />
         ) : (
           <button
             type="button"
@@ -328,7 +375,7 @@ function YourTravelRow({
           className="border-t px-4 pb-4 pt-3"
           style={{ borderColor: "var(--color-bt-border)" }}
         >
-          <TravelExpandForm tripId={tripId} member={member} onSaved={onSaved} onCancel={onToggleExpanded} />
+          <TravelExpandForm tripId={tripId} member={member} tripStartDate={tripStartDate} onSaved={onSaved} onCancel={onToggleExpanded} />
         </div>
       )}
     </div>
@@ -340,28 +387,33 @@ function YourTravelRow({
 function TravelExpandForm({
   tripId,
   member,
+  tripStartDate,
   onSaved,
   onCancel,
 }: {
   tripId: string;
   member: TripMemberLite;
+  tripStartDate: string | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const [mode, setMode] = useState<TravelMode>(
     (member.travel_mode as TravelMode) ?? "driving",
   );
-  // Details is the single free-text field for driving/other OR flight airline/number for flying.
+  // Details: flight airline/number for flying, route description for non-flying.
   const [details, setDetails] = useState(() =>
     member.travel_mode === "flying"
       ? [member.flight_airline, member.flight_number].filter(Boolean).join(" ")
       : member.travel_detail ?? "",
   );
-  // Arrival is free text for both — "Sep 10 · 3:00 PM" per the spec.
-  const [arrival, setArrival] = useState(() =>
-    member.travel_mode === "flying"
-      ? member.flight_arrival_time ?? ""
-      : member.travel_detail ?? "",
+  // Arrival: a real date + time pair produces an ISO timestamp the itinerary
+  // can parse. Used across all modes — driving/other arrivals weave into the
+  // itinerary too, not just flights.
+  const [arrivalDate, setArrivalDate] = useState(() =>
+    parseArrivalDate(member.flight_arrival_time),
+  );
+  const [arrivalTime, setArrivalTime] = useState(() =>
+    parseArrivalTime(member.flight_arrival_time),
   );
 
   const updateTravel = trpc.tripMembers.updateTravel.useMutation({
@@ -369,6 +421,16 @@ function TravelExpandForm({
   });
 
   const handleSave = () => {
+    // Combine arrival date + time into a local ISO timestamp (no TZ
+    // suffix; the server stores it as-is and the itinerary builder
+    // parses it via new Date(...), which honours the user's TZ).
+    let arrivalISO: string | null = null;
+    if (arrivalDate) {
+      arrivalISO = arrivalTime
+        ? `${arrivalDate}T${arrivalTime}:00`
+        : `${arrivalDate}T00:00:00`;
+    }
+
     if (mode === "flying") {
       updateTravel.mutate({
         tripId,
@@ -376,33 +438,68 @@ function TravelExpandForm({
         travelDetail: null,
         flightAirline: details.trim() || null,
         flightNumber: null,
-        flightArrivalTime: arrival.trim() || null,
+        flightArrivalTime: arrivalISO,
         flightAirport: null,
         travelShared: true,
       });
     } else {
-      // Driving / other — stash details and arrival in travel_detail as a
-      // combined blob. This stays compatible with TravelPanel's existing
-      // "{travel_detail}" summary rendering.
-      const combined = [details.trim(), arrival.trim()].filter(Boolean).join(" · ");
+      // Driving / other — details (e.g., "driving from Charlotte") goes
+      // into travel_detail; the arrival timestamp goes into
+      // flight_arrival_time so it shows up on the itinerary.
       updateTravel.mutate({
         tripId,
         travelMode: mode,
-        travelDetail: combined || null,
+        travelDetail: details.trim() || null,
         flightAirline: null,
         flightNumber: null,
-        flightArrivalTime: null,
+        flightArrivalTime: arrivalISO,
         flightAirport: null,
         travelShared: true,
       });
     }
   };
 
+  // Subtle heads-up when the entered arrival is before the trip starts
+  // (typo, wrong year, etc.). Just a small inline note — not blocking.
+  const arrivalBeforeTrip =
+    !!arrivalDate && !!tripStartDate && arrivalDate < tripStartDate;
+
   return (
     <div className="space-y-3">
-      {/* Mode segmented control */}
+      {arrivalBeforeTrip && (
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+          >
+            <AlertTriangle size={14} />
+          </span>
+          <div>
+            <p
+              className="text-[13px] font-semibold leading-tight"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Arrival is before the trip starts
+            </p>
+            <p
+              className="mt-0.5 text-[11px] leading-snug"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Double-check the month and day, or update the trip dates if entered wrong
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Mode segmented control — content-width pill, left-aligned. */}
       <div
-        className="flex rounded-xl p-1"
+        className="inline-flex rounded-xl p-1"
         style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
       >
         {(
@@ -418,7 +515,7 @@ function TravelExpandForm({
               key={value}
               type="button"
               onClick={() => setMode(value)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
               style={
                 active
                   ? {
@@ -458,7 +555,7 @@ function TravelExpandForm({
             }}
           />
         </div>
-        <div style={{ flex: "1 1 140px" }}>
+        <div style={{ flex: "1 1 130px" }}>
           <label
             className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -466,15 +563,35 @@ function TravelExpandForm({
             Arriving
           </label>
           <input
-            type="text"
-            value={arrival}
-            onChange={(e) => setArrival(e.target.value)}
-            placeholder="Sep 10 · 3:00 PM"
+            type="date"
+            value={arrivalDate}
+            onChange={(e) => setArrivalDate(e.target.value)}
             className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
             style={{
               background: "var(--color-bt-base)",
               borderColor: "var(--color-bt-border)",
               color: "var(--color-bt-text)",
+              colorScheme: "dark",
+            }}
+          />
+        </div>
+        <div style={{ flex: "1 1 100px" }}>
+          <label
+            className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Time
+          </label>
+          <input
+            type="time"
+            value={arrivalTime}
+            onChange={(e) => setArrivalTime(e.target.value)}
+            className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+            style={{
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+              colorScheme: "dark",
             }}
           />
         </div>
@@ -609,16 +726,50 @@ function PendingTravelRow({ members }: { members: TripMemberLite[] }) {
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function summarizeTravel(m: TripMemberLite): string {
+  const arrivalLabel = formatArrivalLabel(m.flight_arrival_time);
   if (m.travel_mode === "flying") {
     const parts = [
       m.flight_airline,
       m.flight_number,
-      m.flight_arrival_time && `arriving ${m.flight_arrival_time}`,
+      arrivalLabel && `arriving ${arrivalLabel}`,
     ].filter(Boolean);
     return parts.length ? parts.join(" · ") : "Flying";
   }
-  if (m.travel_detail) return m.travel_detail;
+  // Driving / other
+  const parts = [
+    m.travel_detail,
+    arrivalLabel && `arriving ${arrivalLabel}`,
+  ].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
   return m.travel_mode === "driving" ? "Driving" : "Other";
+}
+
+/** Render an ISO timestamp as "Sep 10 · 3:00 PM" — empty string if invalid. */
+function formatArrivalLabel(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${date} · ${time}`;
+}
+
+/** Pull YYYY-MM-DD out of an ISO timestamp in local time. */
+function parseArrivalDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-CA");
+}
+
+/** Pull HH:MM out of an ISO timestamp in local time. */
+function parseArrivalTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 function initials(name: string): string {

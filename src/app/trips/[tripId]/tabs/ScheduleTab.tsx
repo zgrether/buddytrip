@@ -374,12 +374,24 @@ export function ScheduleTab({
       });
     }
 
-    // Day groups
+    // Day groups — anchor numbering on trip.start_date and label
+    // off-range dates as "Pre-trip" / "Post-trip" so an accidental
+    // wrong year doesn't read as "Day -32" or "Day 175".
     for (const date of sortedDates) {
       const dayNum = dayNumber(date, trip.start_date ?? null);
+      let label: string;
+      if (dayNum === null) {
+        label = fmtDayHeader(date);
+      } else if (trip.end_date && date > trip.end_date) {
+        label = `Post-trip · ${fmtDayHeader(date)}`;
+      } else if (dayNum < 1) {
+        label = `Pre-trip · ${fmtDayHeader(date)}`;
+      } else {
+        label = `Day ${dayNum} — ${fmtDayHeader(date)}`;
+      }
       groups.push({
         date,
-        label: dayNum ? `Day ${dayNum} — ${fmtDayHeader(date)}` : fmtDayHeader(date),
+        label,
         items: sortWithinDay(dateMap.get(date) ?? []),
       });
     }
@@ -392,6 +404,16 @@ export function ScheduleTab({
   const undatedCount = allItems.filter((i) => !i.scheduled_date).length;
   // Items assigned to a day but not yet confirmed.
   const unconfirmedCount = allItems.filter((i) => !i.is_confirmed && !!i.scheduled_date).length;
+  // Items with a scheduled_date that falls outside the trip date range —
+  // either the date or the trip itself was entered wrong.
+  const outOfRangeCount =
+    trip.start_date && trip.end_date
+      ? allItems.filter((i) => {
+          if (!i.scheduled_date) return false;
+          const d = i.scheduled_date.slice(0, 10);
+          return d < trip.start_date! || d > trip.end_date!;
+        }).length
+      : 0;
 
   const confirmItem = trpc.schedule.confirm.useMutation({
     async onMutate(vars) {
@@ -534,11 +556,10 @@ export function ScheduleTab({
 
   return (
     <div className={embedded ? undefined : "px-4"}>
-      <section>
-        {/* ── Nudges — both at top, both dot-driven, mutually exclusive ──────
-            "unscheduled": no trip dates → items can't be assigned to a day yet
-            "unconfirmed": dates set + items assigned → need to be locked in
-            Both use the same card style so they read consistently.           */}
+      {/* ── Nudges — sit above the section header so they read as
+          tab-level alerts, not section content. Multiple may stack:
+          unscheduled (no trip dates) / undated (item missing day) /
+          unconfirmed (item not locked) / out-of-range (date outside trip). */}
 
         {canEdit && !trip.start_date && allItems.length > 0 && (
           <div
@@ -643,6 +664,32 @@ export function ScheduleTab({
           </div>
         )}
 
+        {canEdit && outOfRangeCount > 0 && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+            >
+              <Calendar size={14} />
+            </span>
+            <div>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                {outOfRangeCount} item{outOfRangeCount !== 1 ? "s" : ""} fall outside the trip dates
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                Double-check the date or update the trip dates if it was entered wrong
+              </p>
+            </div>
+          </div>
+        )}
+
+      <section>
         {!embedded && (
           <h2
             className="mb-2 text-xs font-semibold uppercase tracking-wider"

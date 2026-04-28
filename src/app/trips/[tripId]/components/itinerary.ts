@@ -32,6 +32,9 @@ export interface ItineraryLogisticsItem {
   /** Stored as text; treated as YYYY-MM-DD by the rest of the app. */
   check_in_time?: string | null;
   check_out_time?: string | null;
+  /** Optional clock time in HH:MM (24h) — surfaced on the itinerary. */
+  check_in_time_of_day?: string | null;
+  check_out_time_of_day?: string | null;
   is_confirmed?: boolean | null;
 }
 
@@ -45,6 +48,8 @@ export interface ItineraryTripMember {
   flight_arrival_time?: string | null; // ISO timestamptz
   flight_airport?: string | null;
   travel_shared?: boolean | null;
+  /** Guest (placeholder) members can't share their own travel — exclude them. */
+  isGuest?: boolean | null;
   user?: { name?: string | null; nickname?: string | null } | null;
 }
 
@@ -58,6 +63,8 @@ export type ItineraryEvent =
       time: string | null;
       title: string;
       subtitle?: string | null;
+      /** When set, the EventCard renders a "Map →" link that opens this in Google Maps. */
+      address?: string | null;
       itemType: "general" | "golf";
       sortOrder: number;
     }
@@ -65,9 +72,11 @@ export type ItineraryEvent =
       kind: "lodging-checkin" | "lodging-checkout";
       id: string;
       date: string;
-      time: null;
+      /** HH:MM if the user provided check-in/out clock time, otherwise null. */
+      time: string | null;
       title: string;
       subtitle?: string | null;
+      address?: string | null;
     }
   | {
       kind: "arrival";
@@ -112,6 +121,13 @@ function isDateString(s: string | null | undefined): s is string {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}/.test(s);
 }
 
+/** Returns HH:MM if the input is a valid HH:MM (or HH:MM:SS) string, otherwise null. */
+function normalizeTimeOfDay(s: string | null | undefined): string | null {
+  if (typeof s !== "string") return null;
+  const m = s.match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : null;
+}
+
 // ── Core: buildItinerary ──────────────────────────────────────────────────
 
 export function buildItinerary(input: {
@@ -134,6 +150,14 @@ export function buildItinerary(input: {
       subtitleParts.push(item.detail);
     }
 
+    // Map link target — golf items have a course_location to navigate to.
+    // General items have a free-form `detail` field that's usually a note,
+    // not an address, so we don't surface a map link for those.
+    const address =
+      item.item_type === "golf" && item.course_location
+        ? item.course_location
+        : null;
+
     events.push({
       kind: "schedule",
       id: item.id,
@@ -141,6 +165,7 @@ export function buildItinerary(input: {
       time: item.scheduled_time ? item.scheduled_time.slice(0, 5) : null,
       title: item.title,
       subtitle: subtitleParts.join(" · ") || null,
+      address,
       itemType: item.item_type,
       sortOrder: item.sort_order,
     });
@@ -159,9 +184,10 @@ export function buildItinerary(input: {
         kind: "lodging-checkin",
         id: `${item.id}-checkin`,
         date: item.check_in_time.slice(0, 10),
-        time: null,
+        time: normalizeTimeOfDay(item.check_in_time_of_day),
         title: `Check in: ${item.label || name}`,
         subtitle,
+        address: item.address ?? null,
       });
     }
     if (isDateString(item.check_out_time)) {
@@ -169,15 +195,19 @@ export function buildItinerary(input: {
         kind: "lodging-checkout",
         id: `${item.id}-checkout`,
         date: item.check_out_time.slice(0, 10),
-        time: null,
+        time: normalizeTimeOfDay(item.check_out_time_of_day),
         title: `Check out: ${item.label || name}`,
         subtitle,
+        address: item.address ?? null,
       });
     }
   }
 
   // ── 3. Shared member arrivals ──
   for (const m of input.members) {
+    // Guest (non-BuddyTrip) members can't actually share travel for
+    // themselves — skip even if a stale travel_shared flag is set.
+    if (m.isGuest) continue;
     if (!m.travel_shared) continue;
     if (!m.flight_arrival_time) continue;
 

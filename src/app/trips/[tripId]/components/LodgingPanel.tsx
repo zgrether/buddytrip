@@ -55,6 +55,8 @@ interface LodgingItemFull {
   address?: string | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
+  check_in_time_of_day?: string | null;
+  check_out_time_of_day?: string | null;
   transport_type?: string | null;  // platform
   total_price?: string | null;
   notes?: string | null;
@@ -238,6 +240,10 @@ export function LodgingPanel({
   const utils = trpc.useUtils();
 
   const { data: items = [] } = trpc.logistics.list.useQuery({ tripId });
+  // Trip query is already cached from the parent page — pulling it
+  // here is a free read used to validate lodging dates against the
+  // trip date range.
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
 
   const [showAddLodging, setShowAddLodging] = useState(false);
   const [editingItem, setEditingItem] = useState<LodgingItemFull | null>(null);
@@ -312,6 +318,8 @@ export function LodgingPanel({
       address: values.address.trim() || undefined,
       checkInTime: values.checkIn || undefined,
       checkOutTime: values.checkOut || undefined,
+      checkInTimeOfDay: values.checkInTimeOfDay || undefined,
+      checkOutTimeOfDay: values.checkOutTimeOfDay || undefined,
       transportType: platform,
     });
   };
@@ -331,12 +339,30 @@ export function LodgingPanel({
       address: values.address.trim() || null,
       checkInTime: values.checkIn || null,
       checkOutTime: values.checkOut || null,
+      checkInTimeOfDay: values.checkInTimeOfDay || null,
+      checkOutTimeOfDay: values.checkOutTimeOfDay || null,
       transportType: platform,
     });
   };
 
   const confirmedCount = lodgingItems.filter((i) => i.is_confirmed).length;
   const totalCount = lodgingItems.length;
+
+  // Lodging items where check-in or check-out date falls outside the trip
+  // date range. Mostly catches typos (e.g., wrong year) so the user can
+  // double-check before relying on the itinerary.
+  const tripStart = trip?.start_date ?? null;
+  const tripEnd = trip?.end_date ?? null;
+  const outOfRangeCount =
+    tripStart && tripEnd
+      ? lodgingItems.filter((i) => {
+          const checkIn = i.check_in_time?.slice(0, 10) ?? null;
+          const checkOut = i.check_out_time?.slice(0, 10) ?? null;
+          if (checkIn && (checkIn < tripStart || checkIn > tripEnd)) return true;
+          if (checkOut && (checkOut < tripStart || checkOut > tripEnd)) return true;
+          return false;
+        }).length
+      : 0;
 
   // ── PlanningRow header state ──────────────────────────────────────────
   let note = "No properties added yet";
@@ -354,6 +380,31 @@ export function LodgingPanel({
   if (inline) {
     return (
       <>
+        {canEdit && outOfRangeCount > 0 && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+            >
+              <Hotel size={14} />
+            </span>
+            <div>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                {outOfRangeCount} {outOfRangeCount === 1 ? "property has" : "properties have"} dates outside the trip
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                Double-check the check-in / check-out or update the trip dates if entered wrong
+              </p>
+            </div>
+          </div>
+        )}
+
         <section>
           {!hideHeader && (
             <h2
@@ -445,6 +496,8 @@ export function LodgingPanel({
               address: editingItem.address ?? "",
               checkIn: editingItem.check_in_time ?? "",
               checkOut: editingItem.check_out_time ?? "",
+              checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
+              checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
             }}
             isPending={updateItem.isPending}
             onSubmit={handleUpdate}
@@ -592,6 +645,8 @@ export function LodgingPanel({
             address: editingItem.address ?? "",
             checkIn: editingItem.check_in_time ?? "",
             checkOut: editingItem.check_out_time ?? "",
+            checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
+            checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
           }}
           isPending={updateItem.isPending}
           onSubmit={handleUpdate}

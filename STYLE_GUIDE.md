@@ -187,6 +187,57 @@ and any future empty-state CTA that signals "content can go here."
 
 ---
 
+### Nudge banner (tab-level / form-level alert)
+
+Compact card with an accent-tinted icon square + heading + dim subtitle.
+Used at the top of a tab or above a form to flag actionable items
+(e.g., "3 items still need confirmation"), heads-ups (e.g., "Arrival is
+before the trip starts"), or anything else the user should glance at
+without it interrupting flow.
+
+```
+Container:
+  background:    var(--color-bt-card)
+  border:        1px solid var(--color-bt-border)
+  border-radius: rounded-xl
+  padding:       px-4 py-3
+  layout:        flex items-center gap-3
+
+Icon square:
+  size:          h-7 w-7 rounded-lg
+  flex:          flex-shrink-0 items-center justify-center
+  background:    var(--color-bt-accent-faint)   ← action-required tone
+              OR var(--color-bt-warning-faint)  ← heads-up / warning tone
+  color:         var(--color-bt-accent)         ← matches background
+              OR var(--color-bt-warning)
+  icon size:     14
+
+Title:
+  font:          text-[13px] font-semibold leading-tight
+  color:         var(--color-bt-text)
+
+Subtitle (optional):
+  font:          text-[11px] leading-snug
+  color:         var(--color-bt-text-dim)
+  margin:        mt-0.5
+```
+
+**Two tones:**
+- **Accent-faint** — actionable, drives a tab notification dot. Examples:
+  "X items still need confirmation", "X items haven't been assigned to a day".
+- **Warning-faint** — heads-up about a possible mistake. Examples:
+  "X items fall outside the trip dates", "Arrival is before the trip starts",
+  "X properties have dates outside the trip".
+
+**Placement:** at the very top of the tab (above the section header) so
+nudges read as tab-level alerts, not section content. Multiple nudges may
+stack — order them by priority.
+
+**Do NOT use for:** error states (use danger tokens), success confirmations
+(use a toast), or generic info that doesn't need user attention.
+
+---
+
 ### Collapsible planning panel (PlanningRow)
 
 ```
