@@ -351,17 +351,20 @@ function TravelExpandForm({
   const [mode, setMode] = useState<TravelMode>(
     (member.travel_mode as TravelMode) ?? "driving",
   );
-  // Details is the single free-text field for driving/other OR flight airline/number for flying.
+  // Details: flight airline/number for flying, route description for non-flying.
   const [details, setDetails] = useState(() =>
     member.travel_mode === "flying"
       ? [member.flight_airline, member.flight_number].filter(Boolean).join(" ")
       : member.travel_detail ?? "",
   );
-  // Arrival is free text for both — "Sep 10 · 3:00 PM" per the spec.
-  const [arrival, setArrival] = useState(() =>
-    member.travel_mode === "flying"
-      ? member.flight_arrival_time ?? ""
-      : member.travel_detail ?? "",
+  // Arrival: a real date + time pair produces an ISO timestamp the itinerary
+  // can parse. Used across all modes — driving/other arrivals weave into the
+  // itinerary too, not just flights.
+  const [arrivalDate, setArrivalDate] = useState(() =>
+    parseArrivalDate(member.flight_arrival_time),
+  );
+  const [arrivalTime, setArrivalTime] = useState(() =>
+    parseArrivalTime(member.flight_arrival_time),
   );
 
   const updateTravel = trpc.tripMembers.updateTravel.useMutation({
@@ -369,6 +372,16 @@ function TravelExpandForm({
   });
 
   const handleSave = () => {
+    // Combine arrival date + time into a local ISO timestamp (no TZ
+    // suffix; the server stores it as-is and the itinerary builder
+    // parses it via new Date(...), which honours the user's TZ).
+    let arrivalISO: string | null = null;
+    if (arrivalDate) {
+      arrivalISO = arrivalTime
+        ? `${arrivalDate}T${arrivalTime}:00`
+        : `${arrivalDate}T00:00:00`;
+    }
+
     if (mode === "flying") {
       updateTravel.mutate({
         tripId,
@@ -376,22 +389,21 @@ function TravelExpandForm({
         travelDetail: null,
         flightAirline: details.trim() || null,
         flightNumber: null,
-        flightArrivalTime: arrival.trim() || null,
+        flightArrivalTime: arrivalISO,
         flightAirport: null,
         travelShared: true,
       });
     } else {
-      // Driving / other — stash details and arrival in travel_detail as a
-      // combined blob. This stays compatible with TravelPanel's existing
-      // "{travel_detail}" summary rendering.
-      const combined = [details.trim(), arrival.trim()].filter(Boolean).join(" · ");
+      // Driving / other — details (e.g., "driving from Charlotte") goes
+      // into travel_detail; the arrival timestamp goes into
+      // flight_arrival_time so it shows up on the itinerary.
       updateTravel.mutate({
         tripId,
         travelMode: mode,
-        travelDetail: combined || null,
+        travelDetail: details.trim() || null,
         flightAirline: null,
         flightNumber: null,
-        flightArrivalTime: null,
+        flightArrivalTime: arrivalISO,
         flightAirport: null,
         travelShared: true,
       });
@@ -458,7 +470,7 @@ function TravelExpandForm({
             }}
           />
         </div>
-        <div style={{ flex: "1 1 140px" }}>
+        <div style={{ flex: "1 1 130px" }}>
           <label
             className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -466,15 +478,35 @@ function TravelExpandForm({
             Arriving
           </label>
           <input
-            type="text"
-            value={arrival}
-            onChange={(e) => setArrival(e.target.value)}
-            placeholder="Sep 10 · 3:00 PM"
+            type="date"
+            value={arrivalDate}
+            onChange={(e) => setArrivalDate(e.target.value)}
             className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
             style={{
               background: "var(--color-bt-base)",
               borderColor: "var(--color-bt-border)",
               color: "var(--color-bt-text)",
+              colorScheme: "dark",
+            }}
+          />
+        </div>
+        <div style={{ flex: "1 1 100px" }}>
+          <label
+            className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Time
+          </label>
+          <input
+            type="time"
+            value={arrivalTime}
+            onChange={(e) => setArrivalTime(e.target.value)}
+            className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+            style={{
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+              colorScheme: "dark",
             }}
           />
         </div>
@@ -609,16 +641,50 @@ function PendingTravelRow({ members }: { members: TripMemberLite[] }) {
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function summarizeTravel(m: TripMemberLite): string {
+  const arrivalLabel = formatArrivalLabel(m.flight_arrival_time);
   if (m.travel_mode === "flying") {
     const parts = [
       m.flight_airline,
       m.flight_number,
-      m.flight_arrival_time && `arriving ${m.flight_arrival_time}`,
+      arrivalLabel && `arriving ${arrivalLabel}`,
     ].filter(Boolean);
     return parts.length ? parts.join(" · ") : "Flying";
   }
-  if (m.travel_detail) return m.travel_detail;
+  // Driving / other
+  const parts = [
+    m.travel_detail,
+    arrivalLabel && `arriving ${arrivalLabel}`,
+  ].filter(Boolean);
+  if (parts.length) return parts.join(" · ");
   return m.travel_mode === "driving" ? "Driving" : "Other";
+}
+
+/** Render an ISO timestamp as "Sep 10 · 3:00 PM" — empty string if invalid. */
+function formatArrivalLabel(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${date} · ${time}`;
+}
+
+/** Pull YYYY-MM-DD out of an ISO timestamp in local time. */
+function parseArrivalDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-CA");
+}
+
+/** Pull HH:MM out of an ISO timestamp in local time. */
+function parseArrivalTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 function initials(name: string): string {
