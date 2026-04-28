@@ -61,6 +61,8 @@ export type ItineraryEvent =
       time: string | null;
       title: string;
       subtitle?: string | null;
+      /** When set, the EventCard renders a "Map →" link that opens this in Google Maps. */
+      address?: string | null;
       itemType: "general" | "golf";
       sortOrder: number;
     }
@@ -72,6 +74,7 @@ export type ItineraryEvent =
       time: string | null;
       title: string;
       subtitle?: string | null;
+      address?: string | null;
     }
   | {
       kind: "arrival";
@@ -145,6 +148,14 @@ export function buildItinerary(input: {
       subtitleParts.push(item.detail);
     }
 
+    // Map link target — golf items have a course_location to navigate to.
+    // General items have a free-form `detail` field that's usually a note,
+    // not an address, so we don't surface a map link for those.
+    const address =
+      item.item_type === "golf" && item.course_location
+        ? item.course_location
+        : null;
+
     events.push({
       kind: "schedule",
       id: item.id,
@@ -152,6 +163,7 @@ export function buildItinerary(input: {
       time: item.scheduled_time ? item.scheduled_time.slice(0, 5) : null,
       title: item.title,
       subtitle: subtitleParts.join(" · ") || null,
+      address,
       itemType: item.item_type,
       sortOrder: item.sort_order,
     });
@@ -173,6 +185,7 @@ export function buildItinerary(input: {
         time: normalizeTimeOfDay(item.check_in_time_of_day),
         title: `Check in: ${item.label || name}`,
         subtitle,
+        address: item.address ?? null,
       });
     }
     if (isDateString(item.check_out_time)) {
@@ -183,6 +196,7 @@ export function buildItinerary(input: {
         time: normalizeTimeOfDay(item.check_out_time_of_day),
         title: `Check out: ${item.label || name}`,
         subtitle,
+        address: item.address ?? null,
       });
     }
   }

@@ -485,6 +485,10 @@ function EventCard({ event }: { event: ItineraryEvent }) {
     Icon = Clock;
   }
 
+  // Address is set on lodging events (item.address) and golf schedule
+  // events (course_location). When present, render a tap-to-map link.
+  const address = "address" in event ? event.address ?? null : null;
+
   return (
     <div
       className="flex items-start gap-3 rounded-xl px-3 py-2.5"
@@ -516,6 +520,20 @@ function EventCard({ event }: { event: ItineraryEvent }) {
           </p>
         )}
       </div>
+      {address && (
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="flex flex-shrink-0 items-center gap-0.5 self-center text-[11px] font-semibold"
+          style={{ color: "var(--color-bt-accent)" }}
+          aria-label={`Open ${event.title} in Google Maps`}
+        >
+          <MapPin size={11} />
+          Map →
+        </a>
+      )}
     </div>
   );
 }
