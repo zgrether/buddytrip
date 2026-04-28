@@ -392,6 +392,16 @@ export function ScheduleTab({
   const undatedCount = allItems.filter((i) => !i.scheduled_date).length;
   // Items assigned to a day but not yet confirmed.
   const unconfirmedCount = allItems.filter((i) => !i.is_confirmed && !!i.scheduled_date).length;
+  // Items with a scheduled_date that falls outside the trip date range —
+  // either the date or the trip itself was entered wrong.
+  const outOfRangeCount =
+    trip.start_date && trip.end_date
+      ? allItems.filter((i) => {
+          if (!i.scheduled_date) return false;
+          const d = i.scheduled_date.slice(0, 10);
+          return d < trip.start_date! || d > trip.end_date!;
+        }).length
+      : 0;
 
   const confirmItem = trpc.schedule.confirm.useMutation({
     async onMutate(vars) {
@@ -638,6 +648,31 @@ export function ScheduleTab({
               </p>
               <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
                 Confirm items to lock them into the schedule
+              </p>
+            </div>
+          </div>
+        )}
+
+        {canEdit && outOfRangeCount > 0 && (
+          <div
+            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
+            >
+              <Calendar size={14} />
+            </span>
+            <div>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                {outOfRangeCount} item{outOfRangeCount !== 1 ? "s" : ""} fall outside the trip dates
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                Double-check the date or update the trip dates if it was entered wrong
               </p>
             </div>
           </div>
