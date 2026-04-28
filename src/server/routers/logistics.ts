@@ -45,6 +45,8 @@ export const logisticsRouter = router({
         address: z.string().max(500).optional(),
         checkInTime: z.string().max(50).optional(),
         checkOutTime: z.string().max(50).optional(),
+        checkInTimeOfDay: z.string().max(20).optional(),
+        checkOutTimeOfDay: z.string().max(20).optional(),
         totalPrice: z.string().max(100).optional(),
         notes: z.string().max(1000).optional(),
         // Transport fields
@@ -69,6 +71,8 @@ export const logisticsRouter = router({
           address: input.address ?? null,
           check_in_time: input.checkInTime ?? null,
           check_out_time: input.checkOutTime ?? null,
+          check_in_time_of_day: input.checkInTimeOfDay ?? null,
+          check_out_time_of_day: input.checkOutTimeOfDay ?? null,
           total_price: input.totalPrice ?? null,
           notes: input.notes ?? null,
           transport_type: input.transportType ?? null,
@@ -105,6 +109,8 @@ export const logisticsRouter = router({
         address: z.string().max(500).nullable().optional(),
         checkInTime: z.string().max(50).nullable().optional(),
         checkOutTime: z.string().max(50).nullable().optional(),
+        checkInTimeOfDay: z.string().max(20).nullable().optional(),
+        checkOutTimeOfDay: z.string().max(20).nullable().optional(),
         totalPrice: z.string().max(100).nullable().optional(),
         notes: z.string().max(1000).nullable().optional(),
         transportType: z.string().max(100).nullable().optional(),
@@ -123,6 +129,8 @@ export const logisticsRouter = router({
       if (input.address !== undefined) update.address = input.address;
       if (input.checkInTime !== undefined) update.check_in_time = input.checkInTime;
       if (input.checkOutTime !== undefined) update.check_out_time = input.checkOutTime;
+      if (input.checkInTimeOfDay !== undefined) update.check_in_time_of_day = input.checkInTimeOfDay;
+      if (input.checkOutTimeOfDay !== undefined) update.check_out_time_of_day = input.checkOutTimeOfDay;
       if (input.totalPrice !== undefined) update.total_price = input.totalPrice;
       if (input.notes !== undefined) update.notes = input.notes;
       if (input.transportType !== undefined) update.transport_type = input.transportType;

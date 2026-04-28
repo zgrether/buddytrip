@@ -54,8 +54,10 @@ export interface PropertyFormValues {
   price: string;     // total_price (planning) / price_note (idea)
   notes: string;     // thoughts
   address: string;   // planning only
-  checkIn: string;   // planning only
-  checkOut: string;  // planning only
+  checkIn: string;   // planning only — YYYY-MM-DD
+  checkOut: string;  // planning only — YYYY-MM-DD
+  checkInTimeOfDay: string;  // planning only — HH:MM, optional
+  checkOutTimeOfDay: string; // planning only — HH:MM, optional
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────
@@ -174,6 +176,8 @@ export function AddPropertySheet({
   const [address, setAddress] = useState(initialValues.address ?? "");
   const [checkIn, setCheckIn] = useState(initialValues.checkIn ?? "");
   const [checkOut, setCheckOut] = useState(initialValues.checkOut ?? "");
+  const [checkInTimeOfDay, setCheckInTimeOfDay] = useState(initialValues.checkInTimeOfDay ?? "");
+  const [checkOutTimeOfDay, setCheckOutTimeOfDay] = useState(initialValues.checkOutTimeOfDay ?? "");
 
   // Manual mode — expand the form without requiring a valid URL
   const [manualMode, setManualMode] = useState(isEditing && !(initialValues.url ?? ""));
@@ -226,7 +230,7 @@ export function AddPropertySheet({
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ url, name, sleeps, price, notes, address, checkIn, checkOut });
+    onSubmit({ url, name, sleeps, price, notes, address, checkIn, checkOut, checkInTimeOfDay, checkOutTimeOfDay });
   };
 
   return (
@@ -438,6 +442,24 @@ export function AddPropertySheet({
                         type="date"
                         value={checkOut}
                         onChange={(e) => setCheckOut(e.target.value)}
+                        className={inputCls}
+                        style={inputStyle}
+                      />
+                    </Field>
+                    <Field label="Check-in time">
+                      <input
+                        type="time"
+                        value={checkInTimeOfDay}
+                        onChange={(e) => setCheckInTimeOfDay(e.target.value)}
+                        className={inputCls}
+                        style={inputStyle}
+                      />
+                    </Field>
+                    <Field label="Check-out time">
+                      <input
+                        type="time"
+                        value={checkOutTimeOfDay}
+                        onChange={(e) => setCheckOutTimeOfDay(e.target.value)}
                         className={inputCls}
                         style={inputStyle}
                       />

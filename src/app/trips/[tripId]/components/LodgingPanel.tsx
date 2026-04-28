@@ -55,6 +55,8 @@ interface LodgingItemFull {
   address?: string | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
+  check_in_time_of_day?: string | null;
+  check_out_time_of_day?: string | null;
   transport_type?: string | null;  // platform
   total_price?: string | null;
   notes?: string | null;
@@ -316,6 +318,8 @@ export function LodgingPanel({
       address: values.address.trim() || undefined,
       checkInTime: values.checkIn || undefined,
       checkOutTime: values.checkOut || undefined,
+      checkInTimeOfDay: values.checkInTimeOfDay || undefined,
+      checkOutTimeOfDay: values.checkOutTimeOfDay || undefined,
       transportType: platform,
     });
   };
@@ -335,6 +339,8 @@ export function LodgingPanel({
       address: values.address.trim() || null,
       checkInTime: values.checkIn || null,
       checkOutTime: values.checkOut || null,
+      checkInTimeOfDay: values.checkInTimeOfDay || null,
+      checkOutTimeOfDay: values.checkOutTimeOfDay || null,
       transportType: platform,
     });
   };
@@ -490,6 +496,8 @@ export function LodgingPanel({
               address: editingItem.address ?? "",
               checkIn: editingItem.check_in_time ?? "",
               checkOut: editingItem.check_out_time ?? "",
+              checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
+              checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
             }}
             isPending={updateItem.isPending}
             onSubmit={handleUpdate}
@@ -637,6 +645,8 @@ export function LodgingPanel({
             address: editingItem.address ?? "",
             checkIn: editingItem.check_in_time ?? "",
             checkOut: editingItem.check_out_time ?? "",
+            checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
+            checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
           }}
           isPending={updateItem.isPending}
           onSubmit={handleUpdate}

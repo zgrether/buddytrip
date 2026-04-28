@@ -32,6 +32,9 @@ export interface ItineraryLogisticsItem {
   /** Stored as text; treated as YYYY-MM-DD by the rest of the app. */
   check_in_time?: string | null;
   check_out_time?: string | null;
+  /** Optional clock time in HH:MM (24h) — surfaced on the itinerary. */
+  check_in_time_of_day?: string | null;
+  check_out_time_of_day?: string | null;
   is_confirmed?: boolean | null;
 }
 
@@ -65,7 +68,8 @@ export type ItineraryEvent =
       kind: "lodging-checkin" | "lodging-checkout";
       id: string;
       date: string;
-      time: null;
+      /** HH:MM if the user provided check-in/out clock time, otherwise null. */
+      time: string | null;
       title: string;
       subtitle?: string | null;
     }
@@ -110,6 +114,13 @@ function localTimeOfTimestamp(iso: string): string | null {
 /** Looks like a YYYY-MM-DD date string. */
 function isDateString(s: string | null | undefined): s is string {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}/.test(s);
+}
+
+/** Returns HH:MM if the input is a valid HH:MM (or HH:MM:SS) string, otherwise null. */
+function normalizeTimeOfDay(s: string | null | undefined): string | null {
+  if (typeof s !== "string") return null;
+  const m = s.match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : null;
 }
 
 // ── Core: buildItinerary ──────────────────────────────────────────────────
@@ -159,7 +170,7 @@ export function buildItinerary(input: {
         kind: "lodging-checkin",
         id: `${item.id}-checkin`,
         date: item.check_in_time.slice(0, 10),
-        time: null,
+        time: normalizeTimeOfDay(item.check_in_time_of_day),
         title: `Check in: ${item.label || name}`,
         subtitle,
       });
@@ -169,7 +180,7 @@ export function buildItinerary(input: {
         kind: "lodging-checkout",
         id: `${item.id}-checkout`,
         date: item.check_out_time.slice(0, 10),
-        time: null,
+        time: normalizeTimeOfDay(item.check_out_time_of_day),
         title: `Check out: ${item.label || name}`,
         subtitle,
       });

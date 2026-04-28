@@ -374,12 +374,24 @@ export function ScheduleTab({
       });
     }
 
-    // Day groups
+    // Day groups — anchor numbering on trip.start_date and label
+    // off-range dates as "Pre-trip" / "Post-trip" so an accidental
+    // wrong year doesn't read as "Day -32" or "Day 175".
     for (const date of sortedDates) {
       const dayNum = dayNumber(date, trip.start_date ?? null);
+      let label: string;
+      if (dayNum === null) {
+        label = fmtDayHeader(date);
+      } else if (trip.end_date && date > trip.end_date) {
+        label = `Post-trip · ${fmtDayHeader(date)}`;
+      } else if (dayNum < 1) {
+        label = `Pre-trip · ${fmtDayHeader(date)}`;
+      } else {
+        label = `Day ${dayNum} — ${fmtDayHeader(date)}`;
+      }
       groups.push({
         date,
-        label: dayNum ? `Day ${dayNum} — ${fmtDayHeader(date)}` : fmtDayHeader(date),
+        label,
         items: sortWithinDay(dateMap.get(date) ?? []),
       });
     }
