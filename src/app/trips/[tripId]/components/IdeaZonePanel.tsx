@@ -1972,6 +1972,15 @@ export default function IdeaZonePanel({
           onToggleCollapse={handleToggleCollapse}
         />
 
+        {/* Orientation copy — visible to all roles */}
+        <p
+          className="text-sm leading-relaxed"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Add your top contenders from the catalog or enter your own — compare
+          them side by side, then let the crew weigh in.
+        </p>
+
         {/* Add destination idea button — owner only */}
         {isOwner && (
           <button
