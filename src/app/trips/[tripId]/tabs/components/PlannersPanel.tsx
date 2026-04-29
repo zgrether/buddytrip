@@ -144,9 +144,9 @@ export function PlannersPanel({
   isCollapsed,
   onToggleCollapse,
 }: PlannersPanelProps) {
-  const showEmptyState = planners.length <= 1;
-  const showExpanded = !showEmptyState && !isCollapsed;
-  const showCollapsed = !showEmptyState && isCollapsed;
+  const showCollapsed = isCollapsed;
+  const showEmptyState = !isCollapsed && planners.length <= 1;
+  const showExpanded = !isCollapsed && planners.length > 1;
 
   // ── State 1: Empty (only owner or no planners) ──────────────────────────
   if (showEmptyState) {
@@ -174,9 +174,28 @@ export function PlannersPanel({
           >
             <Users size={16} style={{ color: "var(--color-bt-accent)" }} />
           </div>
-          <span className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Planners
           </span>
+          <button
+            onClick={onToggleCollapse}
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 7,
+              border: "none",
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text-dim)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+            aria-label="Collapse planners"
+          >
+            <ChevronUp size={13} />
+          </button>
         </div>
 
         {/* Description */}
