@@ -1831,6 +1831,43 @@ function MobileCoPlannerSheet({
   );
 }
 
+// ── AddIdeaCard ───────────────────────────────────────────────────────────
+
+function AddIdeaCard({ onClick }: { onClick: () => void }) {
+  return (
+    <div
+      data-testid="add-idea-btn"
+      onClick={onClick}
+      className="rounded-xl flex flex-col items-center justify-center gap-2.5 cursor-pointer min-h-[180px] p-6 text-center transition-colors"
+      style={{
+        border: "1.5px dashed var(--color-bt-border)",
+        background: "rgba(255,255,255,0.02)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "var(--color-bt-accent)";
+        e.currentTarget.style.background = "var(--color-bt-accent-faint)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "var(--color-bt-border)";
+        e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+      }}
+    >
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center"
+        style={{ background: "var(--color-bt-card-raised)" }}
+      >
+        <Plus size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+      </div>
+      <p className="text-sm font-bold" style={{ color: "var(--color-bt-text-dim)" }}>
+        Add destination idea
+      </p>
+      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)", lineHeight: 1.4 }}>
+        From the catalog or enter your own
+      </p>
+    </div>
+  );
+}
+
 // ── IdeaZonePanel ─────────────────────────────────────────────────────────
 
 export default function IdeaZonePanel({
@@ -1951,7 +1988,7 @@ export default function IdeaZonePanel({
   return (
     <div>
       {/* ── Single column layout ──────────────────────────────────────── */}
-      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+      <div className="px-4 py-4 space-y-4">
         {/* Planners panel — top of column */}
         <PlannersPanel
           tripId={tripId}
@@ -1971,41 +2008,26 @@ export default function IdeaZonePanel({
           them side by side, then let the crew weigh in.
         </p>
 
-        {/* Add destination idea button — owner only */}
-        {isOwner && (
-          <button
-            data-testid="add-idea-btn"
-            onClick={() => setShowAddModal(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{
-              border: "1.5px dashed var(--color-bt-accent)",
-              color: "var(--color-bt-accent)",
-              background: "transparent",
-            }}
-          >
-            <Plus size={16} />
-            <MapPin size={15} />
-            Add destination idea
-          </button>
-        )}
-
-        {/* Destination cards */}
-        {sorted.map((idea) => (
-          <IdeaCard
-            key={idea.id}
-            idea={idea}
-            tripId={tripId}
-            canEdit={canEdit}
-            isOwner={isOwner}
-            tripStartDate={trip.start_date}
-            currentUserId={currentUser?.id}
-            memberData={memberData}
-            onVote={handleVote}
-            votePending={votePendingId === idea.id}
-            onSetDestination={setSetDestinationIdea}
-            onDelete={setDeleteIdea}
-          />
-        ))}
+        {/* Destination cards + add card grid */}
+        <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {sorted.map((idea) => (
+            <IdeaCard
+              key={idea.id}
+              idea={idea}
+              tripId={tripId}
+              canEdit={canEdit}
+              isOwner={isOwner}
+              tripStartDate={trip.start_date}
+              currentUserId={currentUser?.id}
+              memberData={memberData}
+              onVote={handleVote}
+              votePending={votePendingId === idea.id}
+              onSetDestination={setSetDestinationIdea}
+              onDelete={setDeleteIdea}
+            />
+          ))}
+          {isOwner && <AddIdeaCard onClick={() => setShowAddModal(true)} />}
+        </div>
       </div>
 
       {/* ── Modals ───────────────────────────────────────────────────── */}
