@@ -25,7 +25,7 @@ import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
-import { PlannersPanel, getAvatarColor, getInitials } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
+import { PlannersPanel } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1921,8 +1921,6 @@ export default function IdeaZonePanel({
     .map((m) => ({
       userId: m.user_id,
       name: m.displayName,
-      initials: getInitials(m.displayName),
-      avatarColor: getAvatarColor(m.user_id),
       role: m.role.toLowerCase() as "owner" | "planner",
       hasVoted: allVoterIds.has(m.user_id),
       isMe: m.user_id === currentUser?.id,

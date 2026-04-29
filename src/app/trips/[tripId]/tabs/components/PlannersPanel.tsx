@@ -2,14 +2,13 @@
 
 import { Users, ChevronDown, ChevronUp, Check, X } from "lucide-react";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
+import { UserAvatar } from "@/components/UserAvatar";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export interface PlannerWithVoteStatus {
   userId: string;
   name: string;
-  initials: string;
-  avatarColor: string;
   role: "owner" | "planner";
   hasVoted: boolean;
   isMe: boolean;
@@ -22,33 +21,6 @@ interface PlannersPanelProps {
   canEdit: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-const AVATAR_COLORS = [
-  "#3b82f6",
-  "#22c55e",
-  "#a855f7",
-  "#06b6d4",
-  "#f59e0b",
-  "#ef4444",
-  "#ec4899",
-  "#14b8a6",
-];
-
-export function getAvatarColor(userId: string): string {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-export function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
 }
 
 // ── VoteBadge ─────────────────────────────────────────────────────────────
@@ -101,23 +73,7 @@ function VoteBadge({ hasVoted, isOwner }: { hasVoted: boolean; isOwner: boolean 
 function PlannerRow({ planner }: { planner: PlannerWithVoteStatus }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-2.5">
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          background: planner.avatarColor,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 11,
-          fontWeight: 700,
-          color: "#fff",
-          flexShrink: 0,
-        }}
-      >
-        {planner.initials}
-      </div>
+      <UserAvatar name={planner.name} avatarUrl={null} sizePx={28} />
       <span
         className="flex-1 text-sm truncate"
         style={{ color: "var(--color-bt-text)" }}
@@ -274,23 +230,7 @@ export function PlannersPanel({
           <div style={{ display: "flex", gap: 4, alignItems: "center", flex: 1, flexWrap: "wrap" }}>
             {planners.map((p) => (
               <div key={p.userId} style={{ position: "relative", width: 22, height: 22 }}>
-                {/* Avatar */}
-                <div
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    background: p.avatarColor,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    color: "#fff",
-                  }}
-                >
-                  {p.initials}
-                </div>
+                <UserAvatar name={p.name} avatarUrl={null} sizePx={22} />
                 {/* Vote pip */}
                 <div
                   style={{
