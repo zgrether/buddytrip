@@ -27,6 +27,7 @@ import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
+import { PlannersPanel, getAvatarColor, getInitials } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1855,6 +1856,16 @@ export default function IdeaZonePanel({
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [setDestinationIdea, setSetDestinationIdea] = useState<Idea | null>(null);
   const [showMobileCoPlanners, setShowMobileCoPlanners] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(`planners-collapsed-${tripId}`) === "true";
+  });
+
+  const handleToggleCollapse = () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    localStorage.setItem(`planners-collapsed-${tripId}`, String(next));
+  };
 
   useEffect(() => {
     if (showAddModal) {
@@ -1907,6 +1918,19 @@ export default function IdeaZonePanel({
   // All user IDs who have voted on any idea in this trip
   const allVoterIds = new Set(ideasTyped.flatMap((i) => i.votes.map((v) => v.user_id)));
 
+  // Planners list for PlannersPanel
+  const plannersList = members
+    .filter((m) => m.role.toLowerCase() === "owner" || m.role.toLowerCase() === "planner")
+    .map((m) => ({
+      userId: m.user_id,
+      name: m.displayName,
+      initials: getInitials(m.displayName),
+      avatarColor: getAvatarColor(m.user_id),
+      role: m.role.toLowerCase() as "owner" | "planner",
+      hasVoted: allVoterIds.has(m.user_id),
+      isMe: m.user_id === currentUser?.id,
+    }));
+
   // Number of planners/owners — used for co-planners dot indicator
   const plannerCount = members.filter(
     (m) => m.role === "owner" || m.role === "planner",
@@ -1939,11 +1963,13 @@ export default function IdeaZonePanel({
       {/* ── Single column layout ──────────────────────────────────────── */}
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
         {/* Planners panel — top of column */}
-        <CoPlannerPanel
+        <PlannersPanel
           tripId={tripId}
-          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+          planners={plannersList}
           isOwner={isOwner}
-          allVoterIds={allVoterIds}
+          canEdit={canEdit}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={handleToggleCollapse}
         />
 
         {/* Add destination idea button — owner only */}
