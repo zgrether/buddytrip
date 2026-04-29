@@ -26,7 +26,6 @@ import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
-import { SidebarForStage } from "./SidebarForStage";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
@@ -1658,7 +1657,7 @@ export function CoPlannerPanel({
 
   return (
     <div
-      className="hidden lg:block rounded-xl border px-3 py-3"
+      className="rounded-xl border px-3 py-3"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1937,8 +1936,35 @@ export default function IdeaZonePanel({
 
   return (
     <div>
-      {/* ── Mobile layout ─────────────────────────────────────────────── */}
-      <div className="lg:hidden space-y-4 p-4">
+      {/* ── Single column layout ──────────────────────────────────────── */}
+      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+        {/* Planners panel — top of column */}
+        <CoPlannerPanel
+          tripId={tripId}
+          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
+          isOwner={isOwner}
+          allVoterIds={allVoterIds}
+        />
+
+        {/* Add destination idea button — owner only */}
+        {isOwner && (
+          <button
+            data-testid="add-idea-btn"
+            onClick={() => setShowAddModal(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{
+              border: "1.5px dashed var(--color-bt-accent)",
+              color: "var(--color-bt-accent)",
+              background: "transparent",
+            }}
+          >
+            <Plus size={16} />
+            <MapPin size={15} />
+            Add destination idea
+          </button>
+        )}
+
+        {/* Destination cards */}
         {sorted.map((idea) => (
           <IdeaCard
             key={idea.id}
@@ -1955,42 +1981,6 @@ export default function IdeaZonePanel({
             onDelete={setDeleteIdea}
           />
         ))}
-
-      </div>
-
-      {/* ── Desktop layout ────────────────────────────────────────────── */}
-      <div className="hidden lg:flex lg:gap-6 lg:p-4">
-        {/* Left: idea cards */}
-        <div className="flex flex-1 min-w-0 flex-col gap-4">
-          {sorted.map((idea) => (
-            <IdeaCard
-              key={idea.id}
-              idea={idea}
-              tripId={tripId}
-              canEdit={canEdit}
-              isOwner={isOwner}
-              tripStartDate={trip.start_date}
-              currentUserId={currentUser?.id}
-              memberData={memberData}
-              onVote={handleVote}
-              votePending={votePendingId === idea.id}
-              onSetDestination={setSetDestinationIdea}
-              onDelete={setDeleteIdea}
-            />
-          ))}
-        </div>
-
-        {/* Right: sidebar — shared stage-aware rail */}
-        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start flex flex-col gap-3">
-          <SidebarForStage
-            stage="idea"
-            tripId={tripId}
-            isOwner={isOwner}
-            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
-            allVoterIds={allVoterIds}
-            onAddIdea={() => setShowAddModal(true)}
-          />
-        </div>
       </div>
 
       {/* ── Modals ───────────────────────────────────────────────────── */}
