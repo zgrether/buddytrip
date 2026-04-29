@@ -43,15 +43,15 @@ export function DestinationPicker({
       </label>
 
       <div className="space-y-3">
-        {/* ── Segmented control: I Know Where | Compare Ideas ─────────── */}
+        {/* ── Segmented control — content-width pill, left-aligned. ────── */}
         <div
-          className="flex overflow-hidden rounded-xl"
+          className="inline-flex overflow-hidden rounded-xl"
           style={{ border: "1px solid var(--color-bt-border)" }}
         >
           <button
             type="button"
             onClick={() => onModeChange("known")}
-            className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors"
             style={
               mode === "known"
                 ? {
@@ -74,7 +74,7 @@ export function DestinationPicker({
           <button
             type="button"
             onClick={() => onModeChange("exploring")}
-            className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors"
             style={
               mode === "exploring"
                 ? {
