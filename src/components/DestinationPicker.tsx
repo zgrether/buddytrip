@@ -35,63 +35,71 @@ export function DestinationPicker({
       aria-disabled={disabled || undefined}
       style={disabled ? { opacity: 0.4, pointerEvents: "none" } : undefined}
     >
-      <label
-        className="mb-1.5 block text-xl font-bold"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        Destination Options
-      </label>
+      {/* Form-y bits (label + path tiles + Location input) sit in a
+          narrow column, left-aligned with the parent. Exploring content
+          (catalog) renders outside the wrapper at full parent width so
+          the catalog can show its 5-column grid while the form above
+          stays comfortable to read. */}
+      <div className="max-w-2xl">
+        <label
+          className="mb-1.5 block text-xl font-bold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          Destination Options
+        </label>
 
-      <div className="space-y-3">
-        {/* ── Path chooser tiles — two side-by-side cards ────────────────── */}
-        <div className="mb-7 grid grid-cols-2 gap-2.5">
-          <PathTile
-            selected={mode === "known"}
-            onClick={() => onModeChange("known")}
-            icon={<MapPin size={18} />}
-            title="I Know Where"
-            description="Already decided — jump straight into planning."
-          />
-          <PathTile
-            selected={mode === "exploring"}
-            onClick={() => onModeChange("exploring")}
-            icon={<Sparkles size={18} />}
-            title="Explore Options"
-            description="Not sure yet — add ideas and let the crew vote."
-          />
+        <div className="space-y-3">
+          {/* ── Path chooser tiles — two side-by-side cards ──────────── */}
+          <div className="mb-7 grid grid-cols-2 gap-2.5">
+            <PathTile
+              selected={mode === "known"}
+              onClick={() => onModeChange("known")}
+              icon={<MapPin size={18} />}
+              title="I Know Where"
+              description="Already decided — jump straight into planning."
+            />
+            <PathTile
+              selected={mode === "exploring"}
+              onClick={() => onModeChange("exploring")}
+              icon={<Sparkles size={18} />}
+              title="Explore Options"
+              description="Not sure yet — add ideas and let the crew vote."
+            />
+          </div>
+
+          {/* ── Known content: header + location input + trailing slot ── */}
+          {mode === "known" && (
+            <>
+              <h2
+                className="mb-1 text-lg font-bold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                Location
+              </h2>
+              <div className="flex items-stretch gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={destinationText}
+                  onChange={(e) => onDestinationTextChange(e.target.value)}
+                  placeholder="Bandon Dunes, OR"
+                  className="min-w-0 flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                  }}
+                />
+                {knownTrailing}
+              </div>
+            </>
+          )}
         </div>
-
-        {/* ── Known content: header + location input + trailing slot ── */}
-        {mode === "known" && (
-          <>
-            <h2
-              className="mb-1 text-lg font-bold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              Location
-            </h2>
-            <div className="flex items-stretch gap-2">
-              <input
-                autoFocus
-                type="text"
-                value={destinationText}
-                onChange={(e) => onDestinationTextChange(e.target.value)}
-                placeholder="Bandon Dunes, OR"
-                className="min-w-0 flex-1 rounded-lg border px-3 py-2.5 text-sm outline-none transition-all focus:ring-1"
-                style={{
-                  background: "var(--color-bt-card)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-              {knownTrailing}
-            </div>
-          </>
-        )}
-
-        {/* ── Exploring content slot ────────────────────────────────── */}
-        {mode === "exploring" && exploringContent}
       </div>
+
+      {/* ── Exploring content slot — full parent width, sits below the
+            narrow form column so the catalog can stretch out. ──────── */}
+      {mode === "exploring" && exploringContent}
     </div>
   );
 }
