@@ -14,8 +14,6 @@ import {
   Trash2,
   Check,
   Plus,
-  MessageCircle,
-  Users,
   Pencil,
   ExternalLink,
 } from "lucide-react";
@@ -26,8 +24,8 @@ import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "../compare/CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
-import { SidebarForStage } from "./SidebarForStage";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
+import { PlannersPanel } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1658,7 +1656,7 @@ export function CoPlannerPanel({
 
   return (
     <div
-      className="hidden lg:block rounded-xl border px-3 py-3"
+      className="rounded-xl border px-3 py-3"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1833,6 +1831,43 @@ function MobileCoPlannerSheet({
   );
 }
 
+// ── AddIdeaCard ───────────────────────────────────────────────────────────
+
+function AddIdeaCard({ onClick }: { onClick: () => void }) {
+  return (
+    <div
+      data-testid="add-idea-btn"
+      onClick={onClick}
+      className="rounded-xl flex flex-col items-center justify-center gap-2.5 cursor-pointer min-h-[180px] p-6 text-center transition-colors"
+      style={{
+        border: "1.5px dashed var(--color-bt-border)",
+        background: "rgba(255,255,255,0.02)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "var(--color-bt-accent)";
+        e.currentTarget.style.background = "var(--color-bt-accent-faint)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "var(--color-bt-border)";
+        e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+      }}
+    >
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center"
+        style={{ background: "var(--color-bt-card-raised)" }}
+      >
+        <Plus size={18} style={{ color: "var(--color-bt-text-dim)" }} />
+      </div>
+      <p className="text-sm font-bold" style={{ color: "var(--color-bt-text-dim)" }}>
+        Add destination idea
+      </p>
+      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)", lineHeight: 1.4 }}>
+        From the catalog or enter your own
+      </p>
+    </div>
+  );
+}
+
 // ── IdeaZonePanel ─────────────────────────────────────────────────────────
 
 export default function IdeaZonePanel({
@@ -1855,7 +1890,16 @@ export default function IdeaZonePanel({
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [setDestinationIdea, setSetDestinationIdea] = useState<Idea | null>(null);
-  const [showMobileCoPlanners, setShowMobileCoPlanners] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(`planners-collapsed-${tripId}`) === "true";
+  });
+
+  const handleToggleCollapse = () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    localStorage.setItem(`planners-collapsed-${tripId}`, String(next));
+  };
 
   useEffect(() => {
     if (showAddModal) {
@@ -1908,10 +1952,16 @@ export default function IdeaZonePanel({
   // All user IDs who have voted on any idea in this trip
   const allVoterIds = new Set(ideasTyped.flatMap((i) => i.votes.map((v) => v.user_id)));
 
-  // Number of planners/owners — used for co-planners dot indicator
-  const plannerCount = members.filter(
-    (m) => m.role === "owner" || m.role === "planner",
-  ).length;
+  // Planners list for PlannersPanel
+  const plannersList = members
+    .filter((m) => m.role.toLowerCase() === "owner" || m.role.toLowerCase() === "planner")
+    .map((m) => ({
+      userId: m.user_id,
+      name: m.displayName,
+      role: m.role.toLowerCase() as "owner" | "planner",
+      hasVoted: allVoterIds.has(m.user_id),
+      isMe: m.user_id === currentUser?.id,
+    }));
 
   if (ideasTyped.length === 0) {
     if (!isOwner) {
@@ -1937,31 +1987,29 @@ export default function IdeaZonePanel({
 
   return (
     <div>
-      {/* ── Mobile layout ─────────────────────────────────────────────── */}
-      <div className="lg:hidden space-y-4 p-4">
-        {sorted.map((idea) => (
-          <IdeaCard
-            key={idea.id}
-            idea={idea}
-            tripId={tripId}
-            canEdit={canEdit}
-            isOwner={isOwner}
-            tripStartDate={trip.start_date}
-            currentUserId={currentUser?.id}
-            memberData={memberData}
-            onVote={handleVote}
-            votePending={votePendingId === idea.id}
-            onSetDestination={setSetDestinationIdea}
-            onDelete={setDeleteIdea}
-          />
-        ))}
+      {/* ── Single column layout ──────────────────────────────────────── */}
+      <div className="px-4 py-4 space-y-4">
+        {/* Planners panel — top of column */}
+        <PlannersPanel
+          tripId={tripId}
+          planners={plannersList}
+          isOwner={isOwner}
+          canEdit={canEdit}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={handleToggleCollapse}
+        />
 
-      </div>
+        {/* Orientation copy — visible to all roles */}
+        <p
+          className="text-sm leading-relaxed"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Add your top contenders from the catalog or enter your own — compare
+          them side by side, then let the crew weigh in.
+        </p>
 
-      {/* ── Desktop layout ────────────────────────────────────────────── */}
-      <div className="hidden lg:flex lg:gap-6 lg:p-4">
-        {/* Left: idea cards */}
-        <div className="flex flex-1 min-w-0 flex-col gap-4">
+        {/* Destination cards + add card grid */}
+        <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((idea) => (
             <IdeaCard
               key={idea.id}
@@ -1978,18 +2026,7 @@ export default function IdeaZonePanel({
               onDelete={setDeleteIdea}
             />
           ))}
-        </div>
-
-        {/* Right: sidebar — shared stage-aware rail */}
-        <div className="w-[320px] flex-shrink-0 sticky top-4 self-start flex flex-col gap-3">
-          <SidebarForStage
-            stage="idea"
-            tripId={tripId}
-            isOwner={isOwner}
-            members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
-            allVoterIds={allVoterIds}
-            onAddIdea={() => setShowAddModal(true)}
-          />
+          {isOwner && <AddIdeaCard onClick={() => setShowAddModal(true)} />}
         </div>
       </div>
 
@@ -2012,74 +2049,6 @@ export default function IdeaZonePanel({
         />
       )}
 
-      {/* ── Mobile FAB unified pill (IDEA stage) ────────────────────── */}
-      <div
-        className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center lg:hidden"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-          borderRadius: "1rem",
-          boxShadow: "var(--shadow-floating)",
-          width: "3rem",
-        }}
-      >
-        {isOwner ? (
-          <>
-            {/* Add idea — top (owner only) */}
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex h-12 w-12 items-center justify-center gap-0.5 transition-colors active:scale-95"
-              style={{ borderRadius: "1rem 1rem 0 0" }}
-              aria-label="Add destination idea"
-            >
-              <Plus size={13} style={{ color: "var(--color-bt-accent)" }} />
-              <MapPin size={13} style={{ color: "var(--color-bt-accent)" }} />
-            </button>
-
-            <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
-          </>
-        ) : null}
-
-        {/* Chat */}
-        <button
-          onClick={onOpenChat}
-          data-testid="floating-chat-btn"
-          className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-          style={{ borderRadius: isOwner ? "0" : "1rem 1rem 0 0" }}
-          aria-label="Open crew chat"
-        >
-          <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
-
-        <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
-
-        {/* Crew / co-planners — bottom */}
-        <button
-          onClick={() => setShowMobileCoPlanners(true)}
-          className="relative flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-          style={{ borderRadius: "0 0 1rem 1rem" }}
-          aria-label="View co-planners"
-        >
-          <Users size={18} style={{ color: "var(--color-bt-text-dim)" }} />
-          {plannerCount > 1 && (
-            <span
-              className="absolute right-2 top-2 h-2 w-2 rounded-full"
-              style={{ background: "var(--color-bt-accent)" }}
-            />
-          )}
-        </button>
-      </div>
-
-      {/* ── Mobile co-planners bottom sheet ──────────────────────────── */}
-      {showMobileCoPlanners && (
-        <MobileCoPlannerSheet
-          tripId={tripId}
-          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
-          isOwner={isOwner}
-          allVoterIds={allVoterIds}
-          onClose={() => setShowMobileCoPlanners(false)}
-        />
-      )}
     </div>
   );
 }
