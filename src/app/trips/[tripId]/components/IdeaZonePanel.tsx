@@ -917,6 +917,7 @@ export function EmptyStateOnboarding({
   onSubmit,
   className,
   submitDisabled,
+  wideCatalog,
 }: {
   tripId?: string;
   onClose?: () => void;
@@ -927,6 +928,10 @@ export function EmptyStateOnboarding({
    *  disabled even if there are staged ideas. Used by the new-trip flow to
    *  block submission until the parent trip name is entered. */
   submitDisabled?: boolean;
+  /** When true, the catalog grid extends -112px past the parent's edges on
+   *  lg+ screens (where there's viewport headroom) so a max-w-2xl form page
+   *  can still surface 5 catalog columns. */
+  wideCatalog?: boolean;
 }) {
   const utils = trpc.useUtils();
 
@@ -1254,8 +1259,10 @@ export function EmptyStateOnboarding({
       </div>
 
       {/* ── 3. Catalog browser — renders its own "Destination catalog"
-             header inline with the filter pill (right-justified). ── */}
-      <div className="mt-6">
+             header inline with the filter pill (right-justified). When
+             wideCatalog is set, the wrapper extends -112px past the
+             parent on lg+ so a 672px form can still show 5 columns. ── */}
+      <div className={`mt-6${wideCatalog ? " lg:-mx-28" : ""}`}>
         <CatalogBrowser
           title="Destination catalog"
           onSelect={handleCatalogSelect}

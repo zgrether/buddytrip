@@ -120,7 +120,7 @@ export default function TripNewPage() {
         </div>
       )}
 
-      <main className="mx-auto max-w-4xl space-y-10 px-6 py-8">
+      <main className="mx-auto max-w-2xl space-y-10 px-6 py-8">
         <button
           onClick={() => router.back()}
           className="-mt-2 inline-flex items-center gap-1.5 text-sm transition-opacity hover:opacity-70"
@@ -189,6 +189,7 @@ export default function TripNewPage() {
               onSubmit={handleExploringSubmit}
               submitDisabled={!hasName}
               className="mt-3"
+              wideCatalog
             />
           }
         />
