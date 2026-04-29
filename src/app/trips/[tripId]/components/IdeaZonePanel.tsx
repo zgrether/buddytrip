@@ -14,8 +14,6 @@ import {
   Trash2,
   Check,
   Plus,
-  MessageCircle,
-  Users,
   Pencil,
   ExternalLink,
 } from "lucide-react";
@@ -1855,7 +1853,6 @@ export default function IdeaZonePanel({
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [setDestinationIdea, setSetDestinationIdea] = useState<Idea | null>(null);
-  const [showMobileCoPlanners, setShowMobileCoPlanners] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(`planners-collapsed-${tripId}`) === "true";
@@ -1930,11 +1927,6 @@ export default function IdeaZonePanel({
       hasVoted: allVoterIds.has(m.user_id),
       isMe: m.user_id === currentUser?.id,
     }));
-
-  // Number of planners/owners — used for co-planners dot indicator
-  const plannerCount = members.filter(
-    (m) => m.role === "owner" || m.role === "planner",
-  ).length;
 
   if (ideasTyped.length === 0) {
     if (!isOwner) {
@@ -2037,74 +2029,6 @@ export default function IdeaZonePanel({
         />
       )}
 
-      {/* ── Mobile FAB unified pill (IDEA stage) ────────────────────── */}
-      <div
-        className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center lg:hidden"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-          borderRadius: "1rem",
-          boxShadow: "var(--shadow-floating)",
-          width: "3rem",
-        }}
-      >
-        {isOwner ? (
-          <>
-            {/* Add idea — top (owner only) */}
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex h-12 w-12 items-center justify-center gap-0.5 transition-colors active:scale-95"
-              style={{ borderRadius: "1rem 1rem 0 0" }}
-              aria-label="Add destination idea"
-            >
-              <Plus size={13} style={{ color: "var(--color-bt-accent)" }} />
-              <MapPin size={13} style={{ color: "var(--color-bt-accent)" }} />
-            </button>
-
-            <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
-          </>
-        ) : null}
-
-        {/* Chat */}
-        <button
-          onClick={onOpenChat}
-          data-testid="floating-chat-btn"
-          className="flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-          style={{ borderRadius: isOwner ? "0" : "1rem 1rem 0 0" }}
-          aria-label="Open crew chat"
-        >
-          <MessageCircle size={18} style={{ color: "var(--color-bt-text-dim)" }} />
-        </button>
-
-        <div className="w-8" style={{ height: "1px", background: "var(--color-bt-border)" }} />
-
-        {/* Crew / co-planners — bottom */}
-        <button
-          onClick={() => setShowMobileCoPlanners(true)}
-          className="relative flex h-12 w-12 items-center justify-center transition-colors active:scale-95"
-          style={{ borderRadius: "0 0 1rem 1rem" }}
-          aria-label="View co-planners"
-        >
-          <Users size={18} style={{ color: "var(--color-bt-text-dim)" }} />
-          {plannerCount > 1 && (
-            <span
-              className="absolute right-2 top-2 h-2 w-2 rounded-full"
-              style={{ background: "var(--color-bt-accent)" }}
-            />
-          )}
-        </button>
-      </div>
-
-      {/* ── Mobile co-planners bottom sheet ──────────────────────────── */}
-      {showMobileCoPlanners && (
-        <MobileCoPlannerSheet
-          tripId={tripId}
-          members={members as Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>}
-          isOwner={isOwner}
-          allVoterIds={allVoterIds}
-          onClose={() => setShowMobileCoPlanners(false)}
-        />
-      )}
     </div>
   );
 }
