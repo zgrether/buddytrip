@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Users, ChevronDown, ChevronUp, Check, X, Crown, Trash2 } from "lucide-react";
+import { Users, ChevronDown, ChevronUp, Check, X, Crown, Trash2, Plus } from "lucide-react";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { UserAvatar } from "@/components/UserAvatar";
 import { trpc } from "@/lib/trpc-client";
@@ -24,38 +24,6 @@ interface PlannersPanelProps {
   canEdit: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-}
-
-// ── VoteBadge ─────────────────────────────────────────────────────────────
-
-function VoteBadge({ hasVoted }: { hasVoted: boolean }) {
-  if (hasVoted) {
-    return (
-      <span
-        className="flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold flex-shrink-0"
-        style={{
-          background: "rgba(255,255,255,0.04)",
-          color: "var(--color-bt-text-dim)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <Check size={9} strokeWidth={2.5} />
-        Voted
-      </span>
-    );
-  }
-  return (
-    <span
-      className="flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold flex-shrink-0"
-      style={{
-        background: "rgba(255,255,255,0.04)",
-        color: "var(--color-bt-warning)",
-        border: "1px solid rgba(251,191,36,0.2)",
-      }}
-    >
-      Pending
-    </span>
-  );
 }
 
 // ── PlannerRow ────────────────────────────────────────────────────────────
@@ -148,8 +116,6 @@ function PlannerRow({
             </span>
           )}
 
-          <VoteBadge hasVoted={planner.hasVoted} />
-
           {expandable && (
             <ChevronDown
               size={16}
@@ -208,6 +174,55 @@ function PlannerRow({
   );
 }
 
+// ── AddPlannerRow ─────────────────────────────────────────────────────────
+
+function AddPlannerRow({ tripId }: { tripId: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!isExpanded) {
+    return (
+      <button
+        onClick={() => setIsExpanded(true)}
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          color: "var(--color-bt-text)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        <Users size={15} />
+        <Plus size={12} />
+        Add planner
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5 space-y-2"
+      style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
+    >
+      <CrewSearchInput
+        tripId={tripId}
+        defaultRole="Planner"
+        defaultStatus="draft"
+        allowGhost={false}
+        allowInvite
+        showSearchIcon
+        placeholder="Search by email..."
+        frequentTripmates={[]}
+      />
+      <button
+        onClick={() => setIsExpanded(false)}
+        className="text-xs"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 // ── PlannersPanel ─────────────────────────────────────────────────────────
 
 export function PlannersPanel({
@@ -222,7 +237,7 @@ export function PlannersPanel({
   const showEmptyState = !isCollapsed && planners.length <= 1;
   const showExpanded = !isCollapsed && planners.length > 1;
 
-  // Shared header used by both expanded and empty states
+  // Shared header — same markup in both expanded and empty states
   const header = (
     <div className="flex items-center gap-2.5 px-4 py-3">
       <div
@@ -271,7 +286,10 @@ export function PlannersPanel({
     return (
       <div
         className="rounded-xl overflow-hidden"
-        style={{ border: "1.5px dashed var(--color-bt-border)" }}
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1.5px dashed var(--color-bt-border)",
+        }}
       >
         {header}
 
@@ -293,42 +311,34 @@ export function PlannersPanel({
           <PlannerRow planner={planners[0]} tripId={tripId} isOwner={isOwner} />
         )}
 
-        {/* Search row — canEdit only */}
+        {/* Add planner affordance — canEdit only */}
         {canEdit && (
           <div className="px-4 py-3" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-            <CrewSearchInput
-              tripId={tripId}
-              defaultRole="Planner"
-              defaultStatus="draft"
-              allowGhost={false}
-              allowInvite
-              showSearchIcon
-              placeholder="Search by email..."
-              frequentTripmates={[]}
-            />
+            <AddPlannerRow tripId={tripId} />
           </div>
         )}
       </div>
     );
   }
 
-  // ── State 3: Collapsed (single line) ────────────────────────────────────
+  // ── State 3: Collapsed (single line, same height as expanded header) ─────
   if (showCollapsed) {
     return (
       <div
         className="rounded-xl overflow-hidden cursor-pointer"
         style={{
           border: "1px solid var(--color-bt-border)",
+          background: "var(--color-bt-card)",
         }}
         onClick={onToggleCollapse}
       >
         <div className="flex items-center gap-2.5 px-4 py-3">
-          {/* Icon */}
+          {/* 32px icon — matches expanded header */}
           <div
             style={{
-              width: 26,
-              height: 26,
-              borderRadius: 7,
+              width: 32,
+              height: 32,
+              borderRadius: 9,
               background: "var(--color-bt-accent-faint)",
               display: "flex",
               alignItems: "center",
@@ -336,11 +346,11 @@ export function PlannersPanel({
               flexShrink: 0,
             }}
           >
-            <Users size={13} style={{ color: "var(--color-bt-accent)" }} />
+            <Users size={16} style={{ color: "var(--color-bt-accent)" }} />
           </div>
 
-          {/* Label */}
-          <span style={{ fontSize: 13, fontWeight: 600, flexShrink: 0, color: "var(--color-bt-text)" }}>
+          {/* Label — text-sm matches expanded header */}
+          <span className="text-sm font-semibold flex-shrink-0" style={{ color: "var(--color-bt-text)" }}>
             Planners
           </span>
 
@@ -403,7 +413,10 @@ export function PlannersPanel({
   return (
     <div
       className="rounded-xl overflow-hidden"
-      style={{ border: "1px solid var(--color-bt-border)" }}
+      style={{
+        border: "1px solid var(--color-bt-border)",
+        background: "var(--color-bt-card)",
+      }}
     >
       {header}
 
@@ -416,22 +429,13 @@ export function PlannersPanel({
         ))}
       </div>
 
-      {/* Search row — canEdit only */}
+      {/* Add planner affordance — canEdit only */}
       {canEdit && (
         <div
           className="px-4 py-3"
           style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
-          <CrewSearchInput
-            tripId={tripId}
-            defaultRole="Planner"
-            defaultStatus="draft"
-            allowGhost={false}
-            allowInvite
-            showSearchIcon
-            placeholder="Search by email..."
-            frequentTripmates={[]}
-          />
+          <AddPlannerRow tripId={tripId} />
         </div>
       )}
     </div>
