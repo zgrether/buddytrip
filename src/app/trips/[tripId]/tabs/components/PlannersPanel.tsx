@@ -237,96 +237,10 @@ export function PlannersPanel({
   isCollapsed,
   onToggleCollapse,
 }: PlannersPanelProps) {
-  const showCollapsed = isCollapsed;
-  const showEmptyState = !isCollapsed && planners.length <= 1;
-  const showExpanded = !isCollapsed && planners.length > 1;
+  const hasMultiplePlanners = planners.length > 1;
 
-  // Shared header — same markup in both expanded and empty states
-  const header = (
-    <div className="flex items-center gap-2.5 px-4 py-3">
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 9,
-          background: "var(--color-bt-accent-faint)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Users size={16} style={{ color: "var(--color-bt-accent)" }} />
-      </div>
-      <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-        {showExpanded
-          ? `Planners · ${planners.length} ${planners.length === 1 ? "person" : "people"}`
-          : "Planners"}
-      </span>
-      <button
-        onClick={onToggleCollapse}
-        style={{
-          width: 26,
-          height: 26,
-          borderRadius: 7,
-          border: "none",
-          background: "var(--color-bt-card-raised)",
-          color: "var(--color-bt-text-dim)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-        aria-label="Collapse planners"
-      >
-        <ChevronUp size={13} />
-      </button>
-    </div>
-  );
-
-  // ── State 1: Empty (only owner or no planners) ──────────────────────────
-  if (showEmptyState) {
-    return (
-      <div
-        className="rounded-xl overflow-hidden"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1.5px dashed var(--color-bt-border)",
-        }}
-      >
-        {header}
-
-        <p
-          style={{
-            fontSize: 12,
-            color: "var(--color-bt-text-dim)",
-            lineHeight: 1.5,
-            padding: "0 16px 12px",
-            borderBottom: "1px solid var(--color-bt-border)",
-          }}
-        >
-          Invite people who want to help shape the trip. They can add ideas, vote, and weigh
-          in before the trip is officially on. Everyone else gets added when you&apos;re ready to go.
-        </p>
-
-        {/* Owner row */}
-        {planners.length > 0 && (
-          <PlannerRow planner={planners[0]} tripId={tripId} isOwner={isOwner} />
-        )}
-
-        {/* Add planner affordance — canEdit only */}
-        {canEdit && (
-          <div className="px-4 py-3" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-            <AddPlannerRow tripId={tripId} />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ── State 3: Collapsed (single line, same height as expanded header) ─────
-  if (showCollapsed) {
+  // ── Collapsed (single line, same height as expanded header) ──────────────
+  if (isCollapsed) {
     return (
       <div
         className="rounded-xl overflow-hidden cursor-pointer"
@@ -413,25 +327,81 @@ export function PlannersPanel({
     );
   }
 
-  // ── State 2: Expanded (has planners) ─────────────────────────────────────
+  // ── Expanded ──────────────────────────────────────────────────────────────
   return (
     <div
       className="rounded-xl overflow-hidden"
       style={{
-        border: "1px solid var(--color-bt-border)",
         background: "var(--color-bt-card)",
+        border: hasMultiplePlanners
+          ? "1px solid var(--color-bt-border)"
+          : "1.5px dashed var(--color-bt-border)",
       }}
     >
-      {header}
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-4 py-3">
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 9,
+            background: "var(--color-bt-accent-faint)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Users size={16} style={{ color: "var(--color-bt-accent)" }} />
+        </div>
+        <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          {hasMultiplePlanners
+            ? `Planners · ${planners.length} ${planners.length === 1 ? "person" : "people"}`
+            : "Planners"}
+        </span>
+        <button
+          onClick={onToggleCollapse}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 7,
+            border: "none",
+            background: "var(--color-bt-card-raised)",
+            color: "var(--color-bt-text-dim)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+          aria-label="Collapse planners"
+        >
+          <ChevronUp size={13} />
+        </button>
+      </div>
 
-      <hr style={{ borderColor: "var(--color-bt-border)", margin: 0 }} />
+      {/* Description — always visible when expanded */}
+      <p
+        style={{
+          fontSize: 12,
+          color: "var(--color-bt-text-dim)",
+          lineHeight: 1.5,
+          padding: "0 16px 12px",
+          borderBottom: "1px solid var(--color-bt-border)",
+        }}
+      >
+        Invite people who want to help shape the trip. They can add ideas, vote, and weigh
+        in before the trip is officially on. Everyone else gets added when you&apos;re ready to go.
+      </p>
 
       {/* Planner rows */}
-      <div>
-        {planners.map((p) => (
-          <PlannerRow key={p.userId} planner={p} tripId={tripId} isOwner={isOwner} />
-        ))}
-      </div>
+      {planners.length > 0 && (
+        <div>
+          {planners.map((p) => (
+            <PlannerRow key={p.userId} planner={p} tripId={tripId} isOwner={isOwner} />
+          ))}
+        </div>
+      )}
 
       {/* Add planner affordance — canEdit only */}
       {canEdit && (
