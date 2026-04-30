@@ -2003,7 +2003,7 @@ export default function IdeaZonePanel({
 
         {/* Orientation copy — visible to all roles */}
         <p
-          className="max-w-2xl text-sm leading-relaxed"
+          className="text-sm leading-relaxed"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Add your top contenders from the catalog or enter your own — compare
