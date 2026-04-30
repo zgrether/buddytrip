@@ -199,26 +199,30 @@ function AddPlannerRow({ tripId }: { tripId: string }) {
 
   return (
     <div
-      className="rounded-xl px-3 py-2.5 space-y-2"
+      className="rounded-xl px-3 py-2.5"
       style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
     >
-      <CrewSearchInput
-        tripId={tripId}
-        defaultRole="Planner"
-        defaultStatus="draft"
-        allowGhost={false}
-        allowInvite
-        showSearchIcon
-        placeholder="Search by email..."
-        frequentTripmates={[]}
-      />
-      <button
-        onClick={() => setIsExpanded(false)}
-        className="text-xs"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Cancel
-      </button>
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <CrewSearchInput
+            tripId={tripId}
+            defaultRole="Planner"
+            defaultStatus="draft"
+            allowGhost={false}
+            allowInvite
+            showSearchIcon
+            placeholder="Search by email..."
+            frequentTripmates={[]}
+          />
+        </div>
+        <button
+          onClick={() => setIsExpanded(false)}
+          className="rounded-lg border px-3 py-1.5 text-xs flex-shrink-0"
+          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
