@@ -16,6 +16,8 @@ import {
   Plus,
   Pencil,
   ExternalLink,
+  LayoutGrid,
+  Columns2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -1894,6 +1896,7 @@ export default function IdeaZonePanel({
     if (typeof window === "undefined") return false;
     return localStorage.getItem(`planners-collapsed-${tripId}`) === "true";
   });
+  const [isCompact, setIsCompact] = useState(false);
 
   const handleToggleCollapse = () => {
     const next = !isCollapsed;
@@ -1958,6 +1961,7 @@ export default function IdeaZonePanel({
     .map((m) => ({
       userId: m.user_id,
       name: m.displayName,
+      email: (m as { user?: { email?: string | null } | null }).user?.email ?? null,
       role: m.role.toLowerCase() as "owner" | "planner",
       hasVoted: allVoterIds.has(m.user_id),
       isMe: m.user_id === currentUser?.id,
@@ -1990,26 +1994,57 @@ export default function IdeaZonePanel({
       {/* ── Single column layout ──────────────────────────────────────── */}
       <div className="px-4 py-4 space-y-4">
         {/* Planners panel — top of column */}
-        <PlannersPanel
-          tripId={tripId}
-          planners={plannersList}
-          isOwner={isOwner}
-          canEdit={canEdit}
-          isCollapsed={isCollapsed}
-          onToggleCollapse={handleToggleCollapse}
-        />
+        <div className="max-w-2xl">
+          <PlannersPanel
+            tripId={tripId}
+            planners={plannersList}
+            isOwner={isOwner}
+            canEdit={canEdit}
+            isCollapsed={isCollapsed}
+            onToggleCollapse={handleToggleCollapse}
+          />
+        </div>
 
-        {/* Orientation copy — visible to all roles */}
-        <p
-          className="text-sm leading-relaxed"
+        {/* Section header */}
+        <h2
+          className="text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Add your top contenders from the catalog or enter your own — compare
-          them side by side, then let the crew weigh in.
-        </p>
+          Destination Ideas
+        </h2>
+
+        {/* Orientation copy + view toggle */}
+        <div className="flex items-center gap-3">
+          <p
+            className="flex-1 text-sm leading-relaxed"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Add your top contenders from the catalog or enter your own — compare
+            them side by side, then let the crew weigh in.
+          </p>
+          <button
+            onClick={() => setIsCompact((c) => !c)}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              border: "1px solid var(--color-bt-border)",
+              background: isCompact ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+              color: isCompact ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+            aria-label={isCompact ? "Switch to wide view" : "Switch to compact view"}
+          >
+            {isCompact ? <Columns2 size={14} /> : <LayoutGrid size={14} />}
+          </button>
+        </div>
 
         {/* Destination cards + add card grid */}
-        <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={`grid gap-3.5 ${isCompact ? "grid-cols-[repeat(auto-fill,minmax(min(100%,380px),1fr))]" : "grid-cols-[repeat(auto-fill,minmax(min(100%,480px),1fr))]"}`}>
           {sorted.map((idea) => (
             <IdeaCard
               key={idea.id}
