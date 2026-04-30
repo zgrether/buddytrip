@@ -2011,7 +2011,7 @@ export default function IdeaZonePanel({
         </p>
 
         {/* Destination cards + add card grid */}
-        <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3.5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
           {sorted.map((idea) => (
             <IdeaCard
               key={idea.id}
