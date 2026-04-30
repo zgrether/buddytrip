@@ -1990,18 +1990,20 @@ export default function IdeaZonePanel({
       {/* ── Single column layout ──────────────────────────────────────── */}
       <div className="px-4 py-4 space-y-4">
         {/* Planners panel — top of column */}
-        <PlannersPanel
-          tripId={tripId}
-          planners={plannersList}
-          isOwner={isOwner}
-          canEdit={canEdit}
-          isCollapsed={isCollapsed}
-          onToggleCollapse={handleToggleCollapse}
-        />
+        <div className="max-w-2xl">
+          <PlannersPanel
+            tripId={tripId}
+            planners={plannersList}
+            isOwner={isOwner}
+            canEdit={canEdit}
+            isCollapsed={isCollapsed}
+            onToggleCollapse={handleToggleCollapse}
+          />
+        </div>
 
         {/* Orientation copy — visible to all roles */}
         <p
-          className="text-sm leading-relaxed"
+          className="max-w-2xl text-sm leading-relaxed"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           Add your top contenders from the catalog or enter your own — compare
