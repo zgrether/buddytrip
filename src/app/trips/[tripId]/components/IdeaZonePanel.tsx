@@ -2005,6 +2005,14 @@ export default function IdeaZonePanel({
           />
         </div>
 
+        {/* Section header */}
+        <h2
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Destination Ideas
+        </h2>
+
         {/* Orientation copy + view toggle */}
         <div className="flex items-center gap-3">
           <p
