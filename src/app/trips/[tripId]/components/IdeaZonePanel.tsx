@@ -217,7 +217,7 @@ function IdeaCard({
   return (
     <div
       data-testid={`idea-card-${idea.id}`}
-      className="overflow-hidden rounded-2xl transition-shadow"
+      className="overflow-hidden rounded-2xl transition-shadow flex flex-col"
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
@@ -392,8 +392,8 @@ function IdeaCard({
       </div>
 
       {/* ── Body — single column ────────────────────────────────────── */}
-      <div style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-        <div className="space-y-4 p-4">
+      <div className="flex flex-col flex-1" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+        <div className="flex flex-col flex-1 gap-4 p-4">
           {/* Description */}
           {editingField === "description" ? (
             <div>
@@ -763,7 +763,7 @@ function IdeaCard({
           {/* Footer actions — owner only (set destination + remove) */}
           {isOwner && (
             <div
-              className="flex items-center justify-between pt-3"
+              className="flex items-center justify-between pt-3 mt-auto"
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
             >
               <button
@@ -1965,6 +1965,7 @@ export default function IdeaZonePanel({
       role: m.role.toLowerCase() as "owner" | "planner",
       hasVoted: allVoterIds.has(m.user_id),
       isMe: m.user_id === currentUser?.id,
+      isGuest: !!(m as { isGuest?: boolean }).isGuest,
     }));
 
   if (ideasTyped.length === 0) {

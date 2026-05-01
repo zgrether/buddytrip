@@ -690,14 +690,12 @@ export function ScheduleTab({
         )}
 
       <section>
-        {!embedded && (
-          <h2
-            className="mb-2 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Schedule
-          </h2>
-        )}
+        <h2
+          className="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Schedule
+        </h2>
 
         {/* Guidance text — stage-aware */}
         <p

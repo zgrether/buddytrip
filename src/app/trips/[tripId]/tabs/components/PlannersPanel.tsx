@@ -15,6 +15,8 @@ export interface PlannerWithVoteStatus {
   role: "owner" | "planner";
   hasVoted: boolean;
   isMe: boolean;
+  /** True when added by email but no BuddyTrip account exists yet */
+  isGuest: boolean;
 }
 
 interface PlannersPanelProps {
@@ -87,6 +89,20 @@ function PlannerRow({
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-1.5">
+          {/* Pending badge — guest planners without a BT account */}
+          {planner.isGuest && (
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              style={{
+                background: "color-mix(in srgb, var(--color-bt-warning) 12%, transparent)",
+                color: "var(--color-bt-warning)",
+                border: "1px solid color-mix(in srgb, var(--color-bt-warning) 25%, transparent)",
+              }}
+            >
+              Pending
+            </span>
+          )}
+
           {/* Owner badge */}
           {isOwnerRow && (
             <span
