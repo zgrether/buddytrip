@@ -1965,6 +1965,7 @@ export default function IdeaZonePanel({
       role: m.role.toLowerCase() as "owner" | "planner",
       hasVoted: allVoterIds.has(m.user_id),
       isMe: m.user_id === currentUser?.id,
+      isGuest: !!(m as { isGuest?: boolean }).isGuest,
     }));
 
   if (ideasTyped.length === 0) {
