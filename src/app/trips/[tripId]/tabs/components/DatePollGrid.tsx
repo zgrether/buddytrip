@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarPlus, Check, CheckCircle2, Trash2 } from "lucide-react";
+import { CalendarDays, CalendarPlus, Check, CheckCircle2, Trash2 } from "lucide-react";
 import { parseLocalDate } from "@/lib/dates";
 import { UserAvatar } from "@/components/UserAvatar";
+import { EmptyState } from "@/components/EmptyState";
 
 export type VoteAnswer = "yes" | "maybe" | "no" | null;
 
@@ -151,34 +152,31 @@ export function DatePollGrid({
     dateWindows.length * COLUMN_WIDTH +
     (showAddColumn ? ADD_COL_WIDTH : 0);
 
-  // Empty-state short-circuit: no date windows yet. Keep a single-row
-  // banner layout so member rows don't flow across undefined columns.
+  // Empty-state short-circuit: no date windows yet.
   if (!hasWindows) {
     return (
-      <div
-        className="overflow-hidden rounded-xl"
-        style={{ background: "var(--color-bt-card-raised)" }}
-      >
-        {showAddColumn ? (
-          <button
-            type="button"
-            onClick={onAddDateWindow}
-            className="flex w-full items-center justify-center gap-2 py-5 text-[13px] font-medium transition-colors hover:opacity-80"
-            style={{ color: "var(--color-bt-accent)" }}
-            aria-label="Add date option"
-          >
-            <CalendarPlus size={16} />
-            Add your first date option
-          </button>
-        ) : (
-          <p
-            className="px-4 py-5 text-center text-[13px] italic"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            No date options added yet.
-          </p>
-        )}
-      </div>
+      <EmptyState
+        icon={<CalendarDays className="h-10 w-10" />}
+        headline="No date options yet"
+        subtext={
+          showAddColumn
+            ? "Add date windows below so the crew can vote on what works."
+            : "The organizer hasn't added any date options yet."
+        }
+        action={
+          showAddColumn ? (
+            <button
+              type="button"
+              onClick={onAddDateWindow}
+              className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-80"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              <CalendarPlus size={14} />
+              Add date option
+            </button>
+          ) : undefined
+        }
+      />
     );
   }
 
