@@ -311,17 +311,6 @@ export function CrewSearchInput({
                   <><UserPlus size={11} /> Invite to BuddyTrip</>
                 )}
               </button>
-              <button
-                onClick={handleCopyInvite}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs transition-opacity hover:opacity-80"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {copied ? (
-                  <><Check size={11} /> Link copied!</>
-                ) : (
-                  <><Link size={11} /> Copy invite link instead</>
-                )}
-              </button>
             </>
           )}
 
