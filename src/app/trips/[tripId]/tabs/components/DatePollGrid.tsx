@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, CalendarPlus, Check, CheckCircle2, Trash2 } from "lucide-react";
+import { CalendarDays, CalendarPlus, Check, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { parseLocalDate } from "@/lib/dates";
 import { UserAvatar } from "@/components/UserAvatar";
 import { EmptyState } from "@/components/EmptyState";
@@ -171,7 +171,8 @@ export function DatePollGrid({
               className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
               style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
             >
-              <CalendarPlus size={14} />
+              <CalendarPlus size={15} />
+              <Plus size={12} />
               Add date option
             </button>
           ) : undefined
