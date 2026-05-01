@@ -302,92 +302,6 @@ function CrewMemberRow({
   );
 }
 
-// ── AddSomeoneRow ─────────────────────────────────────────────────────────
-// Collapsed dashed-avatar row at the bottom of the crew list. Expands to a
-// name-only form. Email is added later via the row's edit panel — that's
-// where the existing-account auto-link runs.
-
-function AddSomeoneRow({ tripId, onAdded }: { tripId: string; onAdded: () => void }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [name, setName] = useState("");
-  const create = trpc.ghostCrew.create.useMutation({
-    onSuccess() {
-      setName("");
-      setIsExpanded(false);
-      onAdded();
-    },
-  });
-
-  const handleSubmit = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    create.mutate({ tripId, name: trimmed, role: "Member" });
-  };
-
-  if (!isExpanded) {
-    // Pattern 1 button — matches Schedule "Item", Lodging "Property",
-    // Receipts "Receipt" styling so add-affordances are consistent
-    // across tabs.
-    return (
-      <button
-        onClick={() => setIsExpanded(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          color: "var(--color-bt-text)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <Users size={15} />
-        <Plus size={12} /> Crew member
-      </button>
-    );
-  }
-
-  return (
-    <div
-      className="space-y-2 rounded-xl px-3 py-2.5"
-      style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
-    >
-      <div className="flex gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Name"
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSubmit();
-            if (e.key === "Escape") {
-              setIsExpanded(false);
-              setName("");
-            }
-          }}
-          className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-          style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-        />
-        <button
-          onClick={handleSubmit}
-          disabled={!name.trim() || create.isPending}
-          className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {create.isPending ? "..." : "Add"}
-        </button>
-        <button
-          onClick={() => {
-            setIsExpanded(false);
-            setName("");
-          }}
-          className="rounded-lg border px-3 py-1.5 text-xs"
-          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
 export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boolean }) {
@@ -398,6 +312,16 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [addMemberName, setAddMemberName] = useState("");
+
+  const createGuest = trpc.ghostCrew.create.useMutation({
+    onSuccess() {
+      setAddMemberName("");
+      setShowAddMember(false);
+      utils.tripMembers.list.invalidate({ tripId });
+    },
+  });
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -444,14 +368,12 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         </div>
       )}
 
-      {!embedded && (
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Crew
-        </h2>
-      )}
+      <h2
+        className="mb-2 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Crew
+      </h2>
 
       {/* Member view — single cohesive list, no Planners/Rest split,
           no Planner badges. Owner badge + ghost-guest legend stay. */}
@@ -500,24 +422,79 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
 
       {canEdit && (
       <div className="space-y-4">
-          {/* ── Cohesive blurb + Crew Email button ── */}
+          {/* ── Owner blurb + action buttons ── */}
           {isOwner && (
-            <div className="flex items-start gap-3">
-              <p className="flex-1 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            <div className="space-y-2.5">
+              <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
                 Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away.
               </p>
-              {members.length > 1 && (
+
+              {/* Half+half action row */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowAddMember((v) => !v); setAddMemberName(""); }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text)",
+                    border: "1px solid var(--color-bt-border)",
+                  }}
+                >
+                  <Users size={13} />
+                  <Plus size={10} />
+                  Add crew member
+                </button>
                 <button
                   onClick={() => setShowEmailModal(true)}
-                  className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-85"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold transition-opacity hover:opacity-85"
                   style={{
                     background: "var(--color-bt-accent)",
                     color: "var(--color-bt-base)",
                   }}
                 >
                   <Mail size={13} />
-                  Crew Email
+                  Email the Crew
                 </button>
+              </div>
+
+              {/* Inline add-member form */}
+              {showAddMember && (
+                <div
+                  className="flex gap-2 rounded-xl px-3 py-2.5"
+                  style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
+                >
+                  <input
+                    value={addMemberName}
+                    onChange={(e) => setAddMemberName(e.target.value)}
+                    placeholder="Name"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && addMemberName.trim()) {
+                        createGuest.mutate({ tripId, name: addMemberName.trim(), role: "Member" });
+                      }
+                      if (e.key === "Escape") { setShowAddMember(false); setAddMemberName(""); }
+                    }}
+                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (addMemberName.trim()) createGuest.mutate({ tripId, name: addMemberName.trim(), role: "Member" });
+                    }}
+                    disabled={!addMemberName.trim() || createGuest.isPending}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+                  >
+                    {createGuest.isPending ? "..." : "Add"}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddMember(false); setAddMemberName(""); }}
+                    className="rounded-lg border px-3 py-1.5 text-xs"
+                    style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -580,18 +557,6 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                 </div>
               )}
             </div>
-            {/* Add affordance — Pattern 1 button matching Schedule /
-                Lodging / Receipts add-on-top buttons. Placed above the
-                crew list (out of the list card) so it reads as a
-                top-level "add to this section" affordance, not a list row. */}
-            {isOwner && (
-              <div className="mb-2">
-                <AddSomeoneRow
-                  tripId={tripId}
-                  onAdded={() => utils.tripMembers.list.invalidate({ tripId })}
-                />
-              </div>
-            )}
             <div
               className="overflow-hidden rounded-xl"
               style={{
@@ -652,7 +617,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                 <Mail size={15} />
               </span>
               <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                Crew Email
+                Email the Crew
               </span>
               <button
                 onClick={() => setShowEmailModal(false)}

@@ -1442,19 +1442,16 @@ export function PlanningGrid({
           >
             {activePanel === "crew" && (crewState === "skipped" ? null : (
               <div className="px-4 py-4">
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(crewState) }}>Crew</h2>
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             ))}
             {activePanel === "lodging" && (lodgingState === "skipped" ? null : (
               <div className="px-4 py-4">
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(lodgingState) }}>Lodging</h2>
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             ))}
             {activePanel === "schedule" && (scheduleState === "skipped" ? null : (
               <div className="px-4 py-4">
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(scheduleState) }}>Schedule</h2>
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
               </div>
             ))}
@@ -1537,7 +1534,6 @@ export function PlanningGrid({
               </div>
             ) : (
               <div className="px-4 py-4">
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(crewState) }}>Crew</h2>
                 <CrewTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
                 {canEdit && (
                   <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
@@ -1563,7 +1559,6 @@ export function PlanningGrid({
               </div>
             ) : (
               <div className="px-4 py-4">
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(lodgingState) }}>Lodging</h2>
                 <LodgingTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
                 {canEdit && (
                   <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
@@ -1589,7 +1584,6 @@ export function PlanningGrid({
               </div>
             ) : (
               <div className="px-4 py-4">
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider" style={{ color: panelTitleColor(scheduleState) }}>Schedule</h2>
                 <ScheduleTab trip={trip} role={null} canEdit={canEdit} isOwner={isOwner} embedded={true} />
                 {canEdit && (
                   <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
