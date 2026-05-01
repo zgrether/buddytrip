@@ -502,20 +502,20 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
       <div className="space-y-4">
           {/* ── Cohesive blurb + Crew Email button ── */}
           {isOwner && (
-            <div className="space-y-3">
-              <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+            <div className="flex items-start gap-3">
+              <p className="flex-1 text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
                 Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away.
               </p>
               {members.length > 1 && (
                 <button
                   onClick={() => setShowEmailModal(true)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-85"
+                  className="flex flex-shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-85"
                   style={{
                     background: "var(--color-bt-accent)",
                     color: "var(--color-bt-base)",
                   }}
                 >
-                  <Mail size={15} />
+                  <Mail size={13} />
                   Crew Email
                 </button>
               )}
@@ -667,6 +667,20 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
             {/* Modal body — scrollable */}
             <div className="overflow-y-auto p-4">
               <CrewEmailPanel trip={trip} isOwner={isOwner} />
+            </div>
+
+            {/* Modal footer */}
+            <div
+              className="flex flex-shrink-0 justify-end px-4 py-3"
+              style={{ borderTop: "1px solid var(--color-bt-border)" }}
+            >
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="rounded-xl px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
+                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

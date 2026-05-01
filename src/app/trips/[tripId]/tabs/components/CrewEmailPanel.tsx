@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckSquare, Ghost, Mail, RotateCcw, Send, Square } from "lucide-react";
+import { CheckSquare, Ghost, RotateCcw, Send, Square } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { buildCannedInvitation } from "@/lib/invitationDefault";
@@ -110,31 +110,9 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
   const isDefaultMessage = messageDraft.trim() === cannedInvitation.trim();
 
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-      data-testid="crew-email-panel"
-    >
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-            style={{
-              background: "var(--color-bt-accent-faint)",
-              color: "var(--color-bt-accent)",
-            }}
-          >
-            <Mail size={14} />
-          </span>
-          <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Crew Email
-          </p>
-        </div>
-
+    <div data-testid="crew-email-panel">
+      {/* Reset button row */}
+      <div className="mb-3 flex items-center justify-end gap-2">
         {confirmingReset ? (
           <div className="flex items-center gap-2">
             <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -158,7 +136,7 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
               className="text-xs"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
-              Cancel
+              No
             </button>
           </div>
         ) : (
@@ -366,3 +344,4 @@ export function CrewEmailPanel({ trip, isOwner }: CrewEmailPanelProps) {
     </div>
   );
 }
+
