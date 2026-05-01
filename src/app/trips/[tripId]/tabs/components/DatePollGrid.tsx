@@ -155,29 +155,29 @@ export function DatePollGrid({
   // Empty-state short-circuit: no date windows yet.
   if (!hasWindows) {
     return (
-      <EmptyState
-        icon={<CalendarDays className="h-10 w-10" />}
-        headline="No date options yet"
-        subtext={
-          showAddColumn
-            ? "Add date windows below so the crew can vote on what works."
-            : "The organizer hasn't added any date options yet."
-        }
-        action={
-          showAddColumn ? (
-            <button
-              type="button"
-              onClick={onAddDateWindow}
-              className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <CalendarPlus size={15} />
-              <Plus size={12} />
-              Add date option
-            </button>
-          ) : undefined
-        }
-      />
+      <div>
+        {showAddColumn && (
+          <button
+            type="button"
+            onClick={onAddDateWindow}
+            className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+          >
+            <CalendarPlus size={15} />
+            <Plus size={12} />
+            Add date option
+          </button>
+        )}
+        <EmptyState
+          icon={<CalendarDays className="h-10 w-10" />}
+          headline="No date options yet"
+          subtext={
+            showAddColumn
+              ? "Add date windows above so the crew can vote on what works."
+              : "The organizer hasn't added any date options yet."
+          }
+        />
+      </div>
     );
   }
 
