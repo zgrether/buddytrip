@@ -397,6 +397,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -498,13 +499,27 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
       )}
 
       {canEdit && (
-      <div className={isOwner && members.length > 1 ? "@[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_360px] @[640px]:gap-5" : ""}>
-        <div className="min-w-0 space-y-4">
-          {/* ── Cohesive blurb — sits between the outer CREW panel title and PLANNERS ── */}
+      <div className="space-y-4">
+          {/* ── Cohesive blurb + Crew Email button ── */}
           {isOwner && (
-            <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away. Guests without an account can be reached via the email panel.
-            </p>
+            <div className="space-y-3">
+              <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+                Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away.
+              </p>
+              {members.length > 1 && (
+                <button
+                  onClick={() => setShowEmailModal(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-85"
+                  style={{
+                    background: "var(--color-bt-accent)",
+                    color: "var(--color-bt-base)",
+                  }}
+                >
+                  <Mail size={15} />
+                  Crew Email
+                </button>
+              )}
+            </div>
           )}
 
           {/* ── PLANNERS section ── */}
@@ -607,15 +622,54 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
             </div>
           </div>
         </div>
+      )}
 
-        {/* Email panel — owner-only. Stacks below crew list on small containers,
-            sits in the right grid column at ≥640px. */}
-        {isOwner && members.length > 1 && (
-          <div className="mt-6 @[640px]:mt-0">
-            <CrewEmailPanel trip={trip} isOwner={isOwner} />
+      {/* ── Crew Email modal ─────────────────────────────────────────────── */}
+      {showEmailModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowEmailModal(false); }}
+        >
+          <div
+            className="relative w-full max-w-lg overflow-hidden rounded-t-2xl sm:rounded-2xl"
+            style={{
+              background: "var(--color-bt-base)",
+              maxHeight: "90dvh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Modal header */}
+            <div
+              className="flex flex-shrink-0 items-center gap-3 px-4 py-3"
+              style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+            >
+              <span
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+              >
+                <Mail size={15} />
+              </span>
+              <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Crew Email
+              </span>
+              <button
+                onClick={() => setShowEmailModal(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-opacity hover:opacity-70"
+                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+                aria-label="Close"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Modal body — scrollable */}
+            <div className="overflow-y-auto p-4">
+              <CrewEmailPanel trip={trip} isOwner={isOwner} />
+            </div>
           </div>
-        )}
-      </div>
+        </div>
       )}
     </div>
   );
