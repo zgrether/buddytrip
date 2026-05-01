@@ -168,8 +168,8 @@ export function DatePollGrid({
             <button
               type="button"
               onClick={onAddDateWindow}
-              className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-80"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
             >
               <CalendarPlus size={14} />
               Add date option
