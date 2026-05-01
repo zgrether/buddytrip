@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Calendar,
+  CalendarDays,
   CalendarRange,
   Check,
   ChevronRight,
@@ -18,6 +19,7 @@ import { formatDateRangeCompact, fmtTime12 } from "@/lib/dates";
 import type { TripData } from "../types";
 import type { TabProps } from "../types";
 import { DatePollCard } from "./DatePollCard";
+import { EmptyState } from "@/components/EmptyState";
 import { CrewTab } from "../CrewTab";
 import { LodgingTab } from "../LodgingTab";
 import { ScheduleTab } from "../ScheduleTab";
@@ -722,6 +724,15 @@ function DatesPanelContent({
               </button>
             )}
           </div>
+
+          {/* Empty state — only when no dates locked yet */}
+          {!datesLocked && (
+            <EmptyState
+              icon={<CalendarDays className="h-10 w-10" />}
+              headline="No dates set yet"
+              subtext="Pick a start and end date above to lock in your trip window."
+            />
+          )}
         </div>
       ) : hasCrew ? (
         <div className="space-y-3">
