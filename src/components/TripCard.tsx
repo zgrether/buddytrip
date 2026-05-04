@@ -1,6 +1,7 @@
 "use client";
 
 import type { FC } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, Calendar } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -47,6 +48,11 @@ function formatDateRange(start?: string | null, end?: string | null): string {
 export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const router = useRouter();
   const utils = trpc.useUtils();
+  // useTransition tracks Next's router.push from click → new route render,
+  // so we get an isPending flag we can paint instantly. Without it the
+  // dashboard sits frozen between click and the trip route bundle loading,
+  // and the card feels dead.
+  const [isNavigating, startNavigation] = useTransition();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const status = getTripStatus(trip);
@@ -76,7 +82,9 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       [key: string]: unknown;
     };
     utils.trips.getById.setData({ tripId: trip.id }, tripData);
-    router.push(`/trips/${trip.id}`);
+    startNavigation(() => {
+      router.push(`/trips/${trip.id}`);
+    });
   };
 
   // Countdown — derived from trip dates + stage. Rendered as a flush bar at
@@ -96,6 +104,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
     <button
       data-testid={`trip-card-${trip.id}`}
       onClick={handleClick}
+      disabled={isNavigating}
       className="relative w-full overflow-hidden rounded-xl text-left transition-all"
       style={{
         background: isDark
@@ -103,6 +112,8 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
           : "var(--color-bt-card)",
         border: isDark ? "none" : "1px solid var(--color-bt-border)",
         filter: grayscale ? "grayscale(100%)" : undefined,
+        opacity: isNavigating ? 0.6 : 1,
+        cursor: isNavigating ? "wait" : "pointer",
         boxShadow: isDark
           ? "var(--shadow-card)"
           : status !== "past"
@@ -124,6 +135,23 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
             : "var(--shadow-card)";
       }}
     >
+      {/* Navigation pending overlay — appears the instant the user clicks
+          a card, so the dashboard isn't visually frozen while React loads
+          the trip route bundle. */}
+      {isNavigating && (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+        >
+          <div
+            className="h-6 w-6 animate-spin rounded-full border-2"
+            style={{
+              borderColor: "var(--color-bt-accent)",
+              borderTopColor: "transparent",
+            }}
+          />
+        </div>
+      )}
       <div className="relative p-4">
       {/* State outline watermark — fixed size, clips overflow */}
       {outline && (
