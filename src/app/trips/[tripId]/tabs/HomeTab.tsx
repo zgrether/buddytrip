@@ -8,14 +8,9 @@ import { PlanningGrid } from "./components/PlanningGrid";
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
 import { GettingTherePanel } from "./components/panels/GettingTherePanel";
 import { QuickInfoPanel } from "./components/panels/QuickInfoPanel";
+import { CompetitionInvitationCard } from "@/components/competition/CompetitionInvitationCard";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps } from "./types";
-
-// CompetitionPanel was removed in the Phase A schema rebuild. The new
-// CompTab is the entry point for setting up / viewing the competition;
-// HomeTab no longer renders a separate CTA card. Once Phase B reintroduces
-// the live leaderboard summary, the persistent strip in trips/[tripId]/
-// page.tsx will be the surface — not HomeTab.
 
 // ── HomeTab ──────────────────────────────────────────────────────────────
 
@@ -121,11 +116,18 @@ export function HomeTab({
             isActivated={!!trip.itinerary_enabled}
             hasContent={hasItineraryContent}
           />
+          <CompetitionInvitationCard
+            canEdit={canEditProp}
+            isActivated={!!compActivated}
+            onEnable={onEnableComp}
+          />
         </>
       )}
 
       {/* ── PAST / SAVED: keep the legacy ItineraryPanel; it's read-only
-              and its bucketed layout is still useful after the trip. */}
+              and its bucketed layout is still useful after the trip.
+              Comp invitation still surfaces here so the owner can spin
+              up a retroactive scoreboard for past trips. */}
       {stage !== "idea" && stage !== "planning" && status !== "going" && status !== "now" && (
         <>
           <LegacyItineraryPanel
@@ -134,6 +136,11 @@ export function HomeTab({
             stage={stage}
             status={status}
             onTabChange={onTabChange}
+          />
+          <CompetitionInvitationCard
+            canEdit={canEditProp}
+            isActivated={!!compActivated}
+            onEnable={onEnableComp}
           />
         </>
       )}
