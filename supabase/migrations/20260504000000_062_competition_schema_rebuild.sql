@@ -68,7 +68,13 @@ TRUNCATE TABLE
 -- ────────────────────────────────────────────────────────────────────────────
 -- 5. Null out / drop FKs on tables that survive but reference soon-dropped
 -- ────────────────────────────────────────────────────────────────────────────
-UPDATE messages SET team_id = NULL WHERE team_id IS NOT NULL;
+-- messages.chk_team_channel requires that channel='team' rows always carry a
+-- non-null team_id. Demote any team-channel rows to trip-channel atomically
+-- with the team_id null so the CHECK constraint never sees an invalid row.
+UPDATE messages
+   SET team_id = NULL,
+       channel = 'trip'
+ WHERE team_id IS NOT NULL;
 UPDATE trips    SET event_id = NULL WHERE event_id IS NOT NULL;
 
 ALTER TABLE messages
