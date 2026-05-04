@@ -4,11 +4,29 @@ import { useEffect, useRef } from "react";
  * Intercepts the browser/OS back button while a modal is open and calls
  * onClose instead of navigating away.
  *
- * Usage: call this hook at the top of any full-screen modal component.
- * Because modals are conditionally rendered, the hook mounts when the modal
- * opens and unmounts when it closes — no `isOpen` parameter needed.
+ * Usage patterns:
+ *
+ *   1. Modal is conditionally rendered (the common case):
+ *
+ *        {isOpen && <Modal onClose={...}>...</Modal>}
+ *        // inside Modal:
+ *        useModalBackButton(onClose);
+ *
+ *      The hook mounts when the modal opens and unmounts when it closes —
+ *      no enabled flag needed.
+ *
+ *   2. Modal component is always rendered, visibility gated by `isOpen`:
+ *
+ *        // inside Modal:
+ *        useModalBackButton(onClose, isOpen);
+ *        if (!isOpen) return null;
+ *
+ *      Pass `isOpen` as the second arg so the hook only pushes a phantom
+ *      history entry when the modal is actually visible. Without this,
+ *      every always-rendered modal silently consumes one back-press on
+ *      page mount.
  */
-export function useModalBackButton(onClose: () => void) {
+export function useModalBackButton(onClose: () => void, enabled: boolean = true) {
   const onCloseRef = useRef(onClose);
 
   // Keep the ref current without touching it during render.
@@ -17,6 +35,8 @@ export function useModalBackButton(onClose: () => void) {
   }, [onClose]);
 
   useEffect(() => {
+    if (!enabled) return;
+
     // Push a phantom entry so back has something to pop.
     window.history.pushState({ modal: true }, "");
 
@@ -63,5 +83,5 @@ export function useModalBackButton(onClose: () => void) {
         window.history.back();
       }
     };
-  }, []); // intentionally empty — the popstate handler reads from the ref
+  }, [enabled]); // re-run when the modal toggles open/closed
 }
