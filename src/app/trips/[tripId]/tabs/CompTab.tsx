@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
@@ -1498,6 +1498,28 @@ export function CompTab({ trip, canEdit }: TabProps) {
   const _utils = trpc.useUtils();
 
   const [section, setSection] = useState<Section | null>(null);
+  const historyEntryPushed = useRef(false);
+
+  // Push a history entry the first time we drill into a section so the browser
+  // back button / mouse back can pop back to the overview without navigating away.
+  function openSection(s: Section) {
+    if (!historyEntryPushed.current) {
+      window.history.pushState(null, "");
+      historyEntryPushed.current = true;
+    }
+    setSection(s);
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      setSection(null);
+      historyEntryPushed.current = false;
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   const { data: event, isLoading: eventLoading } = trpc.events.getByTrip.useQuery({
     tripId: trip.id,
@@ -1544,7 +1566,13 @@ export function CompTab({ trip, canEdit }: TabProps) {
         {/* Section header */}
         <div className="flex items-center gap-2 px-4 pb-4">
           <button
-            onClick={() => setSection(null)}
+            onClick={() => {
+              if (historyEntryPushed.current) {
+                window.history.back(); // popstate listener resets section
+              } else {
+                setSection(null);
+              }
+            }}
             className="flex items-center gap-1.5 text-sm font-medium"
             style={{ color: "var(--color-bt-accent)" }}
           >
@@ -1567,7 +1595,10 @@ export function CompTab({ trip, canEdit }: TabProps) {
               tripLocation={tripLocation}
               tripDates={tripDates}
               event={event ?? null}
-              onSaved={() => setSection(null)}
+              onSaved={() => {
+                historyEntryPushed.current = false;
+                setSection(null);
+              }}
             />
           )}
 
@@ -1577,7 +1608,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
                 Set up the competition first.
               </p>
               <button
-                onClick={() => setSection("competition")}
+                onClick={() => openSection("competition")}
                 className="mt-3 text-sm font-medium"
                 style={{ color: "var(--color-bt-accent)" }}
               >
@@ -1653,7 +1684,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
         locked={false}
         canEdit={canEdit}
         fullWidth
-        onClick={() => setSection("competition")}
+        onClick={() => openSection("competition")}
       />
 
       {/* 2×2 setup grid */}
@@ -1667,7 +1698,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
           done={rounds.length > 0}
           locked={!event}
           canEdit={canEdit}
-          onClick={() => setSection("events")}
+          onClick={() => openSection("events")}
         />
         <SetupTile
           icon={Flag}
@@ -1680,7 +1711,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
           done={rounds.some((r) => r.course)}
           locked={!event || rounds.length === 0}
           canEdit={canEdit}
-          onClick={() => setSection("courses")}
+          onClick={() => openSection("courses")}
         />
         <SetupTile
           icon={Users}
@@ -1691,7 +1722,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
           done={teams.length > 0}
           locked={!event}
           canEdit={canEdit}
-          onClick={() => setSection("teams")}
+          onClick={() => openSection("teams")}
         />
         <SetupTile
           icon={LayoutGrid}
@@ -1704,7 +1735,7 @@ export function CompTab({ trip, canEdit }: TabProps) {
           done={playGroups.length > 0}
           locked={!event}
           canEdit={canEdit}
-          onClick={() => setSection("groups")}
+          onClick={() => openSection("groups")}
         />
       </div>
     </div>
