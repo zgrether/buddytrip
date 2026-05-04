@@ -65,6 +65,14 @@ TRUNCATE TABLE
   scoreboard_shares
   CASCADE;
 
+-- group_result_scores + hole_results carry composite FKs into the
+-- group_results PK we're about to drop. Take them out first so the PK
+-- drop in step 7 doesn't fail on dependent constraints. They're being
+-- dropped entirely (Phase B rebuilds scoring against the new model);
+-- doing it here just orders the drops correctly.
+DROP TABLE IF EXISTS group_result_scores CASCADE;
+DROP TABLE IF EXISTS hole_results        CASCADE;
+
 -- ────────────────────────────────────────────────────────────────────────────
 -- 5. Null out / drop FKs on tables that survive but reference soon-dropped
 -- ────────────────────────────────────────────────────────────────────────────
@@ -104,9 +112,9 @@ ALTER TABLE scoreboard_shares
 -- ────────────────────────────────────────────────────────────────────────────
 -- 6. Drop legacy competition tables (children → parents).
 --    CASCADE removes residual policies and indexes automatically.
+--    (group_result_scores + hole_results were dropped earlier in step 4
+--    so the PK drop in step 5 didn't trip over their composite FK.)
 -- ────────────────────────────────────────────────────────────────────────────
-DROP TABLE IF EXISTS group_result_scores CASCADE;
-DROP TABLE IF EXISTS hole_results        CASCADE;
 DROP TABLE IF EXISTS players             CASCADE;
 DROP TABLE IF EXISTS team_assignments    CASCADE;
 DROP TABLE IF EXISTS play_groups         CASCADE;
