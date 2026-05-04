@@ -105,7 +105,7 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       data-testid={`trip-card-${trip.id}`}
       onClick={handleClick}
       disabled={isNavigating}
-      className="relative w-full overflow-hidden rounded-xl text-left transition-all"
+      className="relative w-full overflow-hidden rounded-xl text-left transition-all duration-150 motion-safe:active:scale-[0.985]"
       style={{
         background: isDark
           ? (status === "past" ? "var(--color-bt-card)" : temporalGradient(null, true))
