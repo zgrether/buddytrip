@@ -8,9 +8,14 @@ import { PlanningGrid } from "./components/PlanningGrid";
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
 import { GettingTherePanel } from "./components/panels/GettingTherePanel";
 import { QuickInfoPanel } from "./components/panels/QuickInfoPanel";
-import { CompetitionPanel } from "./components/panels/CompetitionPanel";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps } from "./types";
+
+// CompetitionPanel was removed in the Phase A schema rebuild. The new
+// CompTab is the entry point for setting up / viewing the competition;
+// HomeTab no longer renders a separate CTA card. Once Phase B reintroduces
+// the live leaderboard summary, the persistent strip in trips/[tripId]/
+// page.tsx will be the surface — not HomeTab.
 
 // ── HomeTab ──────────────────────────────────────────────────────────────
 
@@ -116,18 +121,11 @@ export function HomeTab({
             isActivated={!!trip.itinerary_enabled}
             hasContent={hasItineraryContent}
           />
-          <CompetitionPanel
-            isOwner={!!isOwner}
-            isActivated={!!trip.event_id || !!compActivated}
-            onSetupComp={onEnableComp}
-          />
         </>
       )}
 
       {/* ── PAST / SAVED: keep the legacy ItineraryPanel; it's read-only
-              and its bucketed layout is still useful after the trip.
-              Competition panel still surfaces here too — same component
-              as going/now, the activation flag (event_id) is what counts. */}
+              and its bucketed layout is still useful after the trip. */}
       {stage !== "idea" && stage !== "planning" && status !== "going" && status !== "now" && (
         <>
           <LegacyItineraryPanel
@@ -136,11 +134,6 @@ export function HomeTab({
             stage={stage}
             status={status}
             onTabChange={onTabChange}
-          />
-          <CompetitionPanel
-            isOwner={!!isOwner}
-            isActivated={!!trip.event_id || !!compActivated}
-            onSetupComp={onEnableComp}
           />
         </>
       )}

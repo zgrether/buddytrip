@@ -51,10 +51,11 @@ INSERT INTO series (id, name, full_name, years, trip_count, owner_id) VALUES
 
 -- ═══════════════════════════════════════════════════════════════
 -- 3. TRIPS (6 trips)
--- event_id FK deferred — events inserted next
+-- (event_id column was dropped in migration 062; competitions now
+--  carry the trip_id back-reference instead.)
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, description, start_date, end_date, accommodation, notes, activities, golf_courses, comparison_mode, event_id, locked_destination_title, locked_destination_location, locked_destination_at, created_at, updated_at) VALUES
+INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, description, start_date, end_date, accommodation, notes, activities, golf_courses, comparison_mode, locked_destination_title, locked_destination_location, locked_destination_at, created_at, updated_at) VALUES
   (
     'trip-bbmi-live', 'BBMI 2025', 'series-bbmi', 'Bandon Dunes, OR', '$$$$',
     'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=800&q=80',
@@ -64,7 +65,7 @@ INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, descrip
     'Caddies confirmed for all rounds. Walking only, no carts.',
     ARRAY['Golf', 'Hammerschlagen', 'Poker', 'Cards'],
     ARRAY['Bandon Dunes', 'Bandon Trails', 'Pacific Dunes', 'Old Macdonald'],
-    false, 'bbmi-2025',
+    false,
     'Bandon Dunes', 'Bandon Dunes, OR', '2024-08-20T11:00:00Z',
     '2024-10-15T00:00:00Z', '2024-10-15T00:00:00Z'
   ),
@@ -77,7 +78,7 @@ INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, descrip
     'Need 6 firm commitments before booking anything.',
     ARRAY['Golf', 'Poker', 'Hammerschlagen'],
     ARRAY[]::text[],
-    true, NULL,
+    true,
     NULL, NULL, NULL,
     '2025-10-01T00:00:00Z', '2025-10-01T00:00:00Z'
   ),
@@ -87,7 +88,7 @@ INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, descrip
     'Just started planning. First idea on the table — waiting for more.',
     NULL, NULL, NULL, NULL,
     ARRAY[]::text[], ARRAY[]::text[],
-    true, NULL,
+    true,
     NULL, NULL, NULL,
     '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z'
   ),
@@ -100,7 +101,7 @@ INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, descrip
     'Final: Team Hammer 14, Team Eagle 12. MVP: JD Shumpert (3-0). Walking only — no carts.',
     ARRAY['Golf', 'Hammerschlagen', 'Poker', 'Cards'],
     ARRAY['Bandon Dunes', 'Bandon Trails', 'Pacific Dunes', 'Old Macdonald'],
-    false, NULL,
+    false,
     'Bandon Dunes', 'Bandon Dunes, OR', '2023-08-15T10:00:00Z',
     '2023-10-01T00:00:00Z', '2023-10-01T00:00:00Z'
   ),
@@ -113,7 +114,7 @@ INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, descrip
     'Final: USA 9, Europe 7.',
     ARRAY['Golf', 'Poker'],
     ARRAY['Pebble Beach', 'Spyglass Hill', 'Monterey Peninsula'],
-    false, NULL,
+    false,
     'Pebble Beach', 'Pebble Beach, CA', '2023-03-01T00:00:00Z',
     '2023-04-01T00:00:00Z', '2023-04-01T00:00:00Z'
   ),
@@ -126,213 +127,63 @@ INSERT INTO trips (id, title, series_id, location, cost_tier, image_url, descrip
     '3-team format test.',
     ARRAY['Golf'],
     ARRAY['Pinehurst No. 2'],
-    false, 'threesome-test',
+    false,
     'Pinehurst', 'Pinehurst, NC', '2025-01-15T00:00:00Z',
     '2025-01-15T00:00:00Z', '2025-01-15T00:00:00Z'
   );
 
 -- ═══════════════════════════════════════════════════════════════
--- 4. EVENTS (2 events)
+-- 4. COMPETITION (1 competition for the live BBMI 2025 trip)
+-- New schema (migration 062): competitions → events → play_groups
+-- Older fixture data covering rounds/scores was retired with the rebuild.
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO events (id, trip_id, title, subtitle, motto, location, dates, status, competition_type) VALUES
-  ('bbmi-2025',      'trip-bbmi-live', 'BBMI 2025',        'Buddy Banks Memorial Invitational', E'If You''re Not First, You''re Last', 'Bandon Dunes, OR', 'March 11–14, 2025', 'active',    'RYDER_CUP'),
-  ('threesome-test', 'trip-threesome', '3-Team Test Event', '3-Team Match Play',                 E'Three''s Company',                  'Pinehurst, NC',    'April 5–7, 2025',   'active',    'NORMAL');
+INSERT INTO competitions (id, trip_id, name, tagline, motto, status, created_at, updated_at) VALUES
+  ('comp-bbmi-2025', 'trip-bbmi-live', 'BBMI 2025', 'Buddy Banks Memorial Invitational',
+   E'If You''re Not First, You''re Last', 'active',
+   '2024-10-15T00:00:00Z', '2024-10-15T00:00:00Z');
 
 -- ═══════════════════════════════════════════════════════════════
--- 5. TEAMS (5 teams across 2 events)
+-- 5. TEAMS (2 teams under the BBMI competition)
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO teams (id, event_id, name, short_name, color, color_dim) VALUES
-  -- BBMI 2025 teams
-  ('team-a', 'bbmi-2025', 'Team Hammer', 'Hammer', '#00d4aa', '#0d2a22'),
-  ('team-b', 'bbmi-2025', 'Team Anvil',  'Anvil',  '#f97316', '#2a1200'),
-  -- 3-team event teams
-  ('team-red',   'threesome-test', 'Red Team',   'Red',   '#ef4444', '#2a0a0a'),
-  ('team-green', 'threesome-test', 'Green Team', 'Green', '#22c55e', '#0a2a0f'),
-  ('team-blue',  'threesome-test', 'Blue Team',  'Blue',  '#3b82f6', '#0a1a2a');
+INSERT INTO teams (id, competition_id, name, short_name, color, color_dim) VALUES
+  ('team-hammer', 'comp-bbmi-2025', 'Team Hammer', 'HAM', '#3b82f6', '#0a1a2a'),
+  ('team-anvil',  'comp-bbmi-2025', 'Team Anvil',  'ANV', '#f97316', '#2a1200');
 
 -- ═══════════════════════════════════════════════════════════════
--- 6. PLAYERS (25 players across 2 events)
+-- 6. TEAM ASSIGNMENTS (placeholder split — owner + planner per team)
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO players (id, event_id, user_id, name, nickname, handicap) VALUES
-  -- BBMI 2025 players (16)
-  ('player-brad-bbmi',    'bbmi-2025', 'brad',    'Brad Giesler',     'Brad',    8),
-  ('player-zach-bbmi',    'bbmi-2025', 'zach',    'Zach Grether',     'Grether', 12),
-  ('player-tyler-bbmi',   'bbmi-2025', 'tyler',   'Tyler Larson',     'Tyler',   14),
-  ('player-ben-bbmi',     'bbmi-2025', 'ben',     'Ben Bartkus',      'Ben',     16),
-  ('player-merling-bbmi', 'bbmi-2025', 'merling', 'Jeremy Merling',   'Merling', 10),
-  ('player-steve-bbmi',   'bbmi-2025', 'steve',   'Steve Bartkus',    'Steve',   18),
-  ('player-fach-bbmi',    'bbmi-2025', 'fach',    'Matt Facchine',    'Fach',    15),
-  ('player-llama-bbmi',   'bbmi-2025', 'llama',   'Llama Schumacher', 'Llama',   20),
-  ('player-jd-bbmi',      'bbmi-2025', 'jd',      'JD Shumpert',      'JD',      7),
-  ('player-rob-bbmi',     'bbmi-2025', 'rob',     'Rob Drupp',        'Rob',     11),
-  ('player-charlie-bbmi', 'bbmi-2025', 'charlie', 'Charlie Piper',    'Charlie', 13),
-  ('player-bj-bbmi',      'bbmi-2025', 'bj',      'BJ Dames',         'BJ',      17),
-  ('player-jrob-bbmi',    'bbmi-2025', 'jrob',    'John Robinson',    'JRob',    9),
-  ('player-buddy-bbmi',   'bbmi-2025', 'buddy',   'Buddy Banks',      'Buddy',   19),
-  ('player-frank-bbmi',   'bbmi-2025', 'frank',   'Frank Damen',      'Frank',   16),
-  ('player-taj-bbmi',     'bbmi-2025', 'taj',     'Tajar Varghese',   'Taj',     22),
-  -- 3-team event players (9)
-  ('player-r1-3t', 'threesome-test', 'r1', 'Ryan Red',    'Ryan',  10),
-  ('player-r2-3t', 'threesome-test', 'r2', 'Rick Red',    'Rick',  14),
-  ('player-r3-3t', 'threesome-test', 'r3', 'Rory Red',    'Rory',  8),
-  ('player-g1-3t', 'threesome-test', 'g1', 'Greg Green',  'Greg',  12),
-  ('player-g2-3t', 'threesome-test', 'g2', 'Gary Green',  'Gary',  15),
-  ('player-g3-3t', 'threesome-test', 'g3', 'Grant Green', 'Grant', 9),
-  ('player-b1-3t', 'threesome-test', 'b1', 'Blake Blue',  'Blake', 11),
-  ('player-b2-3t', 'threesome-test', 'b2', 'Brett Blue',  'Brett', 13),
-  ('player-b3-3t', 'threesome-test', 'b3', 'Brian Blue',  'Brian', 16);
+INSERT INTO team_assignments (competition_id, user_id, team_id) VALUES
+  ('comp-bbmi-2025', 'brad', 'team-hammer'),
+  ('comp-bbmi-2025', 'zach', 'team-hammer'),
+  ('comp-bbmi-2025', 'jd',   'team-anvil'),
+  ('comp-bbmi-2025', 'rob',  'team-anvil');
 
 -- ═══════════════════════════════════════════════════════════════
--- 7. TEAM ASSIGNMENTS (25 rows)
+-- 7. EVENTS (1 GOLF + 1 GENERIC under the BBMI competition)
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO team_assignments (event_id, team_id, user_id) VALUES
-  -- BBMI 2025: Team Hammer
-  ('bbmi-2025', 'team-a', 'brad'),
-  ('bbmi-2025', 'team-a', 'zach'),
-  ('bbmi-2025', 'team-a', 'tyler'),
-  ('bbmi-2025', 'team-a', 'ben'),
-  ('bbmi-2025', 'team-a', 'merling'),
-  ('bbmi-2025', 'team-a', 'steve'),
-  ('bbmi-2025', 'team-a', 'fach'),
-  ('bbmi-2025', 'team-a', 'llama'),
-  -- BBMI 2025: Team Anvil
-  ('bbmi-2025', 'team-b', 'jd'),
-  ('bbmi-2025', 'team-b', 'rob'),
-  ('bbmi-2025', 'team-b', 'charlie'),
-  ('bbmi-2025', 'team-b', 'bj'),
-  ('bbmi-2025', 'team-b', 'jrob'),
-  ('bbmi-2025', 'team-b', 'buddy'),
-  ('bbmi-2025', 'team-b', 'frank'),
-  ('bbmi-2025', 'team-b', 'taj'),
-  -- 3-Team: Red
-  ('threesome-test', 'team-red',   'r1'),
-  ('threesome-test', 'team-red',   'r2'),
-  ('threesome-test', 'team-red',   'r3'),
-  -- 3-Team: Green
-  ('threesome-test', 'team-green', 'g1'),
-  ('threesome-test', 'team-green', 'g2'),
-  ('threesome-test', 'team-green', 'g3'),
-  -- 3-Team: Blue
-  ('threesome-test', 'team-blue',  'b1'),
-  ('threesome-test', 'team-blue',  'b2'),
-  ('threesome-test', 'team-blue',  'b3');
+INSERT INTO events (id, competition_id, type, title, description, scoring_format, course_id, is_practice, points_available, day, status) VALUES
+  ('evt-day1-scramble', 'comp-bbmi-2025', 'GOLF',    'Day 1 Scramble', 'Bandon Dunes — team scramble', 'scramble', NULL, false, 4,  1, 'upcoming'),
+  ('evt-cornhole',      'comp-bbmi-2025', 'GENERIC', 'Cornhole',       'Lodge tournament Saturday night', NULL,     NULL, false, 2,  NULL, 'upcoming');
 
 -- ═══════════════════════════════════════════════════════════════
--- 8. PLAY GROUPS (regular + scramble)
+-- 8. EVENT POINT DISTRIBUTIONS
+-- ═══════════════════════════════════════════════════════════════
+
+INSERT INTO event_point_distributions (event_id, position, label, points) VALUES
+  ('evt-day1-scramble', 1, '1st Place', 3),
+  ('evt-day1-scramble', 2, '2nd Place', 1),
+  ('evt-cornhole',      1, '1st Place', 2);
+
+-- ═══════════════════════════════════════════════════════════════
+-- 9. PLAY GROUPS (one foursome for the scramble)
 -- ═══════════════════════════════════════════════════════════════
 
 INSERT INTO play_groups (id, event_id, name, tee_time, player_ids) VALUES
-  -- BBMI 2025 regular groups (4-player foursomes)
-  ('g1', 'bbmi-2025', 'Group 1', '8:00 AM', ARRAY['brad','merling','jd','jrob']),
-  ('g2', 'bbmi-2025', 'Group 2', '8:12 AM', ARRAY['zach','steve','rob','buddy']),
-  ('g3', 'bbmi-2025', 'Group 3', '8:24 AM', ARRAY['tyler','fach','charlie','frank']),
-  ('g4', 'bbmi-2025', 'Group 4', '8:36 AM', ARRAY['ben','llama','bj','taj']),
-  -- BBMI 2025 scramble groups (full teams)
-  ('sg-hammer', 'bbmi-2025', 'Team Hammer', '8:00 AM', ARRAY['brad','zach','tyler','ben','merling','steve','fach','llama']),
-  ('sg-anvil',  'bbmi-2025', 'Team Anvil',  '8:24 AM', ARRAY['jd','rob','charlie','bj','jrob','buddy','frank','taj']),
-  -- 3-Team event groups (threesomes)
-  ('tg1', 'threesome-test', 'Group 1', '8:00 AM', ARRAY['r1','g1','b1']),
-  ('tg2', 'threesome-test', 'Group 2', '8:12 AM', ARRAY['r2','g2','b2']),
-  ('tg3', 'threesome-test', 'Group 3', '8:24 AM', ARRAY['r3','g3','b3']);
-
--- ═══════════════════════════════════════════════════════════════
--- 9. ROUNDS (5 rounds across 2 events)
--- ═══════════════════════════════════════════════════════════════
-
-INSERT INTO rounds (id, event_id, day, title, course, format, status, points_available, modifiers) VALUES
-  ('r1', 'bbmi-2025', 1, 'Scramble',   'Bandon Dunes',  'scramble',   'closed',    4, NULL),
-  ('r2', 'bbmi-2025', 2, 'Stableford', 'Bandon Trails', 'stableford', 'submitted', 4, NULL),
-  ('r3', 'bbmi-2025', 3, 'Sabotage',   'Pacific Dunes', 'sabotage',   'active',    4, '{"carryOver": true}'::jsonb),
-  ('r4', 'bbmi-2025', 4, 'Skins',      'Old Macdonald', 'skins',      'upcoming',  4, '{"movingTees": {"enabled": true, "startBox": "white", "eagleShift": -2, "birdieShift": -1, "parShift": 0, "bogeyShift": 1, "doublePlusShift": 1}}'::jsonb),
-  ('tr1', 'threesome-test', 1, 'Match Play', 'Pinehurst No. 2', 'match_play', 'active', 3, NULL);
-
--- ═══════════════════════════════════════════════════════════════
--- 10. SIDE EVENTS (4 for BBMI)
--- ═══════════════════════════════════════════════════════════════
-
-INSERT INTO side_events (id, event_id, name, icon, points_available, status, result) VALUES
-  ('s1', 'bbmi-2025', 'Pool',           '🎱', 5, 'complete', '{"team-a": 2, "team-b": 3}'::jsonb),
-  ('s2', 'bbmi-2025', 'Hammerschlagen', '🔨', 5, 'complete', '{"team-a": 3, "team-b": 2}'::jsonb),
-  ('s3', 'bbmi-2025', 'Pick-Em',        '🏈', 5, 'complete', '{"team-a": 1, "team-b": 4}'::jsonb),
-  ('s4', 'bbmi-2025', 'Cornhole',       '🌽', 5, 'upcoming', '{"team-a": 0, "team-b": 0}'::jsonb);
-
--- ═══════════════════════════════════════════════════════════════
--- 11. GROUP RESULTS + SCORES
--- ═══════════════════════════════════════════════════════════════
-
--- group_results (header rows)
-INSERT INTO group_results (round_id, group_id, submitted_by, created_at, updated_at) VALUES
-  ('r1', 'g1', 'brad',  '2025-03-11T17:00:00Z', '2025-03-11T17:00:00Z'),
-  ('r1', 'g2', 'zach',  '2025-03-11T17:30:00Z', '2025-03-11T17:30:00Z'),
-  ('r1', 'g3', 'tyler', '2025-03-11T18:00:00Z', '2025-03-11T18:00:00Z'),
-  ('r1', 'g4', 'ben',   '2025-03-11T18:30:00Z', '2025-03-11T18:30:00Z'),
-  ('r2', 'g1', 'jd',    '2025-03-12T16:30:00Z', '2025-03-12T16:30:00Z'),
-  ('r2', 'g2', 'zach',  '2025-03-12T17:00:00Z', '2025-03-12T17:00:00Z'),
-  ('r2', 'g3', 'tyler', '2025-03-12T17:30:00Z', '2025-03-12T17:30:00Z'),
-  ('r2', 'g4', 'ben',   '2025-03-12T17:45:00Z', '2025-03-12T17:45:00Z');
-
--- group_result_scores (team points per group)
-INSERT INTO group_result_scores (round_id, group_id, team_id, points) VALUES
-  -- Round 1
-  ('r1', 'g1', 'team-a', 1),   ('r1', 'g1', 'team-b', 0),
-  ('r1', 'g2', 'team-a', 0.5), ('r1', 'g2', 'team-b', 0.5),
-  ('r1', 'g3', 'team-a', 1),   ('r1', 'g3', 'team-b', 0),
-  ('r1', 'g4', 'team-a', 0),   ('r1', 'g4', 'team-b', 1),
-  -- Round 2
-  ('r2', 'g1', 'team-a', 0),   ('r2', 'g1', 'team-b', 1),
-  ('r2', 'g2', 'team-a', 0.5), ('r2', 'g2', 'team-b', 0.5),
-  ('r2', 'g3', 'team-a', 1),   ('r2', 'g3', 'team-b', 0),
-  ('r2', 'g4', 'team-a', 0),   ('r2', 'g4', 'team-b', 1);
-
--- ═══════════════════════════════════════════════════════════════
--- 12. PLAYER HOLE SCORES (18 holes × 4 players × 2 groups)
--- ═══════════════════════════════════════════════════════════════
-
--- Round 1, Group 1 (brad, merling, jd, jrob)
-INSERT INTO player_hole_scores (round_id, group_id, hole_number, player_id, strokes) VALUES
-  ('r1','g1',1,'brad',4),  ('r1','g1',1,'merling',5), ('r1','g1',1,'jd',4),  ('r1','g1',1,'jrob',4),
-  ('r1','g1',2,'brad',5),  ('r1','g1',2,'merling',4), ('r1','g1',2,'jd',5),  ('r1','g1',2,'jrob',3),
-  ('r1','g1',3,'brad',3),  ('r1','g1',3,'merling',3), ('r1','g1',3,'jd',4),  ('r1','g1',3,'jrob',3),
-  ('r1','g1',4,'brad',4),  ('r1','g1',4,'merling',6), ('r1','g1',4,'jd',4),  ('r1','g1',4,'jrob',5),
-  ('r1','g1',5,'brad',5),  ('r1','g1',5,'merling',5), ('r1','g1',5,'jd',6),  ('r1','g1',5,'jrob',4),
-  ('r1','g1',6,'brad',3),  ('r1','g1',6,'merling',4), ('r1','g1',6,'jd',3),  ('r1','g1',6,'jrob',3),
-  ('r1','g1',7,'brad',5),  ('r1','g1',7,'merling',4), ('r1','g1',7,'jd',4),  ('r1','g1',7,'jrob',5),
-  ('r1','g1',8,'brad',4),  ('r1','g1',8,'merling',5), ('r1','g1',8,'jd',5),  ('r1','g1',8,'jrob',6),
-  ('r1','g1',9,'brad',4),  ('r1','g1',9,'merling',5), ('r1','g1',9,'jd',3),  ('r1','g1',9,'jrob',4),
-  ('r1','g1',10,'brad',5), ('r1','g1',10,'merling',4),('r1','g1',10,'jd',4), ('r1','g1',10,'jrob',5),
-  ('r1','g1',11,'brad',2), ('r1','g1',11,'merling',3),('r1','g1',11,'jd',4), ('r1','g1',11,'jrob',3),
-  ('r1','g1',12,'brad',5), ('r1','g1',12,'merling',6),('r1','g1',12,'jd',5), ('r1','g1',12,'jrob',5),
-  ('r1','g1',13,'brad',4), ('r1','g1',13,'merling',4),('r1','g1',13,'jd',5), ('r1','g1',13,'jrob',4),
-  ('r1','g1',14,'brad',6), ('r1','g1',14,'merling',5),('r1','g1',14,'jd',4), ('r1','g1',14,'jrob',4),
-  ('r1','g1',15,'brad',3), ('r1','g1',15,'merling',3),('r1','g1',15,'jd',3), ('r1','g1',15,'jrob',4),
-  ('r1','g1',16,'brad',5), ('r1','g1',16,'merling',4),('r1','g1',16,'jd',5), ('r1','g1',16,'jrob',5),
-  ('r1','g1',17,'brad',4), ('r1','g1',17,'merling',5),('r1','g1',17,'jd',4), ('r1','g1',17,'jrob',3),
-  ('r1','g1',18,'brad',5), ('r1','g1',18,'merling',4),('r1','g1',18,'jd',5), ('r1','g1',18,'jrob',4);
-
--- Round 2, Group 2 (zach, steve, rob, buddy)
-INSERT INTO player_hole_scores (round_id, group_id, hole_number, player_id, strokes) VALUES
-  ('r2','g2',1,'zach',4),  ('r2','g2',1,'steve',5), ('r2','g2',1,'rob',4),  ('r2','g2',1,'buddy',5),
-  ('r2','g2',2,'zach',3),  ('r2','g2',2,'steve',4), ('r2','g2',2,'rob',5),  ('r2','g2',2,'buddy',4),
-  ('r2','g2',3,'zach',3),  ('r2','g2',3,'steve',3), ('r2','g2',3,'rob',3),  ('r2','g2',3,'buddy',4),
-  ('r2','g2',4,'zach',5),  ('r2','g2',4,'steve',4), ('r2','g2',4,'rob',4),  ('r2','g2',4,'buddy',6),
-  ('r2','g2',5,'zach',5),  ('r2','g2',5,'steve',6), ('r2','g2',5,'rob',5),  ('r2','g2',5,'buddy',5),
-  ('r2','g2',6,'zach',4),  ('r2','g2',6,'steve',3), ('r2','g2',6,'rob',3),  ('r2','g2',6,'buddy',3),
-  ('r2','g2',7,'zach',4),  ('r2','g2',7,'steve',5), ('r2','g2',7,'rob',4),  ('r2','g2',7,'buddy',4),
-  ('r2','g2',8,'zach',5),  ('r2','g2',8,'steve',5), ('r2','g2',8,'rob',6),  ('r2','g2',8,'buddy',5),
-  ('r2','g2',9,'zach',4),  ('r2','g2',9,'steve',4), ('r2','g2',9,'rob',5),  ('r2','g2',9,'buddy',3),
-  ('r2','g2',10,'zach',5), ('r2','g2',10,'steve',4),('r2','g2',10,'rob',4), ('r2','g2',10,'buddy',5),
-  ('r2','g2',11,'zach',3), ('r2','g2',11,'steve',4),('r2','g2',11,'rob',3), ('r2','g2',11,'buddy',3),
-  ('r2','g2',12,'zach',6), ('r2','g2',12,'steve',5),('r2','g2',12,'rob',5), ('r2','g2',12,'buddy',6),
-  ('r2','g2',13,'zach',4), ('r2','g2',13,'steve',4),('r2','g2',13,'rob',4), ('r2','g2',13,'buddy',5),
-  ('r2','g2',14,'zach',3), ('r2','g2',14,'steve',5),('r2','g2',14,'rob',4), ('r2','g2',14,'buddy',4),
-  ('r2','g2',15,'zach',3), ('r2','g2',15,'steve',3),('r2','g2',15,'rob',4), ('r2','g2',15,'buddy',3),
-  ('r2','g2',16,'zach',5), ('r2','g2',16,'steve',5),('r2','g2',16,'rob',5), ('r2','g2',16,'buddy',4),
-  ('r2','g2',17,'zach',4), ('r2','g2',17,'steve',4),('r2','g2',17,'rob',5), ('r2','g2',17,'buddy',4),
-  ('r2','g2',18,'zach',5), ('r2','g2',18,'steve',4),('r2','g2',18,'rob',4), ('r2','g2',18,'buddy',5);
+  ('pg-1', 'evt-day1-scramble', 'Group 1', '8:00 AM', ARRAY['brad','zach','jd','rob']);
 
 -- ═══════════════════════════════════════════════════════════════
 -- 13. TRIP MEMBERS

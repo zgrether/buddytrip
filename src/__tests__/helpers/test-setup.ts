@@ -110,8 +110,8 @@ export class TestContext {
 
   /** IDs of resources created via helper methods, cleaned up automatically. */
   private _tripIds: string[] = [];
+  private _competitionIds: string[] = [];
   private _eventIds: string[] = [];
-  private _roundIds: string[] = [];
   private _groupIds: string[] = [];
   private _teamIds: string[] = [];
   private _seriesIds: string[] = [];
@@ -194,70 +194,74 @@ export class TestContext {
     if (error) throw new Error(`Failed to add trip member: ${error.message}`);
   }
 
-  /** Create an event for a trip. */
-  async createEvent(tripId: string, title = "Test Event"): Promise<string> {
-    const eventId = `test-evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  /** Create a competition for a trip. */
+  async createCompetition(tripId: string, name = "Test Competition"): Promise<string> {
+    const competitionId = `test-comp-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
     const { error } = await this.admin
-      .from("events")
-      .insert({ id: eventId, trip_id: tripId, title, location: "Test", dates: "2026" });
+      .from("competitions")
+      .insert({ id: competitionId, trip_id: tripId, name });
+    if (error) throw new Error(`Failed to create competition: ${error.message}`);
+    this._competitionIds.push(competitionId);
+    return competitionId;
+  }
+
+  /** Create an event (scored activity) under a competition. */
+  async createEvent(
+    competitionId: string,
+    opts: { type?: "GOLF" | "GENERIC"; title?: string; day?: number; isPractice?: boolean } = {}
+  ): Promise<string> {
+    const eventId = `test-evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const { error } = await this.admin.from("events").insert({
+      id: eventId,
+      competition_id: competitionId,
+      type: opts.type ?? "GOLF",
+      title: opts.title ?? `Day ${opts.day ?? 1}`,
+      scoring_format: opts.type === "GENERIC" ? null : "scramble",
+      day: opts.day ?? 1,
+      is_practice: opts.isPractice ?? false,
+      points_available: 4,
+    });
     if (error) throw new Error(`Failed to create event: ${error.message}`);
     this._eventIds.push(eventId);
     return eventId;
   }
 
-  /** Create a round for an event. */
-  async createRound(eventId: string, opts: { day?: number; format?: string } = {}): Promise<string> {
-    const roundId = `test-rnd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const { error } = await this.admin
-      .from("rounds")
-      .insert({
-        id: roundId,
-        event_id: eventId,
-        day: opts.day ?? 1,
-        title: `Day ${opts.day ?? 1}`,
-        course: "Test Course",
-        format: opts.format ?? "scramble",
-        points_available: 4,
-      });
-    if (error) throw new Error(`Failed to create round: ${error.message}`);
-    this._roundIds.push(roundId);
-    return roundId;
-  }
-
-  /** Create a team for an event. */
+  /** Create a team under a competition. */
   async createTeam(
-    eventId: string,
+    competitionId: string,
     name = "Team A",
     opts: { shortName?: string; color?: string; colorDim?: string } = {}
   ): Promise<string> {
     const teamId = `test-team-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const { error } = await this.admin
-      .from("teams")
-      .insert({
-        id: teamId,
-        event_id: eventId,
-        name,
-        short_name: opts.shortName ?? name.slice(0, 3).toUpperCase(),
-        color: opts.color ?? "#00e676",
-        color_dim: opts.colorDim ?? "#00e67640",
-      });
+    const { error } = await this.admin.from("teams").insert({
+      id: teamId,
+      competition_id: competitionId,
+      name,
+      short_name: opts.shortName ?? name.slice(0, 3).toUpperCase(),
+      color: opts.color ?? "#3b82f6",
+      color_dim: opts.colorDim ?? "#0a1a2a",
+    });
     if (error) throw new Error(`Failed to create team: ${error.message}`);
     this._teamIds.push(teamId);
     return teamId;
   }
 
-  /** Create a play group for an event. */
-  async createPlayGroup(eventId: string, playerIds: string[], name = "Group A"): Promise<string> {
+  /** Create a play group under an event. */
+  async createPlayGroup(
+    eventId: string,
+    playerIds: string[],
+    name: string | null = "Group A"
+  ): Promise<string> {
     const groupId = `test-grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const { error } = await this.admin
-      .from("play_groups")
-      .insert({
-        id: groupId,
-        event_id: eventId,
-        name,
-        tee_time: "8:00 AM",
-        player_ids: playerIds,
-      });
+    const { error } = await this.admin.from("play_groups").insert({
+      id: groupId,
+      event_id: eventId,
+      name,
+      tee_time: "8:00 AM",
+      player_ids: playerIds,
+    });
     if (error) throw new Error(`Failed to create play group: ${error.message}`);
     this._groupIds.push(groupId);
     return groupId;
@@ -273,6 +277,22 @@ export class TestContext {
     if (!this._eventIds.includes(eventId)) this._eventIds.push(eventId);
   }
 
+  /** Register a competition ID created externally for cleanup. */
+  trackCompetition(competitionId: string) {
+    if (!this._competitionIds.includes(competitionId))
+      this._competitionIds.push(competitionId);
+  }
+
+  /** Register a team ID created externally for cleanup. */
+  trackTeam(teamId: string) {
+    if (!this._teamIds.includes(teamId)) this._teamIds.push(teamId);
+  }
+
+  /** Register a play group ID created externally for cleanup. */
+  trackGroup(groupId: string) {
+    if (!this._groupIds.includes(groupId)) this._groupIds.push(groupId);
+  }
+
   /** Register a series ID created externally (e.g. via tRPC caller) for cleanup. */
   trackSeries(seriesId: string) {
     if (!this._seriesIds.includes(seriesId)) this._seriesIds.push(seriesId);
@@ -280,35 +300,49 @@ export class TestContext {
 
   /** Delete all test data created by this context. Users are persistent — never deleted. */
   async cleanup() {
-    // Scores and results (depend on rounds + groups)
-    for (const roundId of this._roundIds) {
-      await this.admin.from("group_result_scores").delete().eq("round_id", roundId);
-      await this.admin.from("group_results").delete().eq("round_id", roundId);
+    // Scoring rows (event-scoped). FK rebound in migration 062.
+    for (const eventId of this._eventIds) {
+      await this.admin.from("group_results").delete().eq("event_id", eventId);
+      await this.admin.from("player_hole_scores").delete().eq("event_id", eventId);
     }
-    // Play groups (depend on events)
+    // Play groups (event-scoped)
     for (const groupId of this._groupIds) {
       await this.admin.from("play_groups").delete().eq("id", groupId);
     }
-    // Rounds (depend on events)
-    for (const roundId of this._roundIds) {
-      await this.admin.from("rounds").delete().eq("id", roundId);
-    }
-    // Teams + team_assignments (depend on events)
-    for (const teamId of this._teamIds) {
-      await this.admin.from("team_assignments").delete().eq("team_id", teamId);
-      await this.admin.from("teams").delete().eq("id", teamId);
-    }
-    // Side events, scoreboard shares (depend on events)
     for (const eventId of this._eventIds) {
-      await this.admin.from("side_events").delete().eq("event_id", eventId);
-      await this.admin.from("scoreboard_shares").delete().eq("event_id", eventId);
-      await this.admin.from("team_assignments").delete().eq("event_id", eventId);
-      await this.admin.from("teams").delete().eq("event_id", eventId);
       await this.admin.from("play_groups").delete().eq("event_id", eventId);
+      await this.admin
+        .from("event_point_distributions")
+        .delete()
+        .eq("event_id", eventId);
     }
-    // Events (depend on trips)
+    // Events (depend on competitions)
     for (const eventId of this._eventIds) {
       await this.admin.from("events").delete().eq("id", eventId);
+    }
+    // Team assignments + teams (competition-scoped)
+    for (const competitionId of this._competitionIds) {
+      await this.admin
+        .from("team_assignments")
+        .delete()
+        .eq("competition_id", competitionId);
+    }
+    for (const teamId of this._teamIds) {
+      await this.admin.from("teams").delete().eq("id", teamId);
+    }
+    for (const competitionId of this._competitionIds) {
+      await this.admin.from("teams").delete().eq("competition_id", competitionId);
+    }
+    // Scoreboard shares (competition-scoped per migration 062)
+    for (const competitionId of this._competitionIds) {
+      await this.admin
+        .from("scoreboard_shares")
+        .delete()
+        .eq("competition_id", competitionId);
+    }
+    // Competitions
+    for (const competitionId of this._competitionIds) {
+      await this.admin.from("competitions").delete().eq("id", competitionId);
     }
     // Trip-level tables
     for (const tripId of this._tripIds) {

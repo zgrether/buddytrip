@@ -3,49 +3,51 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 
 let ctx: TestContext;
 let tripId: string;
-let eventId: string;
-let teamId: string;
+let competitionId: string;
+let teamA: string;
+let teamB: string;
 
 describe("teamAssignments router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Assign Test");
+    tripId = await ctx.createTrip("Assignments Test");
     await ctx.addTripMember(tripId, "member", "Member");
-    eventId = await ctx.createEvent(tripId);
-    teamId = await ctx.createTeam(eventId, "Team A");
+    competitionId = await ctx.createCompetition(tripId, "Assignments Test Cup");
+    teamA = await ctx.createTeam(competitionId, "Team A");
+    teamB = await ctx.createTeam(competitionId, "Team B");
   });
 
   afterAll(async () => {
     await ctx.cleanup();
   });
 
-  it("assign — owner can assign a player", async () => {
-    const member = ctx.getUser("member");
+  it("assign — planner can assign a member to a team", async () => {
     const caller = ctx.caller();
+    const member = ctx.getUser("member");
     const assignment = await caller.teamAssignments.assign({
       tripId,
-      eventId,
-      teamId,
+      competitionId,
       userId: member.id,
+      teamId: teamA,
     });
-    expect(assignment.team_id).toBe(teamId);
+    expect(assignment.team_id).toBe(teamA);
   });
 
-  it("list — member can view assignments", async () => {
-    const caller = ctx.callerAs("member");
-    const assignments = await caller.teamAssignments.list({ tripId, eventId });
-    expect(assignments.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("remove — owner can remove assignment", async () => {
-    const member = ctx.getUser("member");
+  it("assign — calling again replaces team (composite PK)", async () => {
     const caller = ctx.caller();
-    const result = await caller.teamAssignments.remove({
+    const member = ctx.getUser("member");
+    const updated = await caller.teamAssignments.assign({
       tripId,
-      eventId,
+      competitionId,
       userId: member.id,
+      teamId: teamB,
     });
-    expect(result.success).toBe(true);
+    expect(updated.team_id).toBe(teamB);
+
+    const list = await caller.teamAssignments.list({ tripId, competitionId });
+    const memberAssignments = list.filter((a) => a.user_id === member.id);
+    expect(memberAssignments.length).toBe(1);
+    expect(memberAssignments[0].team_id).toBe(teamB);
   });
 
   it("assign — member cannot assign", async () => {
@@ -53,10 +55,21 @@ describe("teamAssignments router", () => {
     await expect(
       caller.teamAssignments.assign({
         tripId,
-        eventId,
-        teamId,
+        competitionId,
         userId: ctx.user.id,
+        teamId: teamA,
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("remove — only owner can remove (per spec)", async () => {
+    const ownerCaller = ctx.caller();
+    const member = ctx.getUser("member");
+    const result = await ownerCaller.teamAssignments.remove({
+      tripId,
+      competitionId,
+      userId: member.id,
+    });
+    expect(result).toEqual({ success: true });
   });
 });

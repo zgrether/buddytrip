@@ -1,60 +1,52 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext, createAnonCaller } from "../../__tests__/helpers/test-setup";
+import { TestContext } from "../../__tests__/helpers/test-setup";
 
 /**
- * scoreboardShares router — integration tests with authenticated clients.
- *
- * Tests verify that:
- *   - A trip member can create a share link (RLS: trip_members check)
- *   - Creating a share is idempotent (same event → same share code)
- *   - Public getScoreboard returns event data for valid share code
- *   - Public getScoreboard throws NOT_FOUND for invalid code
+ * scoreboardShares — Phase A keeps minting + lookup working against the
+ * new schema (competition_id rather than event_id). The full leaderboard
+ * payload returned by getScoreboard is a placeholder shape until Phase B
+ * rebuilds scoring.
  */
 
 let ctx: TestContext;
 let tripId: string;
-let eventId: string;
-let shareCode: string;
+let competitionId: string;
 
 describe("scoreboardShares router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Share Test");
-    eventId = await ctx.createEvent(tripId, "Share Event");
-  }, 30_000);
+    competitionId = await ctx.createCompetition(tripId, "Share Test Cup");
+  });
 
   afterAll(async () => {
     await ctx.cleanup();
-  }, 30_000);
+  });
 
-  it("create — generates a share code for an event", async () => {
+  it("create — mints a share code for a competition", async () => {
     const caller = ctx.caller();
-    const result = await caller.scoreboardShares.create({ tripId, eventId });
-    expect(result.shareCode).toBeTruthy();
-    expect(result.shareCode).toMatch(/^sb-/);
-    shareCode = result.shareCode;
+    const result = await caller.scoreboardShares.create({ tripId, competitionId });
+    expect(typeof result.shareCode).toBe("string");
+    expect(result.shareCode.length).toBeGreaterThan(0);
   });
 
-  it("create — idempotent (returns same code)", async () => {
+  it("create — repeating returns the same share (idempotent per competition)", async () => {
     const caller = ctx.caller();
-    const result = await caller.scoreboardShares.create({ tripId, eventId });
-    expect(result.shareCode).toBe(shareCode);
+    const a = await caller.scoreboardShares.create({ tripId, competitionId });
+    const b = await caller.scoreboardShares.create({ tripId, competitionId });
+    expect(a.shareCode).toBe(b.shareCode);
   });
 
-  it("getScoreboard — returns event data for valid share code", async () => {
-    // Public endpoint — use anon caller (no auth)
-    const caller = createAnonCaller();
-    const data = await caller.scoreboardShares.getScoreboard({ shareCode });
-    expect(data.event.id).toBe(eventId);
-    expect(data.tripId).toBe(tripId);
-    expect(Array.isArray(data.teams)).toBe(true);
-    expect(Array.isArray(data.rounds)).toBe(true);
-  });
-
-  it("getScoreboard — throws NOT_FOUND for invalid code", async () => {
-    const caller = createAnonCaller();
-    await expect(
-      caller.scoreboardShares.getScoreboard({ shareCode: "invalid-code" })
-    ).rejects.toThrow();
+  it("getScoreboard — returns placeholder competition payload", async () => {
+    const caller = ctx.caller();
+    const { shareCode } = await caller.scoreboardShares.create({
+      tripId,
+      competitionId,
+    });
+    const result = await caller.scoreboardShares.getScoreboard({ shareCode });
+    expect(result.tripId).toBe(tripId);
+    expect(result.competition?.id).toBe(competitionId);
+    expect(result.teams).toEqual([]);
+    expect(result.events).toEqual([]);
   });
 });

@@ -1,102 +1,165 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { TestContext } from "../../../../__tests__/helpers/test-setup";
 
 /**
- * Unit tests for round lifecycle state logic used in CompTab and GroupsTab.
+ * CompTab — data-layer integration tests.
  *
- * These test the pure state derivation logic:
- *   - StatusPill mapping: upcoming / active / submitted / closed
- *   - canEnterScore derivation per round status + canEdit
- *   - statusColor derivation for round card left borders
+ * The new CompTab + sibling panels are pure presentational React; React
+ * Testing Library + jsdom aren't yet in this repo, so we cover the full
+ * spec matrix through the data layer that drives each render branch.
+ * Phase B (when the live leaderboard returns and the CompTab gains
+ * substantial interactive state) is the right time to add the RTL
+ * harness; this file documents and verifies the data prerequisites
+ * for every spec scenario in the meantime.
+ *
+ * Spec scenarios (from CC_COMPETITION_SETUP §Task 10) and where each
+ * is exercised:
+ *
+ *   1. No competition + canEdit          → "no competition state"
+ *   2. No competition + member           → same data path; UI branch
+ *                                          differs only by canEdit flag
+ *   3. Competition exists                → "competition exists"
+ *   4. Competition exists → 4 panels     → asserted via competition +
+ *                                          empty teams + empty events +
+ *                                          empty groups all resolving
+ *   5. GroupsPanel locked (no GOLF)      → "groups panel locked"
+ *   6. GroupsPanel unlocked (GOLF exists)→ "groups panel unlocked"
+ *   7. TeamsPanel unassigned members     → "teams unassigned"
+ *   8. EventsPanel practice flag         → "practice event"
+ *   9. EventsPanel missing course warn   → "non-practice event needs course"
  */
 
-// ── StatusPill config logic (mirrors CompTab's StatusPill) ─────────────────
+let ctx: TestContext;
+let tripId: string;
 
-function getStatusConfig(status: string) {
-  return status === "active"
-    ? { label: "Active", color: "#00d4aa" }
-    : status === "submitted"
-      ? { label: "Submitted", color: "#f59e0b" }
-      : status === "closed" || status === "completed"
-        ? { label: "Closed", color: "#8b949e" }
-        : { label: "Upcoming", color: "#a78bfa" };
-}
-
-// ── canEnterScore logic (mirrors GroupsTab) ────────────────────────────────
-
-function canEnterScore(roundStatus: string, canEdit: boolean) {
-  return roundStatus === "active" || (roundStatus === "submitted" && canEdit);
-}
-
-// ── statusColor logic (mirrors CompTab round cards) ────────────────────────
-
-function statusColor(status: string) {
-  return status === "active" ? "#00d4aa"
-    : status === "submitted" ? "#f59e0b"
-      : status === "closed" ? "#8b949e"
-        : "#6e7681";
-}
-
-// ── Tests ──────────────────────────────────────────────────────────────────
-
-describe("Round lifecycle: StatusPill config", () => {
-  it("maps 'upcoming' to purple Upcoming pill", () => {
-    const cfg = getStatusConfig("upcoming");
-    expect(cfg.label).toBe("Upcoming");
-    expect(cfg.color).toBe("#a78bfa");
+describe("CompTab data layer", () => {
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("CompTab data tests");
+    await ctx.addTripMember(tripId, "member", "Member");
   });
 
-  it("maps 'active' to green Active pill", () => {
-    const cfg = getStatusConfig("active");
-    expect(cfg.label).toBe("Active");
-    expect(cfg.color).toBe("#00d4aa");
+  afterAll(async () => {
+    await ctx.cleanup();
   });
 
-  it("maps 'submitted' to amber Submitted pill", () => {
-    const cfg = getStatusConfig("submitted");
-    expect(cfg.label).toBe("Submitted");
-    expect(cfg.color).toBe("#f59e0b");
+  it("no competition state — getByTrip returns null", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+    expect(competition).toBeNull();
   });
 
-  it("maps 'closed' to gray Closed pill", () => {
-    const cfg = getStatusConfig("closed");
-    expect(cfg.label).toBe("Closed");
-    expect(cfg.color).toBe("#8b949e");
+  it("competition exists — header reads name + tagline", async () => {
+    const caller = ctx.caller();
+    const created = await caller.competitions.create({
+      tripId,
+      name: "Header Cup",
+      tagline: "First Past the Post",
+    });
+    ctx.trackCompetition(created.id);
+
+    const fetched = await caller.competitions.getByTrip({ tripId });
+    expect(fetched?.name).toBe("Header Cup");
+    expect(fetched?.tagline).toBe("First Past the Post");
   });
 
-  it("maps 'completed' to gray Closed pill (legacy compat)", () => {
-    const cfg = getStatusConfig("completed");
-    expect(cfg.label).toBe("Closed");
-    expect(cfg.color).toBe("#8b949e");
-  });
-});
+  it("competition exists — every sibling panel resolves an empty list", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+    expect(competition).not.toBeNull();
 
-describe("Round lifecycle: canEnterScore", () => {
-  it("active round: anyone can score", () => {
-    expect(canEnterScore("active", false)).toBe(true);
-    expect(canEnterScore("active", true)).toBe(true);
-  });
-
-  it("submitted round: only canEdit users can score", () => {
-    expect(canEnterScore("submitted", false)).toBe(false);
-    expect(canEnterScore("submitted", true)).toBe(true);
+    const [teams, events, assignments] = await Promise.all([
+      caller.teams.list({ tripId, competitionId: competition!.id }),
+      caller.events.list({ tripId, competitionId: competition!.id }),
+      caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
+    ]);
+    expect(teams).toEqual([]);
+    expect(events).toEqual([]);
+    expect(assignments).toEqual([]);
   });
 
-  it("closed round: nobody can score", () => {
-    expect(canEnterScore("closed", false)).toBe(false);
-    expect(canEnterScore("closed", true)).toBe(false);
+  it("groups panel locked — no GOLF events means no per-event group view", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+    const events = await caller.events.list({
+      tripId,
+      competitionId: competition!.id,
+    });
+    const golfEvents = events.filter((e) => e.type === "GOLF");
+    expect(golfEvents.length).toBe(0); // GroupsPanel renders its locked state
   });
 
-  it("upcoming round: nobody can score", () => {
-    expect(canEnterScore("upcoming", false)).toBe(false);
-    expect(canEnterScore("upcoming", true)).toBe(false);
-  });
-});
+  it("teams unassigned — members exist but no assignments yet", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+    await caller.teams.create({
+      tripId,
+      competitionId: competition!.id,
+      name: "Team A",
+      shortName: "A",
+      color: "#3b82f6",
+      colorDim: "#0a1a2a",
+    });
 
-describe("Round lifecycle: statusColor", () => {
-  it("returns correct colors for each state", () => {
-    expect(statusColor("active")).toBe("#00d4aa");
-    expect(statusColor("submitted")).toBe("#f59e0b");
-    expect(statusColor("closed")).toBe("#8b949e");
-    expect(statusColor("upcoming")).toBe("#6e7681");
+    const [teams, assignments, members] = await Promise.all([
+      caller.teams.list({ tripId, competitionId: competition!.id }),
+      caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
+      caller.tripMembers.list({ tripId }),
+    ]);
+    expect(teams.length).toBeGreaterThan(0);
+    expect(members.length).toBeGreaterThan(0);
+    // The "Assign Members" UI section renders dropdowns for members not in
+    // assignments — at this stage every member is unassigned.
+    expect(assignments.length).toBe(0);
+  });
+
+  it("practice event — the is_practice flag drives the muted card + 'excluded' note", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+    const created = await caller.events.create({
+      tripId,
+      competitionId: competition!.id,
+      type: "GOLF",
+      title: "Warmup Round",
+      scoringFormat: "scramble",
+      isPractice: true,
+    });
+    expect(created.is_practice).toBe(true);
+  });
+
+  it("non-practice event needs course — course_id remains null until a course is picked", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+    const created = await caller.events.create({
+      tripId,
+      competitionId: competition!.id,
+      type: "GOLF",
+      title: "Day 1 Scramble",
+      scoringFormat: "scramble",
+      day: 1,
+    });
+    // EventCard reads course_id; when null + non-practice it surfaces the
+    // "Course needed" warning badge.
+    expect(created.course_id).toBeNull();
+    expect(created.is_practice).toBe(false);
+  });
+
+  it("groups panel unlocked — once a GOLF event exists, per-event groups are list-able", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+    const events = await caller.events.list({
+      tripId,
+      competitionId: competition!.id,
+    });
+    const golfEvent = events.find((e) => e.type === "GOLF");
+    expect(golfEvent).toBeDefined();
+
+    // The list is empty at this point but the query resolves — that's what
+    // unlocks the per-event groups view in GroupsPanel.
+    const groups = await caller.playGroups.list({
+      tripId,
+      eventId: golfEvent!.id,
+    });
+    expect(Array.isArray(groups)).toBe(true);
   });
 });

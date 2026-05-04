@@ -34,7 +34,6 @@ export interface TripData {
   owner_alert_set_at?: string | null;
   owner_alert_set_by?: string | null;
   trip_status_override?: string | null;
-  event_id?: string | null;
   series_id?: string | null;
   created_at?: string | null;
   last_blast_sent_at?: string | null;
