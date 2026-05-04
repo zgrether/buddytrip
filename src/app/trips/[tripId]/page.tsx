@@ -23,7 +23,6 @@ import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
-import { CompetitionStrip } from "./components/CompetitionStrip";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -57,45 +56,20 @@ export default function TripDetailPage() {
   const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
   const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
-  // Competition data: events only needs tripId; teams/scores need the eventId
-  // which we grab from the trip object once it resolves (avoids a second round
-  // trip by not waiting for events.getByTrip to return first).
-  const { data: prefetchedEvent, isLoading: eventLoading } = trpc.events.getByTrip.useQuery({ tripId });
-  const prefetchEventId = prefetchedEvent?.id ?? trip?.event_id ?? "";
-  const { isLoading: teamsLoading } = trpc.teams.list.useQuery(
-    { tripId, eventId: prefetchEventId },
-    { enabled: !!prefetchEventId }
-  );
-  const { isLoading: scoresLoading } = trpc.groupResults.listScoresByEvent.useQuery(
-    { tripId, eventId: prefetchEventId },
-    { enabled: !!prefetchEventId }
-  );
+  // Competition: drives the showComp gate + the bottom-nav "Live" entry.
+  // The new schema (migration 062) tracks this via `competitions` rather
+  // than the dropped trips.event_id column. Phase B will reintroduce the
+  // sub-page prefetches (teams/events/groups/scores) once the live
+  // leaderboard is rebuilt against the new model.
+  const { data: competition, isLoading: competitionLoading } =
+    trpc.competitions.getByTrip.useQuery({ tripId });
 
   // ── Background prefetch for tab badge conditions ───────────────────────
   // Not added to dataLoading — loads in parallel, dot appears when ready.
   const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
 
-  // ── Prefetch sub-page queries so Messages/Leaderboard get cache hits ─────
-  // These all need eventId, which we already have above.
-  trpc.teamAssignments.list.useQuery(
-    { tripId, eventId: prefetchEventId },
-    { enabled: !!prefetchEventId }
-  );
-  trpc.rounds.list.useQuery(
-    { tripId, eventId: prefetchEventId },
-    { enabled: !!prefetchEventId }
-  );
-  trpc.playGroups.list.useQuery(
-    { tripId, eventId: prefetchEventId },
-    { enabled: !!prefetchEventId }
-  );
-  trpc.sideEvents.list.useQuery(
-    { tripId, eventId: prefetchEventId },
-    { enabled: !!prefetchEventId }
-  );
-
   const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
-    || reservationsLoading || tilesLoading || eventLoading || teamsLoading || scoresLoading;
+    || reservationsLoading || tilesLoading || competitionLoading;
 
   // ── Notifications ─────────────────────────────────────────────────────────
   useRealtimeNotifications([tripId]);
@@ -171,7 +145,7 @@ export default function TripDetailPage() {
   // doesn't clear it, so the old destination would bleed through to the header.
   const destLocation = trip.locked_destination_location
     ?? (trip.comparison_mode ? null : trip.location);
-  const showComp = !!trip.event_id || compUnlocked;
+  const showComp = !!competition || compUnlocked;
   const isLocked = !!trip.locked_destination_title;
 
   // Effective canEdit: forced false when read-only
@@ -323,14 +297,9 @@ export default function TripDetailPage() {
                    no longer rendered above the tab bar. The QuickInfoSection
                    data hooks are still used by QuickInfoPanel inside HomeTab. */}
 
-              {/* Competition strip — persistent across all tabs once a comp
-                   is set up. Replaces the home-tab CompetitionPanel's live
-                   state so the leaderboard is reachable from any tab. */}
-              {trip.event_id && stage !== "idea" && stage !== "planning" && (
-                <div className="mb-3">
-                  <CompetitionStrip tripId={tripId} eventId={trip.event_id} />
-                </div>
-              )}
+              {/* Competition strip — removed in Phase A schema rebuild.
+                   The persistent leaderboard summary returns in Phase B
+                   once scoring is wired through to the new events model. */}
 
               {stage !== "planning" && (
                 <TripTabBar
@@ -398,13 +367,14 @@ export default function TripDetailPage() {
       )}
 
       {/* ── Bottom navigation ─────────────────────────────────────────────
-          Only renders once a real competition exists (event_id set), not
-          merely when the user has clicked through the comp setup intent
-          (compUnlocked). Until then, there's nowhere to navigate to —
-          the second nav slot ("Live") would be the only destination, and
-          a bottom nav with one button is wasted chrome. */}
-      {!!trip.event_id && (
-        <TripBottomNav tripId={tripId} eventId={trip.event_id} />
+          Only renders once a real competition exists, not merely when
+          the user has clicked through the comp setup intent
+          (compUnlocked). Until then, the second nav slot ("Live") would
+          be the only destination, and a bottom nav with one button is
+          wasted chrome. The new model stores this on competitions, not
+          trips.event_id. */}
+      {!!competition && (
+        <TripBottomNav tripId={tripId} eventId={competition.id} />
       )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}

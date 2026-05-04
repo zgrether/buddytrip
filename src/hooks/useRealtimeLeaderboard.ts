@@ -1,83 +1,16 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { createClient } from "@/lib/supabase";
-import { trpc } from "@/lib/trpc-client";
-
 /**
- * Subscribes to Supabase Realtime channels for live leaderboard updates.
+ * useRealtimeLeaderboard — STUBBED in Phase A.
  *
- * Channels:
- *   - `scores:{eventId}` — listens to INSERT/UPDATE on group_results
- *   - `side-events:{eventId}` — listens to UPDATE on side_events
+ * The legacy hook subscribed to `group_results` (filtered by event_id) and
+ * `side_events` to refresh the live leaderboard. Migration 062 retired the
+ * old events shape and dropped the `side_events` table; the new event
+ * model isn't wired through to scoring yet (Phase B).
  *
- * On any event, invalidates the relevant TanStack Query caches so the
- * leaderboard UI refetches automatically.
+ * Exporting a no-op keeps the existing imports compiling. The leaderboard
+ * page itself renders a placeholder until Phase B rebuilds scoring.
  */
-export function useRealtimeLeaderboard(tripId: string, eventId: string) {
-  const utils = trpc.useUtils();
-  const supabaseRef = useRef(createClient());
-
-  useEffect(() => {
-    if (!eventId) return;
-
-    const supabase = supabaseRef.current;
-
-    const invalidateScores = () => {
-      utils.groupResults.listScoresByEvent.invalidate({ tripId, eventId });
-      utils.groupResults.list.invalidate();
-    };
-
-    const invalidateSideEvents = () => {
-      utils.sideEvents.list.invalidate({ tripId, eventId });
-    };
-
-    // Channel 1: group_results changes (score submissions)
-    const scoresChannel = supabase
-      .channel(`scores:${eventId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "group_results",
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => {
-          invalidateScores();
-        }
-      )
-      .subscribe((status) => {
-        // On reconnect, invalidate to catch any missed events
-        if (status === "SUBSCRIBED") {
-          invalidateScores();
-        }
-      });
-
-    // Channel 2: side_events changes (side event completions)
-    const sideEventsChannel = supabase
-      .channel(`side-events:${eventId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "side_events",
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => {
-          invalidateSideEvents();
-        }
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          invalidateSideEvents();
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(scoresChannel);
-      supabase.removeChannel(sideEventsChannel);
-    };
-  }, [eventId, tripId, utils]);
+export function useRealtimeLeaderboard(_tripId: string, _eventId: string) {
+  // intentionally empty — Phase B re-implements against the new schema.
 }

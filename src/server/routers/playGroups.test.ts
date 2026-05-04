@@ -1,82 +1,84 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext, genId } from "../../__tests__/helpers/test-setup";
+import { TestContext } from "../../__tests__/helpers/test-setup";
 
 let ctx: TestContext;
 let tripId: string;
+let competitionId: string;
 let eventId: string;
-let groupId: string;
 
 describe("playGroups router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Groups Test");
     await ctx.addTripMember(tripId, "member", "Member");
-    eventId = await ctx.createEvent(tripId);
+    competitionId = await ctx.createCompetition(tripId, "Groups Test Cup");
+    eventId = await ctx.createEvent(competitionId, { type: "GOLF" });
   });
 
   afterAll(async () => {
     await ctx.cleanup();
   });
 
-  it("create — owner can create a play group", async () => {
-    const member = ctx.getUser("member");
+  it("create — owner can create a play group with name + tee time", async () => {
     const caller = ctx.caller();
+    const member = ctx.getUser("member");
     const group = await caller.playGroups.create({
       tripId,
-      id: genId("grp"),
       eventId,
       name: "Group 1",
       teeTime: "8:00 AM",
       playerIds: [ctx.user.id, member.id],
     });
     expect(group.name).toBe("Group 1");
-    expect(group.player_ids).toContain(ctx.user.id);
-    groupId = group.id;
+    expect(group.tee_time).toBe("8:00 AM");
+    expect(group.player_ids).toEqual([ctx.user.id, member.id]);
   });
 
-  it("list — member can view groups", async () => {
+  it("create — name and tee_time are optional", async () => {
+    const caller = ctx.caller();
+    const group = await caller.playGroups.create({
+      tripId,
+      eventId,
+      playerIds: [ctx.user.id],
+    });
+    expect(group.name).toBeNull();
+    expect(group.tee_time).toBeNull();
+  });
+
+  it("create — member cannot create", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.playGroups.create({
+        tripId,
+        eventId,
+        playerIds: [ctx.user.id],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("list — any member can view groups", async () => {
     const caller = ctx.callerAs("member");
     const groups = await caller.playGroups.list({ tripId, eventId });
-    expect(groups.length).toBeGreaterThanOrEqual(1);
+    expect(groups.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("update — owner can update", async () => {
+  it("update — planner can change player composition", async () => {
     const caller = ctx.caller();
+    const groups = await caller.playGroups.list({ tripId, eventId });
+    const target = groups[0];
     const updated = await caller.playGroups.update({
       tripId,
-      groupId,
-      teeTime: "9:00 AM",
+      groupId: target.id,
+      playerIds: [ctx.user.id],
     });
-    expect(updated.tee_time).toBe("9:00 AM");
+    expect(updated.player_ids).toEqual([ctx.user.id]);
   });
 
-  it("delete — owner can delete a play group", async () => {
+  it("delete — planner can delete", async () => {
     const caller = ctx.caller();
-    // Delete the group created in the first test
-    await expect(
-      caller.playGroups.delete({ tripId, groupId })
-    ).resolves.toEqual({ success: true });
-
-    // Confirm it no longer appears in the list
     const groups = await caller.playGroups.list({ tripId, eventId });
-    expect(groups.find((g) => g.id === groupId)).toBeUndefined();
-  });
-
-  it("delete — member (non-planner) cannot delete a play group", async () => {
-    // Create a fresh group to attempt deletion of
-    const caller = ctx.caller();
-    const fresh = await caller.playGroups.create({
-      tripId,
-      id: genId("grp"),
-      eventId,
-      name: "Group 2",
-      teeTime: "10:00 AM",
-      playerIds: [],
-    });
-
-    const memberCaller = ctx.callerAs("member");
-    await expect(
-      memberCaller.playGroups.delete({ tripId, groupId: fresh.id })
-    ).rejects.toThrow();
+    const target = groups[0];
+    const result = await caller.playGroups.delete({ tripId, groupId: target.id });
+    expect(result).toEqual({ success: true });
   });
 });

@@ -3,36 +3,47 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, authedProcedure } from "../trpc";
 import { requireTripMember } from "../middleware";
 
+/**
+ * scoreboardShares — STUBBED in Phase A.
+ *
+ * Migration 062 renamed `scoreboard_shares.event_id` → `competition_id`
+ * and dropped the legacy `events` shape that this router aggregated. The
+ * new scoreboard surface is owned by Phase B; meanwhile the public
+ * scoreboard page renders a placeholder.
+ *
+ * `create` accepts competitionId and writes the row so a share can still
+ * be minted from the UI in the future without rewriting this file.
+ * `getScoreboard` returns a minimal shape — name + tagline — pulled from
+ * `competitions`. The placeholder page consumes that to title the screen.
+ */
 export const scoreboardSharesRouter = router({
-  // -----------------------------------------------------------------------
-  // create — generate a share link for an event's scoreboard (trip member)
-  // Idempotent: returns existing share if one already exists for this event.
-  // -----------------------------------------------------------------------
+  // -------------------------------------------------------------------
+  // create — mint a share link (idempotent per competition)
+  // -------------------------------------------------------------------
   create: authedProcedure
-    .input(z.object({ tripId: z.string(), eventId: z.string() }))
+    .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      // Check if share already exists
       const { data: existing } = await ctx.supabase
         .from("scoreboard_shares")
         .select("id")
-        .eq("event_id", input.eventId)
-        .single();
+        .eq("competition_id", input.competitionId)
+        .maybeSingle();
 
       if (existing) {
-        return { shareCode: existing.id };
+        return { shareCode: existing.id as string };
       }
 
-      // Create new share
-      const shareCode = `sb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const { error } = await ctx.supabase
-        .from("scoreboard_shares")
-        .insert({
-          id: shareCode,
-          trip_id: input.tripId,
-          event_id: input.eventId,
-          created_by: ctx.user!.id,
-        });
+      const shareCode = `sb-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+
+      const { error } = await ctx.supabase.from("scoreboard_shares").insert({
+        id: shareCode,
+        trip_id: input.tripId,
+        competition_id: input.competitionId,
+        created_by: ctx.user!.id,
+      });
 
       if (error) {
         throw new TRPCError({
@@ -44,78 +55,37 @@ export const scoreboardSharesRouter = router({
       return { shareCode };
     }),
 
-  // -----------------------------------------------------------------------
-  // getScoreboard — public: fetch scoreboard data by share code (no auth)
-  // -----------------------------------------------------------------------
+  // -------------------------------------------------------------------
+  // getScoreboard — placeholder. Returns competition metadata only;
+  // Phase B fills in teams/events/scores once the new scoring model
+  // is in place.
+  // -------------------------------------------------------------------
   getScoreboard: publicProcedure
     .input(z.object({ shareCode: z.string() }))
     .query(async ({ ctx, input }) => {
-      // 1. Look up the share
       const { data: share, error: shareErr } = await ctx.supabase
         .from("scoreboard_shares")
-        .select("trip_id, event_id")
+        .select("trip_id, competition_id")
         .eq("id", input.shareCode)
         .single();
 
       if (shareErr || !share) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Scoreboard not found",
-        });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Scoreboard not found" });
       }
 
-      const { trip_id: tripId, event_id: eventId } = share;
-
-      // 2. Fetch event
-      const { data: event } = await ctx.supabase
-        .from("events")
-        .select("*")
-        .eq("id", eventId)
-        .single();
-
-      if (!event) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Event not found",
-        });
-      }
-
-      // 3. Fetch teams, rounds, side events, scores in parallel
-      const [teamsRes, roundsRes, sideEventsRes, roundResultsRes] =
-        await Promise.all([
-          ctx.supabase.from("teams").select("*").eq("event_id", eventId),
-          ctx.supabase
-            .from("rounds")
-            .select("*")
-            .eq("event_id", eventId)
-            .order("day", { ascending: true }),
-          ctx.supabase
-            .from("side_events")
-            .select("*")
-            .eq("event_id", eventId),
-          // Get round IDs first, then scores
-          ctx.supabase
-            .from("rounds")
-            .select("id")
-            .eq("event_id", eventId)
-            .then(async (r) => {
-              const roundIds = (r.data ?? []).map((row) => row.id);
-              if (roundIds.length === 0)
-                return { data: [], error: null };
-              return ctx.supabase
-                .from("round_results")
-                .select("round_id, team_id, total_points")
-                .in("round_id", roundIds);
-            }),
-        ]);
+      const { data: competition } = await ctx.supabase
+        .from("competitions")
+        .select("id, name, tagline, motto, status")
+        .eq("id", share.competition_id)
+        .maybeSingle();
 
       return {
-        tripId,
-        event,
-        teams: teamsRes.data ?? [],
-        rounds: roundsRes.data ?? [],
-        sideEvents: sideEventsRes.data ?? [],
-        roundScores: roundResultsRes.data ?? [],
+        tripId: share.trip_id as string,
+        competition: competition ?? null,
+        // Phase B will populate the rest. Empty arrays keep client TS happy.
+        teams: [] as Array<Record<string, unknown>>,
+        events: [] as Array<Record<string, unknown>>,
+        roundScores: [] as Array<Record<string, unknown>>,
       };
     }),
 });
