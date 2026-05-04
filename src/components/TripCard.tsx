@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, Calendar } from "lucide-react";
+import { MapPin, Calendar, Trophy } from "lucide-react";
 import { useTheme } from "next-themes";
 import { StatusBadge, getTripStatus } from "./StatusBadge";
 import { RoleBadge } from "./RoleBadge";
@@ -29,6 +29,8 @@ interface Trip {
   stage?: string | null;
   comparison_mode?: boolean | null;
   myRole?: TripRole | null;
+  /** True when at least one competitions row exists for this trip. */
+  hasCompetition?: boolean | null;
 }
 
 interface TripCardProps {
@@ -185,6 +187,21 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
 
       {/* Badges — absolute top right, above silhouette */}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+        {/* Trophy chip — surfaces trips that have a competition set up. */}
+        {trip.hasCompetition && (
+          <span
+            className="flex h-5 w-5 items-center justify-center rounded-full"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              color: "var(--color-bt-accent)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }}
+            title="Has competition"
+            aria-label="Competition set up for this trip"
+          >
+            <Trophy size={10} strokeWidth={2.5} />
+          </span>
+        )}
         {/* "now" is conveyed by the Live countdown bar — no redundant badge needed */}
         {status !== "now" && (
           <StatusBadge
