@@ -30,7 +30,7 @@ export function ItineraryIntroModal({
   onActivate,
   isActivating,
 }: ItineraryIntroModalProps) {
-  useModalBackButton(isOpen ? onClose : () => {});
+  useModalBackButton(onClose, isOpen);
   if (!isOpen) return null;
 
   return (
