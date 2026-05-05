@@ -162,11 +162,13 @@ export const venuesRouter = router({
 
       // App-level integrity check — schedule_items.id is uuid stored as
       // text here, so the DB has no FK. Verify the row exists and belongs
-      // to this trip before recording the linkage.
+      // to this trip, AND is confirmed before linking. Unconfirmed items
+      // (still being negotiated in the Schedule tab) shouldn't be
+      // structural to the competition.
       if (input.scheduleItemId) {
         const { data: item, error } = await ctx.supabase
           .from("schedule_items")
-          .select("id, trip_id")
+          .select("id, trip_id, is_confirmed")
           .eq("id", input.scheduleItemId)
           .maybeSingle();
         if (error || !item) {
@@ -179,6 +181,13 @@ export const venuesRouter = router({
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "Schedule item does not belong to this trip",
+          });
+        }
+        if (!item.is_confirmed) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message:
+              "Confirm this item in the Schedule tab before linking it as a venue",
           });
         }
       }

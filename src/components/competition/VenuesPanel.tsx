@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Cloud,
   Flag,
+  Lock,
   MapPin,
   Plus,
   X,
@@ -38,6 +39,7 @@ interface ScheduleItemRow {
   course_location: string | null;
   scheduled_date: string | null;
   scheduled_time: string | null;
+  is_confirmed: boolean;
 }
 
 interface EventRow {
@@ -400,26 +402,38 @@ function UnlinkedScheduleRow({
     onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
+  // Unconfirmed schedule items can't be linked yet — the planner is still
+  // negotiating the actual time/course in the Schedule tab. Surface the
+  // gate visibly (lock icon + dim copy) so it's clear what's blocking
+  // and where to fix it. The router rejects the same case server-side.
+  const locked = !item.is_confirmed;
+
   return (
     <div
       className="flex items-center gap-3 rounded-xl px-3 py-2.5"
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px dashed var(--color-bt-border)",
-        opacity: 0.85,
+        opacity: locked ? 0.7 : 0.85,
       }}
       data-testid={`unlinked-schedule-${item.id}`}
     >
-      <Flag size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      {locked ? (
+        <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      ) : (
+        <Flag size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
           {item.course_name ?? item.title}
         </p>
         <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          {formatDateTime(item.scheduled_date, item.scheduled_time)}
+          {locked
+            ? "Confirm in Schedule first"
+            : formatDateTime(item.scheduled_date, item.scheduled_time)}
         </p>
       </div>
-      {canEdit && (
+      {canEdit && !locked && (
         <button
           type="button"
           onClick={() =>
