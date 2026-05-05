@@ -58,7 +58,7 @@ export function UnlockAdvancedModal({
   // Reset step when closing so a re-open always starts at step 1.
   const handleClose = () => { setStep(1); onClose(); };
 
-  useModalBackButton(isOpen ? handleClose : () => {});
+  useModalBackButton(handleClose, isOpen);
 
   if (!isOpen) return null;
 

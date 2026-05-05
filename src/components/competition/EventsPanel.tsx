@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import {
   Calendar,
   ChevronDown,
+  CircleDot,
+  Cloud,
   Flag,
+  Info,
+  MapPin,
   Pencil,
   Plus,
   Star,
@@ -43,12 +47,22 @@ interface EventRow {
   title: string;
   description: string | null;
   scoring_format: ScoringFormat | null;
-  course_id: string | null;
   is_practice: boolean;
   points_available: number | null;
-  day: number | null;
   status: "upcoming" | "active" | "completed";
   point_distributions?: PointDistribution[];
+}
+
+interface ArenaLink {
+  event_id: string | null;
+  is_anytime: boolean;
+  // Joined schedule_items (when arena is scheduled) — see ArenasPanel
+  // for the full shape; we only need the display fields here.
+  schedule_item?: {
+    course_name?: string | null;
+    scheduled_date?: string | null;
+  } | null;
+  name?: string | null;
 }
 
 const FORMAT_LABELS: Record<ScoringFormat, string> = {
@@ -64,7 +78,7 @@ const FORMAT_LABELS: Record<ScoringFormat, string> = {
 // ── EventsPanel ─────────────────────────────────────────────────────────────
 
 export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState<EventRow | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -73,7 +87,17 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
     { enabled: !!competitionId }
   );
 
+  // Arena linkage drives the per-card status line. The arenas router is
+  // optional — if it isn't loaded yet (cold cache) we just render the
+  // "not assigned" warning, which matches the actual not-yet-linked state.
+  const { data: arenas = [] } = trpc.arenas.list.useQuery(
+    { tripId, competitionId },
+    { enabled: !!competitionId }
+  );
+
   const eventsTyped = events as EventRow[];
+  const arenasTyped = arenas as ArenaLink[];
+
   const totalEvents = eventsTyped.length;
   const practiceCount = eventsTyped.filter((e) => e.is_practice).length;
 
@@ -96,38 +120,14 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
     >
       <div className="space-y-3">
         {totalEvents === 0 && (
-          <div
-            className="rounded-xl px-4 py-5 text-center"
-            style={{
-              background: "var(--color-bt-surface-invitation)",
-              border: "1.5px dashed var(--color-bt-border)",
-            }}
-          >
-            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              No events yet
-            </p>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => setCreating(true)}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium"
-                style={{
-                  background: "transparent",
-                  color: "var(--color-bt-accent)",
-                  border: "1.5px dashed var(--color-bt-accent)",
-                }}
-              >
-                <Plus size={14} />
-                Add Event
-              </button>
-            )}
-          </div>
+          <EventsEmptyState canEdit={canEdit} onAdd={() => setCreating(true)} />
         )}
 
         {eventsTyped.map((event) => (
           <EventCard
             key={event.id}
             event={event}
+            arena={arenasTyped.find((a) => a.event_id === event.id) ?? null}
             canEdit={canEdit}
             tripId={tripId}
             onEdit={() => setEditing(event)}
@@ -166,7 +166,7 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
   );
 }
 
-// ── CollapsiblePanel (mirrors TeamsPanel's local one) ────────────────────────
+// ── CollapsiblePanel ────────────────────────────────────────────────────────
 
 function CollapsiblePanel({
   icon,
@@ -191,7 +191,7 @@ function CollapsiblePanel({
     state === "todo" ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)";
   const borderColor =
     state === "todo" ? "var(--color-bt-border)" : "var(--color-bt-accent-border)";
-  const bg = state === "done" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)";
+  const bg = state === "done" ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)";
 
   return (
     <div
@@ -241,26 +241,76 @@ function CollapsiblePanel({
   );
 }
 
+// ── EventsEmptyState ────────────────────────────────────────────────────────
+
+function EventsEmptyState({
+  canEdit,
+  onAdd,
+}: {
+  canEdit: boolean;
+  onAdd: () => void;
+}) {
+  return (
+    <div
+      className="rounded-xl px-4 py-6 text-center"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <div
+        className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+        }}
+      >
+        <Calendar size={20} />
+      </div>
+      <p
+        className="mt-3 text-sm font-semibold"
+        style={{ color: "var(--color-bt-text)" }}
+      >
+        No events yet
+      </p>
+      <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+        Add the rounds and activities you&rsquo;ll compete in.
+      </p>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="mx-auto mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
+          style={{
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-base)",
+          }}
+        >
+          <Plus size={15} />
+          Add Event
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── EventCard ───────────────────────────────────────────────────────────────
 
 function EventCard({
   event,
+  arena,
   canEdit,
   tripId,
   onEdit,
 }: {
   event: EventRow;
+  arena: ArenaLink | null;
   canEdit: boolean;
   tripId: string;
   onEdit: () => void;
 }) {
   const utils = trpc.useUtils();
   const isGolf = event.type === "GOLF";
-
-  const { data: course } = trpc.golfCourses.getById.useQuery(
-    { courseId: event.course_id ?? "" },
-    { enabled: isGolf && !!event.course_id }
-  );
 
   const remove = trpc.events.delete.useMutation({
     onSettled: () => utils.events.list.invalidate(),
@@ -271,10 +321,6 @@ function EventCard({
     remove.mutate({ tripId, eventId: event.id });
   }
 
-  const dayLabel = event.day ? `Day ${event.day}` : null;
-  const courseName = course && (course as { name?: string }).name;
-  const courseMissing = isGolf && !event.is_practice && !event.course_id;
-
   const distributions = event.point_distributions ?? [];
   const distSummary = distributions.length > 0
     ? distributions
@@ -283,13 +329,13 @@ function EventCard({
         .join(" · ")
     : null;
 
+  const statusLine = describeStatus(event, arena);
+
   return (
     <div
       className="flex items-start gap-3 rounded-xl px-3 py-3"
       style={{
-        background: event.is_practice
-          ? "var(--color-bt-card-raised)"
-          : "var(--color-bt-card-raised)",
+        background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
         opacity: event.is_practice ? 0.85 : 1,
       }}
@@ -308,7 +354,7 @@ function EventCard({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            {dayLabel ? `${dayLabel} · ${event.title}` : event.title}
+            {event.title}
           </p>
           {isGolf && event.scoring_format && (
             <span
@@ -335,34 +381,20 @@ function EventCard({
           )}
         </div>
 
-        {isGolf && (
-          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {courseName ?? (event.is_practice ? "No course set" : "")}
-          </p>
-        )}
+        {/* Status line — links the event to its arena (or warns if none). */}
+        <div
+          className="mt-0.5 flex items-center gap-1 text-[11px]"
+          style={{ color: statusLine.color }}
+        >
+          <statusLine.Icon size={11} />
+          <span>{statusLine.text}</span>
+        </div>
 
-        {event.is_practice && (
-          <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-warning)" }}>
-            Excluded from points
-          </p>
-        )}
         {!event.is_practice && distSummary && (
-          <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             {distSummary}
             {event.points_available !== null && ` · ${event.points_available}pt total`}
           </p>
-        )}
-        {courseMissing && (
-          <span
-            className="mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold"
-            style={{
-              background: "var(--color-bt-warning-faint)",
-              color: "var(--color-bt-warning)",
-            }}
-            data-testid="event-course-missing"
-          >
-            Course needed
-          </span>
         )}
       </div>
 
@@ -392,6 +424,62 @@ function EventCard({
   );
 }
 
+function describeStatus(
+  event: EventRow,
+  arena: ArenaLink | null
+): { Icon: typeof Flag; text: string; color: string } {
+  if (event.is_practice) {
+    return {
+      Icon: Info,
+      text: "Practice · Not scored",
+      color: "var(--color-bt-text-dim)",
+    };
+  }
+  if (arena?.is_anytime) {
+    return {
+      Icon: Cloud,
+      text: "Anytime",
+      color: "var(--color-bt-text-dim)",
+    };
+  }
+  if (arena?.schedule_item) {
+    const courseName = arena.schedule_item.course_name ?? arena.name ?? "Scheduled";
+    const date = arena.schedule_item.scheduled_date
+      ? formatShortDate(arena.schedule_item.scheduled_date)
+      : null;
+    return {
+      Icon: MapPin,
+      text: date ? `${courseName} · ${date}` : courseName,
+      color: "var(--color-bt-text-dim)",
+    };
+  }
+  if (arena?.name) {
+    return {
+      Icon: MapPin,
+      text: arena.name,
+      color: "var(--color-bt-text-dim)",
+    };
+  }
+  return {
+    Icon: CircleDot,
+    text: "Not assigned",
+    color: "var(--color-bt-warning)",
+  };
+}
+
+function formatShortDate(iso: string): string {
+  // schedule_items.scheduled_date is a DATE (YYYY-MM-DD). Parse as
+  // local date so a Friday doesn't roll back to Thursday in negative tz.
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 // ── EventSheet ──────────────────────────────────────────────────────────────
 
 function EventSheet({
@@ -410,7 +498,6 @@ function EventSheet({
 
   const [type, setType] = useState<EventType>(event?.type ?? "GOLF");
   const [title, setTitle] = useState(event?.title ?? "");
-  const [day, setDay] = useState<string>(event?.day?.toString() ?? "");
   const [description, setDescription] = useState(event?.description ?? "");
   const [scoringFormat, setScoringFormat] = useState<ScoringFormat>(
     event?.scoring_format ?? "scramble"
@@ -422,21 +509,18 @@ function EventSheet({
   const [positions, setPositions] = useState<PointDistribution[]>(
     event?.point_distributions ?? []
   );
-  const [courseId, setCourseId] = useState<string | null>(event?.course_id ?? null);
   const [error, setError] = useState<string | null>(null);
 
   const create = trpc.events.create.useMutation();
   const update = trpc.events.update.useMutation();
   const setDistributions = trpc.events.setPointDistributions.useMutation();
 
-  const showCourseField = type === "GOLF" && !isPractice;
   const showPoints = !isPractice;
 
   async function handleSave() {
     setError(null);
     if (!title.trim()) return setError("Title is required");
 
-    const dayValue = day.trim() ? parseInt(day, 10) : null;
     const pointsValue = pointsAvailable.trim()
       ? parseFloat(pointsAvailable)
       : null;
@@ -451,10 +535,8 @@ function EventSheet({
           title: title.trim(),
           description: description.trim() || null,
           scoringFormat: type === "GOLF" ? scoringFormat : null,
-          courseId: type === "GOLF" && !isPractice ? courseId : null,
           isPractice,
           pointsAvailable: showPoints ? pointsValue : null,
-          day: dayValue,
         });
         savedId = updated.id;
       } else {
@@ -465,10 +547,8 @@ function EventSheet({
           title: title.trim(),
           description: description.trim() || undefined,
           scoringFormat: type === "GOLF" ? scoringFormat : undefined,
-          courseId: type === "GOLF" && !isPractice && courseId ? courseId : undefined,
           isPractice,
           pointsAvailable: showPoints && pointsValue !== null ? pointsValue : undefined,
-          day: dayValue ?? undefined,
         });
         savedId = created.id;
       }
@@ -485,7 +565,6 @@ function EventSheet({
           })),
         });
       } else if (isEdit) {
-        // Clear distributions when toggling to practice
         await setDistributions.mutateAsync({
           tripId,
           eventId: savedId,
@@ -573,21 +652,6 @@ function EventSheet({
             />
           </Field>
 
-          <Field label="Day" optional helper="Used for ordering — Day 1, Day 2, etc.">
-            <input
-              type="number"
-              value={day}
-              onChange={(e) => setDay(e.target.value)}
-              min={1}
-              className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            />
-          </Field>
-
           <Field label="Description" optional>
             <textarea
               value={description}
@@ -627,15 +691,6 @@ function EventSheet({
                 onChange={setIsPractice}
               />
             </>
-          )}
-
-          {showCourseField && (
-            <Field label="Course">
-              <CourseSearchField
-                courseId={courseId}
-                onSelect={setCourseId}
-              />
-            </Field>
           )}
 
           {showPoints && (
@@ -761,10 +816,7 @@ function EventSheet({
           )}
         </div>
 
-        <div
-          className="border-t p-4"
-          style={{ borderColor: "var(--color-bt-border)" }}
-        >
+        <div className="border-t p-4" style={{ borderColor: "var(--color-bt-border)" }}>
           <button
             type="button"
             onClick={handleSave}
@@ -779,265 +831,6 @@ function EventSheet({
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── CourseSearchField ───────────────────────────────────────────────────────
-
-interface SearchResult {
-  id: string;
-  name: string;
-  location: string;
-}
-
-function CourseSearchField({
-  courseId,
-  onSelect,
-}: {
-  courseId: string | null;
-  onSelect: (courseId: string | null) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchUnavailable, setSearchUnavailable] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
-  const [manualName, setManualName] = useState("");
-  const [manualLocation, setManualLocation] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const findOrCreate = trpc.golfCourses.findOrCreate.useMutation();
-  const saveDetails = trpc.golfCourses.saveDetails.useMutation();
-  const { data: existingCourse } = trpc.golfCourses.getById.useQuery(
-    { courseId: courseId ?? "" },
-    { enabled: !!courseId }
-  );
-
-  // Debounced search
-  useEffect(() => {
-    if (manualMode || courseId) return;
-    if (query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(
-          `/api/golf-courses/search?q=${encodeURIComponent(query.trim())}`
-        );
-        const body = (await res.json()) as SearchResult[];
-        setResults(body);
-        if (body.length === 0 && query.trim().length >= 4) {
-          // No data & query is reasonable — likely the API key isn't set.
-          setSearchUnavailable(true);
-        }
-      } catch {
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 400);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query, manualMode, courseId]);
-
-  async function handlePickResult(result: SearchResult) {
-    setLoading(true);
-    try {
-      const detailRes = await fetch(`/api/golf-courses/${result.id}`);
-      if (!detailRes.ok) throw new Error("Course detail unavailable");
-      const detail = (await detailRes.json()) as {
-        externalId: string;
-        clubName: string;
-        name: string;
-        location: string;
-        teeBoxes: unknown[];
-        holes: unknown[];
-      };
-
-      // Use a deterministic-ish "place_id" from the external id so this
-      // course shares storage with anyone else who picks the same one.
-      const golfCourse = await findOrCreate.mutateAsync({
-        placeId: `golfapi:${detail.externalId}`,
-        name: detail.name,
-        address: detail.location,
-      });
-
-      await saveDetails.mutateAsync({
-        golfCourseId: golfCourse.id,
-        externalId: detail.externalId,
-        clubName: detail.clubName,
-        holes: detail.holes,
-        teeBoxes: detail.teeBoxes,
-      });
-
-      onSelect(golfCourse.id);
-    } catch (err) {
-      console.error(err);
-      setSearchUnavailable(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleManualSave() {
-    if (!manualName.trim()) return;
-    const placeId = `manual:${Date.now()}`;
-    const golfCourse = await findOrCreate.mutateAsync({
-      placeId,
-      name: manualName.trim(),
-      address: manualLocation.trim() || undefined,
-    });
-    onSelect(golfCourse.id);
-    setManualMode(false);
-  }
-
-  // Already-selected display
-  if (courseId && existingCourse) {
-    const c = existingCourse as { name?: string; address?: string | null };
-    return (
-      <div
-        className="flex items-center gap-2 rounded-lg px-3 py-2"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-sm font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {c.name}
-          </p>
-          {c.address && (
-            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {c.address}
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            onSelect(null);
-            setQuery("");
-          }}
-          className="text-xs font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          Change
-        </button>
-      </div>
-    );
-  }
-
-  if (manualMode || searchUnavailable) {
-    return (
-      <div className="space-y-2">
-        {searchUnavailable && (
-          <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Course search unavailable — enter details manually.
-          </p>
-        )}
-        <input
-          value={manualName}
-          onChange={(e) => setManualName(e.target.value)}
-          placeholder="Course name"
-          className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            color: "var(--color-bt-text)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        />
-        <input
-          value={manualLocation}
-          onChange={(e) => setManualLocation(e.target.value)}
-          placeholder="Location / city (optional)"
-          className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            color: "var(--color-bt-text)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        />
-        <button
-          type="button"
-          onClick={handleManualSave}
-          disabled={!manualName.trim() || findOrCreate.isPending}
-          className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50"
-          style={{
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-          }}
-        >
-          Use this course
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search for a golf course..."
-        className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          color: "var(--color-bt-text)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      />
-      {loading && (
-        <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Searching…
-        </p>
-      )}
-      {results.length > 0 && (
-        <ul
-          className="max-h-48 overflow-y-auto rounded-lg"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          {results.map((r) => (
-            <li key={r.id}>
-              <button
-                type="button"
-                onClick={() => handlePickResult(r)}
-                className="flex w-full flex-col px-3 py-2 text-left"
-              >
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {r.name}
-                </span>
-                <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {r.location}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {query.trim().length >= 2 && !loading && results.length === 0 && (
-        <button
-          type="button"
-          onClick={() => setManualMode(true)}
-          className="text-xs font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          Can&rsquo;t find this course? Enter manually
-        </button>
-      )}
     </div>
   );
 }

@@ -25,7 +25,7 @@ export function GettingThereIntroModal({
   onActivate,
   isActivating,
 }: GettingThereIntroModalProps) {
-  useModalBackButton(isOpen ? onClose : () => {});
+  useModalBackButton(onClose, isOpen);
   if (!isOpen) return null;
 
   return (

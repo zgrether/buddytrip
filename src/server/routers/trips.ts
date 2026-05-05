@@ -18,13 +18,22 @@ export const tripsRouter = router({
     }
 
     const tripIds = memberships.map((m) => m.trip_id);
-    const { data: trips, error: tripErr } = await ctx.supabase
-      .from("trips")
-      .select("*")
-      .in("id", tripIds)
-      .order("created_at", { ascending: false });
+    const [tripsRes, competitionsRes] = await Promise.all([
+      ctx.supabase
+        .from("trips")
+        .select("*")
+        .in("id", tripIds)
+        .order("created_at", { ascending: false }),
+      // hasCompetition flag drives the dashboard card icon. One row per trip
+      // is fine for the MVP one-comp-per-trip rule; we just need to know
+      // whether any competition exists for each trip.
+      ctx.supabase
+        .from("competitions")
+        .select("trip_id")
+        .in("trip_id", tripIds),
+    ]);
 
-    if (tripErr) {
+    if (tripsRes.error) {
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message: "Failed to fetch trips",
@@ -34,11 +43,15 @@ export const tripsRouter = router({
     const membershipByTripId = new Map(
       memberships.map((m) => [m.trip_id, m])
     );
+    const tripsWithCompetition = new Set(
+      (competitionsRes.data ?? []).map((c) => c.trip_id as string)
+    );
 
-    return (trips ?? []).map((trip) => ({
+    return (tripsRes.data ?? []).map((trip) => ({
       ...trip,
       myRole: membershipByTripId.get(trip.id)?.role ?? null,
       myStatus: membershipByTripId.get(trip.id)?.status ?? null,
+      hasCompetition: tripsWithCompetition.has(trip.id),
     }));
   }),
 

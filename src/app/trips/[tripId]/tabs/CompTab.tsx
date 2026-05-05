@@ -6,8 +6,18 @@ import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetup
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { EventsPanel } from "@/components/competition/EventsPanel";
-import { GroupsPanel } from "@/components/competition/GroupsPanel";
+import { ArenasPanel } from "@/components/competition/ArenasPanel";
 import type { TabProps } from "./types";
+
+interface CompTabProps extends TabProps {
+  /**
+   * Fired when the owner deletes the competition. The trip page uses
+   * this to reset compUnlocked + bounce back to the home tab so the
+   * comp tab fully disappears for everyone (not just the rest of the
+   * crew).
+   */
+  onCompetitionDeleted?: () => void;
+}
 
 /**
  * CompTab — competition hub for a trip.
@@ -18,7 +28,12 @@ import type { TabProps } from "./types";
  *   3. None + member  → read-only "not set up yet" empty state
  *   4. Exists         → CompetitionHeader + Teams + Events + Groups stack
  */
-export function CompTab({ trip, canEdit, isOwner }: TabProps) {
+export function CompTab({
+  trip,
+  canEdit,
+  isOwner,
+  onCompetitionDeleted,
+}: CompTabProps) {
   const tripId = trip.id;
   const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery({ tripId });
 
@@ -46,6 +61,7 @@ export function CompTab({ trip, canEdit, isOwner }: TabProps) {
       competition={competition}
       canEdit={canEdit}
       isOwner={!!isOwner}
+      onCompetitionDeleted={onCompetitionDeleted}
     />
   );
 }
@@ -57,36 +73,46 @@ function ExistingCompetitionView({
   competition,
   canEdit,
   isOwner,
+  onCompetitionDeleted,
 }: {
   tripId: string;
   competition: {
     id: string;
     name: string;
     tagline: string | null;
-    motto: string | null;
+    status: "upcoming" | "active" | "completed";
   };
   canEdit: boolean;
   isOwner: boolean;
+  onCompetitionDeleted?: () => void;
 }) {
   return (
     <div className="space-y-3 px-4">
-      <CompetitionHeader competition={competition} tripId={tripId} canEdit={canEdit} />
+      <CompetitionHeader
+        competition={competition}
+        tripId={tripId}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        onDeleted={onCompetitionDeleted}
+      />
       <TeamsPanel
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
         isOwner={isOwner}
       />
-      <EventsPanel
-        competitionId={competition.id}
-        tripId={tripId}
-        canEdit={canEdit}
-      />
-      <GroupsPanel
-        competitionId={competition.id}
-        tripId={tripId}
-        canEdit={canEdit}
-      />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <EventsPanel
+          competitionId={competition.id}
+          tripId={tripId}
+          canEdit={canEdit}
+        />
+        <ArenasPanel
+          competitionId={competition.id}
+          tripId={tripId}
+          canEdit={canEdit}
+        />
+      </div>
     </div>
   );
 }

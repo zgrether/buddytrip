@@ -2,40 +2,28 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../../../__tests__/helpers/test-setup";
 
 /**
- * CompTab — data-layer integration tests.
+ * CompTab — data-layer integration tests, post-revisions.
  *
  * The new CompTab + sibling panels are pure presentational React; React
- * Testing Library + jsdom aren't yet in this repo, so we cover the full
- * spec matrix through the data layer that drives each render branch.
- * Phase B (when the live leaderboard returns and the CompTab gains
- * substantial interactive state) is the right time to add the RTL
- * harness; this file documents and verifies the data prerequisites
- * for every spec scenario in the meantime.
+ * Testing Library + jsdom aren't yet in this repo, so we cover the spec
+ * matrix through the data layer that drives each render branch.
  *
- * Spec scenarios (from CC_COMPETITION_SETUP §Task 10) and where each
- * is exercised:
- *
- *   1. No competition + canEdit          → "no competition state"
- *   2. No competition + member           → same data path; UI branch
- *                                          differs only by canEdit flag
- *   3. Competition exists                → "competition exists"
- *   4. Competition exists → 4 panels     → asserted via competition +
- *                                          empty teams + empty events +
- *                                          empty groups all resolving
- *   5. GroupsPanel locked (no GOLF)      → "groups panel locked"
- *   6. GroupsPanel unlocked (GOLF exists)→ "groups panel unlocked"
- *   7. TeamsPanel unassigned members     → "teams unassigned"
- *   8. EventsPanel practice flag         → "practice event"
- *   9. EventsPanel missing course warn   → "non-practice event needs course"
+ * Revisions matrix (CC_COMPETITION_REVISIONS):
+ *   - GroupsPanel removed                  → no groups assertions
+ *   - Status badge                         → "status badge"
+ *   - Delete gated on upcoming             → "delete gating"
+ *   - Event form: no day, no course        → "event form simplified"
+ *   - ArenasPanel + arena → event linkage  → "arena linkage"
+ *   - Event status line reflects arena     → "event arena status line"
  */
 
 let ctx: TestContext;
 let tripId: string;
 
-describe("CompTab data layer", () => {
+describe("CompTab data layer (revisions)", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("CompTab data tests");
+    tripId = await ctx.createTrip("CompTab revision tests");
     await ctx.addTripMember(tripId, "member", "Member");
   });
 
@@ -49,7 +37,7 @@ describe("CompTab data layer", () => {
     expect(competition).toBeNull();
   });
 
-  it("competition exists — header reads name + tagline", async () => {
+  it("competition exists — header reads name + tagline + status", async () => {
     const caller = ctx.caller();
     const created = await caller.competitions.create({
       tripId,
@@ -61,32 +49,24 @@ describe("CompTab data layer", () => {
     const fetched = await caller.competitions.getByTrip({ tripId });
     expect(fetched?.name).toBe("Header Cup");
     expect(fetched?.tagline).toBe("First Past the Post");
+    expect(fetched?.status).toBe("upcoming"); // status badge → "Setup"
   });
 
-  it("competition exists — every sibling panel resolves an empty list", async () => {
+  it("competition exists — sibling panels (Teams, Events, Arenas) all resolve", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     expect(competition).not.toBeNull();
 
-    const [teams, events, assignments] = await Promise.all([
+    const [teams, events, assignments, arenas] = await Promise.all([
       caller.teams.list({ tripId, competitionId: competition!.id }),
       caller.events.list({ tripId, competitionId: competition!.id }),
       caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
+      caller.arenas.list({ tripId, competitionId: competition!.id }),
     ]);
     expect(teams).toEqual([]);
     expect(events).toEqual([]);
     expect(assignments).toEqual([]);
-  });
-
-  it("groups panel locked — no GOLF events means no per-event group view", async () => {
-    const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-    const events = await caller.events.list({
-      tripId,
-      competitionId: competition!.id,
-    });
-    const golfEvents = events.filter((e) => e.type === "GOLF");
-    expect(golfEvents.length).toBe(0); // GroupsPanel renders its locked state
+    expect(arenas).toEqual([]);
   });
 
   it("teams unassigned — members exist but no assignments yet", async () => {
@@ -108,12 +88,12 @@ describe("CompTab data layer", () => {
     ]);
     expect(teams.length).toBeGreaterThan(0);
     expect(members.length).toBeGreaterThan(0);
-    // The "Assign Members" UI section renders dropdowns for members not in
-    // assignments — at this stage every member is unassigned.
+    // Assign Members surface renders dropdowns / drag cards for unassigned
+    // members — at this stage every member is unassigned.
     expect(assignments.length).toBe(0);
   });
 
-  it("practice event — the is_practice flag drives the muted card + 'excluded' note", async () => {
+  it("event form simplified — practice event ignores points and course", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     const created = await caller.events.create({
@@ -125,9 +105,10 @@ describe("CompTab data layer", () => {
       isPractice: true,
     });
     expect(created.is_practice).toBe(true);
+    // EventCard's status line reads "Practice · Not scored" off this flag.
   });
 
-  it("non-practice event needs course — course_id remains null until a course is picked", async () => {
+  it("event arena status line — non-practice event with no arena reads 'Not assigned'", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     const created = await caller.events.create({
@@ -136,30 +117,102 @@ describe("CompTab data layer", () => {
       type: "GOLF",
       title: "Day 1 Scramble",
       scoringFormat: "scramble",
-      day: 1,
     });
-    // EventCard reads course_id; when null + non-practice it surfaces the
-    // "Course needed" warning badge.
-    expect(created.course_id).toBeNull();
     expect(created.is_practice).toBe(false);
-  });
 
-  it("groups panel unlocked — once a GOLF event exists, per-event groups are list-able", async () => {
-    const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-    const events = await caller.events.list({
+    const arenas = await caller.arenas.list({
       tripId,
       competitionId: competition!.id,
     });
-    const golfEvent = events.find((e) => e.type === "GOLF");
-    expect(golfEvent).toBeDefined();
+    const linked = arenas.find((a) => a.event_id === created.id);
+    expect(linked).toBeUndefined(); // EventCard surfaces the warning state
+  });
 
-    // The list is empty at this point but the query resolves — that's what
-    // unlocks the per-event groups view in GroupsPanel.
-    const groups = await caller.playGroups.list({
+  it("arena linkage — manual arena + assignEvent flips an event into 'Anytime'", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+
+    const event = await caller.events.create({
       tripId,
-      eventId: golfEvent!.id,
+      competitionId: competition!.id,
+      type: "GENERIC",
+      title: "Cornhole Championship",
+      pointsAvailable: 5,
     });
-    expect(Array.isArray(groups)).toBe(true);
+
+    const arena = await caller.arenas.create({
+      tripId,
+      competitionId: competition!.id,
+      name: "Cornhole Championship",
+      isAnytime: true,
+    });
+    expect(arena.is_anytime).toBe(true);
+    expect(arena.event_id).toBeNull();
+
+    const linked = await caller.arenas.assignEvent({
+      tripId,
+      arenaId: arena.id,
+      eventId: event.id,
+    });
+    expect(linked.event_id).toBe(event.id);
+    expect(linked.is_anytime).toBe(true);
+    // EventCard's status line now resolves to "Anytime" via this arena row.
+  });
+
+  it("arena linkage — assignEvent rejects an event already pinned to another arena", async () => {
+    const caller = ctx.caller();
+    const competition = await caller.competitions.getByTrip({ tripId });
+
+    const event = await caller.events.create({
+      tripId,
+      competitionId: competition!.id,
+      type: "GENERIC",
+      title: "Putting Contest",
+      pointsAvailable: 2,
+    });
+
+    const arenaA = await caller.arenas.create({
+      tripId,
+      competitionId: competition!.id,
+      name: "Putting Contest A",
+      isAnytime: true,
+    });
+    const arenaB = await caller.arenas.create({
+      tripId,
+      competitionId: competition!.id,
+      name: "Putting Contest B",
+      isAnytime: true,
+    });
+
+    await caller.arenas.assignEvent({
+      tripId,
+      arenaId: arenaA.id,
+      eventId: event.id,
+    });
+
+    await expect(
+      caller.arenas.assignEvent({
+        tripId,
+        arenaId: arenaB.id,
+        eventId: event.id,
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("delete gating — owner can delete while status is upcoming", async () => {
+    // Fresh competition for this test so we don't break the others above.
+    const ownerCaller = ctx.caller();
+    const created = await ownerCaller.competitions.create({
+      tripId: await ctx.createTrip("Delete-gating cup"),
+      name: "Delete Cup",
+    });
+    ctx.trackCompetition(created.id);
+    expect(created.status).toBe("upcoming"); // delete trash icon visible
+
+    const result = await ownerCaller.competitions.delete({
+      tripId: created.trip_id as string,
+      competitionId: created.id,
+    });
+    expect(result).toEqual({ success: true });
   });
 });

@@ -1,8 +1,9 @@
 "use client";
 
 import type { FC } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MapPin, Calendar } from "lucide-react";
+import { MapPin, Calendar, Trophy } from "lucide-react";
 import { useTheme } from "next-themes";
 import { StatusBadge, getTripStatus } from "./StatusBadge";
 import { RoleBadge } from "./RoleBadge";
@@ -28,6 +29,8 @@ interface Trip {
   stage?: string | null;
   comparison_mode?: boolean | null;
   myRole?: TripRole | null;
+  /** True when at least one competitions row exists for this trip. */
+  hasCompetition?: boolean | null;
 }
 
 interface TripCardProps {
@@ -47,6 +50,11 @@ function formatDateRange(start?: string | null, end?: string | null): string {
 export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
   const router = useRouter();
   const utils = trpc.useUtils();
+  // useTransition tracks Next's router.push from click → new route render,
+  // so we get an isPending flag we can paint instantly. Without it the
+  // dashboard sits frozen between click and the trip route bundle loading,
+  // and the card feels dead.
+  const [isNavigating, startNavigation] = useTransition();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const status = getTripStatus(trip);
@@ -76,7 +84,9 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
       [key: string]: unknown;
     };
     utils.trips.getById.setData({ tripId: trip.id }, tripData);
-    router.push(`/trips/${trip.id}`);
+    startNavigation(() => {
+      router.push(`/trips/${trip.id}`);
+    });
   };
 
   // Countdown — derived from trip dates + stage. Rendered as a flush bar at
@@ -96,13 +106,16 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
     <button
       data-testid={`trip-card-${trip.id}`}
       onClick={handleClick}
-      className="relative w-full overflow-hidden rounded-xl text-left transition-all"
+      disabled={isNavigating}
+      className="relative w-full overflow-hidden rounded-xl text-left transition-all duration-150 motion-safe:active:scale-[0.985]"
       style={{
         background: isDark
           ? (status === "past" ? "var(--color-bt-card)" : temporalGradient(null, true))
           : "var(--color-bt-card)",
         border: isDark ? "none" : "1px solid var(--color-bt-border)",
         filter: grayscale ? "grayscale(100%)" : undefined,
+        opacity: isNavigating ? 0.6 : 1,
+        cursor: isNavigating ? "wait" : "pointer",
         boxShadow: isDark
           ? "var(--shadow-card)"
           : status !== "past"
@@ -124,6 +137,23 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
             : "var(--shadow-card)";
       }}
     >
+      {/* Navigation pending overlay — appears the instant the user clicks
+          a card, so the dashboard isn't visually frozen while React loads
+          the trip route bundle. */}
+      {isNavigating && (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+        >
+          <div
+            className="h-6 w-6 animate-spin rounded-full border-2"
+            style={{
+              borderColor: "var(--color-bt-accent)",
+              borderTopColor: "transparent",
+            }}
+          />
+        </div>
+      )}
       <div className="relative p-4">
       {/* State outline watermark — fixed size, clips overflow */}
       {outline && (
@@ -157,6 +187,21 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
 
       {/* Badges — absolute top right, above silhouette */}
       <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+        {/* Trophy chip — surfaces trips that have a competition set up. */}
+        {trip.hasCompetition && (
+          <span
+            className="flex h-5 w-5 items-center justify-center rounded-full"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              color: "var(--color-bt-accent)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }}
+            title="Has competition"
+            aria-label="Competition set up for this trip"
+          >
+            <Trophy size={10} strokeWidth={2.5} />
+          </span>
+        )}
         {/* "now" is conveyed by the Live countdown bar — no redundant badge needed */}
         {status !== "now" && (
           <StatusBadge

@@ -17,7 +17,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      # --ignore-scripts skips the `supabase` npm package's postinstall, which
+      # downloads the CLI binary from GitHub releases and intermittently
+      # fails with ECONNRESET in CI. We install the CLI separately via
+      # supabase/setup-cli below, so the npm-bundled binary isn't needed.
+      - run: npm ci --ignore-scripts
       - uses: supabase/setup-cli@v1
         with:
           version: latest
