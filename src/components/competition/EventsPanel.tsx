@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   Calendar,
   ChevronDown,
-  CircleDot,
   Cloud,
   Flag,
   GripVertical,
@@ -433,14 +432,18 @@ function EventCard({
           )}
         </div>
 
-        {/* Status line — links the event to its venue (or warns if none). */}
-        <div
-          className="mt-0.5 flex items-center gap-1 text-[11px]"
-          style={{ color: statusLine.color }}
-        >
-          <statusLine.Icon size={11} />
-          <span>{statusLine.text}</span>
-        </div>
+        {/* Status line — only shown when there's something useful to say
+            (linked venue, anytime, or "Practice · Not scored"). An
+            unassigned non-practice event renders no status line. */}
+        {statusLine && (
+          <div
+            className="mt-0.5 flex items-center gap-1 text-[11px]"
+            style={{ color: statusLine.color }}
+          >
+            <statusLine.Icon size={11} />
+            <span>{statusLine.text}</span>
+          </div>
+        )}
 
         {!event.is_practice && distSummary && (
           <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -479,7 +482,7 @@ function EventCard({
 function describeStatus(
   event: EventRow,
   venue: VenueLink | null
-): { Icon: typeof Flag; text: string; color: string } {
+): { Icon: typeof Flag; text: string; color: string } | null {
   if (event.is_practice) {
     return {
       Icon: Info,
@@ -512,11 +515,11 @@ function describeStatus(
       color: "var(--color-bt-text-dim)",
     };
   }
-  return {
-    Icon: CircleDot,
-    text: "Not assigned",
-    color: "var(--color-bt-warning)",
-  };
+  // Unassigned non-practice event — that's an OK resting state (the user
+  // might keep extra events around in case something gets cut from the
+  // schedule). Don't render the status line at all rather than nag with
+  // a warning.
+  return null;
 }
 
 function formatShortDate(iso: string): string {

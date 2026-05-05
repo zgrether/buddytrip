@@ -13,6 +13,79 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { DND_EVENT_KEY, EventSheet, type EventRow } from "./EventsPanel";
 
+// ── Optimistic mutation hook ────────────────────────────────────────────────
+// All four drag drop targets (existing venue, anytime venue, anytime drop
+// zone, unlinked schedule row) plus the inline × on a linked-event chip
+// flow through the same venues.list cache. Centralizing the optimistic
+// onMutate here means the chip moves the moment the user releases, not
+// after the network round-trip.
+
+interface OptimisticVenueRow {
+  id: string;
+  competition_id: string;
+  schedule_item_id: string | null;
+  event_id: string | null;
+  is_anytime: boolean;
+  name: string | null;
+  location: string | null;
+  venue_date: string | null;
+  venue_time: string | null;
+  schedule_item?: unknown;
+}
+
+function useVenueAssignmentMutations(tripId: string, competitionId: string) {
+  const utils = trpc.useUtils();
+  const queryKey = { tripId, competitionId };
+
+  const assign = trpc.venues.assignEvent.useMutation({
+    onMutate: async (vars) => {
+      await utils.venues.list.cancel(queryKey);
+      const previous = utils.venues.list.getData(queryKey);
+      utils.venues.list.setData(queryKey, (old) => {
+        const list = (old as OptimisticVenueRow[] | undefined) ?? [];
+        return list.map((v) => {
+          // Set new target
+          if (v.id === vars.venueId) return { ...v, event_id: vars.eventId };
+          // Detach this event from any prior venue (matches router behavior)
+          if (v.event_id === vars.eventId) return { ...v, event_id: null };
+          return v;
+        }) as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        utils.venues.list.setData(queryKey, ctx.previous);
+      }
+    },
+    onSettled: () => utils.venues.list.invalidate(queryKey),
+  });
+
+  const unassign = trpc.venues.unassignEvent.useMutation({
+    onMutate: async (vars) => {
+      await utils.venues.list.cancel(queryKey);
+      const previous = utils.venues.list.getData(queryKey);
+      utils.venues.list.setData(queryKey, (old) => {
+        const list = (old as OptimisticVenueRow[] | undefined) ?? [];
+        return list.map((v) =>
+          v.id === vars.venueId
+            ? { ...v, event_id: null, is_anytime: false }
+            : v
+        ) as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        utils.venues.list.setData(queryKey, ctx.previous);
+      }
+    },
+    onSettled: () => utils.venues.list.invalidate(queryKey),
+  });
+
+  return { assign, unassign };
+}
+
 interface Props {
   competitionId: string;
   tripId: string;
@@ -528,10 +601,9 @@ function VenueRowView({
 
   // Drag-from-EventsPanel target. assignEvent on the router detaches the
   // event from any prior venue, so dropping a linked event reassigns
-  // cleanly without a CONFLICT.
-  const dropAssign = trpc.venues.assignEvent.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
+  // cleanly without a CONFLICT. Optimistic via the shared hook so the
+  // chip lands the moment the user releases.
+  const { assign: dropAssign } = useVenueAssignmentMutations(tripId, competitionId);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -627,10 +699,7 @@ function AssignEventControl({
   events: EventRow[];
   venuesTyped: VenueRow[];
 }) {
-  const utils = trpc.useUtils();
-  const assign = trpc.venues.assignEvent.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
+  const { assign } = useVenueAssignmentMutations(tripId, competitionId);
 
   const assignableEvents = events.filter(
     (e) => !e.is_practice && !venuesTyped.some((v) => v.event_id === e.id)
@@ -639,7 +708,7 @@ function AssignEventControl({
   if (assignableEvents.length === 0) {
     return (
       <span
-        className="text-[11px]"
+        className="text-[11px] lg:hidden"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         No events available
@@ -682,10 +751,7 @@ function UnassignButton({
   tripId: string;
   competitionId: string;
 }) {
-  const utils = trpc.useUtils();
-  const unassign = trpc.venues.unassignEvent.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
+  const { unassign } = useVenueAssignmentMutations(tripId, competitionId);
   return (
     <button
       type="button"
@@ -733,10 +799,7 @@ function LinkedEventDetails({
   canEdit: boolean;
   onEdit: () => void;
 }) {
-  const utils = trpc.useUtils();
-  const unassign = trpc.venues.unassignEvent.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
+  const { unassign } = useVenueAssignmentMutations(tripId, competitionId);
 
   const isGolf = event.type === "GOLF";
   const formatLabel = event.scoring_format
@@ -1011,9 +1074,7 @@ function AnytimeVenueRow({
   const remove = trpc.venues.delete.useMutation({
     onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
-  const assign = trpc.venues.assignEvent.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
+  const { assign } = useVenueAssignmentMutations(tripId, competitionId);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
