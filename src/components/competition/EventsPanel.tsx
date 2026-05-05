@@ -335,9 +335,11 @@ function EventCard({
   const utils = trpc.useUtils();
   const isGolf = event.type === "GOLF";
 
-  // Practice events aren't scored, so they're not eligible for venue
-  // assignment — only non-practice cards advertise the drag affordance.
-  const draggable = canEdit && !event.is_practice;
+  // Practice rounds still happen at real venues (a tee time at a
+  // course) — they just don't count toward points. Both practice and
+  // scored events advertise the drag affordance so every card has a
+  // grip when canEdit.
+  const draggable = canEdit;
 
   const remove = trpc.events.delete.useMutation({
     onSettled: () => utils.events.list.invalidate(),
