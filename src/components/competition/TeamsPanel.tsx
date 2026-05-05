@@ -54,21 +54,63 @@ const TEAM_COLORS: Array<{ color: string; colorDim: string; label: string }> = [
   { color: "#f97316", colorDim: "#2a1200", label: "Orange" },
 ];
 
-// ── Team name suggestions (30 across three categories) ─────────────────────
-const TEAM_NAME_SUGGESTIONS: string[] = [
-  // Colors
-  "Crimson", "Cobalt", "Amber", "Scarlet", "Jade",
-  "Ivory", "Onyx", "Indigo", "Vermillion", "Sable",
-  // Animals
-  "Falcons", "Wolves", "Vipers", "Ravens", "Cobras",
-  "Stallions", "Grizzlies", "Hawks", "Lynx", "Rhinos",
-  // Golf
-  "Birdies", "Eagles", "Bogeys", "Condors", "Aces",
-  "Albatrosses", "Duffers", "Shanks", "Yips", "Scratch",
+// ── Team name suggestion themes ────────────────────────────────────────────
+// Tapping "✨ Suggest a name" reveals these as chips; tapping a chip rolls
+// a random name from that theme into the field. Tapping the same chip
+// again re-rolls — handy if the first pick is taken or doesn't fit.
+const NAME_THEMES: Array<{ id: string; label: string; names: string[] }> = [
+  {
+    id: "colors",
+    label: "Colors",
+    names: [
+      "Crimson", "Cobalt", "Amber", "Scarlet", "Jade",
+      "Ivory", "Onyx", "Indigo", "Vermillion", "Sable",
+    ],
+  },
+  {
+    id: "animals",
+    label: "Animals",
+    names: [
+      "Falcons", "Wolves", "Vipers", "Ravens", "Cobras",
+      "Stallions", "Grizzlies", "Hawks", "Lynx", "Rhinos",
+    ],
+  },
+  {
+    id: "golf",
+    label: "Golf",
+    names: [
+      "Birdies", "Eagles", "Bogeys", "Condors", "Aces",
+      "Albatrosses", "Duffers", "Shanks", "Yips", "Scratch",
+    ],
+  },
+  {
+    id: "mythic",
+    label: "Mythic",
+    names: [
+      "Titans", "Phoenix", "Spartans", "Vikings", "Pirates",
+      "Centurions", "Krakens", "Valkyries", "Wyverns", "Gladiators",
+    ],
+  },
+  {
+    id: "cocktails",
+    label: "Cocktails",
+    names: [
+      "Negronis", "Old Fashioneds", "Mojitos", "Manhattans", "Daiquiris",
+      "Martinis", "Sazeracs", "Mules", "Margaritas", "Highballs",
+    ],
+  },
+  {
+    id: "weather",
+    label: "Weather",
+    names: [
+      "Storm", "Lightning", "Thunder", "Hurricane", "Blizzard",
+      "Squall", "Tempest", "Cyclone", "Tornado", "Avalanche",
+    ],
+  },
 ];
 
-function suggestTeamName(): string {
-  return TEAM_NAME_SUGGESTIONS[Math.floor(Math.random() * TEAM_NAME_SUGGESTIONS.length)];
+function pickRandom<T>(list: T[]): T {
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 // Drag & drop dataTransfer key
@@ -936,6 +978,7 @@ function TeamSheet({
     const idx = TEAM_COLORS.findIndex((c) => c.color === team.color);
     return idx >= 0 ? idx : 0;
   });
+  const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const create = trpc.teams.create.useMutation({
@@ -952,10 +995,17 @@ function TeamSheet({
     if (!shortNameDirty) {
       setShortName(value.replace(/\s+/g, "").slice(0, 3).toUpperCase());
     }
+    // Once the user starts typing manually, collapse the suggester so it
+    // doesn't sit there competing for attention.
+    if (value.trim() && suggesterOpen) {
+      setSuggesterOpen(false);
+    }
   }
 
-  function handleSuggest() {
-    const suggestion = suggestTeamName();
+  function handlePickTheme(themeId: string) {
+    const theme = NAME_THEMES.find((t) => t.id === themeId);
+    if (!theme) return;
+    const suggestion = pickRandom(theme.names);
     setName(suggestion);
     if (!shortNameDirty) {
       setShortName(suggestion.replace(/\s+/g, "").slice(0, 3).toUpperCase());
@@ -1044,10 +1094,10 @@ function TeamSheet({
               }}
               data-testid="team-name-input"
             />
-            {!name.trim() && (
+            {!suggesterOpen && !name.trim() && (
               <button
                 type="button"
-                onClick={handleSuggest}
+                onClick={() => setSuggesterOpen(true)}
                 className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium"
                 style={{ color: "var(--color-bt-accent)" }}
                 data-testid="team-name-suggest"
@@ -1055,6 +1105,46 @@ function TeamSheet({
                 <Sparkles size={11} />
                 Suggest a name
               </button>
+            )}
+            {suggesterOpen && (
+              <div className="mt-2 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p
+                    className="text-[11px]"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Pick a theme — tap again to re-roll
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSuggesterOpen(false)}
+                    aria-label="Close suggester"
+                    className="flex h-5 w-5 items-center justify-center rounded"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {NAME_THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => handlePickTheme(t.id)}
+                      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                      style={{
+                        background: "var(--color-bt-card-raised)",
+                        color: "var(--color-bt-accent)",
+                        border: "1px solid var(--color-bt-accent-border)",
+                      }}
+                      data-testid={`team-name-theme-${t.id}`}
+                    >
+                      <Sparkles size={10} />
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </Field>
 
