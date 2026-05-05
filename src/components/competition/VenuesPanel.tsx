@@ -331,7 +331,7 @@ function ScheduledSection({
 }) {
   return (
     <section>
-      <SectionLabel>Scheduled</SectionLabel>
+      <SectionLabel>Confirmed Venues</SectionLabel>
 
       {golfItems.length === 0 && manualScheduledVenues.length === 0 && (
         <p
