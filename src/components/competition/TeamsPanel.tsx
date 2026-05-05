@@ -423,6 +423,7 @@ function TeamCard({
 }) {
   const utils = trpc.useUtils();
   const [dragOver, setDragOver] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const teamMemberIds = assignments
     .filter((a) => a.team_id === team.id)
@@ -436,16 +437,12 @@ function TeamCard({
       utils.teams.list.invalidate();
       utils.teamAssignments.list.invalidate();
     },
+    onSuccess: () => setConfirming(false),
   });
 
   // Optimistic — the dropped chip needs to land in the target team
   // instantly, not after the server round-trip.
   const { assign } = useTeamAssignmentMutations(tripId, competitionId);
-
-  function handleDelete() {
-    if (!confirm(`Delete team "${team.name}"? This will unassign its members.`)) return;
-    deleteTeam.mutate({ tripId, teamId: team.id });
-  }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -520,7 +517,7 @@ function TeamCard({
         {isOwner && (
           <button
             type="button"
-            onClick={handleDelete}
+            onClick={() => setConfirming(true)}
             aria-label={`Delete ${team.name}`}
             className="flex h-7 w-7 items-center justify-center rounded-lg"
             style={{ color: "var(--color-bt-danger)" }}
@@ -582,6 +579,101 @@ function TeamCard({
             </div>
           );
         })}
+      </div>
+
+      {confirming && (
+        <DeleteTeamConfirmModal
+          teamName={team.name}
+          memberCount={teamMembers.length}
+          isPending={deleteTeam.isPending}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => deleteTeam.mutate({ tripId, teamId: team.id })}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── DeleteTeamConfirmModal ──────────────────────────────────────────────────
+
+function DeleteTeamConfirmModal({
+  teamName,
+  memberCount,
+  isPending,
+  onCancel,
+  onConfirm,
+}: {
+  teamName: string;
+  memberCount: number;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+        style={{
+          background: "var(--color-bt-card-float)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3 text-center sm:text-left">
+          <div
+            className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl sm:mx-0"
+            style={{
+              background: "var(--color-bt-danger-faint)",
+              color: "var(--color-bt-danger)",
+            }}
+          >
+            <Trash2 size={18} />
+          </div>
+          <h3
+            className="mt-3 text-base font-bold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            Delete &ldquo;{teamName}&rdquo;?
+          </h3>
+          <p
+            className="mt-1.5 text-sm leading-relaxed"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {memberCount > 0
+              ? `${memberCount} member${memberCount === 1 ? "" : "s"} will be unassigned. This can't be undone.`
+              : "This can’t be undone."}
+          </p>
+        </div>
+        <div
+          className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end"
+        >
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "0.5px solid var(--color-bt-border)",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: "var(--color-bt-danger)" }}
+          >
+            {isPending ? "Deleting…" : "Delete Team"}
+          </button>
+        </div>
       </div>
     </div>
   );
