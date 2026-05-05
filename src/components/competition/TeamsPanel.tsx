@@ -277,6 +277,7 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
           tripId={tripId}
           competitionId={competitionId}
           team={editingTeam}
+          existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
           onClose={() => {
             setCreating(false);
             setEditingTeam(null);
@@ -485,8 +486,9 @@ function TeamCard({
   });
 
   // Optimistic — the dropped chip needs to land in the target team
-  // instantly, not after the server round-trip.
-  const { assign } = useTeamAssignmentMutations(tripId, competitionId);
+  // instantly, not after the server round-trip. `remove` powers the
+  // per-chip × button (Owner-only) inside the team card.
+  const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -604,7 +606,7 @@ function TeamCard({
                     }
                   : undefined
               }
-              className={`flex items-center gap-1.5 rounded-full px-2 py-1 ${
+              className={`flex items-center gap-1.5 rounded-full py-1 pl-2 pr-1 ${
                 canEdit ? "cursor-grab active:cursor-grabbing" : ""
               }`}
               style={{
@@ -620,6 +622,19 @@ function TeamCard({
               <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
                 {m.displayName}
               </span>
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    remove.mutate({ tripId, competitionId, userId: id })
+                  }
+                  aria-label={`Remove ${m.displayName} from ${team.name}`}
+                  className="ml-0.5 flex h-5 w-5 items-center justify-center rounded-full"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  <X size={10} />
+                </button>
+              )}
             </div>
           );
         })}
@@ -962,11 +977,16 @@ function TeamSheet({
   tripId,
   competitionId,
   team,
+  existingTeamNames,
   onClose,
 }: {
   tripId: string;
   competitionId: string;
   team: Team | null;
+  /** Lowercased names of teams already in this competition — used to skip
+   *  collisions when rolling a name from a theme. The current team's own
+   *  name is excluded by the caller in edit mode. */
+  existingTeamNames: string[];
   onClose: () => void;
 }) {
   const isEdit = !!team;
@@ -1007,7 +1027,12 @@ function TeamSheet({
   function handlePickTheme(themeId: string) {
     const theme = NAME_THEMES.find((t) => t.id === themeId);
     if (!theme) return;
-    const suggestion = pickRandom(theme.names);
+    // Filter out names already used by other teams in this competition so
+    // a re-roll doesn't keep landing on the same conflict. Fall back to the
+    // full list if every name in the theme is taken.
+    const taken = new Set(existingTeamNames);
+    const available = theme.names.filter((n) => !taken.has(n.toLowerCase()));
+    const suggestion = pickRandom(available.length > 0 ? available : theme.names);
     setName(suggestion);
     if (!shortNameDirty) {
       setShortName(suggestion.replace(/\s+/g, "").slice(0, 3).toUpperCase());
