@@ -79,6 +79,7 @@ function ExistingCompetitionView({
     id: string;
     name: string;
     tagline: string | null;
+    status: "upcoming" | "active" | "completed";
   };
   canEdit: boolean;
   isOwner: boolean;

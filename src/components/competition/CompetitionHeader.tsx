@@ -9,8 +9,33 @@ interface Competition {
   id: string;
   name: string;
   tagline: string | null;
+  status: "upcoming" | "active" | "completed";
   // motto column still exists in the DB but the UI no longer reads it.
 }
+
+const STATUS_CHIP: Record<
+  Competition["status"],
+  { label: string; bg: string; color: string; border: string }
+> = {
+  upcoming: {
+    label: "Setup",
+    bg: "var(--color-bt-warning-faint)",
+    color: "var(--color-bt-warning)",
+    border: "var(--color-bt-warning-border)",
+  },
+  active: {
+    label: "Active",
+    bg: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+  completed: {
+    label: "Completed",
+    bg: "var(--color-bt-tag-bg)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+};
 
 interface Props {
   competition: Competition;
@@ -102,11 +127,20 @@ export function CompetitionHeader({
           <Trophy size={18} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-            {competition.name}
-          </p>
-          {competition.tagline && (
-            <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <p
+              className="text-base font-bold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {competition.name}
+            </p>
+            <StatusBadge status={competition.status} />
+          </div>
+          {competition.tagline && competition.tagline.trim() && (
+            <p
+              className="mt-0.5 text-xs"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
               {competition.tagline}
             </p>
           )}
@@ -126,7 +160,11 @@ export function CompetitionHeader({
             <Pencil size={14} />
           </button>
         )}
-        {isOwner && !editing && (
+        {/* Delete is only available before the competition has gone live —
+            once status flips to active or completed the data is meaningful
+            and shouldn't be wiped from the header. Phase B can offer an
+            archive flow for that case. */}
+        {isOwner && !editing && competition.status === "upcoming" && (
           <button
             type="button"
             onClick={() => setConfirming(true)}
@@ -298,6 +336,23 @@ function describeCascade(teamAssignments: number, events: number): string {
 function describeGroupsStatus(golfEventCount: number): string {
   if (golfEventCount === 0) return "no golf events yet";
   return "set per event";
+}
+
+function StatusBadge({ status }: { status: Competition["status"] }) {
+  const cfg = STATUS_CHIP[status];
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+      style={{
+        background: cfg.bg,
+        color: cfg.color,
+        border: `1px solid ${cfg.border}`,
+      }}
+      data-testid="competition-status-badge"
+    >
+      {cfg.label}
+    </span>
+  );
 }
 
 function ProgressPill({
