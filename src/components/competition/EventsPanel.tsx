@@ -22,6 +22,12 @@ interface Props {
   competitionId: string;
   tripId: string;
   canEdit: boolean;
+  /**
+   * When true, render just the body (cards + add button + sheet) without
+   * the collapsible chrome. MatchupPanel uses this so a single outer
+   * collapsible owns the open/close state for both columns.
+   */
+  bare?: boolean;
 }
 
 type EventType = "GOLF" | "GENERIC";
@@ -82,7 +88,7 @@ const FORMAT_LABELS: Record<ScoringFormat, string> = {
 
 // ── EventsPanel ─────────────────────────────────────────────────────────────
 
-export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
+export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
   const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState<EventRow | null>(null);
   const [creating, setCreating] = useState(false);
@@ -113,16 +119,8 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
       }`;
   const headerState = totalEvents === 0 ? "todo" : "inProgress";
 
-  return (
-    <CollapsiblePanel
-      icon={<Calendar size={16} />}
-      label="Events"
-      note={statusText}
-      state={headerState}
-      open={open}
-      onToggle={() => setOpen((v) => !v)}
-      testId="events-panel"
-    >
+  const body = (
+    <>
       <div className="space-y-3">
         {totalEvents === 0 && (
           <EventsEmptyState canEdit={canEdit} onAdd={() => setCreating(true)} />
@@ -167,6 +165,22 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
           }}
         />
       )}
+    </>
+  );
+
+  if (bare) return body;
+
+  return (
+    <CollapsiblePanel
+      icon={<Calendar size={16} />}
+      label="Events"
+      note={statusText}
+      state={headerState}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+      testId="events-panel"
+    >
+      {body}
     </CollapsiblePanel>
   );
 }

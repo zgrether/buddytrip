@@ -5,8 +5,7 @@ import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
-import { EventsPanel } from "@/components/competition/EventsPanel";
-import { VenuesPanel } from "@/components/competition/VenuesPanel";
+import { MatchupPanel } from "@/components/competition/MatchupPanel";
 import type { TabProps } from "./types";
 
 interface CompTabProps extends TabProps {
@@ -101,18 +100,11 @@ function ExistingCompetitionView({
         canEdit={canEdit}
         isOwner={isOwner}
       />
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <EventsPanel
-          competitionId={competition.id}
-          tripId={tripId}
-          canEdit={canEdit}
-        />
-        <VenuesPanel
-          competitionId={competition.id}
-          tripId={tripId}
-          canEdit={canEdit}
-        />
-      </div>
+      <MatchupPanel
+        competitionId={competition.id}
+        tripId={tripId}
+        canEdit={canEdit}
+      />
     </div>
   );
 }

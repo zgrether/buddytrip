@@ -16,6 +16,8 @@ interface Props {
   competitionId: string;
   tripId: string;
   canEdit: boolean;
+  /** When true, render just the body — see EventsPanel for the rationale. */
+  bare?: boolean;
 }
 
 interface VenueRow {
@@ -52,7 +54,7 @@ interface EventRow {
 
 // ── VenuesPanel ─────────────────────────────────────────────────────────────
 
-export function VenuesPanel({ competitionId, tripId, canEdit }: Props) {
+export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
   const [open, setOpen] = useState(true);
   const [creatingManual, setCreatingManual] = useState(false);
 
@@ -110,16 +112,8 @@ export function VenuesPanel({ competitionId, tripId, canEdit }: Props) {
       ? "Not set up"
       : `${linkedCount} of ${venuesTyped.length} venue${venuesTyped.length === 1 ? "" : "s"} linked`;
 
-  return (
-    <CollapsiblePanel
-      icon={<MapPin size={16} />}
-      label="Venues"
-      note={statusText}
-      state={headerState}
-      open={open}
-      onToggle={() => setOpen((v) => !v)}
-      testId="venues-panel"
-    >
+  const body = (
+    <>
       <div className="space-y-5">
         {totalPanels === 0 && (
           <VenuesEmptyState
@@ -176,6 +170,22 @@ export function VenuesPanel({ competitionId, tripId, canEdit }: Props) {
           onClose={() => setCreatingManual(false)}
         />
       )}
+    </>
+  );
+
+  if (bare) return body;
+
+  return (
+    <CollapsiblePanel
+      icon={<MapPin size={16} />}
+      label="Venues"
+      note={statusText}
+      state={headerState}
+      open={open}
+      onToggle={() => setOpen((v) => !v)}
+      testId="venues-panel"
+    >
+      {body}
     </CollapsiblePanel>
   );
 }
