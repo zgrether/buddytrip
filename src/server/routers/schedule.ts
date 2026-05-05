@@ -29,6 +29,32 @@ export const scheduleRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // listGolf — golf-only schedule items, ordered chronologically. Used by
+  // ArenasPanel to surface tee times that can be linked to comp events.
+  // -----------------------------------------------------------------------
+  listGolf: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }) => {
+      const { data, error } = await ctx.supabase
+        .from("schedule_items")
+        .select("*, course:golf_courses(*)")
+        .eq("trip_id", ctx.tripId)
+        .eq("item_type", "golf")
+        .order("scheduled_date", { ascending: true, nullsFirst: false })
+        .order("scheduled_time", { ascending: true, nullsFirst: false });
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch golf schedule items",
+        });
+      }
+
+      return data ?? [];
+    }),
+
+  // -----------------------------------------------------------------------
   // create — Planner+ can add schedule items
   // -----------------------------------------------------------------------
   create: authedProcedure
