@@ -9,6 +9,16 @@ import { EventsPanel } from "@/components/competition/EventsPanel";
 import { GroupsPanel } from "@/components/competition/GroupsPanel";
 import type { TabProps } from "./types";
 
+interface CompTabProps extends TabProps {
+  /**
+   * Fired when the owner deletes the competition. The trip page uses
+   * this to reset compUnlocked + bounce back to the home tab so the
+   * comp tab fully disappears for everyone (not just the rest of the
+   * crew).
+   */
+  onCompetitionDeleted?: () => void;
+}
+
 /**
  * CompTab — competition hub for a trip.
  *
@@ -18,7 +28,12 @@ import type { TabProps } from "./types";
  *   3. None + member  → read-only "not set up yet" empty state
  *   4. Exists         → CompetitionHeader + Teams + Events + Groups stack
  */
-export function CompTab({ trip, canEdit, isOwner }: TabProps) {
+export function CompTab({
+  trip,
+  canEdit,
+  isOwner,
+  onCompetitionDeleted,
+}: CompTabProps) {
   const tripId = trip.id;
   const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery({ tripId });
 
@@ -46,6 +61,7 @@ export function CompTab({ trip, canEdit, isOwner }: TabProps) {
       competition={competition}
       canEdit={canEdit}
       isOwner={!!isOwner}
+      onCompetitionDeleted={onCompetitionDeleted}
     />
   );
 }
@@ -57,6 +73,7 @@ function ExistingCompetitionView({
   competition,
   canEdit,
   isOwner,
+  onCompetitionDeleted,
 }: {
   tripId: string;
   competition: {
@@ -66,10 +83,17 @@ function ExistingCompetitionView({
   };
   canEdit: boolean;
   isOwner: boolean;
+  onCompetitionDeleted?: () => void;
 }) {
   return (
     <div className="space-y-3 px-4">
-      <CompetitionHeader competition={competition} tripId={tripId} canEdit={canEdit} />
+      <CompetitionHeader
+        competition={competition}
+        tripId={tripId}
+        canEdit={canEdit}
+        isOwner={isOwner}
+        onDeleted={onCompetitionDeleted}
+      />
       <TeamsPanel
         competitionId={competition.id}
         tripId={tripId}

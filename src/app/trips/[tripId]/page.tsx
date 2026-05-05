@@ -358,7 +358,20 @@ export default function TripDetailPage() {
                   <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
                 )}
                 {activeTab === "comp" && (
-                  <CompTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                  <CompTab
+                    trip={trip}
+                    role={role}
+                    canEdit={effectiveCanEdit}
+                    isOwner={tripIsReadOnly ? false : isOwner}
+                    onCompetitionDeleted={() => {
+                      // Owner just wiped the competition. Drop the
+                      // session-local "I unlocked the tab" flag and
+                      // bounce back to home so the comp tab disappears
+                      // for the owner too — not just the rest of crew.
+                      setCompUnlocked(false);
+                      setActiveTab("home");
+                    }}
+                  />
                 )}
               </div>
             </div>
