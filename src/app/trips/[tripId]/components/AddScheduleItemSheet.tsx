@@ -556,19 +556,17 @@ export function AddScheduleItemSheet({
           </>
         )}
 
-        {/* ── Date + time (optional) ───────────────────────────────────── */}
-        <p className="mt-3 mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-          Date &amp; time <span className="font-normal">(optional)</span>
-        </p>
-        <div className="flex gap-2">
-          <input
-            type="date"
-            value={scheduledDate}
-            onChange={(e) => setScheduledDate(e.target.value)}
-            className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-            style={inputStyle}
-          />
-          {!isGolf && scheduledDate && (
+        {/* ── Time (optional) ──────────────────────────────────────────────
+            Date pickers were removed — new items land in the Unscheduled
+            section and the user drags them onto a day. Editing a
+            previously-scheduled item preserves its date in state (it just
+            isn't editable here). Golf rounds keep their own tee_times list
+            below, so this slot only renders for non-golf items. */}
+        {!isGolf && (
+          <>
+            <p className="mt-3 mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+              Time <span className="font-normal">(optional)</span>
+            </p>
             <input
               type="time"
               value={scheduledTime}
@@ -576,10 +574,12 @@ export function AddScheduleItemSheet({
               className="w-32 rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
-          )}
-        </div>
+          </>
+        )}
 
-        {/* Confirmed checkbox — only when date is set */}
+        {/* Confirmed checkbox — only meaningful when an item is already
+            scheduled to a day (which only happens via drag-drop or via
+            edit on a pre-scheduled item). */}
         {scheduledDate && (
           <label className="mt-3 flex cursor-pointer items-center gap-2">
             <input
