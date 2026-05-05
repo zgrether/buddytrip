@@ -549,25 +549,39 @@ function TeamCard({
               : "No members assigned"}
           </p>
         )}
-        {teamMembers.map((m) => (
-          <div
-            key={m.user_id ?? m.memberId}
-            className="flex items-center gap-1.5 rounded-full px-2 py-1"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <UserAvatar
-              name={m.displayName}
-              avatarUrl={m.user?.avatar_url ?? null}
-              size="sm"
-            />
-            <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
-              {m.displayName}
-            </span>
-          </div>
-        ))}
+        {teamMembers.map((m) => {
+          const id = m.user_id ?? m.memberId;
+          return (
+            <div
+              key={id}
+              draggable={canEdit}
+              onDragStart={
+                canEdit
+                  ? (e) => {
+                      e.dataTransfer.setData(DND_USER_KEY, id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }
+                  : undefined
+              }
+              className={`flex items-center gap-1.5 rounded-full px-2 py-1 ${
+                canEdit ? "cursor-grab active:cursor-grabbing" : ""
+              }`}
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <UserAvatar
+                name={m.displayName}
+                avatarUrl={m.user?.avatar_url ?? null}
+                size="sm"
+              />
+              <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
+                {m.displayName}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -615,17 +629,41 @@ function CrewRoster({
   );
 
   const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
+  const [dragOver, setDragOver] = useState(false);
+
+  function handleDropToUnassign(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const userId = e.dataTransfer.getData(DND_USER_KEY);
+    if (!userId) return;
+    // No-op if dragging the same already-unassigned card back into the column.
+    if (!assignmentByUser.has(userId)) return;
+    remove.mutate({ tripId, competitionId, userId });
+  }
 
   return (
     <>
       {/* ── Desktop column: drag-and-drop unassigned roster ─────────── */}
       <div
-        className="hidden rounded-xl p-3 lg:block"
+        className="hidden rounded-xl p-3 transition-colors lg:block"
         style={{
           background: "var(--color-bt-card-raised)",
-          border: "1px solid var(--color-bt-border)",
+          border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+            dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+          }`,
           alignSelf: "start",
         }}
+        onDragOver={
+          canEdit
+            ? (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOver(true);
+              }
+            : undefined
+        }
+        onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+        onDrop={canEdit ? handleDropToUnassign : undefined}
       >
         <p
           className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
@@ -638,7 +676,9 @@ function CrewRoster({
             className="text-[11px]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Everyone&rsquo;s on a team.
+            {canEdit
+              ? "Everyone’s on a team. Drop here to unassign."
+              : "Everyone’s on a team."}
           </p>
         ) : (
           <div className="space-y-1.5">
