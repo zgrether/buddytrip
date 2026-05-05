@@ -69,8 +69,8 @@ export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-4">
         <Column
           icon={<Calendar size={12} />}
-          label="Events"
-          hint={canEdit ? "Drag the grip onto a venue to assign" : undefined}
+          label="Unassigned Events"
+          hint={canEdit ? "Drag a card onto a venue to assign" : undefined}
         >
           <EventsPanel
             competitionId={competitionId}
@@ -81,7 +81,7 @@ export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
         </Column>
         <Column
           icon={<MapPin size={12} />}
-          label="Venues"
+          label="Confirmed Venues"
           hint={canEdit ? "Drop a dragged event here" : undefined}
         >
           <VenuesPanel

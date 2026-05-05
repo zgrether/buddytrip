@@ -47,7 +47,7 @@ interface PointDistribution {
   points: number;
 }
 
-interface EventRow {
+export interface EventRow {
   id: string;
   competition_id: string;
   type: EventType;
@@ -109,6 +109,16 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
   const eventsTyped = events as EventRow[];
   const venuesTyped = venues as VenueLink[];
 
+  // When rendered inside MatchupPanel, this column shows ONLY events
+  // that haven't been pinned to a venue yet — assigned events render
+  // inside their venue card on the right column. Standalone (non-bare)
+  // mode still shows everything for discoverability.
+  const visibleEvents = bare
+    ? eventsTyped.filter(
+        (e) => !venuesTyped.some((v) => v.event_id === e.id)
+      )
+    : eventsTyped;
+
   const totalEvents = eventsTyped.length;
   const practiceCount = eventsTyped.filter((e) => e.is_practice).length;
 
@@ -121,12 +131,18 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
 
   const body = (
     <>
-      <div className="space-y-3">
-        {totalEvents === 0 && (
-          <EventsEmptyState canEdit={canEdit} onAdd={() => setCreating(true)} />
+      <div className="space-y-2">
+        {visibleEvents.length === 0 && (
+          <EventsEmptyState
+            canEdit={canEdit}
+            onAdd={() => setCreating(true)}
+            assignedCount={
+              bare ? eventsTyped.length - visibleEvents.length : 0
+            }
+          />
         )}
 
-        {eventsTyped.map((event) => (
+        {visibleEvents.map((event) => (
           <EventCard
             key={event.id}
             event={event}
@@ -137,7 +153,7 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
           />
         ))}
 
-        {totalEvents > 0 && canEdit && (
+        {visibleEvents.length > 0 && canEdit && (
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -265,16 +281,23 @@ function CollapsiblePanel({
 function EventsEmptyState({
   canEdit,
   onAdd,
+  assignedCount,
 }: {
   canEdit: boolean;
   onAdd: () => void;
+  /** When called from bare mode (MatchupPanel), how many events are
+   *  already assigned to venues — drives a subtler "all assigned" copy
+   *  instead of the cold "no events yet" message. */
+  assignedCount: number;
 }) {
-  // Inline empty state — no card chrome so the column doesn't look
-  // double-nested inside the MatchupPanel container.
+  const message = assignedCount > 0
+    ? `All ${assignedCount} event${assignedCount === 1 ? "" : "s"} assigned. Add another?`
+    : "No events yet. Add the rounds and activities you’ll compete in.";
+
   return (
     <div className="py-2 text-center">
       <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        No events yet. Add the rounds and activities you&rsquo;ll compete in.
+        {message}
       </p>
       {canEdit && (
         <button
@@ -337,7 +360,22 @@ function EventCard({
 
   return (
     <div
-      className="flex items-start gap-3 rounded-xl px-3 py-3"
+      // Whole-card drag, matching the Schedule tab pattern. The
+      // GripVertical inside is just a visual indicator. Buttons inside
+      // (Edit / Delete) still receive clicks because the browser only
+      // initiates a drag on actual mouse movement.
+      draggable={draggable}
+      onDragStart={
+        draggable
+          ? (e) => {
+              e.dataTransfer.setData(DND_EVENT_KEY, event.id);
+              e.dataTransfer.effectAllowed = "move";
+            }
+          : undefined
+      }
+      className={`flex items-start gap-3 rounded-xl px-3 py-3 ${
+        draggable ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
@@ -345,26 +383,13 @@ function EventCard({
       }}
       data-testid={`event-card-${event.id}`}
     >
-      {/* Dedicated drag handle. Putting draggable on a small grip lets the
-          rest of the card stay interactive — clicking Edit / Delete now
-          never accidentally starts a drag. Visible accent color so the
-          affordance reads at a glance. */}
-      {draggable ? (
-        <div
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.setData(DND_EVENT_KEY, event.id);
-            e.dataTransfer.effectAllowed = "move";
-          }}
-          aria-label={`Drag ${event.title}`}
-          title="Drag to assign to a venue"
-          className="-ml-1.5 flex h-9 w-6 flex-shrink-0 cursor-grab items-center justify-center rounded-md transition-colors hover:bg-[color:var(--color-bt-accent-faint)] active:cursor-grabbing"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          <GripVertical size={18} strokeWidth={2.25} />
-        </div>
-      ) : (
-        <div className="-ml-1.5 w-6 flex-shrink-0" />
+      {draggable && (
+        <GripVertical
+          size={16}
+          className="mt-0.5 hidden flex-shrink-0 lg:block"
+          strokeWidth={2}
+          style={{ color: "var(--color-bt-text-dim)" }}
+        />
       )}
       <div
         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
@@ -507,7 +532,7 @@ function formatShortDate(iso: string): string {
 
 // ── EventSheet ──────────────────────────────────────────────────────────────
 
-function EventSheet({
+export function EventSheet({
   tripId,
   competitionId,
   event,

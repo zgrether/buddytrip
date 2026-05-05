@@ -6,11 +6,12 @@ import {
   Cloud,
   Flag,
   MapPin,
+  Pencil,
   Plus,
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { DND_EVENT_KEY } from "./EventsPanel";
+import { DND_EVENT_KEY, EventSheet, type EventRow } from "./EventsPanel";
 
 interface Props {
   competitionId: string;
@@ -44,19 +45,16 @@ interface ScheduleItemRow {
   is_confirmed: boolean;
 }
 
-interface EventRow {
-  id: string;
-  type: "GOLF" | "GENERIC";
-  title: string;
-  is_practice: boolean;
-  points_available: number | null;
-}
+// EventRow shape comes from EventsPanel — re-exported there so the same
+// type drives the linked-event chip rendered inside venue cards. We
+// only need a subset of its fields here.
 
 // ── VenuesPanel ─────────────────────────────────────────────────────────────
 
 export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
   const [open, setOpen] = useState(true);
   const [creatingManual, setCreatingManual] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventRow | null>(null);
 
   const { data: venues = [] } = trpc.venues.list.useQuery(
     { tripId, competitionId },
@@ -132,6 +130,7 @@ export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
             events={eventsTyped}
             venuesTyped={venuesTyped}
             canEdit={canEdit}
+            onEditLinkedEvent={setEditingEvent}
           />
         )}
 
@@ -141,8 +140,8 @@ export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
             competitionId={competitionId}
             anytimeVenues={anytimeVenues}
             events={eventsTyped}
-            unassignedEvents={unassignedEvents}
             canEdit={canEdit}
+            onEditLinkedEvent={setEditingEvent}
           />
         )}
 
@@ -168,6 +167,14 @@ export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
           tripId={tripId}
           competitionId={competitionId}
           onClose={() => setCreatingManual(false)}
+        />
+      )}
+      {editingEvent && (
+        <EventSheet
+          tripId={tripId}
+          competitionId={competitionId}
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)}
         />
       )}
     </>
@@ -311,6 +318,7 @@ function ScheduledSection({
   events,
   venuesTyped,
   canEdit,
+  onEditLinkedEvent,
 }: {
   tripId: string;
   competitionId: string;
@@ -320,14 +328,16 @@ function ScheduledSection({
   events: EventRow[];
   venuesTyped: VenueRow[];
   canEdit: boolean;
+  onEditLinkedEvent: (event: EventRow) => void;
 }) {
+  // Section label removed — the column header in MatchupPanel already
+  // reads "Confirmed Venues", so this would be the third level of
+  // header on the screen.
   return (
     <section>
-      <SectionLabel>Confirmed Venues</SectionLabel>
-
       {golfItems.length === 0 && manualScheduledVenues.length === 0 && (
         <p
-          className="mt-2 text-[11px]"
+          className="text-[11px]"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           No confirmed golf tee times yet. Confirm them in the Schedule tab to
@@ -335,7 +345,7 @@ function ScheduledSection({
         </p>
       )}
 
-      <div className="mt-2 space-y-2">
+      <div className="space-y-2">
         {golfItems.map((item) => {
           const venue = venueByScheduleItem.get(item.id);
           if (venue) {
@@ -348,6 +358,7 @@ function ScheduledSection({
                 tripId={tripId}
                 competitionId={competitionId}
                 canEdit={canEdit}
+                onEditLinkedEvent={onEditLinkedEvent}
               />
             );
           }
@@ -371,6 +382,7 @@ function ScheduledSection({
             tripId={tripId}
             competitionId={competitionId}
             canEdit={canEdit}
+            onEditLinkedEvent={onEditLinkedEvent}
           />
         ))}
       </div>
@@ -489,6 +501,7 @@ function VenueRowView({
   tripId,
   competitionId,
   canEdit,
+  onEditLinkedEvent,
 }: {
   venue: VenueRow;
   events: EventRow[];
@@ -496,6 +509,7 @@ function VenueRowView({
   tripId: string;
   competitionId: string;
   canEdit: boolean;
+  onEditLinkedEvent: (event: EventRow) => void;
 }) {
   const utils = trpc.useUtils();
   const [dragOver, setDragOver] = useState(false);
@@ -578,35 +592,14 @@ function VenueRowView({
       </div>
 
       {linkedEvent && (
-        <div
-          className="mt-2 flex items-center gap-2 rounded-lg px-2 py-1.5"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            border: "1px solid var(--color-bt-accent-border)",
-          }}
-        >
-          <span
-            className="text-xs font-semibold"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            {linkedEvent.title}
-          </span>
-          {linkedEvent.points_available !== null && (
-            <span
-              className="text-[11px]"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              · {linkedEvent.points_available} pts
-            </span>
-          )}
-          {canEdit && (
-            <UnassignButton
-              venueId={venue.id}
-              tripId={tripId}
-              competitionId={competitionId}
-            />
-          )}
-        </div>
+        <LinkedEventDetails
+          event={linkedEvent}
+          venueId={venue.id}
+          tripId={tripId}
+          competitionId={competitionId}
+          canEdit={canEdit}
+          onEdit={() => onEditLinkedEvent(linkedEvent)}
+        />
       )}
 
       {!linkedEvent && (
@@ -707,6 +700,156 @@ function UnassignButton({
   );
 }
 
+// ── LinkedEventDetails ──────────────────────────────────────────────────────
+//
+// Shown inside a venue card once an event has been pinned. Replaces the
+// EventCard in the Unassigned column (the event filters out of there
+// once linked), so this needs to carry enough info to manage the event
+// in place: format chip, practice badge, points distribution summary,
+// description preview, plus pencil-edit + × unassign buttons.
+
+const FORMAT_LABELS: Record<string, string> = {
+  scramble: "Scramble",
+  stableford: "Stableford",
+  skins: "Skins",
+  match_play: "Match Play",
+  singles: "Singles",
+  sabotage: "Sabotage",
+  other: "Other",
+};
+
+function LinkedEventDetails({
+  event,
+  venueId,
+  tripId,
+  competitionId,
+  canEdit,
+  onEdit,
+}: {
+  event: EventRow;
+  venueId: string;
+  tripId: string;
+  competitionId: string;
+  canEdit: boolean;
+  onEdit: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const unassign = trpc.venues.unassignEvent.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+  });
+
+  const isGolf = event.type === "GOLF";
+  const formatLabel = event.scoring_format
+    ? FORMAT_LABELS[event.scoring_format] ?? event.scoring_format
+    : null;
+  const dist = event.point_distributions ?? [];
+  const distSummary = dist.length > 0
+    ? dist
+        .slice(0, 3)
+        .map((d) => `${ordinalShort(d.position)}: ${d.points}pt${d.points === 1 ? "" : "s"}`)
+        .join(" · ")
+    : null;
+
+  return (
+    <div
+      className="mt-2 rounded-lg px-2.5 py-2"
+      style={{
+        background: "var(--color-bt-accent-faint)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }}
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-1.5">
+            <span
+              className="text-xs font-semibold"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              {event.title}
+            </span>
+            {isGolf && formatLabel && (
+              <span
+                className="rounded px-1 py-0 text-[9px] font-bold uppercase"
+                style={{
+                  background: "var(--color-bt-card)",
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                {formatLabel}
+              </span>
+            )}
+            {event.is_practice && (
+              <span
+                className="rounded px-1 py-0 text-[9px] font-bold uppercase"
+                style={{
+                  background: "var(--color-bt-warning-faint)",
+                  color: "var(--color-bt-warning)",
+                }}
+              >
+                Practice
+              </span>
+            )}
+            {event.points_available !== null && (
+              <span
+                className="text-[10px]"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                · {event.points_available}pt{event.points_available === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+          {distSummary && (
+            <p
+              className="mt-0.5 text-[10px]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {distSummary}
+            </p>
+          )}
+          {event.description && (
+            <p
+              className="mt-0.5 line-clamp-2 text-[10px]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {event.description}
+            </p>
+          )}
+        </div>
+        {canEdit && (
+          <div className="flex flex-shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={onEdit}
+              aria-label={`Edit ${event.title}`}
+              className="flex h-5 w-5 items-center justify-center rounded"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              <Pencil size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={() => unassign.mutate({ tripId, venueId })}
+              disabled={unassign.isPending}
+              aria-label="Unassign event"
+              className="flex h-5 w-5 items-center justify-center rounded"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              <X size={11} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ordinalShort(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 // ── AnytimeSection ──────────────────────────────────────────────────────────
 
 function AnytimeSection({
@@ -714,69 +857,133 @@ function AnytimeSection({
   competitionId,
   anytimeVenues,
   events,
-  unassignedEvents,
   canEdit,
+  onEditLinkedEvent,
 }: {
   tripId: string;
   competitionId: string;
   anytimeVenues: VenueRow[];
   events: EventRow[];
-  unassignedEvents: EventRow[];
   canEdit: boolean;
+  onEditLinkedEvent: (event: EventRow) => void;
 }) {
-  // Each AnytimeVenueRow owns its own delete + assign mutations now that
-  // it doubles as a drop target — the section itself just composes the
-  // children + the suggestion list below.
-
-  // "Anytime" suggestion only shows non-practice events that have no
-  // venue at all — once an event is in an Anytime venue we don't repeat
-  // the suggestion below.
-  const suggestable = unassignedEvents;
-
-  if (anytimeVenues.length === 0 && suggestable.length === 0) return null;
-
+  // Always render the section so the drop zone is reachable even when
+  // no anytime venues exist yet — that's how the user creates one in
+  // the new flow (drag an event onto the dashed Anytime box).
   return (
     <section>
       <SectionLabel>Anytime</SectionLabel>
-      <p
-        className="mt-1 text-[11px] italic"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        These happen during the trip without a fixed time or place.
-      </p>
 
-      <div className="mt-2 space-y-2">
-        {anytimeVenues.map((venue) => (
-          <AnytimeVenueRow
-            key={venue.id}
-            venue={venue}
-            events={events}
-            tripId={tripId}
-            competitionId={competitionId}
-            canEdit={canEdit}
-          />
-        ))}
+      <AnytimeDropZone
+        tripId={tripId}
+        competitionId={competitionId}
+        events={events}
+        canEdit={canEdit}
+      />
 
-        {suggestable.length > 0 && canEdit && (
-          <div
-            className="rounded-xl px-3 py-2.5"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px dashed var(--color-bt-border)",
-            }}
-          >
-            {suggestable.map((event) => (
-              <UnassignedEventPrompt
-                key={event.id}
-                event={event}
-                tripId={tripId}
-                competitionId={competitionId}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {anytimeVenues.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          {anytimeVenues.map((venue) => (
+            <AnytimeVenueRow
+              key={venue.id}
+              venue={venue}
+              events={events}
+              tripId={tripId}
+              competitionId={competitionId}
+              canEdit={canEdit}
+              onEditLinkedEvent={onEditLinkedEvent}
+            />
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+function AnytimeDropZone({
+  tripId,
+  competitionId,
+  events,
+  canEdit,
+}: {
+  tripId: string;
+  competitionId: string;
+  events: EventRow[];
+  canEdit: boolean;
+}) {
+  const utils = trpc.useUtils();
+  const [dragOver, setDragOver] = useState(false);
+  const create = trpc.venues.create.useMutation();
+  const assign = trpc.venues.assignEvent.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+  });
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (!canEdit) return;
+    const eventId = e.dataTransfer.getData(DND_EVENT_KEY);
+    if (!eventId) return;
+    const event = events.find((ev) => ev.id === eventId);
+    if (!event) return;
+    const venue = await create.mutateAsync({
+      tripId,
+      competitionId,
+      name: event.title,
+      isAnytime: true,
+    });
+    await assign.mutateAsync({
+      tripId,
+      venueId: venue.id,
+      eventId,
+    });
+  }
+
+  return (
+    <div
+      className="mt-1.5 flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-center transition-colors"
+      style={{
+        background: dragOver
+          ? "var(--color-bt-accent-faint)"
+          : "transparent",
+        border: `1.5px dashed ${
+          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+        }`,
+      }}
+      onDragOver={
+        canEdit
+          ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOver(true);
+            }
+          : undefined
+      }
+      onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
+      data-testid="anytime-dropzone"
+    >
+      <Cloud
+        size={13}
+        style={{
+          color: dragOver
+            ? "var(--color-bt-accent)"
+            : "var(--color-bt-text-dim)",
+        }}
+      />
+      <span
+        className="text-[11px]"
+        style={{
+          color: dragOver
+            ? "var(--color-bt-accent)"
+            : "var(--color-bt-text-dim)",
+        }}
+      >
+        {canEdit
+          ? "Drop here for anytime — no fixed time or place"
+          : "Anytime events appear here"}
+      </span>
+    </div>
   );
 }
 
@@ -786,12 +993,14 @@ function AnytimeVenueRow({
   tripId,
   competitionId,
   canEdit,
+  onEditLinkedEvent,
 }: {
   venue: VenueRow;
   events: EventRow[];
   tripId: string;
   competitionId: string;
   canEdit: boolean;
+  onEditLinkedEvent: (event: EventRow) => void;
 }) {
   const utils = trpc.useUtils();
   const [dragOver, setDragOver] = useState(false);
@@ -816,12 +1025,15 @@ function AnytimeVenueRow({
     assign.mutate({ tripId, venueId: venue.id, eventId });
   }
 
+  // Compact row — anytime venues are mostly metadata, no need for the
+  // tall Confirmed-Venues-style card. The linked event still gets edit
+  // + unassign affordances inline.
   return (
     <div
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors"
+      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors"
       style={{
         background: "var(--color-bt-card-raised)",
-        border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+        border: `1px ${dragOver ? "dashed" : "solid"} ${
           dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
         }`,
       }}
@@ -837,86 +1049,48 @@ function AnytimeVenueRow({
       onDragLeave={canEdit ? () => setDragOver(false) : undefined}
       onDrop={canEdit ? handleDrop : undefined}
     >
-      <Cloud size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      <Cloud size={12} style={{ color: "var(--color-bt-text-dim)" }} />
       <span
-        className="flex-1 text-sm font-medium"
+        className="flex-1 truncate text-xs font-medium"
         style={{ color: "var(--color-bt-text)" }}
       >
         {label}
         {pts !== undefined && pts !== null && (
           <span
-            className="ml-2 text-[11px]"
+            className="ml-1.5 text-[10px]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            · {pts} pts
+            · {pts}pt{pts === 1 ? "" : "s"}
           </span>
         )}
       </span>
+      {canEdit && linkedEvent && (
+        <button
+          type="button"
+          onClick={() => onEditLinkedEvent(linkedEvent)}
+          aria-label={`Edit ${linkedEvent.title}`}
+          className="flex h-5 w-5 items-center justify-center rounded"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <Pencil size={10} />
+        </button>
+      )}
       {canEdit && (
         <button
           type="button"
           onClick={() => remove.mutate({ tripId, venueId: venue.id })}
           aria-label="Remove venue"
-          className="flex h-6 w-6 items-center justify-center rounded-md"
+          className="flex h-5 w-5 items-center justify-center rounded"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          <X size={13} />
+          <X size={11} />
         </button>
       )}
     </div>
   );
 }
 
-function UnassignedEventPrompt({
-  event,
-  tripId,
-  competitionId,
-}: {
-  event: EventRow;
-  tripId: string;
-  competitionId: string;
-}) {
-  const utils = trpc.useUtils();
-  const create = trpc.venues.create.useMutation();
-  const assign = trpc.venues.assignEvent.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
-
-  async function markAnytime() {
-    const venue = await create.mutateAsync({
-      tripId,
-      competitionId,
-      name: event.title,
-      isAnytime: true,
-    });
-    await assign.mutateAsync({
-      tripId,
-      venueId: venue.id,
-      eventId: event.id,
-    });
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 py-1">
-      <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
-        &ldquo;{event.title}&rdquo; isn&rsquo;t assigned yet.
-      </span>
-      <button
-        type="button"
-        onClick={markAnytime}
-        disabled={create.isPending || assign.isPending}
-        className="rounded-md px-2 py-0.5 text-[11px] font-semibold disabled:opacity-50"
-        style={{
-          background: "transparent",
-          color: "var(--color-bt-accent)",
-          border: "1px dashed var(--color-bt-accent)",
-        }}
-      >
-        Mark as Anytime
-      </button>
-    </div>
-  );
-}
+// (UnassignedEventPrompt was retired — replaced by AnytimeDropZone.)
 
 // ── ManualVenueSheet ────────────────────────────────────────────────────────
 
