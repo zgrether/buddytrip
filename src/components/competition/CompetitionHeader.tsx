@@ -340,11 +340,6 @@ function describeCascade(teamAssignments: number, events: number): string {
 
 // ── Subcomponents ───────────────────────────────────────────────────────────
 
-function describeGroupsStatus(golfEventCount: number): string {
-  if (golfEventCount === 0) return "no golf events yet";
-  return "set per event";
-}
-
 function StatusBadge({ status }: { status: Competition["status"] }) {
   const cfg = STATUS_CHIP[status];
   return (
