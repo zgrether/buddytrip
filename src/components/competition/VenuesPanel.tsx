@@ -399,7 +399,11 @@ function UnlinkedScheduleRow({
   canEdit: boolean;
 }) {
   const utils = trpc.useUtils();
+  const [dragOver, setDragOver] = useState(false);
   const create = trpc.venues.create.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+  });
+  const assign = trpc.venues.assignEvent.useMutation({
     onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
@@ -407,14 +411,48 @@ function UnlinkedScheduleRow({
   // already filters on is_confirmed=true. The router's create mutation
   // re-checks server-side as defense in depth.
 
+  // Drop target — drop creates the venue from this schedule row AND
+  // assigns the dragged event in a single chain, so the user doesn't
+  // need to click "+ Add to Competition" first.
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (!canEdit) return;
+    const eventId = e.dataTransfer.getData(DND_EVENT_KEY);
+    if (!eventId) return;
+    const venue = await create.mutateAsync({
+      tripId,
+      competitionId,
+      scheduleItemId: item.id,
+    });
+    await assign.mutateAsync({
+      tripId,
+      venueId: venue.id,
+      eventId,
+    });
+  }
+
   return (
     <div
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+      className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors"
       style={{
         background: "var(--color-bt-card-raised)",
-        border: "1px dashed var(--color-bt-border)",
-        opacity: 0.85,
+        border: `${dragOver ? "1.5px" : "1px"} dashed ${
+          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+        }`,
+        opacity: dragOver ? 1 : 0.85,
       }}
+      onDragOver={
+        canEdit
+          ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOver(true);
+            }
+          : undefined
+      }
+      onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
       data-testid={`unlinked-schedule-${item.id}`}
     >
       <Flag size={14} style={{ color: "var(--color-bt-text-dim)" }} />
@@ -436,7 +474,7 @@ function UnlinkedScheduleRow({
               scheduleItemId: item.id,
             })
           }
-          disabled={create.isPending}
+          disabled={create.isPending || assign.isPending}
           className="rounded-lg px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50"
           style={{
             background: "transparent",
@@ -695,10 +733,9 @@ function AnytimeSection({
   unassignedEvents: EventRow[];
   canEdit: boolean;
 }) {
-  const utils = trpc.useUtils();
-  const remove = trpc.venues.delete.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
+  // Each AnytimeVenueRow owns its own delete + assign mutations now that
+  // it doubles as a drop target — the section itself just composes the
+  // children + the suggestion list below.
 
   // "Anytime" suggestion only shows non-practice events that have no
   // venue at all — once an event is in an Anytime venue we don't repeat
@@ -718,51 +755,16 @@ function AnytimeSection({
       </p>
 
       <div className="mt-2 space-y-2">
-        {anytimeVenues.map((venue) => {
-          const linkedEvent = events.find((e) => e.id === venue.event_id);
-          const label =
-            linkedEvent?.title ?? venue.name ?? "Anytime";
-          const pts = linkedEvent?.points_available;
-          return (
-            <div
-              key={venue.id}
-              className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <Cloud size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-              <span
-                className="flex-1 text-sm font-medium"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                {label}
-                {pts !== undefined && pts !== null && (
-                  <span
-                    className="ml-2 text-[11px]"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    · {pts} pts
-                  </span>
-                )}
-              </span>
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    remove.mutate({ tripId, venueId: venue.id })
-                  }
-                  aria-label="Remove venue"
-                  className="flex h-6 w-6 items-center justify-center rounded-md"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-          );
-        })}
+        {anytimeVenues.map((venue) => (
+          <AnytimeVenueRow
+            key={venue.id}
+            venue={venue}
+            events={events}
+            tripId={tripId}
+            competitionId={competitionId}
+            canEdit={canEdit}
+          />
+        ))}
 
         {suggestable.length > 0 && canEdit && (
           <div
@@ -784,6 +786,93 @@ function AnytimeSection({
         )}
       </div>
     </section>
+  );
+}
+
+function AnytimeVenueRow({
+  venue,
+  events,
+  tripId,
+  competitionId,
+  canEdit,
+}: {
+  venue: VenueRow;
+  events: EventRow[];
+  tripId: string;
+  competitionId: string;
+  canEdit: boolean;
+}) {
+  const utils = trpc.useUtils();
+  const [dragOver, setDragOver] = useState(false);
+  const linkedEvent = events.find((e) => e.id === venue.event_id);
+  const label = linkedEvent?.title ?? venue.name ?? "Anytime";
+  const pts = linkedEvent?.points_available;
+
+  const remove = trpc.venues.delete.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+  });
+  const assign = trpc.venues.assignEvent.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+  });
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (!canEdit) return;
+    const eventId = e.dataTransfer.getData(DND_EVENT_KEY);
+    if (!eventId) return;
+    if (eventId === venue.event_id) return;
+    assign.mutate({ tripId, venueId: venue.id, eventId });
+  }
+
+  return (
+    <div
+      className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+        }`,
+      }}
+      onDragOver={
+        canEdit
+          ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOver(true);
+            }
+          : undefined
+      }
+      onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
+    >
+      <Cloud size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      <span
+        className="flex-1 text-sm font-medium"
+        style={{ color: "var(--color-bt-text)" }}
+      >
+        {label}
+        {pts !== undefined && pts !== null && (
+          <span
+            className="ml-2 text-[11px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            · {pts} pts
+          </span>
+        )}
+      </span>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => remove.mutate({ tripId, venueId: venue.id })}
+          aria-label="Remove venue"
+          className="flex h-6 w-6 items-center justify-center rounded-md"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <X size={13} />
+        </button>
+      )}
+    </div>
   );
 }
 

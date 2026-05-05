@@ -7,6 +7,7 @@ import {
   CircleDot,
   Cloud,
   Flag,
+  GripVertical,
   Info,
   MapPin,
   Pencil,
@@ -341,18 +342,7 @@ function EventCard({
 
   return (
     <div
-      className={`flex items-start gap-3 rounded-xl px-3 py-3 ${
-        draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
-      draggable={draggable}
-      onDragStart={
-        draggable
-          ? (e) => {
-              e.dataTransfer.setData(DND_EVENT_KEY, event.id);
-              e.dataTransfer.effectAllowed = "move";
-            }
-          : undefined
-      }
+      className="flex items-start gap-3 rounded-xl px-3 py-3"
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
@@ -360,6 +350,26 @@ function EventCard({
       }}
       data-testid={`event-card-${event.id}`}
     >
+      {/* Dedicated drag handle. Putting draggable on a small grip lets the
+          rest of the card stay interactive — clicking Edit / Delete now
+          never accidentally starts a drag. */}
+      {draggable ? (
+        <div
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData(DND_EVENT_KEY, event.id);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          aria-label={`Drag ${event.title}`}
+          title="Drag to assign to a venue"
+          className="-ml-1 flex h-9 w-5 flex-shrink-0 cursor-grab items-center justify-center active:cursor-grabbing"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <GripVertical size={14} />
+        </div>
+      ) : (
+        <div className="-ml-1 w-5 flex-shrink-0" />
+      )}
       <div
         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
         style={{
