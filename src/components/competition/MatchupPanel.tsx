@@ -139,7 +139,6 @@ function CollapsiblePanel({
   icon,
   label,
   note,
-  state,
   open,
   onToggle,
   testId,
@@ -148,17 +147,22 @@ function CollapsiblePanel({
   icon: React.ReactNode;
   label: string;
   note: string;
-  state: "done" | "inProgress" | "todo";
+  /** State retained on the prop for future use, but no longer drives any
+   *  styling — the outer Events & Venues chrome stays neutral regardless
+   *  of how many events are linked. Confirmation is communicated by the
+   *  inner content (teal flags / linked-event chips) instead. */
+  state?: "done" | "inProgress" | "todo";
   open: boolean;
   onToggle: () => void;
   testId?: string;
   children: React.ReactNode;
 }) {
-  const labelColor =
-    state === "todo" ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)";
-  const borderColor =
-    state === "todo" ? "var(--color-bt-border)" : "var(--color-bt-accent-border)";
-  const bg = state === "done" ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)";
+  // Always neutral. Was previously: accent-bordered when in-progress,
+  // accent-faint flooded when done. The user pointed out that flipping
+  // the whole panel teal as soon as one event lands felt redundant.
+  const labelColor = "var(--color-bt-text-dim)";
+  const borderColor = "var(--color-bt-border)";
+  const bg = "var(--color-bt-card)";
 
   return (
     <div

@@ -655,7 +655,7 @@ function AssignEventControl({
         if (!e.target.value) return;
         assign.mutate({ tripId, venueId, eventId: e.target.value });
       }}
-      className="rounded-md px-2 py-1 text-xs"
+      className="rounded-md px-2 py-1 text-xs lg:hidden"
       style={{
         background: "var(--color-bt-card)",
         color: "var(--color-bt-accent)",
