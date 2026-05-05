@@ -74,6 +74,65 @@ function suggestTeamName(): string {
 // Drag & drop dataTransfer key
 const DND_USER_KEY = "application/x-buddytrip-user-id";
 
+// ── Optimistic mutation hook ────────────────────────────────────────────────
+// Both the drag-drop drop handler and the mobile crew roster talk to the
+// same teamAssignments cache; this hook centralizes the onMutate cache
+// patch + rollback so the avatar chip moves the instant the user drops or
+// picks a team, not after the network roundtrip.
+
+function useTeamAssignmentMutations(tripId: string, competitionId: string) {
+  const utils = trpc.useUtils();
+  const queryKey = { tripId, competitionId };
+
+  const assign = trpc.teamAssignments.assign.useMutation({
+    onMutate: async (vars) => {
+      await utils.teamAssignments.list.cancel(queryKey);
+      const previous = utils.teamAssignments.list.getData(queryKey);
+      utils.teamAssignments.list.setData(queryKey, (old) => {
+        const list = (old as Assignment[] | undefined) ?? [];
+        // Composite PK is (competition_id, user_id) — drop any existing
+        // row for this user before inserting the new pairing.
+        const filtered = list.filter((a) => a.user_id !== vars.userId);
+        return [
+          ...filtered,
+          {
+            competition_id: vars.competitionId,
+            user_id: vars.userId,
+            team_id: vars.teamId,
+          },
+        ] as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctxRollback) => {
+      if (ctxRollback?.previous) {
+        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
+      }
+    },
+    onSettled: () => utils.teamAssignments.list.invalidate(queryKey),
+  });
+
+  const remove = trpc.teamAssignments.remove.useMutation({
+    onMutate: async (vars) => {
+      await utils.teamAssignments.list.cancel(queryKey);
+      const previous = utils.teamAssignments.list.getData(queryKey);
+      utils.teamAssignments.list.setData(queryKey, (old) => {
+        const list = (old as Assignment[] | undefined) ?? [];
+        return list.filter((a) => a.user_id !== vars.userId) as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctxRollback) => {
+      if (ctxRollback?.previous) {
+        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
+      }
+    },
+    onSettled: () => utils.teamAssignments.list.invalidate(queryKey),
+  });
+
+  return { assign, remove };
+}
+
 // ── TeamsPanel ──────────────────────────────────────────────────────────────
 
 export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
@@ -209,7 +268,10 @@ function CollapsiblePanel({
     state === "todo" ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)";
   const borderColor =
     state === "todo" ? "var(--color-bt-border)" : "var(--color-bt-accent-border)";
-  const bg = state === "done" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)";
+  // Done state: subtle accent-faint tint instead of the saturated tag-bg
+  // teal — the inner card-raised swatches don't need to fight the panel
+  // background for contrast.
+  const bg = state === "done" ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)";
 
   return (
     <div
@@ -376,9 +438,9 @@ function TeamCard({
     },
   });
 
-  const assign = trpc.teamAssignments.assign.useMutation({
-    onSettled: () => utils.teamAssignments.list.invalidate(),
-  });
+  // Optimistic — the dropped chip needs to land in the target team
+  // instantly, not after the server round-trip.
+  const { assign } = useTeamAssignmentMutations(tripId, competitionId);
 
   function handleDelete() {
     if (!confirm(`Delete team "${team.name}"? This will unassign its members.`)) return;
@@ -536,8 +598,6 @@ function CrewRoster({
    *  roster panel before the teams column on lg+. */
   order?: "lg-first";
 }) {
-  const utils = trpc.useUtils();
-
   const teamById = useMemo(() => {
     const map = new Map<string, Team>();
     for (const t of teams) map.set(t.id, t);
@@ -554,12 +614,7 @@ function CrewRoster({
     (m) => !assignmentByUser.has(m.user_id ?? m.memberId)
   );
 
-  const assign = trpc.teamAssignments.assign.useMutation({
-    onSettled: () => utils.teamAssignments.list.invalidate(),
-  });
-  const remove = trpc.teamAssignments.remove.useMutation({
-    onSettled: () => utils.teamAssignments.list.invalidate(),
-  });
+  const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
 
   return (
     <>
