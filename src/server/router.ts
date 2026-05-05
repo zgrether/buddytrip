@@ -12,7 +12,7 @@ import { messagesRouter } from "./routers/messages";
 import { notificationsRouter } from "./routers/notifications";
 import { quickInfoTilesRouter } from "./routers/quickInfoTiles";
 import { competitionsRouter } from "./routers/competitions";
-import { arenasRouter } from "./routers/arenas";
+import { venuesRouter } from "./routers/venues";
 import { eventsRouter } from "./routers/events";
 import { teamsRouter } from "./routers/teams";
 import { teamAssignmentsRouter } from "./routers/teamAssignments";
@@ -43,7 +43,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   quickInfoTiles: quickInfoTilesRouter,
   competitions: competitionsRouter,
-  arenas: arenasRouter,
+  venues: venuesRouter,
   events: eventsRouter,
   teams: teamsRouter,
   teamAssignments: teamAssignmentsRouter,

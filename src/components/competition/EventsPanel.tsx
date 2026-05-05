@@ -53,10 +53,10 @@ interface EventRow {
   point_distributions?: PointDistribution[];
 }
 
-interface ArenaLink {
+interface VenueLink {
   event_id: string | null;
   is_anytime: boolean;
-  // Joined schedule_items (when arena is scheduled) — see ArenasPanel
+  // Joined schedule_items (when venue is scheduled) — see VenuesPanel
   // for the full shape; we only need the display fields here.
   schedule_item?: {
     course_name?: string | null;
@@ -87,16 +87,16 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
     { enabled: !!competitionId }
   );
 
-  // Arena linkage drives the per-card status line. The arenas router is
+  // Venue linkage drives the per-card status line. The venues router is
   // optional — if it isn't loaded yet (cold cache) we just render the
   // "not assigned" warning, which matches the actual not-yet-linked state.
-  const { data: arenas = [] } = trpc.arenas.list.useQuery(
+  const { data: venues = [] } = trpc.venues.list.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
 
   const eventsTyped = events as EventRow[];
-  const arenasTyped = arenas as ArenaLink[];
+  const venuesTyped = venues as VenueLink[];
 
   const totalEvents = eventsTyped.length;
   const practiceCount = eventsTyped.filter((e) => e.is_practice).length;
@@ -127,7 +127,7 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
           <EventCard
             key={event.id}
             event={event}
-            arena={arenasTyped.find((a) => a.event_id === event.id) ?? null}
+            venue={venuesTyped.find((v) => v.event_id === event.id) ?? null}
             canEdit={canEdit}
             tripId={tripId}
             onEdit={() => setEditing(event)}
@@ -298,13 +298,13 @@ function EventsEmptyState({
 
 function EventCard({
   event,
-  arena,
+  venue,
   canEdit,
   tripId,
   onEdit,
 }: {
   event: EventRow;
-  arena: ArenaLink | null;
+  venue: VenueLink | null;
   canEdit: boolean;
   tripId: string;
   onEdit: () => void;
@@ -329,7 +329,7 @@ function EventCard({
         .join(" · ")
     : null;
 
-  const statusLine = describeStatus(event, arena);
+  const statusLine = describeStatus(event, venue);
 
   return (
     <div
@@ -381,7 +381,7 @@ function EventCard({
           )}
         </div>
 
-        {/* Status line — links the event to its arena (or warns if none). */}
+        {/* Status line — links the event to its venue (or warns if none). */}
         <div
           className="mt-0.5 flex items-center gap-1 text-[11px]"
           style={{ color: statusLine.color }}
@@ -426,7 +426,7 @@ function EventCard({
 
 function describeStatus(
   event: EventRow,
-  arena: ArenaLink | null
+  venue: VenueLink | null
 ): { Icon: typeof Flag; text: string; color: string } {
   if (event.is_practice) {
     return {
@@ -435,17 +435,17 @@ function describeStatus(
       color: "var(--color-bt-text-dim)",
     };
   }
-  if (arena?.is_anytime) {
+  if (venue?.is_anytime) {
     return {
       Icon: Cloud,
       text: "Anytime",
       color: "var(--color-bt-text-dim)",
     };
   }
-  if (arena?.schedule_item) {
-    const courseName = arena.schedule_item.course_name ?? arena.name ?? "Scheduled";
-    const date = arena.schedule_item.scheduled_date
-      ? formatShortDate(arena.schedule_item.scheduled_date)
+  if (venue?.schedule_item) {
+    const courseName = venue.schedule_item.course_name ?? venue.name ?? "Scheduled";
+    const date = venue.schedule_item.scheduled_date
+      ? formatShortDate(venue.schedule_item.scheduled_date)
       : null;
     return {
       Icon: MapPin,
@@ -453,10 +453,10 @@ function describeStatus(
       color: "var(--color-bt-text-dim)",
     };
   }
-  if (arena?.name) {
+  if (venue?.name) {
     return {
       Icon: MapPin,
-      text: arena.name,
+      text: venue.name,
       color: "var(--color-bt-text-dim)",
     };
   }

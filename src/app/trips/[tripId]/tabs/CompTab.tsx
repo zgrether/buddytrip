@@ -6,7 +6,7 @@ import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetup
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { EventsPanel } from "@/components/competition/EventsPanel";
-import { ArenasPanel } from "@/components/competition/ArenasPanel";
+import { VenuesPanel } from "@/components/competition/VenuesPanel";
 import type { TabProps } from "./types";
 
 interface CompTabProps extends TabProps {
@@ -107,7 +107,7 @@ function ExistingCompetitionView({
           tripId={tripId}
           canEdit={canEdit}
         />
-        <ArenasPanel
+        <VenuesPanel
           competitionId={competition.id}
           tripId={tripId}
           canEdit={canEdit}

@@ -90,14 +90,15 @@ export function CompetitionHeader({
   const scoredEvents = eventsTyped.filter((e) => !e.is_practice).length;
   const eventsComplete = scoredEvents > 0;
 
-  const { data: arenas = [] } = trpc.arenas.list.useQuery(
+  const { data: venues = [] } = trpc.venues.list.useQuery(
     { tripId, competitionId: competition.id },
     { enabled: !!competition.id }
   );
-  const arenasTyped = arenas as Array<{ event_id: string | null }>;
-  const arenasLinked = arenasTyped.filter((a) => a.event_id !== null).length;
-  const arenasComplete = scoredEvents > 0 && arenasLinked === scoredEvents;
+  const venuesTyped = venues as Array<{ event_id: string | null }>;
+  const venuesLinked = venuesTyped.filter((v) => v.event_id !== null).length;
+  const venuesComplete = scoredEvents > 0 && venuesLinked === scoredEvents;
 
+  void venuesTyped; // referenced via the count + complete derivations above
   const teamsCount = (assignments as Array<unknown>).length;
   const eventsCount = eventsTyped.length;
 
@@ -200,8 +201,8 @@ export function CompetitionHeader({
         />
         <ProgressPill label={`Events: ${scoredEvents}`} complete={eventsComplete} />
         <ProgressPill
-          label={`Arenas: ${arenasLinked} linked`}
-          complete={arenasComplete}
+          label={`Venues: ${venuesLinked} linked`}
+          complete={venuesComplete}
         />
       </div>
 

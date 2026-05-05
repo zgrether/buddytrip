@@ -30,7 +30,7 @@ export const scheduleRouter = router({
 
   // -----------------------------------------------------------------------
   // listGolf — golf-only schedule items, ordered chronologically. Used by
-  // ArenasPanel to surface tee times that can be linked to comp events.
+  // VenuesPanel to surface tee times that can be linked to comp events.
   // -----------------------------------------------------------------------
   listGolf: authedProcedure
     .input(z.object({ tripId: z.string() }))

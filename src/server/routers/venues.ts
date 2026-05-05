@@ -4,9 +4,9 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
 /**
- * arenas — venue/time-slot for a competition event.
+ * venues — venue/time-slot for a competition event.
  *
- * An arena pairs a competition event with where + when it actually takes
+ * A venue pairs a competition event with where + when it actually takes
  * place. Three sources:
  *   • Scheduled  — references a schedule_items row (golf tee times etc.)
  *   • Manual     — caller supplied name/location/date/time directly
@@ -17,15 +17,15 @@ import { requireTripMember, requireTripRole } from "../middleware";
  * validates the referenced row exists and belongs to this trip.
  */
 
-interface ArenaRow {
+interface VenueRow {
   id: string;
   competition_id: string;
   schedule_item_id: string | null;
   event_id: string | null;
   name: string | null;
   location: string | null;
-  arena_date: string | null;
-  arena_time: string | null;
+  venue_date: string | null;
+  venue_time: string | null;
   is_anytime: boolean;
   created_at: string;
 }
@@ -76,11 +76,11 @@ async function loadCompetition(
   return data;
 }
 
-export const arenasRouter = router({
+export const venuesRouter = router({
   // -----------------------------------------------------------------------
-  // list — arenas for a competition, enriched with the underlying schedule
+  // list — venues for a competition, enriched with the underlying schedule
   // item when one is linked. The shape returned is what EventCard +
-  // ArenasPanel expect to render the per-event status line.
+  // VenuesPanel expect to render the per-event status line.
   // -----------------------------------------------------------------------
   list: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
@@ -88,22 +88,22 @@ export const arenasRouter = router({
     .query(async ({ ctx, input }) => {
       await loadCompetition(ctx, input.competitionId);
 
-      const { data: arenas, error: arenasErr } = await ctx.supabase
-        .from("arenas")
+      const { data: venues, error: venuesErr } = await ctx.supabase
+        .from("venues")
         .select("*")
         .eq("competition_id", input.competitionId)
         .order("created_at", { ascending: true });
 
-      if (arenasErr) {
+      if (venuesErr) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch arenas: ${arenasErr.message}`,
+          message: `Failed to fetch venues: ${venuesErr.message}`,
         });
       }
 
-      const rows = (arenas ?? []) as ArenaRow[];
+      const rows = (venues ?? []) as VenueRow[];
       const scheduleIds = rows
-        .map((a) => a.schedule_item_id)
+        .map((v) => v.schedule_item_id)
         .filter((x): x is string => !!x);
 
       let scheduleItems: ScheduleItemRow[] = [];
@@ -125,16 +125,16 @@ export const arenasRouter = router({
 
       const scheduleById = new Map(scheduleItems.map((s) => [s.id, s]));
 
-      return rows.map((arena) => ({
-        ...arena,
-        schedule_item: arena.schedule_item_id
-          ? scheduleById.get(arena.schedule_item_id) ?? null
+      return rows.map((venue) => ({
+        ...venue,
+        schedule_item: venue.schedule_item_id
+          ? scheduleById.get(venue.schedule_item_id) ?? null
           : null,
       }));
     }),
 
   // -----------------------------------------------------------------------
-  // create — new arena (canEdit). Either schedule_item_id OR name required.
+  // create — new venue (canEdit). Either schedule_item_id OR name required.
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
@@ -144,8 +144,8 @@ export const arenasRouter = router({
         scheduleItemId: z.string().optional(),
         name: z.string().min(1).max(200).optional(),
         location: z.string().max(500).optional(),
-        arenaDate: z.string().optional(),
-        arenaTime: z.string().max(40).optional(),
+        venueDate: z.string().optional(),
+        venueTime: z.string().max(40).optional(),
         isAnytime: z.boolean().optional(),
       })
     )
@@ -184,14 +184,14 @@ export const arenasRouter = router({
       }
 
       const { data: inserted, error: insertErr } = await ctx.supabase
-        .from("arenas")
+        .from("venues")
         .insert({
           competition_id: input.competitionId,
           schedule_item_id: input.scheduleItemId ?? null,
           name: input.name ?? null,
           location: input.location ?? null,
-          arena_date: input.arenaDate ?? null,
-          arena_time: input.arenaTime ?? null,
+          venue_date: input.venueDate ?? null,
+          venue_time: input.venueTime ?? null,
           is_anytime: input.isAnytime ?? false,
         })
         .select("id")
@@ -200,12 +200,12 @@ export const arenasRouter = router({
       if (insertErr || !inserted) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to create arena: ${insertErr?.message}`,
+          message: `Failed to create venue: ${insertErr?.message}`,
         });
       }
 
       const { data, error } = await ctx.supabase
-        .from("arenas")
+        .from("venues")
         .select("*")
         .eq("id", inserted.id)
         .single();
@@ -213,7 +213,7 @@ export const arenasRouter = router({
       if (error || !data) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to read created arena: ${error?.message}`,
+          message: `Failed to read created venue: ${error?.message}`,
         });
       }
 
@@ -221,27 +221,27 @@ export const arenasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // assignEvent — link a competition event to this arena (canEdit).
+  // assignEvent — link a competition event to this venue (canEdit).
   // -----------------------------------------------------------------------
   assignEvent: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
-        arenaId: z.string(),
+        venueId: z.string(),
         eventId: z.string(),
       })
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      // Validate arena + event belong to the same competition (and to the
+      // Validate venue + event belong to the same competition (and to the
       // current trip via the competition).
-      const { data: arena, error: arenaErr } = await ctx.supabase
-        .from("arenas")
+      const { data: venue, error: venueErr } = await ctx.supabase
+        .from("venues")
         .select("id, competition_id")
-        .eq("id", input.arenaId)
+        .eq("id", input.venueId)
         .single();
-      if (arenaErr || !arena) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Arena not found" });
+      if (venueErr || !venue) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Venue not found" });
       }
 
       const { data: event, error: eventErr } = await ctx.supabase
@@ -253,34 +253,34 @@ export const arenasRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Event not found" });
       }
 
-      if (event.competition_id !== arena.competition_id) {
+      if (event.competition_id !== venue.competition_id) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Event and arena belong to different competitions",
+          message: "Event and venue belong to different competitions",
         });
       }
 
-      // Reject if the event is already assigned to another arena. The DB
+      // Reject if the event is already assigned to another venue. The DB
       // partial unique index will enforce this on write but we surface a
       // clearer error here.
       const { data: existing } = await ctx.supabase
-        .from("arenas")
+        .from("venues")
         .select("id")
-        .eq("competition_id", arena.competition_id)
+        .eq("competition_id", venue.competition_id)
         .eq("event_id", input.eventId)
-        .neq("id", input.arenaId)
+        .neq("id", input.venueId)
         .maybeSingle();
       if (existing) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "Event is already assigned to another arena",
+          message: "Event is already assigned to another venue",
         });
       }
 
       const { data, error } = await ctx.supabase
-        .from("arenas")
+        .from("venues")
         .update({ event_id: input.eventId })
-        .eq("id", input.arenaId)
+        .eq("id", input.venueId)
         .select()
         .single();
 
@@ -296,16 +296,16 @@ export const arenasRouter = router({
 
   // -----------------------------------------------------------------------
   // unassignEvent — clear the event linkage. Also resets is_anytime so an
-  // "anytime" arena that was created on demand for an event doesn't strand.
+  // "anytime" venue that was created on demand for an event doesn't strand.
   // -----------------------------------------------------------------------
   unassignEvent: authedProcedure
-    .input(z.object({ tripId: z.string(), arenaId: z.string() }))
+    .input(z.object({ tripId: z.string(), venueId: z.string() }))
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
-        .from("arenas")
+        .from("venues")
         .update({ event_id: null, is_anytime: false })
-        .eq("id", input.arenaId)
+        .eq("id", input.venueId)
         .select()
         .single();
 
@@ -320,21 +320,21 @@ export const arenasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // delete — remove the arena (canEdit). Linked event becomes unassigned
+  // delete — remove the venue (canEdit). Linked event becomes unassigned
   // again via the SET NULL FK.
   // -----------------------------------------------------------------------
   delete: authedProcedure
-    .input(z.object({ tripId: z.string(), arenaId: z.string() }))
+    .input(z.object({ tripId: z.string(), venueId: z.string() }))
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
-        .from("arenas")
+        .from("venues")
         .delete()
-        .eq("id", input.arenaId);
+        .eq("id", input.venueId);
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to delete arena: ${error.message}`,
+          message: `Failed to delete venue: ${error.message}`,
         });
       }
       return { success: true };

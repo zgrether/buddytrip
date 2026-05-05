@@ -13,8 +13,8 @@ import { TestContext } from "../../../../__tests__/helpers/test-setup";
  *   - Status badge                         → "status badge"
  *   - Delete gated on upcoming             → "delete gating"
  *   - Event form: no day, no course        → "event form simplified"
- *   - ArenasPanel + arena → event linkage  → "arena linkage"
- *   - Event status line reflects arena     → "event arena status line"
+ *   - VenuesPanel + venue → event linkage  → "venue linkage"
+ *   - Event status line reflects venue     → "event venue status line"
  */
 
 let ctx: TestContext;
@@ -52,21 +52,21 @@ describe("CompTab data layer (revisions)", () => {
     expect(fetched?.status).toBe("upcoming"); // status badge → "Setup"
   });
 
-  it("competition exists — sibling panels (Teams, Events, Arenas) all resolve", async () => {
+  it("competition exists — sibling panels (Teams, Events, Venues) all resolve", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     expect(competition).not.toBeNull();
 
-    const [teams, events, assignments, arenas] = await Promise.all([
+    const [teams, events, assignments, venues] = await Promise.all([
       caller.teams.list({ tripId, competitionId: competition!.id }),
       caller.events.list({ tripId, competitionId: competition!.id }),
       caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
-      caller.arenas.list({ tripId, competitionId: competition!.id }),
+      caller.venues.list({ tripId, competitionId: competition!.id }),
     ]);
     expect(teams).toEqual([]);
     expect(events).toEqual([]);
     expect(assignments).toEqual([]);
-    expect(arenas).toEqual([]);
+    expect(venues).toEqual([]);
   });
 
   it("teams unassigned — members exist but no assignments yet", async () => {
@@ -108,7 +108,7 @@ describe("CompTab data layer (revisions)", () => {
     // EventCard's status line reads "Practice · Not scored" off this flag.
   });
 
-  it("event arena status line — non-practice event with no arena reads 'Not assigned'", async () => {
+  it("event venue status line — non-practice event with no venue reads 'Not assigned'", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     const created = await caller.events.create({
@@ -120,15 +120,15 @@ describe("CompTab data layer (revisions)", () => {
     });
     expect(created.is_practice).toBe(false);
 
-    const arenas = await caller.arenas.list({
+    const venues = await caller.venues.list({
       tripId,
       competitionId: competition!.id,
     });
-    const linked = arenas.find((a) => a.event_id === created.id);
+    const linked = venues.find((a) => a.event_id === created.id);
     expect(linked).toBeUndefined(); // EventCard surfaces the warning state
   });
 
-  it("arena linkage — manual arena + assignEvent flips an event into 'Anytime'", async () => {
+  it("venue linkage — manual venue + assignEvent flips an event into 'Anytime'", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
 
@@ -140,26 +140,26 @@ describe("CompTab data layer (revisions)", () => {
       pointsAvailable: 5,
     });
 
-    const arena = await caller.arenas.create({
+    const venue = await caller.venues.create({
       tripId,
       competitionId: competition!.id,
       name: "Cornhole Championship",
       isAnytime: true,
     });
-    expect(arena.is_anytime).toBe(true);
-    expect(arena.event_id).toBeNull();
+    expect(venue.is_anytime).toBe(true);
+    expect(venue.event_id).toBeNull();
 
-    const linked = await caller.arenas.assignEvent({
+    const linked = await caller.venues.assignEvent({
       tripId,
-      arenaId: arena.id,
+      venueId: venue.id,
       eventId: event.id,
     });
     expect(linked.event_id).toBe(event.id);
     expect(linked.is_anytime).toBe(true);
-    // EventCard's status line now resolves to "Anytime" via this arena row.
+    // EventCard's status line now resolves to "Anytime" via this venue row.
   });
 
-  it("arena linkage — assignEvent rejects an event already pinned to another arena", async () => {
+  it("venue linkage — assignEvent rejects an event already pinned to another venue", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
 
@@ -171,29 +171,29 @@ describe("CompTab data layer (revisions)", () => {
       pointsAvailable: 2,
     });
 
-    const arenaA = await caller.arenas.create({
+    const venueA = await caller.venues.create({
       tripId,
       competitionId: competition!.id,
       name: "Putting Contest A",
       isAnytime: true,
     });
-    const arenaB = await caller.arenas.create({
+    const venueB = await caller.venues.create({
       tripId,
       competitionId: competition!.id,
       name: "Putting Contest B",
       isAnytime: true,
     });
 
-    await caller.arenas.assignEvent({
+    await caller.venues.assignEvent({
       tripId,
-      arenaId: arenaA.id,
+      venueId: venueA.id,
       eventId: event.id,
     });
 
     await expect(
-      caller.arenas.assignEvent({
+      caller.venues.assignEvent({
         tripId,
-        arenaId: arenaB.id,
+        venueId: venueB.id,
         eventId: event.id,
       })
     ).rejects.toMatchObject({ code: "CONFLICT" });

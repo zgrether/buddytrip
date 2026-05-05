@@ -17,15 +17,15 @@ interface Props {
   canEdit: boolean;
 }
 
-interface ArenaRow {
+interface VenueRow {
   id: string;
   competition_id: string;
   schedule_item_id: string | null;
   event_id: string | null;
   name: string | null;
   location: string | null;
-  arena_date: string | null;
-  arena_time: string | null;
+  venue_date: string | null;
+  venue_time: string | null;
   is_anytime: boolean;
   schedule_item?: ScheduleItemRow | null;
 }
@@ -48,13 +48,13 @@ interface EventRow {
   points_available: number | null;
 }
 
-// ── ArenasPanel ─────────────────────────────────────────────────────────────
+// ── VenuesPanel ─────────────────────────────────────────────────────────────
 
-export function ArenasPanel({ competitionId, tripId, canEdit }: Props) {
+export function VenuesPanel({ competitionId, tripId, canEdit }: Props) {
   const [open, setOpen] = useState(true);
   const [creatingManual, setCreatingManual] = useState(false);
 
-  const { data: arenas = [] } = trpc.arenas.list.useQuery(
+  const { data: venues = [] } = trpc.venues.list.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
@@ -67,60 +67,60 @@ export function ArenasPanel({ competitionId, tripId, canEdit }: Props) {
     { enabled: !!competitionId }
   );
 
-  const arenasTyped = arenas as ArenaRow[];
+  const venuesTyped = venues as VenueRow[];
   const golfTyped = golfItems as ScheduleItemRow[];
   const eventsTyped = events as EventRow[];
 
-  const scheduledArenas = arenasTyped.filter((a) => !a.is_anytime);
-  const anytimeArenas = arenasTyped.filter((a) => a.is_anytime);
+  const scheduledVenues = venuesTyped.filter((v) => !v.is_anytime);
+  const anytimeVenues = venuesTyped.filter((v) => v.is_anytime);
 
-  // For each golf schedule item, find the arena (if any) that links to it.
-  const arenaByScheduleItem = useMemo(() => {
-    const map = new Map<string, ArenaRow>();
-    for (const a of scheduledArenas) {
-      if (a.schedule_item_id) map.set(a.schedule_item_id, a);
+  // For each golf schedule item, find the venue (if any) that links to it.
+  const venueByScheduleItem = useMemo(() => {
+    const map = new Map<string, VenueRow>();
+    for (const v of scheduledVenues) {
+      if (v.schedule_item_id) map.set(v.schedule_item_id, v);
     }
     return map;
-  }, [scheduledArenas]);
+  }, [scheduledVenues]);
 
-  // Manual scheduled arenas (no schedule_item_id but not anytime).
-  const manualScheduledArenas = scheduledArenas.filter(
-    (a) => !a.schedule_item_id
+  // Manual scheduled venues (no schedule_item_id but not anytime).
+  const manualScheduledVenues = scheduledVenues.filter(
+    (v) => !v.schedule_item_id
   );
 
-  // Non-practice events that aren't pinned to any arena yet.
+  // Non-practice events that aren't pinned to any venue yet.
   const unassignedEvents = eventsTyped.filter(
-    (e) => !e.is_practice && !arenasTyped.some((a) => a.event_id === e.id)
+    (e) => !e.is_practice && !venuesTyped.some((v) => v.event_id === e.id)
   );
 
-  const totalScheduledItems = golfTyped.length + manualScheduledArenas.length;
-  const linkedCount = arenasTyped.filter((a) => a.event_id).length;
+  const totalScheduledItems = golfTyped.length + manualScheduledVenues.length;
+  const linkedCount = venuesTyped.filter((v) => v.event_id).length;
   const allLinked =
     totalScheduledItems > 0 &&
     linkedCount === totalScheduledItems &&
     unassignedEvents.length === 0;
 
-  const totalPanels = arenasTyped.length + golfTyped.length;
+  const totalPanels = venuesTyped.length + golfTyped.length;
   const headerState =
     totalPanels === 0 ? "todo" : allLinked ? "done" : "inProgress";
   const statusText =
     totalPanels === 0
       ? "Not set up"
-      : `${linkedCount} of ${arenasTyped.length} arena${arenasTyped.length === 1 ? "" : "s"} linked`;
+      : `${linkedCount} of ${venuesTyped.length} venue${venuesTyped.length === 1 ? "" : "s"} linked`;
 
   return (
     <CollapsiblePanel
       icon={<MapPin size={16} />}
-      label="Arenas"
+      label="Venues"
       note={statusText}
       state={headerState}
       open={open}
       onToggle={() => setOpen((v) => !v)}
-      testId="arenas-panel"
+      testId="venues-panel"
     >
       <div className="space-y-5">
         {totalPanels === 0 && (
-          <ArenasEmptyState
+          <VenuesEmptyState
             canEdit={canEdit}
             onAddManual={() => setCreatingManual(true)}
           />
@@ -131,10 +131,10 @@ export function ArenasPanel({ competitionId, tripId, canEdit }: Props) {
             tripId={tripId}
             competitionId={competitionId}
             golfItems={golfTyped}
-            arenaByScheduleItem={arenaByScheduleItem}
-            manualScheduledArenas={manualScheduledArenas}
+            venueByScheduleItem={venueByScheduleItem}
+            manualScheduledVenues={manualScheduledVenues}
             events={eventsTyped}
-            arenasTyped={arenasTyped}
+            venuesTyped={venuesTyped}
             canEdit={canEdit}
           />
         )}
@@ -143,7 +143,7 @@ export function ArenasPanel({ competitionId, tripId, canEdit }: Props) {
           <AnytimeSection
             tripId={tripId}
             competitionId={competitionId}
-            anytimeArenas={anytimeArenas}
+            anytimeVenues={anytimeVenues}
             events={eventsTyped}
             unassignedEvents={unassignedEvents}
             canEdit={canEdit}
@@ -162,13 +162,13 @@ export function ArenasPanel({ competitionId, tripId, canEdit }: Props) {
             }}
           >
             <Plus size={14} />
-            Add Arena Manually
+            Add Venue Manually
           </button>
         )}
       </div>
 
       {creatingManual && (
-        <ManualArenaSheet
+        <ManualVenueSheet
           tripId={tripId}
           competitionId={competitionId}
           onClose={() => setCreatingManual(false)}
@@ -253,9 +253,9 @@ function CollapsiblePanel({
   );
 }
 
-// ── ArenasEmptyState ────────────────────────────────────────────────────────
+// ── VenuesEmptyState ────────────────────────────────────────────────────────
 
-function ArenasEmptyState({
+function VenuesEmptyState({
   canEdit,
   onAddManual,
 }: {
@@ -283,7 +283,7 @@ function ArenasEmptyState({
         className="mt-3 text-sm font-semibold"
         style={{ color: "var(--color-bt-text)" }}
       >
-        No arenas yet
+        No venues yet
       </p>
       <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
         Add tee times in the Schedule tab, or add a venue manually.
@@ -300,7 +300,7 @@ function ArenasEmptyState({
           }}
         >
           <Plus size={14} />
-          Add Arena
+          Add Venue
         </button>
       )}
     </div>
@@ -313,26 +313,26 @@ function ScheduledSection({
   tripId,
   competitionId,
   golfItems,
-  arenaByScheduleItem,
-  manualScheduledArenas,
+  venueByScheduleItem,
+  manualScheduledVenues,
   events,
-  arenasTyped,
+  venuesTyped,
   canEdit,
 }: {
   tripId: string;
   competitionId: string;
   golfItems: ScheduleItemRow[];
-  arenaByScheduleItem: Map<string, ArenaRow>;
-  manualScheduledArenas: ArenaRow[];
+  venueByScheduleItem: Map<string, VenueRow>;
+  manualScheduledVenues: VenueRow[];
   events: EventRow[];
-  arenasTyped: ArenaRow[];
+  venuesTyped: VenueRow[];
   canEdit: boolean;
 }) {
   return (
     <section>
       <SectionLabel>Scheduled</SectionLabel>
 
-      {golfItems.length === 0 && manualScheduledArenas.length === 0 && (
+      {golfItems.length === 0 && manualScheduledVenues.length === 0 && (
         <p
           className="mt-2 text-[11px]"
           style={{ color: "var(--color-bt-text-dim)" }}
@@ -343,14 +343,14 @@ function ScheduledSection({
 
       <div className="mt-2 space-y-2">
         {golfItems.map((item) => {
-          const arena = arenaByScheduleItem.get(item.id);
-          if (arena) {
+          const venue = venueByScheduleItem.get(item.id);
+          if (venue) {
             return (
-              <ArenaRowView
+              <VenueRowView
                 key={`item-${item.id}`}
-                arena={arena}
+                venue={venue}
                 events={events}
-                arenasTyped={arenasTyped}
+                venuesTyped={venuesTyped}
                 tripId={tripId}
                 competitionId={competitionId}
                 canEdit={canEdit}
@@ -368,12 +368,12 @@ function ScheduledSection({
           );
         })}
 
-        {manualScheduledArenas.map((arena) => (
-          <ArenaRowView
-            key={`arena-${arena.id}`}
-            arena={arena}
+        {manualScheduledVenues.map((venue) => (
+          <VenueRowView
+            key={`venue-${venue.id}`}
+            venue={venue}
             events={events}
-            arenasTyped={arenasTyped}
+            venuesTyped={venuesTyped}
             tripId={tripId}
             competitionId={competitionId}
             canEdit={canEdit}
@@ -396,8 +396,8 @@ function UnlinkedScheduleRow({
   canEdit: boolean;
 }) {
   const utils = trpc.useUtils();
-  const create = trpc.arenas.create.useMutation({
-    onSettled: () => utils.arenas.list.invalidate({ tripId, competitionId }),
+  const create = trpc.venues.create.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
   return (
@@ -444,35 +444,35 @@ function UnlinkedScheduleRow({
   );
 }
 
-// ── ArenaRowView (linked arena, optionally with an event) ───────────────────
+// ── VenueRowView (linked venue, optionally with an event) ───────────────────
 
-function ArenaRowView({
-  arena,
+function VenueRowView({
+  venue,
   events,
-  arenasTyped,
+  venuesTyped,
   tripId,
   competitionId,
   canEdit,
 }: {
-  arena: ArenaRow;
+  venue: VenueRow;
   events: EventRow[];
-  arenasTyped: ArenaRow[];
+  venuesTyped: VenueRow[];
   tripId: string;
   competitionId: string;
   canEdit: boolean;
 }) {
-  const linkedEvent = events.find((e) => e.id === arena.event_id) ?? null;
+  const linkedEvent = events.find((e) => e.id === venue.event_id) ?? null;
   const titleSource =
-    arena.schedule_item?.course_name ??
-    arena.schedule_item?.title ??
-    arena.name ??
-    "Arena";
-  const dateTime = arena.schedule_item
+    venue.schedule_item?.course_name ??
+    venue.schedule_item?.title ??
+    venue.name ??
+    "Venue";
+  const dateTime = venue.schedule_item
     ? formatDateTime(
-        arena.schedule_item.scheduled_date,
-        arena.schedule_item.scheduled_time
+        venue.schedule_item.scheduled_date,
+        venue.schedule_item.scheduled_time
       )
-    : formatDateTime(arena.arena_date, arena.arena_time);
+    : formatDateTime(venue.venue_date, venue.venue_time);
 
   return (
     <div
@@ -481,7 +481,7 @@ function ArenaRowView({
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
       }}
-      data-testid={`arena-${arena.id}`}
+      data-testid={`venue-${venue.id}`}
     >
       <div className="flex items-center gap-3">
         <Flag size={14} style={{ color: "var(--color-bt-accent)" }} />
@@ -500,11 +500,11 @@ function ArenaRowView({
         </div>
         {!linkedEvent && canEdit && (
           <AssignEventControl
-            arenaId={arena.id}
+            venueId={venue.id}
             tripId={tripId}
             competitionId={competitionId}
             events={events}
-            arenasTyped={arenasTyped}
+            venuesTyped={venuesTyped}
           />
         )}
       </div>
@@ -533,7 +533,7 @@ function ArenaRowView({
           )}
           {canEdit && (
             <UnassignButton
-              arenaId={arena.id}
+              venueId={venue.id}
               tripId={tripId}
               competitionId={competitionId}
             />
@@ -554,25 +554,25 @@ function ArenaRowView({
 }
 
 function AssignEventControl({
-  arenaId,
+  venueId,
   tripId,
   competitionId,
   events,
-  arenasTyped,
+  venuesTyped,
 }: {
-  arenaId: string;
+  venueId: string;
   tripId: string;
   competitionId: string;
   events: EventRow[];
-  arenasTyped: ArenaRow[];
+  venuesTyped: VenueRow[];
 }) {
   const utils = trpc.useUtils();
-  const assign = trpc.arenas.assignEvent.useMutation({
-    onSettled: () => utils.arenas.list.invalidate({ tripId, competitionId }),
+  const assign = trpc.venues.assignEvent.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
   const assignableEvents = events.filter(
-    (e) => !e.is_practice && !arenasTyped.some((a) => a.event_id === e.id)
+    (e) => !e.is_practice && !venuesTyped.some((v) => v.event_id === e.id)
   );
 
   if (assignableEvents.length === 0) {
@@ -592,7 +592,7 @@ function AssignEventControl({
       disabled={assign.isPending}
       onChange={(e) => {
         if (!e.target.value) return;
-        assign.mutate({ tripId, arenaId, eventId: e.target.value });
+        assign.mutate({ tripId, venueId, eventId: e.target.value });
       }}
       className="rounded-md px-2 py-1 text-xs"
       style={{
@@ -613,22 +613,22 @@ function AssignEventControl({
 }
 
 function UnassignButton({
-  arenaId,
+  venueId,
   tripId,
   competitionId,
 }: {
-  arenaId: string;
+  venueId: string;
   tripId: string;
   competitionId: string;
 }) {
   const utils = trpc.useUtils();
-  const unassign = trpc.arenas.unassignEvent.useMutation({
-    onSettled: () => utils.arenas.list.invalidate({ tripId, competitionId }),
+  const unassign = trpc.venues.unassignEvent.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
   return (
     <button
       type="button"
-      onClick={() => unassign.mutate({ tripId, arenaId })}
+      onClick={() => unassign.mutate({ tripId, venueId })}
       disabled={unassign.isPending}
       aria-label="Unassign event"
       className="ml-auto flex h-5 w-5 items-center justify-center rounded-full"
@@ -644,29 +644,29 @@ function UnassignButton({
 function AnytimeSection({
   tripId,
   competitionId,
-  anytimeArenas,
+  anytimeVenues,
   events,
   unassignedEvents,
   canEdit,
 }: {
   tripId: string;
   competitionId: string;
-  anytimeArenas: ArenaRow[];
+  anytimeVenues: VenueRow[];
   events: EventRow[];
   unassignedEvents: EventRow[];
   canEdit: boolean;
 }) {
   const utils = trpc.useUtils();
-  const remove = trpc.arenas.delete.useMutation({
-    onSettled: () => utils.arenas.list.invalidate({ tripId, competitionId }),
+  const remove = trpc.venues.delete.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
   // "Anytime" suggestion only shows non-practice events that have no
-  // arena at all — once an event is in an Anytime arena we don't repeat
+  // venue at all — once an event is in an Anytime venue we don't repeat
   // the suggestion below.
   const suggestable = unassignedEvents;
 
-  if (anytimeArenas.length === 0 && suggestable.length === 0) return null;
+  if (anytimeVenues.length === 0 && suggestable.length === 0) return null;
 
   return (
     <section>
@@ -679,14 +679,14 @@ function AnytimeSection({
       </p>
 
       <div className="mt-2 space-y-2">
-        {anytimeArenas.map((arena) => {
-          const linkedEvent = events.find((e) => e.id === arena.event_id);
+        {anytimeVenues.map((venue) => {
+          const linkedEvent = events.find((e) => e.id === venue.event_id);
           const label =
-            linkedEvent?.title ?? arena.name ?? "Anytime";
+            linkedEvent?.title ?? venue.name ?? "Anytime";
           const pts = linkedEvent?.points_available;
           return (
             <div
-              key={arena.id}
+              key={venue.id}
               className="flex items-center gap-3 rounded-xl px-3 py-2.5"
               style={{
                 background: "var(--color-bt-card-raised)",
@@ -712,9 +712,9 @@ function AnytimeSection({
                 <button
                   type="button"
                   onClick={() =>
-                    remove.mutate({ tripId, arenaId: arena.id })
+                    remove.mutate({ tripId, venueId: venue.id })
                   }
-                  aria-label="Remove arena"
+                  aria-label="Remove venue"
                   className="flex h-6 w-6 items-center justify-center rounded-md"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
@@ -758,13 +758,13 @@ function UnassignedEventPrompt({
   competitionId: string;
 }) {
   const utils = trpc.useUtils();
-  const create = trpc.arenas.create.useMutation();
-  const assign = trpc.arenas.assignEvent.useMutation({
-    onSettled: () => utils.arenas.list.invalidate({ tripId, competitionId }),
+  const create = trpc.venues.create.useMutation();
+  const assign = trpc.venues.assignEvent.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
   async function markAnytime() {
-    const arena = await create.mutateAsync({
+    const venue = await create.mutateAsync({
       tripId,
       competitionId,
       name: event.title,
@@ -772,7 +772,7 @@ function UnassignedEventPrompt({
     });
     await assign.mutateAsync({
       tripId,
-      arenaId: arena.id,
+      venueId: venue.id,
       eventId: event.id,
     });
   }
@@ -799,9 +799,9 @@ function UnassignedEventPrompt({
   );
 }
 
-// ── ManualArenaSheet ────────────────────────────────────────────────────────
+// ── ManualVenueSheet ────────────────────────────────────────────────────────
 
-function ManualArenaSheet({
+function ManualVenueSheet({
   tripId,
   competitionId,
   onClose,
@@ -817,8 +817,8 @@ function ManualArenaSheet({
   const [time, setTime] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const create = trpc.arenas.create.useMutation({
-    onSettled: () => utils.arenas.list.invalidate({ tripId, competitionId }),
+  const create = trpc.venues.create.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
   async function handleSave() {
@@ -830,12 +830,12 @@ function ManualArenaSheet({
         competitionId,
         name: name.trim(),
         location: location.trim() || undefined,
-        arenaDate: date || undefined,
-        arenaTime: time.trim() || undefined,
+        venueDate: date || undefined,
+        venueTime: time.trim() || undefined,
       });
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add arena");
+      setError(e instanceof Error ? e.message : "Failed to add venue");
     }
   }
 
@@ -858,7 +858,7 @@ function ManualArenaSheet({
           style={{ borderBottom: "1px solid var(--color-bt-border)" }}
         >
           <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-            Add Arena
+            Add Venue
           </h3>
           <button
             type="button"
@@ -945,7 +945,7 @@ function ManualArenaSheet({
             className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            Add Arena
+            Add Venue
           </button>
         </div>
       </div>
@@ -985,7 +985,7 @@ function formatShortDate(iso: string): string {
 
 function formatTime(time: string): string {
   // schedule_items.scheduled_time is `HH:MM:SS` from Postgres time type;
-  // arenas.arena_time is free text. Try to parse the structured form first.
+  // venues.venue_time is free text. Try to parse the structured form first.
   const match = /^(\d{1,2}):(\d{2})/.exec(time);
   if (!match) return time;
   const hour = parseInt(match[1], 10);
@@ -1032,4 +1032,3 @@ function Field({
     </div>
   );
 }
-
