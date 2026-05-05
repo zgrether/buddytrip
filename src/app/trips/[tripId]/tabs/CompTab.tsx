@@ -63,7 +63,6 @@ function ExistingCompetitionView({
     id: string;
     name: string;
     tagline: string | null;
-    motto: string | null;
   };
   canEdit: boolean;
   isOwner: boolean;

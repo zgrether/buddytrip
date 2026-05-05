@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   ChevronDown,
   Pencil,
   Plus,
+  Sparkles,
   Trash2,
   Users,
   X,
@@ -53,10 +54,29 @@ const TEAM_COLORS: Array<{ color: string; colorDim: string; label: string }> = [
   { color: "#f97316", colorDim: "#2a1200", label: "Orange" },
 ];
 
+// ── Team name suggestions (30 across three categories) ─────────────────────
+const TEAM_NAME_SUGGESTIONS: string[] = [
+  // Colors
+  "Crimson", "Cobalt", "Amber", "Scarlet", "Jade",
+  "Ivory", "Onyx", "Indigo", "Vermillion", "Sable",
+  // Animals
+  "Falcons", "Wolves", "Vipers", "Ravens", "Cobras",
+  "Stallions", "Grizzlies", "Hawks", "Lynx", "Rhinos",
+  // Golf
+  "Birdies", "Eagles", "Bogeys", "Condors", "Aces",
+  "Albatrosses", "Duffers", "Shanks", "Yips", "Scratch",
+];
+
+function suggestTeamName(): string {
+  return TEAM_NAME_SUGGESTIONS[Math.floor(Math.random() * TEAM_NAME_SUGGESTIONS.length)];
+}
+
+// Drag & drop dataTransfer key
+const DND_USER_KEY = "application/x-buddytrip-user-id";
+
 // ── TeamsPanel ──────────────────────────────────────────────────────────────
 
 export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
-  const [open, setOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -70,15 +90,24 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
   );
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
+  const teamsTyped = teams as Team[];
   const totalMembers = members.length;
   const assignedCount = assignments.length;
-  const teamsExist = teams.length > 0;
+  const teamsExist = teamsTyped.length > 0;
   const allAssigned = teamsExist && totalMembers > 0 && assignedCount === totalMembers;
 
-  // Status text for the closed-state header
+  // Auto-expand when there are no teams yet — that's the user's next step.
+  // Once they've added a team, defer to manual open/close.
+  const [open, setOpen] = useState(!teamsExist);
+  // If teams later vanish (unlikely but supported by delete), reopen so the
+  // empty state is visible.
+  useEffect(() => {
+    if (!teamsExist) setOpen(true);
+  }, [teamsExist]);
+
   const statusText = !teamsExist
     ? "Not set up"
-    : `${teams.length} team${teams.length === 1 ? "" : "s"} · ${assignedCount} of ${totalMembers} assigned`;
+    : `${teamsTyped.length} team${teamsTyped.length === 1 ? "" : "s"} · ${assignedCount} of ${totalMembers} assigned`;
 
   const headerState = !teamsExist ? "todo" : allAssigned ? "done" : "inProgress";
 
@@ -94,16 +123,28 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
     >
       <div className="space-y-4">
         {!teamsExist && (
-          <NoTeamsInvitation
+          <NoTeamsEmptyState
             canEdit={canEdit}
             onAddTeam={() => setCreating(true)}
           />
         )}
 
         {teamsExist && (
-          <>
-            <div className="space-y-2">
-              {(teams as Team[]).map((team) => (
+          <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+            {/* Crew roster: desktop column / mobile section below teams */}
+            <CrewRoster
+              tripId={tripId}
+              competitionId={competitionId}
+              members={members as Member[]}
+              teams={teamsTyped}
+              assignments={assignments as Assignment[]}
+              canEdit={canEdit}
+              order="lg-first"
+            />
+
+            {/* Teams column */}
+            <div className="space-y-3">
+              {teamsTyped.map((team) => (
                 <TeamCard
                   key={team.id}
                   team={team}
@@ -113,23 +154,18 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
                   isOwner={!!isOwner}
                   onEdit={() => setEditingTeam(team)}
                   tripId={tripId}
+                  competitionId={competitionId}
                 />
               ))}
+
+              {canEdit && (
+                <DashedAddButton
+                  onClick={() => setCreating(true)}
+                  label="Add Team"
+                />
+              )}
             </div>
-
-            {canEdit && (
-              <DashedAddButton onClick={() => setCreating(true)} label="Add Team" />
-            )}
-
-            <AssignMembersSection
-              tripId={tripId}
-              competitionId={competitionId}
-              members={members as Member[]}
-              teams={teams as Team[]}
-              assignments={assignments as Assignment[]}
-              canEdit={canEdit}
-            />
-          </>
+          </div>
         )}
       </div>
 
@@ -148,7 +184,7 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
   );
 }
 
-// ── CollapsiblePanel (matches PlanningRow visual specs) ─────────────────────
+// ── CollapsiblePanel ────────────────────────────────────────────────────────
 
 function CollapsiblePanel({
   icon,
@@ -170,17 +206,9 @@ function CollapsiblePanel({
   children: React.ReactNode;
 }) {
   const labelColor =
-    state === "done"
-      ? "var(--color-bt-accent)"
-      : state === "inProgress"
-      ? "var(--color-bt-accent)"
-      : "var(--color-bt-text-dim)";
+    state === "todo" ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)";
   const borderColor =
-    state === "done"
-      ? "var(--color-bt-accent-border)"
-      : state === "inProgress"
-      ? "var(--color-bt-accent-border)"
-      : "var(--color-bt-border)";
+    state === "todo" ? "var(--color-bt-border)" : "var(--color-bt-accent-border)";
   const bg = state === "done" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)";
 
   return (
@@ -200,16 +228,10 @@ function CollapsiblePanel({
       >
         <span style={{ color: labelColor }}>{icon}</span>
         <div className="min-w-0 flex-1">
-          <p
-            className="text-sm font-semibold leading-tight"
-            style={{ color: labelColor }}
-          >
+          <p className="text-sm font-semibold leading-tight" style={{ color: labelColor }}>
             {label}
           </p>
-          <p
-            className="mt-0.5 text-xs"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {note}
           </p>
         </div>
@@ -234,9 +256,9 @@ function CollapsiblePanel({
   );
 }
 
-// ── NoTeamsInvitation ───────────────────────────────────────────────────────
+// ── NoTeamsEmptyState ───────────────────────────────────────────────────────
 
-function NoTeamsInvitation({
+function NoTeamsEmptyState({
   canEdit,
   onAddTeam,
 }: {
@@ -245,27 +267,44 @@ function NoTeamsInvitation({
 }) {
   return (
     <div
-      className="rounded-xl px-4 py-5 text-center"
+      className="rounded-xl px-4 py-6 text-center"
       style={{
-        background: "var(--color-bt-surface-invitation)",
-        border: "1.5px dashed var(--color-bt-border)",
+        background: "var(--color-bt-card-raised)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
-      <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+      <div
+        className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+        }}
+      >
+        <Users size={20} />
+      </div>
+      <p
+        className="mt-3 text-sm font-semibold"
+        style={{ color: "var(--color-bt-text)" }}
+      >
         No teams yet
+      </p>
+      <p
+        className="mt-1 text-xs"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Add your first team to get started.
       </p>
       {canEdit && (
         <button
           type="button"
           onClick={onAddTeam}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium"
+          className="mx-auto mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
           style={{
-            background: "transparent",
-            color: "var(--color-bt-accent)",
-            border: "1.5px dashed var(--color-bt-accent)",
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-base)",
           }}
         >
-          <Plus size={14} />
+          <Plus size={15} />
           Add Team
         </button>
       )}
@@ -299,7 +338,7 @@ function DashedAddButton({
   );
 }
 
-// ── TeamCard ────────────────────────────────────────────────────────────────
+// ── TeamCard (also a drop target on desktop) ────────────────────────────────
 
 function TeamCard({
   team,
@@ -309,6 +348,7 @@ function TeamCard({
   isOwner,
   onEdit,
   tripId,
+  competitionId,
 }: {
   team: Team;
   members: Member[];
@@ -317,8 +357,11 @@ function TeamCard({
   isOwner: boolean;
   onEdit: () => void;
   tripId: string;
+  competitionId: string;
 }) {
   const utils = trpc.useUtils();
+  const [dragOver, setDragOver] = useState(false);
+
   const teamMemberIds = assignments
     .filter((a) => a.team_id === team.id)
     .map((a) => a.user_id);
@@ -333,95 +376,149 @@ function TeamCard({
     },
   });
 
+  const assign = trpc.teamAssignments.assign.useMutation({
+    onSettled: () => utils.teamAssignments.list.invalidate(),
+  });
+
   function handleDelete() {
     if (!confirm(`Delete team "${team.name}"? This will unassign its members.`)) return;
     deleteTeam.mutate({ tripId, teamId: team.id });
   }
 
-  const visible = teamMembers.slice(0, 5);
-  const overflow = Math.max(0, teamMembers.length - 5);
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const userId = e.dataTransfer.getData(DND_USER_KEY);
+    if (!userId) return;
+    assign.mutate({ tripId, competitionId, userId, teamId: team.id });
+  }
 
   return (
     <div
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+      className="rounded-xl p-3 transition-colors"
       style={{
         background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
+        border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+        }`,
       }}
+      onDragOver={
+        canEdit
+          ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOver(true);
+            }
+          : undefined
+      }
+      onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
       data-testid={`team-card-${team.id}`}
     >
-      <span
-        className="h-6 w-6 flex-shrink-0 rounded-full"
-        style={{ background: team.color }}
-        aria-hidden
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p
-            className="truncate text-sm font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
+      <div className="flex items-center gap-3">
+        <span
+          className="h-6 w-6 flex-shrink-0 rounded-full"
+          style={{ background: team.color }}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p
+              className="truncate text-sm font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {team.name}
+            </p>
+            <span
+              className="rounded px-1.5 py-0.5 text-[10px] font-bold"
+              style={{
+                background: "var(--color-bt-card)",
+                color: "var(--color-bt-text-dim)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              {team.short_name}
+            </span>
+            <span className="ml-auto text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              {teamMembers.length} member{teamMembers.length === 1 ? "" : "s"}
+            </span>
+          </div>
+        </div>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${team.name}`}
+            className="flex h-7 w-7 items-center justify-center rounded-lg"
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
-            {team.name}
+            <Pencil size={13} />
+          </button>
+        )}
+        {isOwner && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            aria-label={`Delete ${team.name}`}
+            className="flex h-7 w-7 items-center justify-center rounded-lg"
+            style={{ color: "var(--color-bt-danger)" }}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* Members area — drop target hint when empty + populated when assigned */}
+      <div
+        className="mt-3 flex flex-wrap gap-2 rounded-lg p-2"
+        style={{
+          minHeight: 56,
+          background: "var(--color-bt-card)",
+          border: "1px dashed var(--color-bt-border)",
+        }}
+      >
+        {teamMembers.length === 0 && (
+          <p
+            className="m-auto text-[11px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {canEdit
+              ? "Drop members here, or assign from the crew list"
+              : "No members assigned"}
           </p>
-          <span
-            className="rounded px-1.5 py-0.5 text-[10px] font-bold"
+        )}
+        {teamMembers.map((m) => (
+          <div
+            key={m.user_id ?? m.memberId}
+            className="flex items-center gap-1.5 rounded-full px-2 py-1"
             style={{
-              background: "var(--color-bt-card)",
-              color: "var(--color-bt-text-dim)",
+              background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
             }}
           >
-            {team.short_name}
-          </span>
-        </div>
-        <div className="mt-1 flex items-center gap-1.5">
-          {visible.map((m) => (
             <UserAvatar
-              key={m.memberId}
               name={m.displayName}
               avatarUrl={m.user?.avatar_url ?? null}
               size="sm"
             />
-          ))}
-          {overflow > 0 && (
-            <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              +{overflow}
+            <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
+              {m.displayName}
             </span>
-          )}
-          <span className="ml-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {teamMembers.length} member{teamMembers.length === 1 ? "" : "s"}
-          </span>
-        </div>
+          </div>
+        ))}
       </div>
-      {canEdit && (
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={`Edit ${team.name}`}
-          className="flex h-7 w-7 items-center justify-center rounded-lg"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          <Pencil size={13} />
-        </button>
-      )}
-      {isOwner && (
-        <button
-          type="button"
-          onClick={handleDelete}
-          aria-label={`Delete ${team.name}`}
-          className="flex h-7 w-7 items-center justify-center rounded-lg"
-          style={{ color: "var(--color-bt-danger)" }}
-        >
-          <Trash2 size={13} />
-        </button>
-      )}
     </div>
   );
 }
 
-// ── AssignMembersSection ────────────────────────────────────────────────────
+// ── CrewRoster ──────────────────────────────────────────────────────────────
+//
+// Desktop column shows ONLY unassigned members as draggable cards. Mobile
+// section below the team cards shows ALL members with management UI:
+//   - unassigned → team dropdown
+//   - assigned   → team name + ✕ to unassign
 
-function AssignMembersSection({
+function CrewRoster({
   tripId,
   competitionId,
   members,
@@ -435,80 +532,196 @@ function AssignMembersSection({
   teams: Team[];
   assignments: Assignment[];
   canEdit: boolean;
+  /** Reserved for future ordering tweaks; currently every layout puts the
+   *  roster panel before the teams column on lg+. */
+  order?: "lg-first";
 }) {
   const utils = trpc.useUtils();
 
+  const teamById = useMemo(() => {
+    const map = new Map<string, Team>();
+    for (const t of teams) map.set(t.id, t);
+    return map;
+  }, [teams]);
+
   const assignmentByUser = useMemo(() => {
-    const map = new Map<string, string>(); // userId → teamId
+    const map = new Map<string, string>();
     for (const a of assignments) map.set(a.user_id, a.team_id);
     return map;
   }, [assignments]);
 
+  const unassigned = members.filter(
+    (m) => !assignmentByUser.has(m.user_id ?? m.memberId)
+  );
+
   const assign = trpc.teamAssignments.assign.useMutation({
     onSettled: () => utils.teamAssignments.list.invalidate(),
   });
-
-  function handleSelect(userId: string, value: string) {
-    if (!value) return;
-    assign.mutate({ tripId, competitionId, userId, teamId: value });
-  }
+  const remove = trpc.teamAssignments.remove.useMutation({
+    onSettled: () => utils.teamAssignments.list.invalidate(),
+  });
 
   return (
-    <div>
-      <p
-        className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
+    <>
+      {/* ── Desktop column: drag-and-drop unassigned roster ─────────── */}
+      <div
+        className="hidden rounded-xl p-3 lg:block"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          border: "1px solid var(--color-bt-border)",
+          alignSelf: "start",
+        }}
       >
-        Assign Members
-      </p>
-      <div className="space-y-1.5">
-        {members.map((m) => {
-          const userId = m.user_id ?? m.memberId;
-          const currentTeam = assignmentByUser.get(userId) ?? "";
-          return (
-            <div
-              key={userId}
-              className="flex items-center gap-3 rounded-lg px-3 py-2"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <UserAvatar
-                name={m.displayName}
-                avatarUrl={m.user?.avatar_url ?? null}
-                size="sm"
-              />
-              <span
-                className="flex-1 truncate text-sm"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                {m.displayName}
-              </span>
-              <select
-                value={currentTeam}
-                onChange={(e) => handleSelect(userId, e.target.value)}
-                disabled={!canEdit}
-                className="rounded-md px-2 py-1 text-xs"
+        <p
+          className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Crew · Unassigned
+        </p>
+        {unassigned.length === 0 ? (
+          <p
+            className="text-[11px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Everyone&rsquo;s on a team.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {unassigned.map((m) => {
+              const id = m.user_id ?? m.memberId;
+              return (
+                <div
+                  key={id}
+                  draggable={canEdit}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(DND_USER_KEY, id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  className="flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 active:cursor-grabbing"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    border: "1px solid var(--color-bt-border)",
+                  }}
+                >
+                  <UserAvatar
+                    name={m.displayName}
+                    avatarUrl={m.user?.avatar_url ?? null}
+                    size="sm"
+                  />
+                  <span
+                    className="truncate text-sm"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {m.displayName}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Mobile fallback: full member list with dropdown / unassign ─ */}
+      <div className="lg:hidden">
+        <p
+          className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Assign Members
+        </p>
+        <div className="space-y-1.5">
+          {members.map((m) => {
+            const id = m.user_id ?? m.memberId;
+            const teamId = assignmentByUser.get(id);
+            const team = teamId ? teamById.get(teamId) : null;
+            return (
+              <div
+                key={id}
+                className="flex items-center gap-3 rounded-lg px-3 py-2"
                 style={{
-                  background: "var(--color-bt-card)",
-                  color: currentTeam ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                  background: "var(--color-bt-card-raised)",
                   border: "1px solid var(--color-bt-border)",
                 }}
-                aria-label={`Team for ${m.displayName}`}
               >
-                <option value="">Unassigned</option>
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          );
-        })}
+                <UserAvatar
+                  name={m.displayName}
+                  avatarUrl={m.user?.avatar_url ?? null}
+                  size="sm"
+                />
+                <span
+                  className="flex-1 truncate text-sm"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {m.displayName}
+                </span>
+
+                {team ? (
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                      style={{
+                        background: "var(--color-bt-card)",
+                        color: "var(--color-bt-text)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ background: team.color }}
+                        aria-hidden
+                      />
+                      {team.name}
+                    </span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          remove.mutate({ tripId, competitionId, userId: id })
+                        }
+                        aria-label={`Unassign ${m.displayName}`}
+                        className="flex h-6 w-6 items-center justify-center rounded-md"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <select
+                    value=""
+                    disabled={!canEdit}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (!value) return;
+                      assign.mutate({
+                        tripId,
+                        competitionId,
+                        userId: id,
+                        teamId: value,
+                      });
+                    }}
+                    className="rounded-md px-2 py-1 text-xs"
+                    style={{
+                      background: "var(--color-bt-card)",
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                    aria-label={`Team for ${m.displayName}`}
+                  >
+                    <option value="">Pick a team…</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -530,6 +743,7 @@ function TeamSheet({
 
   const [name, setName] = useState(team?.name ?? "");
   const [shortName, setShortName] = useState(team?.short_name ?? "");
+  const [shortNameDirty, setShortNameDirty] = useState(isEdit);
   const [paletteIdx, setPaletteIdx] = useState(() => {
     if (!team) return 0;
     const idx = TEAM_COLORS.findIndex((c) => c.color === team.color);
@@ -543,6 +757,23 @@ function TeamSheet({
   const update = trpc.teams.update.useMutation({
     onSettled: () => utils.teams.list.invalidate(),
   });
+
+  function handleNameChange(value: string) {
+    setName(value);
+    // Auto-derive short_name from the first 3 chars until the user takes
+    // manual control of the short name field.
+    if (!shortNameDirty) {
+      setShortName(value.replace(/\s+/g, "").slice(0, 3).toUpperCase());
+    }
+  }
+
+  function handleSuggest() {
+    const suggestion = suggestTeamName();
+    setName(suggestion);
+    if (!shortNameDirty) {
+      setShortName(suggestion.replace(/\s+/g, "").slice(0, 3).toUpperCase());
+    }
+  }
 
   async function handleSave() {
     setError(null);
@@ -615,7 +846,7 @@ function TeamSheet({
           <Field label="Team Name" required>
             <input
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => handleNameChange(e.target.value)}
               placeholder="e.g. Team Hammer"
               maxLength={100}
               className="w-full rounded-lg px-3 py-2 text-sm outline-none"
@@ -624,13 +855,29 @@ function TeamSheet({
                 color: "var(--color-bt-text)",
                 border: "1px solid var(--color-bt-border)",
               }}
+              data-testid="team-name-input"
             />
+            {!name.trim() && (
+              <button
+                type="button"
+                onClick={handleSuggest}
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium"
+                style={{ color: "var(--color-bt-accent)" }}
+                data-testid="team-name-suggest"
+              >
+                <Sparkles size={11} />
+                Suggest a name
+              </button>
+            )}
           </Field>
 
           <Field label="Short Name" required helper="Used on scorecards — e.g. USA, EUR, FIRE">
             <input
               value={shortName}
-              onChange={(e) => setShortName(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setShortName(e.target.value.toUpperCase());
+                setShortNameDirty(true);
+              }}
               placeholder="HAM"
               maxLength={4}
               className="w-full rounded-lg px-3 py-2 text-sm uppercase outline-none"
@@ -684,6 +931,8 @@ function TeamSheet({
     </div>
   );
 }
+
+// ── Field ───────────────────────────────────────────────────────────────────
 
 function Field({
   label,

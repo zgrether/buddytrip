@@ -9,7 +9,7 @@ interface Competition {
   id: string;
   name: string;
   tagline: string | null;
-  motto: string | null;
+  // motto column still exists in the DB but the UI no longer reads it.
 }
 
 interface Props {
