@@ -197,16 +197,20 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
   const teamsExist = teamsTyped.length > 0;
   const allAssigned = teamsExist && totalMembers > 0 && assignedCount === totalMembers;
 
-  // Open state is derived from the data when the user hasn't manually
-  // toggled yet — null sentinel means "use the default for the current
-  // teams state". An explicit useEffect that wrote setOpen(true) when
-  // teamsExist flipped false would tickle react-hooks/set-state-in-effect
-  // and cascade renders; this approach gives the same UX (open while
-  // empty, closed once teams exist, reopens after the last team is
-  // deleted) without an effect.
+  // Open state — null sentinel means "use the data-derived default":
+  // open while no teams exist (so the empty-state CTA is visible), closed
+  // once teams exist (compact overview on revisits).
+  // Clicking Add Team or toggling the chevron commits an explicit value
+  // so adding the first team doesn't immediately collapse the panel
+  // out from under the user. An effect-driven setState here would trip
+  // react-hooks/set-state-in-effect, hence the override pattern.
   const [openOverride, setOpenOverride] = useState<boolean | null>(null);
   const open = openOverride ?? !teamsExist;
   const handleToggle = () => setOpenOverride(!open);
+  const handleOpenAddTeam = () => {
+    setOpenOverride(true);
+    setCreating(true);
+  };
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -228,7 +232,7 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
         {!teamsExist && (
           <NoTeamsEmptyState
             canEdit={canEdit}
-            onAddTeam={() => setCreating(true)}
+            onAddTeam={handleOpenAddTeam}
           />
         )}
 
@@ -263,7 +267,7 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
 
               {canEdit && (
                 <DashedAddButton
-                  onClick={() => setCreating(true)}
+                  onClick={handleOpenAddTeam}
                   label="Add Team"
                 />
               )}
