@@ -269,43 +269,24 @@ function EventsEmptyState({
   canEdit: boolean;
   onAdd: () => void;
 }) {
+  // Inline empty state — no card chrome so the column doesn't look
+  // double-nested inside the MatchupPanel container.
   return (
-    <div
-      className="rounded-xl px-4 py-6 text-center"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <div
-        className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl"
-        style={{
-          background: "var(--color-bt-accent-faint)",
-          color: "var(--color-bt-accent)",
-        }}
-      >
-        <Calendar size={20} />
-      </div>
-      <p
-        className="mt-3 text-sm font-semibold"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        No events yet
-      </p>
-      <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        Add the rounds and activities you&rsquo;ll compete in.
+    <div className="py-2 text-center">
+      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+        No events yet. Add the rounds and activities you&rsquo;ll compete in.
       </p>
       {canEdit && (
         <button
           type="button"
           onClick={onAdd}
-          className="mx-auto mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
+          className="mx-auto mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"
           style={{
             background: "var(--color-bt-accent)",
             color: "var(--color-bt-base)",
           }}
         >
-          <Plus size={15} />
+          <Plus size={14} />
           Add Event
         </button>
       )}
@@ -366,7 +347,8 @@ function EventCard({
     >
       {/* Dedicated drag handle. Putting draggable on a small grip lets the
           rest of the card stay interactive — clicking Edit / Delete now
-          never accidentally starts a drag. */}
+          never accidentally starts a drag. Visible accent color so the
+          affordance reads at a glance. */}
       {draggable ? (
         <div
           draggable
@@ -376,13 +358,13 @@ function EventCard({
           }}
           aria-label={`Drag ${event.title}`}
           title="Drag to assign to a venue"
-          className="-ml-1 flex h-9 w-5 flex-shrink-0 cursor-grab items-center justify-center active:cursor-grabbing"
-          style={{ color: "var(--color-bt-text-dim)" }}
+          className="-ml-1.5 flex h-9 w-6 flex-shrink-0 cursor-grab items-center justify-center rounded-md transition-colors hover:bg-[color:var(--color-bt-accent-faint)] active:cursor-grabbing"
+          style={{ color: "var(--color-bt-accent)" }}
         >
-          <GripVertical size={14} />
+          <GripVertical size={18} strokeWidth={2.25} />
         </div>
       ) : (
-        <div className="-ml-1 w-5 flex-shrink-0" />
+        <div className="-ml-1.5 w-6 flex-shrink-0" />
       )}
       <div
         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"

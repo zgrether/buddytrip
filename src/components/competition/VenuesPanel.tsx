@@ -274,37 +274,18 @@ function VenuesEmptyState({
   canEdit: boolean;
   onAddManual: () => void;
 }) {
+  // Inline empty state — no card chrome so the column doesn't look
+  // double-nested inside the MatchupPanel container.
   return (
-    <div
-      className="rounded-xl px-4 py-6 text-center"
-      style={{
-        background: "var(--color-bt-surface-invitation)",
-        border: "1.5px dashed var(--color-bt-border)",
-      }}
-    >
-      <div
-        className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl"
-        style={{
-          background: "var(--color-bt-accent-faint)",
-          color: "var(--color-bt-accent)",
-        }}
-      >
-        <MapPin size={20} />
-      </div>
-      <p
-        className="mt-3 text-sm font-semibold"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        No venues yet
-      </p>
-      <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        Add tee times in the Schedule tab, or add a venue manually.
+    <div className="py-2 text-center">
+      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+        No venues yet. Add tee times in Schedule, or add one manually below.
       </p>
       {canEdit && (
         <button
           type="button"
           onClick={onAddManual}
-          className="mx-auto mt-4 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium"
+          className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium"
           style={{
             background: "transparent",
             color: "var(--color-bt-accent)",
