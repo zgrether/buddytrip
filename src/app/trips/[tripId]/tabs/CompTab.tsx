@@ -6,6 +6,7 @@ import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetup
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { EventsPanel } from "@/components/competition/EventsPanel";
+import { ArenasPanel } from "@/components/competition/ArenasPanel";
 import type { TabProps } from "./types";
 
 interface CompTabProps extends TabProps {
@@ -100,11 +101,18 @@ function ExistingCompetitionView({
         canEdit={canEdit}
         isOwner={isOwner}
       />
-      <EventsPanel
-        competitionId={competition.id}
-        tripId={tripId}
-        canEdit={canEdit}
-      />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <EventsPanel
+          competitionId={competition.id}
+          tripId={tripId}
+          canEdit={canEdit}
+        />
+        <ArenasPanel
+          competitionId={competition.id}
+          tripId={tripId}
+          canEdit={canEdit}
+        />
+      </div>
     </div>
   );
 }
