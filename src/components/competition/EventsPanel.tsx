@@ -65,6 +65,10 @@ interface VenueLink {
   name?: string | null;
 }
 
+// Shared dataTransfer key — VenuesPanel reads the same string when an
+// event is dropped onto an unlinked venue row.
+export const DND_EVENT_KEY = "application/x-buddytrip-event-id";
+
 const FORMAT_LABELS: Record<ScoringFormat, string> = {
   scramble: "Scramble",
   stableford: "Stableford",
@@ -312,6 +316,10 @@ function EventCard({
   const utils = trpc.useUtils();
   const isGolf = event.type === "GOLF";
 
+  // Practice events aren't scored, so they're not eligible for venue
+  // assignment — only non-practice cards advertise the drag affordance.
+  const draggable = canEdit && !event.is_practice;
+
   const remove = trpc.events.delete.useMutation({
     onSettled: () => utils.events.list.invalidate(),
   });
@@ -333,7 +341,18 @@ function EventCard({
 
   return (
     <div
-      className="flex items-start gap-3 rounded-xl px-3 py-3"
+      className={`flex items-start gap-3 rounded-xl px-3 py-3 ${
+        draggable ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
+      draggable={draggable}
+      onDragStart={
+        draggable
+          ? (e) => {
+              e.dataTransfer.setData(DND_EVENT_KEY, event.id);
+              e.dataTransfer.effectAllowed = "move";
+            }
+          : undefined
+      }
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",

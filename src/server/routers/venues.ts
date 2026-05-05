@@ -269,22 +269,17 @@ export const venuesRouter = router({
         });
       }
 
-      // Reject if the event is already assigned to another venue. The DB
-      // partial unique index will enforce this on write but we surface a
-      // clearer error here.
-      const { data: existing } = await ctx.supabase
+      // Detach the event from any prior venue first so a drag from one
+      // venue to another is a clean reassignment rather than a CONFLICT.
+      // The partial unique index venues_event_unique still enforces one
+      // event per venue per competition; this keeps the rule but turns
+      // the second assign into a move.
+      await ctx.supabase
         .from("venues")
-        .select("id")
+        .update({ event_id: null })
         .eq("competition_id", venue.competition_id)
         .eq("event_id", input.eventId)
-        .neq("id", input.venueId)
-        .maybeSingle();
-      if (existing) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Event is already assigned to another venue",
-        });
-      }
+        .neq("id", input.venueId);
 
       const { data, error } = await ctx.supabase
         .from("venues")

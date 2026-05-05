@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { DND_EVENT_KEY } from "./EventsPanel";
 
 interface Props {
   competitionId: string;
@@ -467,6 +468,8 @@ function VenueRowView({
   competitionId: string;
   canEdit: boolean;
 }) {
+  const utils = trpc.useUtils();
+  const [dragOver, setDragOver] = useState(false);
   const linkedEvent = events.find((e) => e.id === venue.event_id) ?? null;
   const titleSource =
     venue.schedule_item?.course_name ??
@@ -480,13 +483,43 @@ function VenueRowView({
       )
     : formatDateTime(venue.venue_date, venue.venue_time);
 
+  // Drag-from-EventsPanel target. assignEvent on the router detaches the
+  // event from any prior venue, so dropping a linked event reassigns
+  // cleanly without a CONFLICT.
+  const dropAssign = trpc.venues.assignEvent.useMutation({
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+  });
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (!canEdit) return;
+    const eventId = e.dataTransfer.getData(DND_EVENT_KEY);
+    if (!eventId) return;
+    if (eventId === venue.event_id) return; // already here
+    dropAssign.mutate({ tripId, venueId: venue.id, eventId });
+  }
+
   return (
     <div
-      className="rounded-xl px-3 py-2.5"
+      className="rounded-xl px-3 py-2.5 transition-colors"
       style={{
         background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
+        border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+        }`,
       }}
+      onDragOver={
+        canEdit
+          ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOver(true);
+            }
+          : undefined
+      }
+      onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+      onDrop={canEdit ? handleDrop : undefined}
       data-testid={`venue-${venue.id}`}
     >
       <div className="flex items-center gap-3">
