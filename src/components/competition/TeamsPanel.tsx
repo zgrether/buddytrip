@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import {
   ChevronDown,
   Pencil,
@@ -197,14 +197,16 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
   const teamsExist = teamsTyped.length > 0;
   const allAssigned = teamsExist && totalMembers > 0 && assignedCount === totalMembers;
 
-  // Auto-expand when there are no teams yet — that's the user's next step.
-  // Once they've added a team, defer to manual open/close.
-  const [open, setOpen] = useState(!teamsExist);
-  // If teams later vanish (unlikely but supported by delete), reopen so the
-  // empty state is visible.
-  useEffect(() => {
-    if (!teamsExist) setOpen(true);
-  }, [teamsExist]);
+  // Open state is derived from the data when the user hasn't manually
+  // toggled yet — null sentinel means "use the default for the current
+  // teams state". An explicit useEffect that wrote setOpen(true) when
+  // teamsExist flipped false would tickle react-hooks/set-state-in-effect
+  // and cascade renders; this approach gives the same UX (open while
+  // empty, closed once teams exist, reopens after the last team is
+  // deleted) without an effect.
+  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
+  const open = openOverride ?? !teamsExist;
+  const handleToggle = () => setOpenOverride(!open);
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -219,7 +221,7 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
       note={statusText}
       state={headerState}
       open={open}
-      onToggle={() => setOpen((v) => !v)}
+      onToggle={handleToggle}
       testId="teams-panel"
     >
       <div className="space-y-4">
