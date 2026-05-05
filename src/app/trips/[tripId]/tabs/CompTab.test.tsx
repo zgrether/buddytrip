@@ -159,7 +159,12 @@ describe("CompTab data layer (revisions)", () => {
     // EventCard's status line now resolves to "Anytime" via this venue row.
   });
 
-  it("venue linkage — assignEvent rejects an event already pinned to another venue", async () => {
+  it("venue linkage — assignEvent moves an already-pinned event to the new venue", async () => {
+    // Drag-to-assign relies on this: dragging a linked event from one
+    // venue to another is a clean reassignment, not a CONFLICT. The
+    // partial unique index venues_event_unique still enforces "one
+    // event per venue per competition" — assignEvent now detaches
+    // from any prior venue first so the move lands cleanly.
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
 
@@ -190,13 +195,22 @@ describe("CompTab data layer (revisions)", () => {
       eventId: event.id,
     });
 
-    await expect(
-      caller.venues.assignEvent({
-        tripId,
-        venueId: venueB.id,
-        eventId: event.id,
-      })
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const moved = await caller.venues.assignEvent({
+      tripId,
+      venueId: venueB.id,
+      eventId: event.id,
+    });
+    expect(moved.id).toBe(venueB.id);
+    expect(moved.event_id).toBe(event.id);
+
+    // venueA should no longer reference the event — assignEvent detached
+    // it as part of the move.
+    const list = await caller.venues.list({
+      tripId,
+      competitionId: competition!.id,
+    });
+    const a = list.find((v) => v.id === venueA.id);
+    expect(a?.event_id).toBeNull();
   });
 
   it("delete gating — owner can delete while status is upcoming", async () => {
