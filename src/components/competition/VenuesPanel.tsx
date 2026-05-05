@@ -5,7 +5,6 @@ import {
   ChevronDown,
   Cloud,
   Flag,
-  Lock,
   MapPin,
   Plus,
   X,
@@ -339,7 +338,8 @@ function ScheduledSection({
           className="mt-2 text-[11px]"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          No golf tee times in Schedule yet. Add them in the Schedule tab first.
+          No confirmed golf tee times yet. Confirm them in the Schedule tab to
+          link them as venues.
         </p>
       )}
 
@@ -402,11 +402,9 @@ function UnlinkedScheduleRow({
     onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
   });
 
-  // Unconfirmed schedule items can't be linked yet — the planner is still
-  // negotiating the actual time/course in the Schedule tab. Surface the
-  // gate visibly (lock icon + dim copy) so it's clear what's blocking
-  // and where to fix it. The router rejects the same case server-side.
-  const locked = !item.is_confirmed;
+  // Only confirmed schedule items reach this row — schedule.listGolf
+  // already filters on is_confirmed=true. The router's create mutation
+  // re-checks server-side as defense in depth.
 
   return (
     <div
@@ -414,26 +412,20 @@ function UnlinkedScheduleRow({
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px dashed var(--color-bt-border)",
-        opacity: locked ? 0.7 : 0.85,
+        opacity: 0.85,
       }}
       data-testid={`unlinked-schedule-${item.id}`}
     >
-      {locked ? (
-        <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-      ) : (
-        <Flag size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-      )}
+      <Flag size={14} style={{ color: "var(--color-bt-text-dim)" }} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
           {item.course_name ?? item.title}
         </p>
         <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          {locked
-            ? "Confirm in Schedule first"
-            : formatDateTime(item.scheduled_date, item.scheduled_time)}
+          {formatDateTime(item.scheduled_date, item.scheduled_time)}
         </p>
       </div>
-      {canEdit && !locked && (
+      {canEdit && (
         <button
           type="button"
           onClick={() =>

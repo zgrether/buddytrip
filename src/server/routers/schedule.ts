@@ -29,8 +29,10 @@ export const scheduleRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // listGolf — golf-only schedule items, ordered chronologically. Used by
-  // VenuesPanel to surface tee times that can be linked to comp events.
+  // listGolf — confirmed golf schedule items only, ordered chronologically.
+  // Used by VenuesPanel to surface tee times that can be linked to comp
+  // events. Unconfirmed items are still being negotiated in the Schedule
+  // tab and shouldn't be structural to the competition.
   // -----------------------------------------------------------------------
   listGolf: authedProcedure
     .input(z.object({ tripId: z.string() }))
@@ -41,6 +43,7 @@ export const scheduleRouter = router({
         .select("*, course:golf_courses(*)")
         .eq("trip_id", ctx.tripId)
         .eq("item_type", "golf")
+        .eq("is_confirmed", true)
         .order("scheduled_date", { ascending: true, nullsFirst: false })
         .order("scheduled_time", { ascending: true, nullsFirst: false });
 
