@@ -91,11 +91,36 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
   const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState<EventRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
+  const utils = trpc.useUtils();
   const { data: events = [] } = trpc.events.list.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
+
+  // Drop-to-unassign: a LinkedEventDetails chip dragged out of a venue
+  // card lands here and we look up which venue currently holds it, then
+  // call venues.unassignEvent. Mirrors the crew column's unassign drop.
+  const unassign = trpc.venues.unassignEvent.useMutation({
+    onMutate: async (vars) => {
+      await utils.venues.list.cancel({ tripId, competitionId });
+      const previous = utils.venues.list.getData({ tripId, competitionId });
+      utils.venues.list.setData({ tripId, competitionId }, (old) => {
+        const list = (old as Array<{ id: string; event_id: string | null; is_anytime: boolean }> | undefined) ?? [];
+        return list.map((v) =>
+          v.id === vars.venueId ? { ...v, event_id: null, is_anytime: false } : v
+        ) as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        utils.venues.list.setData({ tripId, competitionId }, ctx.previous);
+      }
+    },
+    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+  });
 
   // Venue linkage drives the per-card status line. The venues router is
   // optional — if it isn't loaded yet (cold cache) we just render the
@@ -128,35 +153,97 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
       }`;
   const headerState = totalEvents === 0 ? "todo" : "inProgress";
 
+  // The bare-mode column itself acts as a drop target so an event chip
+  // dragged off a venue card can be returned to the unassigned pool.
+  const handleUnassignDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const eventId = e.dataTransfer.getData(DND_EVENT_KEY);
+    if (!eventId) return;
+    const venue = venuesTyped.find((v) => v.event_id === eventId) as
+      | { id?: string }
+      | undefined;
+    if (!venue?.id) return;
+    unassign.mutate({ tripId, venueId: venue.id });
+  };
+
+  const allAssigned =
+    bare && eventsTyped.length > 0 && visibleEvents.length === 0;
+
+  // In bare mode the events column is always a card-shaped drop target —
+  // mirrors the crew column treatment so the "drop here to unassign"
+  // affordance is visually consistent across the comp tab.
+  const bareDropStyle: React.CSSProperties | undefined = bare
+    ? {
+        background: "var(--color-bt-card-raised)",
+        border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+        }`,
+      }
+    : undefined;
+
+  const inner = (
+    <>
+      {visibleEvents.length === 0 && !allAssigned && !bare && (
+        <EventsEmptyState
+          canEdit={canEdit && !bare}
+          onAdd={() => setCreating(true)}
+        />
+      )}
+
+      {bare && visibleEvents.length === 0 && (
+        <p
+          className="text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {allAssigned
+            ? canEdit
+              ? "All events assigned to venues. Drop here to unassign."
+              : "All events assigned to venues."
+            : canEdit
+              ? "No unassigned events. Drop here to unassign."
+              : "No unassigned events."}
+        </p>
+      )}
+
+      {visibleEvents.map((event) => (
+        <EventCard
+          key={event.id}
+          event={event}
+          venue={venuesTyped.find((v) => v.event_id === event.id) ?? null}
+          canEdit={canEdit}
+          tripId={tripId}
+          onEdit={() => setEditing(event)}
+        />
+      ))}
+
+      {/* Bottom Add Event button is hidden in bare mode — the +Event
+          affordance lives in CompetitionHeader's action bar now. */}
+      {!bare && visibleEvents.length > 0 && canEdit && (
+        <AddEventButton onClick={() => setCreating(true)} />
+      )}
+    </>
+  );
+
   const body = (
     <>
-      <div className="space-y-2">
-        {visibleEvents.length === 0 && (
-          <EventsEmptyState
-            canEdit={canEdit && !bare}
-            onAdd={() => setCreating(true)}
-            assignedCount={
-              bare ? eventsTyped.length - visibleEvents.length : 0
-            }
-          />
-        )}
-
-        {visibleEvents.map((event) => (
-          <EventCard
-            key={event.id}
-            event={event}
-            venue={venuesTyped.find((v) => v.event_id === event.id) ?? null}
-            canEdit={canEdit}
-            tripId={tripId}
-            onEdit={() => setEditing(event)}
-          />
-        ))}
-
-        {/* Bottom Add Event button is hidden in bare mode — MatchupPanel
-            renders its own above the column header instead. */}
-        {!bare && visibleEvents.length > 0 && canEdit && (
-          <AddEventButton onClick={() => setCreating(true)} />
-        )}
+      <div
+        className={`${bare ? "rounded-xl p-3" : ""} space-y-2 transition-colors`}
+        style={bareDropStyle}
+        onDragOver={
+          bare && canEdit
+            ? (e) => {
+                if (!e.dataTransfer.types.includes(DND_EVENT_KEY)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOver(true);
+              }
+            : undefined
+        }
+        onDragLeave={bare && canEdit ? () => setDragOver(false) : undefined}
+        onDrop={bare && canEdit ? handleUnassignDrop : undefined}
+      >
+        {inner}
       </div>
 
       {(creating || editing) && (
@@ -270,23 +357,14 @@ function CollapsiblePanel({
 function EventsEmptyState({
   canEdit,
   onAdd,
-  assignedCount,
 }: {
   canEdit: boolean;
   onAdd: () => void;
-  /** When called from bare mode (MatchupPanel), how many events are
-   *  already assigned to venues — drives a subtler "all assigned" copy
-   *  instead of the cold "no events yet" message. */
-  assignedCount: number;
 }) {
-  const message = assignedCount > 0
-    ? `All ${assignedCount} event${assignedCount === 1 ? "" : "s"} assigned. Add another?`
-    : "No events yet. Add the rounds and activities you’ll compete in.";
-
   return (
     <div className="py-2 text-center">
       <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        {message}
+        No events yet. Add the rounds and activities you&rsquo;ll compete in.
       </p>
       {canEdit && <AddEventButton onClick={onAdd} className="mx-auto mt-3" />}
     </div>
@@ -471,7 +549,7 @@ function EventCard({
             onClick={() => setConfirmingDelete(true)}
             aria-label={`Delete ${event.title}`}
             className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-danger)" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             <Trash2 size={13} />
           </button>

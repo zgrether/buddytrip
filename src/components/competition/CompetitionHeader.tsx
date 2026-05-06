@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2, Trophy } from "lucide-react";
+import { Flag, MapPin, Pencil, Plus, Trash2, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "./CompetitionSetupPanel";
 
@@ -48,6 +48,12 @@ interface Props {
    * tab fully disappears (not just for the rest of the crew).
    */
   onDeleted?: () => void;
+  /** Action-bar handlers — when provided, the header renders +Team /
+   *  +Event / +Venue affordances inline below the title strip so the
+   *  inner panels don't have to surface them. */
+  onAddTeam?: () => void;
+  onAddEvent?: () => void;
+  onAddVenue?: () => void;
 }
 
 /**
@@ -63,6 +69,9 @@ export function CompetitionHeader({
   canEdit,
   isOwner,
   onDeleted,
+  onAddTeam,
+  onAddEvent,
+  onAddVenue,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -186,23 +195,50 @@ export function CompetitionHeader({
         )}
       </div>
 
-      {/* Progress strip — divider above */}
+      {/* Action bar — three columns combining a status line with an
+          add affordance. Replaces the old plain ProgressPill strip and
+          centralizes the +Team / +Event / +Venue buttons that used to
+          live inside the inner panels. */}
       <div
-        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5"
+        className="grid grid-cols-1 gap-2 px-3 py-2.5 sm:grid-cols-3 sm:gap-2"
         style={{ borderTop: "1px solid var(--color-bt-border)" }}
       >
-        <ProgressPill
-          label={
+        <ActionTile
+          icon={<Users size={14} />}
+          label="Team"
+          status={
             totalMembers > 0
-              ? `Teams: ${assignedCount}/${totalMembers} assigned`
-              : "Teams: not set up"
+              ? `${assignedCount}/${totalMembers} assigned`
+              : "Not set up"
           }
           complete={teamsComplete}
+          onAdd={canEdit ? onAddTeam : undefined}
         />
-        <ProgressPill label={`Events: ${scoredEvents}`} complete={eventsComplete} />
-        <ProgressPill
-          label={`Venues: ${venuesLinked} linked`}
+        <ActionTile
+          icon={<Flag size={14} />}
+          label="Event"
+          status={
+            eventsTyped.length === 0
+              ? "Not set up"
+              : `${scoredEvents} scored${
+                  eventsTyped.length - scoredEvents > 0
+                    ? ` · ${eventsTyped.length - scoredEvents} practice`
+                    : ""
+                }`
+          }
+          complete={eventsComplete}
+          onAdd={canEdit ? onAddEvent : undefined}
+        />
+        <ActionTile
+          icon={<MapPin size={14} />}
+          label="Venue"
+          status={
+            venuesTyped.length === 0
+              ? "Not set up"
+              : `${venuesLinked}/${scoredEvents || venuesTyped.length} linked`
+          }
           complete={venuesComplete}
+          onAdd={canEdit ? onAddVenue : undefined}
         />
       </div>
 
@@ -358,21 +394,73 @@ function StatusBadge({ status }: { status: Competition["status"] }) {
   );
 }
 
-function ProgressPill({
+function ActionTile({
+  icon,
   label,
+  status,
   complete,
+  onAdd,
 }: {
+  icon: React.ReactNode;
   label: string;
+  status: string;
   complete: boolean;
+  /** Undefined → render the tile as a non-interactive status block
+   *  (read-only members or unsupported state). */
+  onAdd?: () => void;
 }) {
+  const accent = complete
+    ? "var(--color-bt-accent)"
+    : "var(--color-bt-text-dim)";
+  const content = (
+    <>
+      <span style={{ color: accent }}>{icon}</span>
+      <div className="min-w-0 flex-1 text-left">
+        <p
+          className="flex items-center gap-1 text-[12px] font-semibold leading-tight"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          <span>{label}</span>
+          {onAdd && (
+            <Plus size={11} style={{ color: "var(--color-bt-text-dim)" }} />
+          )}
+        </p>
+        <p
+          className="mt-0.5 text-[11px] leading-tight"
+          style={{ color: accent }}
+        >
+          {status}
+        </p>
+      </div>
+    </>
+  );
+
+  if (!onAdd) {
+    return (
+      <div
+        className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        {content}
+      </div>
+    );
+  }
+
   return (
-    <span
-      className="text-[11px] font-medium"
+    <button
+      type="button"
+      onClick={onAdd}
+      aria-label={`Add ${label.toLowerCase()}`}
+      className="flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:brightness-105"
       style={{
-        color: complete ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+        background: "var(--color-bt-card-raised)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
-      {label}
-    </span>
+      {content}
+    </button>
   );
 }

@@ -20,6 +20,11 @@ interface Props {
   tripId: string;
   canEdit: boolean;
   isOwner?: boolean;
+  /** When provided, the parent (CompTab) drives create state via the
+   *  CompetitionHeader's +Team button. Local state is used as a
+   *  fallback so this panel still works standalone. */
+  creating?: boolean;
+  onCreatingChange?: (v: boolean) => void;
 }
 
 interface Team {
@@ -179,9 +184,21 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
 
 // ── TeamsPanel ──────────────────────────────────────────────────────────────
 
-export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
+export function TeamsPanel({
+  competitionId,
+  tripId,
+  canEdit,
+  isOwner,
+  creating: creatingProp,
+  onCreatingChange,
+}: Props) {
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creatingLocal, setCreatingLocal] = useState(false);
+  const creating = creatingProp ?? creatingLocal;
+  const setCreating = (v: boolean) => {
+    if (onCreatingChange) onCreatingChange(v);
+    else setCreatingLocal(v);
+  };
 
   const { data: teams = [] } = trpc.teams.list.useQuery(
     { tripId, competitionId },
@@ -245,8 +262,9 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
         )}
 
         {teamsExist && (
-          <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-            {/* Crew roster: desktop column / mobile section below teams */}
+          <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
+            {/* Crew roster: desktop column 1 (1/3 width) / mobile
+                section below teams */}
             <CrewRoster
               tripId={tripId}
               competitionId={competitionId}
@@ -257,12 +275,29 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
               order="lg-first"
             />
 
-            {/* Teams column */}
-            <div className="space-y-3">
-              {/* Add Team sits above the team cards, matching the
-                  Add Event / Add Venue buttons in MatchupPanel. */}
-              {canEdit && <AddTeamButton onClick={handleOpenAddTeam} />}
-
+            {/* Teams column — 2/3 of the panel width on desktop. The
+                +Team button moved up to CompetitionHeader's action bar. */}
+            <div>
+              <div className="mb-2 flex items-baseline gap-2">
+                <span style={{ color: "var(--color-bt-text-dim)" }}>
+                  <Users size={12} />
+                </span>
+                <h4
+                  className="text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Teams
+                </h4>
+                {canEdit && (
+                  <span
+                    className="text-[10px] italic"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Drop a crew member here
+                  </span>
+                )}
+              </div>
+              <div className="space-y-3">
               {teamsTyped.map((team) => (
                 <TeamCard
                   key={team.id}
@@ -276,6 +311,7 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
                   competitionId={competitionId}
                 />
               ))}
+              </div>
             </div>
           </div>
         )}
@@ -318,14 +354,13 @@ function CollapsiblePanel({
   testId?: string;
   children: React.ReactNode;
 }) {
-  const labelColor =
-    state === "todo" ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)";
-  const borderColor =
-    state === "todo" ? "var(--color-bt-border)" : "var(--color-bt-accent-border)";
-  // Done state: subtle accent-faint tint instead of the saturated tag-bg
-  // teal — the inner card-raised swatches don't need to fight the panel
-  // background for contrast.
-  const bg = state === "done" ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)";
+  // Always neutral — matches the Events & Venues panel. The panel doesn't
+  // need to flip teal once everyone's on a team; confirmation is conveyed
+  // by the populated team chips inside.
+  void state;
+  const labelColor = "var(--color-bt-text-dim)";
+  const borderColor = "var(--color-bt-border)";
+  const bg = "var(--color-bt-card)";
 
   return (
     <div
@@ -428,28 +463,6 @@ function NoTeamsEmptyState({
   );
 }
 
-// ── AddTeamButton ───────────────────────────────────────────────────────────
-// Matches the Lodging/Schedule "+ Property / + Item" affordance and the
-// Add Event / Add Venue buttons in MatchupPanel: card-raised bg, regular
-// border, icon-then-Plus-then-noun.
-
-function AddTeamButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        color: "var(--color-bt-text)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <Users size={15} />
-      <Plus size={12} /> Team
-    </button>
-  );
-}
 
 // ── TeamCard (also a drop target on desktop) ────────────────────────────────
 
@@ -572,7 +585,7 @@ function TeamCard({
             onClick={() => setConfirming(true)}
             aria-label={`Delete ${team.name}`}
             className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-danger)" }}
+            style={{ color: "var(--color-bt-text-dim)" }}
           >
             <Trash2 size={13} />
           </button>
@@ -594,7 +607,7 @@ function TeamCard({
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             {canEdit
-              ? "Drop members here, or assign from the crew list"
+              ? "Drop a crew member here"
               : "No members assigned"}
           </p>
         )}
@@ -801,33 +814,46 @@ function CrewRoster({
   return (
     <>
       {/* ── Desktop column: drag-and-drop unassigned roster ─────────── */}
-      <div
-        className="hidden rounded-xl p-3 transition-colors lg:block"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
-            dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
-          }`,
-          alignSelf: "start",
-        }}
-        onDragOver={
-          canEdit
-            ? (e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDragOver(true);
-              }
-            : undefined
-        }
-        onDragLeave={canEdit ? () => setDragOver(false) : undefined}
-        onDrop={canEdit ? handleDropToUnassign : undefined}
-      >
-        <p
-          className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
+      <section className="hidden lg:block" style={{ alignSelf: "start" }}>
+        <div className="mb-2 flex items-baseline gap-2">
+          <span style={{ color: "var(--color-bt-text-dim)" }}>
+            <User size={12} />
+          </span>
+          <h4
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Unassigned Crew
+          </h4>
+          {canEdit && (
+            <span
+              className="text-[10px] italic"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Drag onto a team to assign
+            </span>
+          )}
+        </div>
+        <div
+          className="rounded-xl p-3 transition-colors"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+              dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+            }`,
+          }}
+          onDragOver={
+            canEdit
+              ? (e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDragOver(true);
+                }
+              : undefined
+          }
+          onDragLeave={canEdit ? () => setDragOver(false) : undefined}
+          onDrop={canEdit ? handleDropToUnassign : undefined}
         >
-          Crew · Unassigned
-        </p>
         {unassigned.length === 0 ? (
           <p
             className="text-[11px]"
@@ -871,7 +897,8 @@ function CrewRoster({
             })}
           </div>
         )}
-      </div>
+        </div>
+      </section>
 
       {/* ── Mobile fallback: full member list with dropdown / unassign ─ */}
       <div className="lg:hidden">

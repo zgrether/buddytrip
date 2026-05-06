@@ -3,13 +3,20 @@
 import { useState } from "react";
 import { ArrowRight, ChevronDown, Flag, MapPin, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { AddEventButton, EventSheet, EventsPanel } from "./EventsPanel";
-import { AddVenueButton, ManualVenueSheet, VenuesPanel } from "./VenuesPanel";
+import { EventSheet, EventsPanel } from "./EventsPanel";
+import { ManualVenueSheet, VenuesPanel } from "./VenuesPanel";
 
 interface Props {
   competitionId: string;
   tripId: string;
   canEdit: boolean;
+  /** When provided, the parent (CompTab) drives the +Event / +Venue
+   *  create state via CompetitionHeader's action bar. Local state is
+   *  used as a fallback so this panel still works standalone. */
+  creatingEvent?: boolean;
+  onCreatingEventChange?: (v: boolean) => void;
+  creatingManualVenue?: boolean;
+  onCreatingManualVenueChange?: (v: boolean) => void;
 }
 
 /**
@@ -23,13 +30,32 @@ interface Props {
  * queries inside each are still independent (and TanStack Query
  * dedupes them across renders), so there's no extra fetch overhead.
  */
-export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
+export function MatchupPanel({
+  competitionId,
+  tripId,
+  canEdit,
+  creatingEvent: creatingEventProp,
+  onCreatingEventChange,
+  creatingManualVenue: creatingManualVenueProp,
+  onCreatingManualVenueChange,
+}: Props) {
   const [open, setOpen] = useState(true);
-  // Add buttons live above each column header here in MatchupPanel so
-  // they're the first thing the user sees in the panel; the children
-  // bare-mode panels below skip their own bottom Add buttons.
-  const [creatingEvent, setCreatingEvent] = useState(false);
-  const [creatingManualVenue, setCreatingManualVenue] = useState(false);
+  // The +Event / +Venue affordances live in CompetitionHeader's action
+  // bar now — this panel just consumes the create state via props.
+  // Local state stays as a standalone-mode fallback.
+  const [creatingEventLocal, setCreatingEventLocal] = useState(false);
+  const [creatingManualVenueLocal, setCreatingManualVenueLocal] = useState(false);
+  const creatingEvent = creatingEventProp ?? creatingEventLocal;
+  const creatingManualVenue =
+    creatingManualVenueProp ?? creatingManualVenueLocal;
+  const setCreatingEvent = (v: boolean) => {
+    if (onCreatingEventChange) onCreatingEventChange(v);
+    else setCreatingEventLocal(v);
+  };
+  const setCreatingManualVenue = (v: boolean) => {
+    if (onCreatingManualVenueChange) onCreatingManualVenueChange(v);
+    else setCreatingManualVenueLocal(v);
+  };
 
   // Combined status string for the header — keeps the user oriented
   // without having to expand to see "anything to do here?"
@@ -77,45 +103,31 @@ export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
           onAdd={() => setCreatingEvent(true)}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-4">
-          <div>
-            {canEdit && (
-              <div className="mb-3">
-                <AddEventButton onClick={() => setCreatingEvent(true)} />
-              </div>
-            )}
-            <Column
-              icon={<Flag size={12} />}
-              label="Unassigned Events"
-              hint={canEdit ? "Drag a card onto a venue to assign" : undefined}
-            >
-              <EventsPanel
-                competitionId={competitionId}
-                tripId={tripId}
-                canEdit={canEdit}
-                bare
-              />
-            </Column>
-          </div>
-          <div>
-            {canEdit && (
-              <div className="mb-3">
-                <AddVenueButton onClick={() => setCreatingManualVenue(true)} />
-              </div>
-            )}
-            <Column
-              icon={<MapPin size={12} />}
-              label="Confirmed Venues"
-              hint={canEdit ? "Drop a dragged event here" : undefined}
-            >
-              <VenuesPanel
-                competitionId={competitionId}
-                tripId={tripId}
-                canEdit={canEdit}
-                bare
-              />
-            </Column>
-          </div>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_2fr] lg:gap-4">
+          <Column
+            icon={<Flag size={12} />}
+            label="Unassigned Events"
+            hint={canEdit ? "Drag onto a venue to assign" : undefined}
+          >
+            <EventsPanel
+              competitionId={competitionId}
+              tripId={tripId}
+              canEdit={canEdit}
+              bare
+            />
+          </Column>
+          <Column
+            icon={<MapPin size={12} />}
+            label="Confirmed Venues"
+            hint={canEdit ? "Drop an event here" : undefined}
+          >
+            <VenuesPanel
+              competitionId={competitionId}
+              tripId={tripId}
+              canEdit={canEdit}
+              bare
+            />
+          </Column>
         </div>
       )}
 
@@ -202,15 +214,17 @@ function Column({
   icon,
   label,
   hint,
+  className,
   children,
 }: {
   icon: React.ReactNode;
   label: string;
   hint?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section>
+    <section className={className}>
       <div className="mb-2 flex items-baseline gap-2">
         <span style={{ color: "var(--color-bt-text-dim)" }}>{icon}</span>
         <h4

@@ -892,11 +892,22 @@ function LinkedEventDetails({
 
   return (
     <div
-      className="mt-2 rounded-lg px-2.5 py-2"
+      className={`mt-2 rounded-lg px-2.5 py-2 ${
+        canEdit ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
       style={{
         background: "var(--color-bt-accent-faint)",
         border: "1px solid var(--color-bt-accent-border)",
       }}
+      draggable={canEdit}
+      onDragStart={
+        canEdit
+          ? (e) => {
+              e.dataTransfer.setData(DND_EVENT_KEY, event.id);
+              e.dataTransfer.effectAllowed = "move";
+            }
+          : undefined
+      }
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
