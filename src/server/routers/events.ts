@@ -1,8 +1,29 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
-import { assertCompetitionInTrip } from "../competition-guards";
+
+/** Shared between events.list and competitions.hydrate. */
+export async function listEvents(
+  ctx: { supabase: SupabaseClient },
+  competitionId: string,
+) {
+  const { data, error } = await ctx.supabase
+    .from("events")
+    .select("*, point_distributions:event_point_distributions(*)")
+    .eq("competition_id", competitionId)
+    .order("day", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Failed to fetch events: ${error.message}`,
+    });
+  }
+  return data ?? [];
+}
 
 /**
  * events — scored activities within a competition (golf rounds, side games).
@@ -31,25 +52,7 @@ export const eventsRouter = router({
   list: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx, input }) => {
-      await assertCompetitionInTrip(ctx, input.competitionId);
-
-      const { data, error } = await ctx.supabase
-        .from("events")
-        .select("*, point_distributions:event_point_distributions(*)")
-        .eq("competition_id", input.competitionId)
-        .order("day", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch events: ${error.message}`,
-        });
-      }
-
-      return data ?? [];
-    }),
+    .query(({ ctx, input }) => listEvents(ctx, input.competitionId)),
 
   // -----------------------------------------------------------------------
   // create — add a scored activity (canEdit)
@@ -71,8 +74,6 @@ export const eventsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      await assertCompetitionInTrip(ctx, input.competitionId);
-
       // RLS INSERT RETURNING split
       const { data: inserted, error: insertErr } = await ctx.supabase
         .from("events")
@@ -197,8 +198,6 @@ export const eventsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      await assertCompetitionInTrip(ctx, input.competitionId);
-
       // One UPDATE per row keeps things simple and stays within RLS scope.
       for (let i = 0; i < input.orderedIds.length; i++) {
         const id = input.orderedIds[i];

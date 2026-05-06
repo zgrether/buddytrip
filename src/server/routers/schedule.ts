@@ -1,7 +1,31 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+
+/** Shared between schedule.listGolf and competitions.hydrate. */
+export async function listGolfSchedule(
+  ctx: { supabase: SupabaseClient },
+  tripId: string,
+) {
+  const { data, error } = await ctx.supabase
+    .from("schedule_items")
+    .select("*, course:golf_courses(*)")
+    .eq("trip_id", tripId)
+    .eq("item_type", "golf")
+    .eq("is_confirmed", true)
+    .order("scheduled_date", { ascending: true, nullsFirst: false })
+    .order("scheduled_time", { ascending: true, nullsFirst: false });
+
+  if (error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Failed to fetch golf schedule items",
+    });
+  }
+  return data ?? [];
+}
 
 export const scheduleRouter = router({
   // -----------------------------------------------------------------------
@@ -37,25 +61,7 @@ export const scheduleRouter = router({
   listGolf: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx }) => {
-      const { data, error } = await ctx.supabase
-        .from("schedule_items")
-        .select("*, course:golf_courses(*)")
-        .eq("trip_id", ctx.tripId)
-        .eq("item_type", "golf")
-        .eq("is_confirmed", true)
-        .order("scheduled_date", { ascending: true, nullsFirst: false })
-        .order("scheduled_time", { ascending: true, nullsFirst: false });
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch golf schedule items",
-        });
-      }
-
-      return data ?? [];
-    }),
+    .query(({ ctx }) => listGolfSchedule(ctx, ctx.tripId!)),
 
   // -----------------------------------------------------------------------
   // create — Planner+ can add schedule items

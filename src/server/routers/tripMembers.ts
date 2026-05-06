@@ -1,7 +1,61 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+
+/** Shared between tripMembers.list and competitions.hydrate. */
+export async function listMembers(
+  ctx: { supabase: SupabaseClient },
+  tripId: string,
+) {
+  const { data, error } = await ctx.supabase
+    .from("trip_members")
+    .select(
+      "id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at",
+    )
+    .eq("trip_id", tripId)
+    .order("joined_at", { ascending: true });
+
+  if (error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Failed to fetch members",
+    });
+  }
+
+  const rows = data ?? [];
+  const userIds = rows.map((m) => m.user_id).filter(Boolean) as string[];
+
+  const usersResult =
+    userIds.length > 0
+      ? await ctx.supabase
+          .from("users")
+          .select("id, name, nickname, email, is_guest")
+          .in("id", userIds)
+      : {
+          data: [] as {
+            id: string;
+            name: string | null;
+            nickname: string | null;
+            email: string | null;
+            is_guest: boolean;
+          }[],
+        };
+
+  const userMap = new Map((usersResult.data ?? []).map((u) => [u.id, u]));
+
+  return rows.map((m) => {
+    const user = m.user_id ? userMap.get(m.user_id) ?? null : null;
+    const isGuest = user?.is_guest ?? false;
+    const memberId = m.user_id as string;
+    const displayName = user
+      ? user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`
+      : `Unknown ${memberId.slice(0, 6)}`;
+
+    return { ...m, user, memberId, isGuest, displayName };
+  });
+}
 
 export const tripMembersRouter = router({
   // -----------------------------------------------------------------------
@@ -13,46 +67,7 @@ export const tripMembersRouter = router({
   list: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx }) => {
-      const { data, error } = await ctx.supabase
-        .from("trip_members")
-        .select("id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at")
-        .eq("trip_id", ctx.tripId)
-        .order("joined_at", { ascending: true });
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch members",
-        });
-      }
-
-      const rows = data ?? [];
-      const userIds = rows.map((m) => m.user_id).filter(Boolean) as string[];
-
-      const usersResult = userIds.length > 0
-        ? await ctx.supabase.from("users").select("id, name, nickname, email, is_guest").in("id", userIds)
-        : { data: [] as { id: string; name: string | null; nickname: string | null; email: string | null; is_guest: boolean }[] };
-
-      const userMap = new Map((usersResult.data ?? []).map((u) => [u.id, u]));
-
-      return rows.map((m) => {
-        const user = m.user_id ? (userMap.get(m.user_id) ?? null) : null;
-        const isGuest = user?.is_guest ?? false;
-        const memberId = m.user_id as string;
-        const displayName = user
-          ? (user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`)
-          : `Unknown ${memberId.slice(0, 6)}`;
-
-        return {
-          ...m,
-          user,
-          memberId,
-          isGuest,
-          displayName,
-        };
-      });
-    }),
+    .query(({ ctx }) => listMembers(ctx, ctx.tripId!)),
 
   // -----------------------------------------------------------------------
   // add — Owner or Planner can add real-account members (canEdit)

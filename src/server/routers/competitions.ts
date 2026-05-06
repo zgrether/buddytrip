@@ -3,6 +3,39 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
+/** Shared with `hydrate`: one-shot fetch of a trip's competition (or null). */
+async function fetchCompetition(
+  ctx: { supabase: import("@supabase/supabase-js").SupabaseClient },
+  tripId: string,
+) {
+  const { data, error } = await ctx.supabase
+    .from("competitions")
+    .select("*")
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Failed to fetch competition: ${error.message}`,
+    });
+  }
+  return data as
+    | {
+        id: string;
+        name: string;
+        tagline: string | null;
+        status: "upcoming" | "active" | "completed";
+        motto: string | null;
+        trip_id: string;
+        created_at: string;
+        updated_at: string;
+      }
+    | null;
+}
+
 /**
  * competitions — top-level container per trip.
  *
@@ -36,6 +69,74 @@ export const competitionsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // hydrate — single bundled fetch for the comp tab.
+  //
+  // Returns everything CompTab needs in one round trip: the competition
+  // row plus teams, assignments, members, events, venues, and confirmed
+  // golf schedule items. Each panel still calls its own granular
+  // useQuery on the client; CompTab seeds those caches with this
+  // result before the panels mount, so they read from cache and skip
+  // their own network calls.
+  //
+  // Calls the inner list helpers (defined in their own router modules)
+  // directly so we don't roundtrip through HTTP for each panel. The
+  // membership cache added in the perf pass means the shared
+  // requireTripMember check is paid once per request batch.
+  // -----------------------------------------------------------------------
+  hydrate: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const tripId = input.tripId;
+      const { listMembers } = await import("./tripMembers");
+      const { listGolfSchedule } = await import("./schedule");
+      const { listTeams } = await import("./teams");
+      const { listTeamAssignments } = await import("./teamAssignments");
+      const { listEvents } = await import("./events");
+      const { listVenues } = await import("./venues");
+
+      const competition = await fetchCompetition(ctx, tripId);
+
+      if (!competition) {
+        const [members, golfItems] = await Promise.all([
+          listMembers(ctx, tripId),
+          listGolfSchedule(ctx, tripId),
+        ]);
+        return {
+          competition: null,
+          teams: [],
+          assignments: [],
+          members,
+          events: [],
+          venues: [],
+          golfItems,
+        };
+      }
+
+      const competitionId = competition.id;
+
+      const [teams, assignments, members, events, venues, golfItems] =
+        await Promise.all([
+          listTeams(ctx, competitionId),
+          listTeamAssignments(ctx, competitionId),
+          listMembers(ctx, tripId),
+          listEvents(ctx, competitionId),
+          listVenues(ctx, competitionId),
+          listGolfSchedule(ctx, tripId),
+        ]);
+
+      return {
+        competition,
+        teams,
+        assignments,
+        members,
+        events,
+        venues,
+        golfItems,
+      };
+    }),
+
+// -----------------------------------------------------------------------
   // create — new competition for a trip (canEdit, MVP one-per-trip)
   // -----------------------------------------------------------------------
   create: authedProcedure

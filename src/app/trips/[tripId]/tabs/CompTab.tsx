@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
@@ -27,6 +27,14 @@ interface CompTabProps extends TabProps {
  *   2. None + canEdit → full-width CompetitionSetupPanel in create mode
  *   3. None + member  → read-only "not set up yet" empty state
  *   4. Exists         → CompetitionHeader + Teams + Events + Groups stack
+ *
+ * Loads everything via the bundled `competitions.hydrate` procedure so
+ * the slow path is one HTTP round trip + one server-side procedure
+ * (which fans out to its inline list helpers in parallel). The
+ * granular per-panel caches are seeded from the hydrate result; the
+ * panels' own useQuery calls return that cached data immediately and
+ * skip the network. Invalidations after mutations still refetch the
+ * granular endpoint as before.
  */
 export function CompTab({
   trip,
@@ -35,9 +43,38 @@ export function CompTab({
   onCompetitionDeleted,
 }: CompTabProps) {
   const tripId = trip.id;
-  const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery({ tripId });
+  const utils = trpc.useUtils();
+  const { data: hydrateData, isLoading } = trpc.competitions.hydrate.useQuery({
+    tripId,
+  });
 
-  if (isLoading) return <SkeletonPanels />;
+  // Seed the per-panel caches synchronously during render so the
+  // children's useQuery calls — which mount inside the
+  // `ExistingCompetitionView` returned below — read from cache
+  // instead of firing their own network requests. Guarded by a ref
+  // keyed on the hydrate snapshot so we only seed once per fetch.
+  const seededRef = useRef<unknown>(null);
+  if (hydrateData && seededRef.current !== hydrateData) {
+    seededRef.current = hydrateData;
+    const { competition, teams, assignments, members, events, venues, golfItems } =
+      hydrateData;
+    utils.tripMembers.list.setData({ tripId }, members);
+    utils.schedule.listGolf.setData({ tripId }, golfItems);
+    if (competition) {
+      const key = { tripId, competitionId: competition.id };
+      utils.competitions.getByTrip.setData({ tripId }, competition);
+      utils.teams.list.setData(key, teams);
+      utils.teamAssignments.list.setData(key, assignments);
+      utils.events.list.setData(key, events);
+      utils.venues.list.setData(key, venues);
+    } else {
+      utils.competitions.getByTrip.setData({ tripId }, null);
+    }
+  }
+
+  if (isLoading || !hydrateData) return <SkeletonPanels />;
+
+  const competition = hydrateData.competition;
 
   if (!competition && canEdit) {
     return (
@@ -93,47 +130,6 @@ function ExistingCompetitionView({
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [creatingManualVenue, setCreatingManualVenue] = useState(false);
-
-  // Prefetch every query the inner panels and the header read so we
-  // can gate rendering on a single combined loading flag. Without this
-  // each panel falls through to its empty-state branch on the very
-  // first render (default `data = []`) and the user sees a "No teams /
-  // events / venues yet" flash before the data lands a tick later.
-  // tRPC + TanStack Query dedupe by query key, so the children's own
-  // useQuery calls reuse these cached results — no extra network hits.
-  const teamsQ = trpc.teams.list.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: !!competition.id }
-  );
-  const assignmentsQ = trpc.teamAssignments.list.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: !!competition.id }
-  );
-  const membersQ = trpc.tripMembers.list.useQuery({ tripId });
-  const eventsQ = trpc.events.list.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: !!competition.id }
-  );
-  const venuesQ = trpc.venues.list.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: !!competition.id }
-  );
-  const golfQ = trpc.schedule.listGolf.useQuery(
-    { tripId },
-    { enabled: !!competition.id }
-  );
-
-  const isHydrating =
-    teamsQ.isLoading ||
-    assignmentsQ.isLoading ||
-    membersQ.isLoading ||
-    eventsQ.isLoading ||
-    venuesQ.isLoading ||
-    golfQ.isLoading;
-
-  if (isHydrating) {
-    return <SkeletonPanels />;
-  }
 
   return (
     <div className="space-y-3 px-4">
