@@ -153,19 +153,7 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
         ))}
 
         {visibleEvents.length > 0 && canEdit && (
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-accent)",
-              border: "1.5px dashed var(--color-bt-accent)",
-            }}
-          >
-            <Plus size={14} />
-            Add Event
-          </button>
+          <AddEventButton onClick={() => setCreating(true)} />
         )}
       </div>
 
@@ -298,21 +286,36 @@ function EventsEmptyState({
       <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
         {message}
       </p>
-      {canEdit && (
-        <button
-          type="button"
-          onClick={onAdd}
-          className="mx-auto mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"
-          style={{
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-          }}
-        >
-          <Plus size={14} />
-          Add Event
-        </button>
-      )}
+      {canEdit && <AddEventButton onClick={onAdd} className="mx-auto mt-3" />}
     </div>
+  );
+}
+
+function AddEventButton({
+  onClick,
+  className,
+}: {
+  onClick: () => void;
+  className?: string;
+}) {
+  // Matches the Lodging/Schedule "+ Item / + Property" affordance:
+  // card-raised background, regular border, icon-then-Plus-then-noun.
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all ${
+        className ?? ""
+      }`}
+      style={{
+        background: "var(--color-bt-card-raised)",
+        color: "var(--color-bt-text)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <Flag size={15} />
+      <Plus size={12} /> Event
+    </button>
   );
 }
 

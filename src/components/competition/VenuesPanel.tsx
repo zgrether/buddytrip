@@ -8,6 +8,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  Trash2,
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -83,7 +84,25 @@ function useVenueAssignmentMutations(tripId: string, competitionId: string) {
     onSettled: () => utils.venues.list.invalidate(queryKey),
   });
 
-  return { assign, unassign };
+  const remove = trpc.venues.delete.useMutation({
+    onMutate: async (vars) => {
+      await utils.venues.list.cancel(queryKey);
+      const previous = utils.venues.list.getData(queryKey);
+      utils.venues.list.setData(queryKey, (old) => {
+        const list = (old as OptimisticVenueRow[] | undefined) ?? [];
+        return list.filter((v) => v.id !== vars.venueId) as never;
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        utils.venues.list.setData(queryKey, ctx.previous);
+      }
+    },
+    onSettled: () => utils.venues.list.invalidate(queryKey),
+  });
+
+  return { assign, unassign, remove };
 }
 
 interface Props {
@@ -339,29 +358,45 @@ function VenuesEmptyState({
   canEdit: boolean;
   onAddManual: () => void;
 }) {
-  // Inline empty state — no card chrome so the column doesn't look
-  // double-nested inside the MatchupPanel container.
   return (
     <div className="py-2 text-center">
       <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
         No venues yet. Add tee times in Schedule, or add one manually below.
       </p>
       {canEdit && (
-        <button
-          type="button"
-          onClick={onAddManual}
-          className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium"
-          style={{
-            background: "transparent",
-            color: "var(--color-bt-accent)",
-            border: "1.5px dashed var(--color-bt-accent)",
-          }}
-        >
-          <Plus size={14} />
-          Add Venue
-        </button>
+        <div className="mx-auto mt-3 max-w-xs">
+          <AddVenueButton onClick={onAddManual} />
+        </div>
       )}
     </div>
+  );
+}
+
+function AddVenueButton({
+  onClick,
+  className,
+}: {
+  onClick: () => void;
+  className?: string;
+}) {
+  // Matches the Lodging/Schedule "+ Property / + Item" affordance:
+  // card-raised background, regular border, icon-then-Plus-then-noun.
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all ${
+        className ?? ""
+      }`}
+      style={{
+        background: "var(--color-bt-card-raised)",
+        color: "var(--color-bt-text)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <MapPin size={15} />
+      <Plus size={12} /> Venue
+    </button>
   );
 }
 
@@ -446,21 +481,7 @@ function ScheduledSection({
           />
         ))}
 
-        {canEdit && (
-          <button
-            type="button"
-            onClick={onAddManual}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-accent)",
-              border: "1.5px dashed var(--color-bt-accent)",
-            }}
-          >
-            <Plus size={14} />
-            Add Venue
-          </button>
-        )}
+        {canEdit && <AddVenueButton onClick={onAddManual} />}
       </div>
     </section>
   );
@@ -606,7 +627,17 @@ function VenueRowView({
   // event from any prior venue, so dropping a linked event reassigns
   // cleanly without a CONFLICT. Optimistic via the shared hook so the
   // chip lands the moment the user releases.
-  const { assign: dropAssign } = useVenueAssignmentMutations(tripId, competitionId);
+  const { assign: dropAssign, remove } = useVenueAssignmentMutations(
+    tripId,
+    competitionId
+  );
+
+  // Manual venues (no schedule_item linkage) can be deleted from this
+  // row — they aren't tied to anything in Schedule, so removing them is
+  // a no-collateral action. Schedule-linked venues are unlinked instead
+  // by toggling the schedule item's confirmation in the Schedule tab.
+  const isManual = !venue.schedule_item_id && !venue.is_anytime;
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -671,7 +702,30 @@ function VenueRowView({
             venuesTyped={venuesTyped}
           />
         )}
+        {isManual && canEdit && (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            aria-label={`Delete ${titleSource}`}
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
+
+      {confirmingDelete && (
+        <DeleteVenueConfirm
+          venueName={titleSource}
+          isPending={remove.isPending}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            remove.mutate({ tripId, venueId: venue.id });
+            setConfirmingDelete(false);
+          }}
+        />
+      )}
 
       {linkedEvent && (
         <LinkedEventDetails
@@ -987,10 +1041,13 @@ function AnytimeDropZone({
   const utils = trpc.useUtils();
   const [dragOver, setDragOver] = useState(false);
   const create = trpc.venues.create.useMutation();
-  const assign = trpc.venues.assignEvent.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
+  const assign = trpc.venues.assignEvent.useMutation();
 
+  // The chain (create → assign) doesn't fit the single-mutation
+  // optimistic pattern in useVenueAssignmentMutations, so we do it
+  // inline. Insert a temp anytime venue with the event already
+  // attached, run both mutations, then invalidate to swap the temp
+  // row with the real id. Rolls back to the snapshot on error.
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
@@ -999,17 +1056,49 @@ function AnytimeDropZone({
     if (!eventId) return;
     const event = events.find((ev) => ev.id === eventId);
     if (!event) return;
-    const venue = await create.mutateAsync({
-      tripId,
-      competitionId,
-      name: event.title,
-      isAnytime: true,
+
+    const queryKey = { tripId, competitionId };
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const previous = utils.venues.list.getData(queryKey);
+
+    utils.venues.list.setData(queryKey, (old) => {
+      const list = (old as OptimisticVenueRow[] | undefined) ?? [];
+      // Detach this event from any prior venue (move semantics).
+      const cleaned = list.map((v) =>
+        v.event_id === eventId ? { ...v, event_id: null } : v
+      );
+      const tempVenue: OptimisticVenueRow = {
+        id: tempId,
+        competition_id: competitionId,
+        schedule_item_id: null,
+        event_id: eventId,
+        is_anytime: true,
+        name: event.title,
+        location: null,
+        venue_date: null,
+        venue_time: null,
+        schedule_item: null,
+      };
+      return [...cleaned, tempVenue] as never;
     });
-    await assign.mutateAsync({
-      tripId,
-      venueId: venue.id,
-      eventId,
-    });
+
+    try {
+      const venue = await create.mutateAsync({
+        tripId,
+        competitionId,
+        name: event.title,
+        isAnytime: true,
+      });
+      await assign.mutateAsync({
+        tripId,
+        venueId: venue.id,
+        eventId,
+      });
+      utils.venues.list.invalidate(queryKey);
+    } catch (err) {
+      utils.venues.list.setData(queryKey, previous);
+      throw err;
+    }
   }
 
   return (
@@ -1075,16 +1164,14 @@ function AnytimeVenueRow({
   canEdit: boolean;
   onEditLinkedEvent: (event: EventRow) => void;
 }) {
-  const utils = trpc.useUtils();
   const [dragOver, setDragOver] = useState(false);
   const linkedEvent = events.find((e) => e.id === venue.event_id);
   const label = linkedEvent?.title ?? venue.name ?? "Anytime";
   const pts = linkedEvent?.points_available;
 
-  const remove = trpc.venues.delete.useMutation({
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
-  });
-  const { assign } = useVenueAssignmentMutations(tripId, competitionId);
+  // Both remove + assign go through the optimistic hook now so the chip
+  // either disappears (or moves) the moment the user releases.
+  const { assign, remove } = useVenueAssignmentMutations(tripId, competitionId);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -1162,6 +1249,87 @@ function AnytimeVenueRow({
 }
 
 // (UnassignedEventPrompt was retired — replaced by AnytimeDropZone.)
+
+// ── DeleteVenueConfirm ──────────────────────────────────────────────────────
+
+function DeleteVenueConfirm({
+  venueName,
+  isPending,
+  onCancel,
+  onConfirm,
+}: {
+  venueName: string;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+        style={{
+          background: "var(--color-bt-card-float)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3 text-center sm:text-left">
+          <div
+            className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl sm:mx-0"
+            style={{
+              background: "var(--color-bt-danger-faint)",
+              color: "var(--color-bt-danger)",
+            }}
+          >
+            <Trash2 size={18} />
+          </div>
+          <h3
+            className="mt-3 text-base font-bold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            Delete &ldquo;{venueName}&rdquo;?
+          </h3>
+          <p
+            className="mt-1.5 text-sm leading-relaxed"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            This venue isn&rsquo;t tied to anything in Schedule or Lodging —
+            removing it just clears it from the competition. Any linked
+            event becomes unassigned.
+          </p>
+        </div>
+        <div className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "0.5px solid var(--color-bt-border)",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: "var(--color-bt-danger)" }}
+          >
+            {isPending ? "Deleting…" : "Delete Venue"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── ManualVenueSheet ────────────────────────────────────────────────────────
 
