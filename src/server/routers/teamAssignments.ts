@@ -1,14 +1,33 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
-import { assertCompetitionInTrip } from "../competition-guards";
 
 /**
  * team_assignments — composite PK (competition_id, user_id) means a user
  * is on at most one team per competition. assign() upserts that pairing;
  * remove() deletes it (Owner only per spec).
  */
+
+/** Shared between teamAssignments.list and competitions.hydrate. */
+export async function listTeamAssignments(
+  ctx: { supabase: SupabaseClient },
+  competitionId: string,
+) {
+  const { data, error } = await ctx.supabase
+    .from("team_assignments")
+    .select("*")
+    .eq("competition_id", competitionId);
+
+  if (error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Failed to fetch team assignments: ${error.message}`,
+    });
+  }
+  return data ?? [];
+}
 
 export const teamAssignmentsRouter = router({
   // -----------------------------------------------------------------------
@@ -17,23 +36,7 @@ export const teamAssignmentsRouter = router({
   list: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx, input }) => {
-      await assertCompetitionInTrip(ctx, input.competitionId);
-
-      const { data, error } = await ctx.supabase
-        .from("team_assignments")
-        .select("*")
-        .eq("competition_id", input.competitionId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch team assignments: ${error.message}`,
-        });
-      }
-
-      return data ?? [];
-    }),
+    .query(({ ctx, input }) => listTeamAssignments(ctx, input.competitionId)),
 
   // -----------------------------------------------------------------------
   // assign — set a user's team (canEdit). Upsert behaviour relies on the
@@ -50,8 +53,6 @@ export const teamAssignmentsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      await assertCompetitionInTrip(ctx, input.competitionId);
-
       const { data: inserted, error } = await ctx.supabase
         .from("team_assignments")
         .upsert(

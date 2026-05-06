@@ -1,13 +1,33 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
-import { assertCompetitionInTrip } from "../competition-guards";
 
 /**
  * teams — competition-scoped teams.
  * The competition_id ties teams to a trip via the competitions row.
  */
+
+/** Shared between teams.list and competitions.hydrate. */
+export async function listTeams(
+  ctx: { supabase: SupabaseClient },
+  competitionId: string,
+) {
+  const { data, error } = await ctx.supabase
+    .from("teams")
+    .select("*")
+    .eq("competition_id", competitionId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Failed to fetch teams: ${error.message}`,
+    });
+  }
+  return data ?? [];
+}
 
 export const teamsRouter = router({
   // -----------------------------------------------------------------------
@@ -16,24 +36,7 @@ export const teamsRouter = router({
   list: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx, input }) => {
-      await assertCompetitionInTrip(ctx, input.competitionId);
-
-      const { data, error } = await ctx.supabase
-        .from("teams")
-        .select("*")
-        .eq("competition_id", input.competitionId)
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch teams: ${error.message}`,
-        });
-      }
-
-      return data ?? [];
-    }),
+    .query(({ ctx, input }) => listTeams(ctx, input.competitionId)),
 
   // -----------------------------------------------------------------------
   // create — new team (canEdit)
@@ -51,8 +54,6 @@ export const teamsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      await assertCompetitionInTrip(ctx, input.competitionId);
-
       const { data: inserted, error: insertErr } = await ctx.supabase
         .from("teams")
         .insert({

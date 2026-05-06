@@ -71,6 +71,79 @@ describe("competitions router", () => {
     expect(updated.status).toBe("active");
   });
 
+  it("hydrate — returns null competition + members when not set up", async () => {
+    // Burn the comp first so the trip has none.
+    const ownerCaller = ctx.caller();
+    const existing = await ownerCaller.competitions.getByTrip({ tripId });
+    if (existing) {
+      // Active status from the previous test would block delete; flip
+      // it back to upcoming so we can wipe.
+      await ownerCaller.competitions.update({
+        tripId,
+        competitionId: existing.id,
+        status: "upcoming",
+      });
+      await ownerCaller.competitions.delete({
+        tripId,
+        competitionId: existing.id,
+      });
+    }
+
+    const result = await ownerCaller.competitions.hydrate({ tripId });
+    expect(result.competition).toBeNull();
+    expect(result.teams).toEqual([]);
+    expect(result.assignments).toEqual([]);
+    expect(result.events).toEqual([]);
+    expect(result.venues).toEqual([]);
+    // members + golfItems are still loaded — the comp tab uses them
+    // for setup-mode UI even when the competition itself doesn't exist.
+    expect(result.members.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.golfItems)).toBe(true);
+  });
+
+  it("hydrate — bundles comp + teams + assignments + events + venues", async () => {
+    const ownerCaller = ctx.caller();
+    const comp = await ownerCaller.competitions.create({
+      tripId,
+      name: "Hydrate Cup",
+    });
+    ctx.trackCompetition(comp.id);
+
+    const team = await ownerCaller.teams.create({
+      tripId,
+      competitionId: comp.id,
+      name: "Hydrate Team",
+      shortName: "HY",
+      color: "#ff8800",
+      colorDim: "#332010",
+    });
+    ctx.trackTeam(team.id);
+
+    const event = await ownerCaller.events.create({
+      tripId,
+      competitionId: comp.id,
+      type: "GENERIC",
+      title: "Cornhole",
+    });
+    ctx.trackEvent(event.id);
+
+    const result = await ownerCaller.competitions.hydrate({ tripId });
+    expect(result.competition?.id).toBe(comp.id);
+    expect(result.teams.find((t) => t.id === team.id)).toBeDefined();
+    expect(result.events.find((e) => e.id === event.id)).toBeDefined();
+    expect(Array.isArray(result.assignments)).toBe(true);
+    expect(Array.isArray(result.venues)).toBe(true);
+    expect(Array.isArray(result.members)).toBe(true);
+    expect(Array.isArray(result.golfItems)).toBe(true);
+  });
+
+  it("hydrate — outsider gets FORBIDDEN", async () => {
+    const outsiderCaller = ctx.callerAs("outsider");
+    await expect(
+      outsiderCaller.competitions.hydrate({ tripId })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("delete — only owner can delete", async () => {
     const ownerCaller = ctx.caller();
     const existing = await ownerCaller.competitions.getByTrip({ tripId });

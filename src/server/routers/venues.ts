@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -76,6 +77,58 @@ async function loadCompetition(
   return data;
 }
 
+/** Shared between venues.list and competitions.hydrate. RLS scopes the
+ *  rows to the user's trip; the explicit competition-belongs-to-trip
+ *  guard was removed (RLS already enforces it). */
+export async function listVenues(
+  ctx: { supabase: SupabaseClient },
+  competitionId: string,
+) {
+  const { data: venues, error: venuesErr } = await ctx.supabase
+    .from("venues")
+    .select("*")
+    .eq("competition_id", competitionId)
+    .order("created_at", { ascending: true });
+
+  if (venuesErr) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Failed to fetch venues: ${venuesErr.message}`,
+    });
+  }
+
+  const rows = (venues ?? []) as VenueRow[];
+  const scheduleIds = rows
+    .map((v) => v.schedule_item_id)
+    .filter((x): x is string => !!x);
+
+  let scheduleItems: ScheduleItemRow[] = [];
+  if (scheduleIds.length > 0) {
+    const { data, error } = await ctx.supabase
+      .from("schedule_items")
+      .select(
+        "id, trip_id, title, course_name, course_location, scheduled_date, scheduled_time, tee_times",
+      )
+      .in("id", scheduleIds);
+    if (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Failed to fetch schedule items: ${error.message}`,
+      });
+    }
+    scheduleItems = (data ?? []) as ScheduleItemRow[];
+  }
+
+  const scheduleById = new Map(scheduleItems.map((s) => [s.id, s]));
+
+  return rows.map((venue) => ({
+    ...venue,
+    schedule_item: venue.schedule_item_id
+      ? scheduleById.get(venue.schedule_item_id) ?? null
+      : null,
+  }));
+}
+
 export const venuesRouter = router({
   // -----------------------------------------------------------------------
   // list — venues for a competition, enriched with the underlying schedule
@@ -85,53 +138,7 @@ export const venuesRouter = router({
   list: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx, input }) => {
-      await loadCompetition(ctx, input.competitionId);
-
-      const { data: venues, error: venuesErr } = await ctx.supabase
-        .from("venues")
-        .select("*")
-        .eq("competition_id", input.competitionId)
-        .order("created_at", { ascending: true });
-
-      if (venuesErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch venues: ${venuesErr.message}`,
-        });
-      }
-
-      const rows = (venues ?? []) as VenueRow[];
-      const scheduleIds = rows
-        .map((v) => v.schedule_item_id)
-        .filter((x): x is string => !!x);
-
-      let scheduleItems: ScheduleItemRow[] = [];
-      if (scheduleIds.length > 0) {
-        const { data, error } = await ctx.supabase
-          .from("schedule_items")
-          .select(
-            "id, trip_id, title, course_name, course_location, scheduled_date, scheduled_time, tee_times"
-          )
-          .in("id", scheduleIds);
-        if (error) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to fetch schedule items: ${error.message}`,
-          });
-        }
-        scheduleItems = (data ?? []) as ScheduleItemRow[];
-      }
-
-      const scheduleById = new Map(scheduleItems.map((s) => [s.id, s]));
-
-      return rows.map((venue) => ({
-        ...venue,
-        schedule_item: venue.schedule_item_id
-          ? scheduleById.get(venue.schedule_item_id) ?? null
-          : null,
-      }));
-    }),
+    .query(({ ctx, input }) => listVenues(ctx, input.competitionId)),
 
   // -----------------------------------------------------------------------
   // create — new venue (canEdit). Either schedule_item_id OR name required.

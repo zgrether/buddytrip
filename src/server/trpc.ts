@@ -23,10 +23,6 @@ export interface TRPCContext {
   supabase: SupabaseClient;
   user: User | null;
   membershipCache: Map<string, TripRoleString>;
-  /** Request-scoped cache of `competitionId → tripId`. Lets the
-   *  duplicated `assertCompetitionInTrip` guard collapse to a single
-   *  SELECT per competition per request batch. */
-  competitionTripCache: Map<string, string>;
 }
 
 /**
@@ -43,12 +39,7 @@ export const createTRPCContext = async (): Promise<TRPCContext> => {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return {
-    supabase,
-    user,
-    membershipCache: new Map(),
-    competitionTripCache: new Map(),
-  };
+  return { supabase, user, membershipCache: new Map() };
 };
 
 // ---------------------------------------------------------------------------
