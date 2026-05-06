@@ -259,6 +259,10 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
 
             {/* Teams column */}
             <div className="space-y-3">
+              {/* Add Team sits above the team cards, matching the
+                  Add Event / Add Venue buttons in MatchupPanel. */}
+              {canEdit && <AddTeamButton onClick={handleOpenAddTeam} />}
+
               {teamsTyped.map((team) => (
                 <TeamCard
                   key={team.id}
@@ -272,13 +276,6 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
                   competitionId={competitionId}
                 />
               ))}
-
-              {canEdit && (
-                <DashedAddButton
-                  onClick={handleOpenAddTeam}
-                  label="Add Team"
-                />
-              )}
             </div>
           </div>
         )}
@@ -431,28 +428,25 @@ function NoTeamsEmptyState({
   );
 }
 
-// ── DashedAddButton ─────────────────────────────────────────────────────────
+// ── AddTeamButton ───────────────────────────────────────────────────────────
+// Matches the Lodging/Schedule "+ Property / + Item" affordance and the
+// Add Event / Add Venue buttons in MatchupPanel: card-raised bg, regular
+// border, icon-then-Plus-then-noun.
 
-function DashedAddButton({
-  onClick,
-  label,
-}: {
-  onClick: () => void;
-  label: string;
-}) {
+function AddTeamButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium"
+      className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
       style={{
-        background: "transparent",
-        color: "var(--color-bt-accent)",
-        border: "1.5px dashed var(--color-bt-accent)",
+        background: "var(--color-bt-card-raised)",
+        color: "var(--color-bt-text)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
-      <Plus size={14} />
-      {label}
+      <Users size={15} />
+      <Plus size={12} /> Team
     </button>
   );
 }
