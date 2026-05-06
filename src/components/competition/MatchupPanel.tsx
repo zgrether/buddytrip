@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, ChevronDown, Flag, MapPin } from "lucide-react";
+import { ArrowRight, ChevronDown, Flag, MapPin, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { AddEventButton, EventSheet, EventsPanel } from "./EventsPanel";
 import { AddVenueButton, ManualVenueSheet, VenuesPanel } from "./VenuesPanel";
@@ -71,46 +71,53 @@ export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
       onToggle={() => setOpen((v) => !v)}
       testId="matchup-panel"
     >
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-4">
-        <div>
-          {canEdit && (
-            <div className="mb-3">
-              <AddEventButton onClick={() => setCreatingEvent(true)} />
-            </div>
-          )}
-          <Column
-            icon={<Flag size={12} />}
-            label="Unassigned Events"
-            hint={canEdit ? "Drag a card onto a venue to assign" : undefined}
-          >
-            <EventsPanel
-              competitionId={competitionId}
-              tripId={tripId}
-              canEdit={canEdit}
-              bare
-            />
-          </Column>
+      {events.length === 0 ? (
+        <NoEventsEmptyState
+          canEdit={canEdit}
+          onAdd={() => setCreatingEvent(true)}
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-4">
+          <div>
+            {canEdit && (
+              <div className="mb-3">
+                <AddEventButton onClick={() => setCreatingEvent(true)} />
+              </div>
+            )}
+            <Column
+              icon={<Flag size={12} />}
+              label="Unassigned Events"
+              hint={canEdit ? "Drag a card onto a venue to assign" : undefined}
+            >
+              <EventsPanel
+                competitionId={competitionId}
+                tripId={tripId}
+                canEdit={canEdit}
+                bare
+              />
+            </Column>
+          </div>
+          <div>
+            {canEdit && (
+              <div className="mb-3">
+                <AddVenueButton onClick={() => setCreatingManualVenue(true)} />
+              </div>
+            )}
+            <Column
+              icon={<MapPin size={12} />}
+              label="Confirmed Venues"
+              hint={canEdit ? "Drop a dragged event here" : undefined}
+            >
+              <VenuesPanel
+                competitionId={competitionId}
+                tripId={tripId}
+                canEdit={canEdit}
+                bare
+              />
+            </Column>
+          </div>
         </div>
-        <div>
-          {canEdit && (
-            <div className="mb-3">
-              <AddVenueButton onClick={() => setCreatingManualVenue(true)} />
-            </div>
-          )}
-          <Column
-            icon={<MapPin size={12} />}
-            label="Confirmed Venues"
-            hint={canEdit ? "Drop a dragged event here" : undefined}
-          >
-            <VenuesPanel
-              competitionId={competitionId}
-              tripId={tripId}
-              canEdit={canEdit}
-              bare
-            />
-          </Column>
-        </div>
-      </div>
+      )}
 
       {creatingEvent && (
         <EventSheet
@@ -128,6 +135,64 @@ export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
         />
       )}
     </CollapsiblePanel>
+  );
+}
+
+// ── NoEventsEmptyState ─────────────────────────────────────────────────────
+//
+// Shown until the competition has at least one event. Mirrors the Teams
+// panel empty state — once an event exists the full two-column matchup
+// view takes over. Venues and unlinked schedule items are still
+// reachable then (they show up in the Confirmed Venues column).
+
+function NoEventsEmptyState({
+  canEdit,
+  onAdd,
+}: {
+  canEdit: boolean;
+  onAdd: () => void;
+}) {
+  return (
+    <div
+      className="rounded-xl px-4 py-6 text-center"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <div
+        className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+        }}
+      >
+        <Flag size={20} />
+      </div>
+      <p
+        className="mt-3 text-sm font-semibold"
+        style={{ color: "var(--color-bt-text)" }}
+      >
+        No events yet
+      </p>
+      <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+        Add the rounds and activities you&rsquo;ll compete in.
+      </p>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="mx-auto mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold"
+          style={{
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-base)",
+          }}
+        >
+          <Plus size={15} />
+          Add Event
+        </button>
+      )}
+    </div>
   );
 }
 

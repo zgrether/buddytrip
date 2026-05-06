@@ -2,11 +2,13 @@
 
 import { useState, useMemo } from "react";
 import {
+  ArrowRight,
   ChevronDown,
   Pencil,
   Plus,
   Sparkles,
   Trash2,
+  User,
   Users,
   X,
 } from "lucide-react";
@@ -220,8 +222,14 @@ export function TeamsPanel({ competitionId, tripId, canEdit, isOwner }: Props) {
 
   return (
     <CollapsiblePanel
-      icon={<Users size={16} />}
-      label="Teams"
+      icon={
+        <div className="flex items-center" aria-hidden>
+          <User size={14} />
+          <ArrowRight size={11} className="mx-0.5" />
+          <Users size={14} />
+        </div>
+      }
+      label="Players &amp; Teams"
       note={statusText}
       state={headerState}
       open={open}

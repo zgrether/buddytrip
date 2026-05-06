@@ -337,6 +337,7 @@ function EventCard({
   onEdit: () => void;
 }) {
   const utils = trpc.useUtils();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isGolf = event.type === "GOLF";
 
   // Practice rounds still happen at real venues (a tee time at a
@@ -347,12 +348,8 @@ function EventCard({
 
   const remove = trpc.events.delete.useMutation({
     onSettled: () => utils.events.list.invalidate(),
+    onSuccess: () => setConfirmingDelete(false),
   });
-
-  function handleDelete() {
-    if (!confirm(`Delete "${event.title}"?`)) return;
-    remove.mutate({ tripId, eventId: event.id });
-  }
 
   const distributions = event.point_distributions ?? [];
   const distSummary = distributions.length > 0
@@ -471,7 +468,7 @@ function EventCard({
           </button>
           <button
             type="button"
-            onClick={handleDelete}
+            onClick={() => setConfirmingDelete(true)}
             aria-label={`Delete ${event.title}`}
             className="flex h-7 w-7 items-center justify-center rounded-lg"
             style={{ color: "var(--color-bt-danger)" }}
@@ -480,6 +477,95 @@ function EventCard({
           </button>
         </div>
       )}
+
+      {confirmingDelete && (
+        <DeleteEventConfirmModal
+          eventTitle={event.title}
+          isPending={remove.isPending}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => remove.mutate({ tripId, eventId: event.id })}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── DeleteEventConfirmModal ─────────────────────────────────────────────────
+
+function DeleteEventConfirmModal({
+  eventTitle,
+  isPending,
+  onCancel,
+  onConfirm,
+}: {
+  eventTitle: string;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+        style={{
+          background: "var(--color-bt-card-float)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3 text-center sm:text-left">
+          <div
+            className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl sm:mx-0"
+            style={{
+              background: "var(--color-bt-danger-faint)",
+              color: "var(--color-bt-danger)",
+            }}
+          >
+            <Trash2 size={18} />
+          </div>
+          <h3
+            className="mt-3 text-base font-bold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            Delete &ldquo;{eventTitle}&rdquo;?
+          </h3>
+          <p
+            className="mt-1.5 text-sm leading-relaxed"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Removes the event and its point distribution. Any venue it was
+            assigned to becomes unlinked.
+          </p>
+        </div>
+        <div className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "0.5px solid var(--color-bt-border)",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: "var(--color-bt-danger)" }}
+          >
+            {isPending ? "Deleting…" : "Delete Event"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
