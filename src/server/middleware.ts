@@ -32,25 +32,13 @@ export const requireTripMember = middleware(async ({ ctx, getRawInput, next }) =
   }
   const { tripId } = parsed.data;
 
-  const { data: member, error } = await ctx.supabase
-    .from("trip_members")
-    .select("role")
-    .eq("trip_id", tripId)
-    .eq("user_id", ctx.user!.id)
-    .single();
-
-  if (error || !member) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "You are not a member of this trip",
-    });
-  }
+  const role = await resolveTripRole(ctx, tripId);
 
   return next({
     ctx: {
       ...ctx,
       tripId,
-      tripRole: member.role as TripRole,
+      tripRole: role,
     },
   });
 });
@@ -77,21 +65,7 @@ export function requireTripRole(minRole: TripRole) {
     }
     const { tripId } = parsed.data;
 
-    const { data: member, error } = await ctx.supabase
-      .from("trip_members")
-      .select("role")
-      .eq("trip_id", tripId)
-      .eq("user_id", ctx.user!.id)
-      .single();
-
-    if (error || !member) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "You are not a member of this trip",
-      });
-    }
-
-    const role = member.role as TripRole;
+    const role = await resolveTripRole(ctx, tripId);
     if (ROLE_LEVEL[role] < ROLE_LEVEL[minRole]) {
       throw new TRPCError({
         code: "FORBIDDEN",
@@ -107,4 +81,61 @@ export function requireTripRole(minRole: TripRole) {
       },
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// resolveTripRole — internal shared lookup with request-scoped cache.
+//
+// Every batched procedure that uses requireTripMember / requireTripRole
+// against the same tripId reuses the first SELECT's result. The cache
+// lives on ctx and dies with the request, so it can't drift across
+// trips or sessions.
+// ---------------------------------------------------------------------------
+
+async function resolveTripRole(
+  ctx: {
+    supabase: { from: (t: string) => unknown };
+    user: { id: string } | null;
+    membershipCache: Map<string, TripRole>;
+  },
+  tripId: string
+): Promise<TripRole> {
+  const cached = ctx.membershipCache.get(tripId);
+  if (cached) return cached;
+
+  const { data: member, error } = await (
+    ctx.supabase.from("trip_members") as unknown as {
+      select: (s: string) => {
+        eq: (
+          c: string,
+          v: string
+        ) => {
+          eq: (
+            c: string,
+            v: string
+          ) => {
+            single: () => Promise<{
+              data: { role: TripRole } | null;
+              error: unknown;
+            }>;
+          };
+        };
+      };
+    }
+  )
+    .select("role")
+    .eq("trip_id", tripId)
+    .eq("user_id", ctx.user!.id)
+    .single();
+
+  if (error || !member) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "You are not a member of this trip",
+    });
+  }
+
+  const role = member.role as TripRole;
+  ctx.membershipCache.set(tripId, role);
+  return role;
 }

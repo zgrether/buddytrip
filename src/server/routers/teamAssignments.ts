@@ -2,41 +2,13 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { assertCompetitionInTrip } from "../competition-guards";
 
 /**
  * team_assignments — composite PK (competition_id, user_id) means a user
  * is on at most one team per competition. assign() upserts that pairing;
  * remove() deletes it (Owner only per spec).
  */
-
-async function assertCompetitionInTrip(
-  ctx: { supabase: { from: (t: string) => unknown }; tripId?: string },
-  competitionId: string
-) {
-  const { data, error } = await (
-    ctx.supabase.from("competitions") as unknown as {
-      select: (s: string) => {
-        eq: (
-          c: string,
-          v: string
-        ) => { single: () => Promise<{ data: { trip_id: string } | null; error: unknown }> };
-      };
-    }
-  )
-    .select("trip_id")
-    .eq("id", competitionId)
-    .single();
-
-  if (error || !data) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Competition not found" });
-  }
-  if (data.trip_id !== ctx.tripId) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Competition does not belong to this trip",
-    });
-  }
-}
 
 export const teamAssignmentsRouter = router({
   // -----------------------------------------------------------------------

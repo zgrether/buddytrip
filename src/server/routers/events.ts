@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { assertCompetitionInTrip } from "../competition-guards";
 
 /**
  * events — scored activities within a competition (golf rounds, side games).
@@ -22,40 +23,6 @@ const SCORING_FORMAT = z.enum([
 ]);
 const EVENT_STATUS = z.enum(["upcoming", "active", "completed"]);
 
-// Helper: confirm the competitionId belongs to ctx.tripId. Used as an extra
-// guard in mutations because requireTripRole checks the trip but the route
-// also accepts a competitionId that an attacker could swap.
-async function assertCompetitionInTrip(
-  ctx: {
-    supabase: { from: (t: string) => unknown };
-    tripId?: string;
-  },
-  competitionId: string
-) {
-  const { data, error } = await (
-    ctx.supabase.from("competitions") as unknown as {
-      select: (s: string) => {
-        eq: (
-          c: string,
-          v: string
-        ) => { single: () => Promise<{ data: { trip_id: string } | null; error: unknown }> };
-      };
-    }
-  )
-    .select("trip_id")
-    .eq("id", competitionId)
-    .single();
-
-  if (error || !data) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Competition not found" });
-  }
-  if (data.trip_id !== ctx.tripId) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Competition does not belong to this trip",
-    });
-  }
-}
 
 export const eventsRouter = router({
   // -----------------------------------------------------------------------
