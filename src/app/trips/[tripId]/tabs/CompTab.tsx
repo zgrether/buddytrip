@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
@@ -85,6 +86,55 @@ function ExistingCompetitionView({
   isOwner: boolean;
   onCompetitionDeleted?: () => void;
 }) {
+  // Creation state lives at this level so the +Team / +Event / +Venue
+  // buttons in CompetitionHeader can drive the same sheets that the
+  // panels' empty-state CTAs trigger. The actual sheet/modal markup
+  // still lives inside each panel — they just consume the prop.
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [creatingManualVenue, setCreatingManualVenue] = useState(false);
+
+  // Prefetch every query the inner panels and the header read so we
+  // can gate rendering on a single combined loading flag. Without this
+  // each panel falls through to its empty-state branch on the very
+  // first render (default `data = []`) and the user sees a "No teams /
+  // events / venues yet" flash before the data lands a tick later.
+  // tRPC + TanStack Query dedupe by query key, so the children's own
+  // useQuery calls reuse these cached results — no extra network hits.
+  const teamsQ = trpc.teams.list.useQuery(
+    { tripId, competitionId: competition.id },
+    { enabled: !!competition.id }
+  );
+  const assignmentsQ = trpc.teamAssignments.list.useQuery(
+    { tripId, competitionId: competition.id },
+    { enabled: !!competition.id }
+  );
+  const membersQ = trpc.tripMembers.list.useQuery({ tripId });
+  const eventsQ = trpc.events.list.useQuery(
+    { tripId, competitionId: competition.id },
+    { enabled: !!competition.id }
+  );
+  const venuesQ = trpc.venues.list.useQuery(
+    { tripId, competitionId: competition.id },
+    { enabled: !!competition.id }
+  );
+  const golfQ = trpc.schedule.listGolf.useQuery(
+    { tripId },
+    { enabled: !!competition.id }
+  );
+
+  const isHydrating =
+    teamsQ.isLoading ||
+    assignmentsQ.isLoading ||
+    membersQ.isLoading ||
+    eventsQ.isLoading ||
+    venuesQ.isLoading ||
+    golfQ.isLoading;
+
+  if (isHydrating) {
+    return <SkeletonPanels />;
+  }
+
   return (
     <div className="space-y-3 px-4">
       <CompetitionHeader
@@ -93,17 +143,26 @@ function ExistingCompetitionView({
         canEdit={canEdit}
         isOwner={isOwner}
         onDeleted={onCompetitionDeleted}
+        onAddTeam={() => setCreatingTeam(true)}
+        onAddEvent={() => setCreatingEvent(true)}
+        onAddVenue={() => setCreatingManualVenue(true)}
       />
       <TeamsPanel
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
         isOwner={isOwner}
+        creating={creatingTeam}
+        onCreatingChange={setCreatingTeam}
       />
       <MatchupPanel
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
+        creatingEvent={creatingEvent}
+        onCreatingEventChange={setCreatingEvent}
+        creatingManualVenue={creatingManualVenue}
+        onCreatingManualVenueChange={setCreatingManualVenue}
       />
     </div>
   );
