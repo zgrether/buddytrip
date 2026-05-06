@@ -78,14 +78,14 @@ function createAuthenticatedClient(shared: SharedUser): SupabaseClient {
 function createCallerForUser(shared: SharedUser) {
   const client = createAuthenticatedClient(shared);
   const user = { id: shared.id, email: shared.email } as User;
-  const ctx: TRPCContext = { supabase: client, user };
+  const ctx: TRPCContext = { supabase: client, user, membershipCache: new Map(), competitionTripCache: new Map() };
   return factory(ctx);
 }
 
 /** tRPC caller with unauthenticated (anon) Supabase client. */
 export function createAnonCaller() {
   const client = createClient(SUPABASE_URL, ANON_KEY);
-  const ctx: TRPCContext = { supabase: client, user: null };
+  const ctx: TRPCContext = { supabase: client, user: null, membershipCache: new Map(), competitionTripCache: new Map() };
   return factory(ctx);
 }
 

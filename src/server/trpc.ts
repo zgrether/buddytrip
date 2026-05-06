@@ -6,9 +6,27 @@ import superjson from "superjson";
 // Context
 // ---------------------------------------------------------------------------
 
+/**
+ * Request-scoped cache of trip memberships keyed by tripId.
+ *
+ * Populated by `requireTripMember` / `requireTripRole`. With
+ * httpBatchLink, all procedures in a batched request share one ctx,
+ * so a comp-tab load that fires 6 procedures against the same trip
+ * collapses 6 `SELECT FROM trip_members` calls into 1.
+ *
+ * Stays per-request — never reused across HTTP requests, never used as
+ * a security shortcut beyond the lifetime of a single batch.
+ */
+export type TripRoleString = "Owner" | "Planner" | "Member";
+
 export interface TRPCContext {
   supabase: SupabaseClient;
   user: User | null;
+  membershipCache: Map<string, TripRoleString>;
+  /** Request-scoped cache of `competitionId → tripId`. Lets the
+   *  duplicated `assertCompetitionInTrip` guard collapse to a single
+   *  SELECT per competition per request batch. */
+  competitionTripCache: Map<string, string>;
 }
 
 /**
@@ -25,7 +43,12 @@ export const createTRPCContext = async (): Promise<TRPCContext> => {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return { supabase, user };
+  return {
+    supabase,
+    user,
+    membershipCache: new Map(),
+    competitionTripCache: new Map(),
+  };
 };
 
 // ---------------------------------------------------------------------------
