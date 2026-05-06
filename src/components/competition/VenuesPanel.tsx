@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import {
   ChevronDown,
   Cloud,
-  Flag,
+  Hotel,
   MapPin,
   Pencil,
   Plus,
@@ -204,6 +204,7 @@ export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
             venuesTyped={venuesTyped}
             canEdit={canEdit}
             onEditLinkedEvent={setEditingEvent}
+            onAddManual={() => setCreatingManual(true)}
           />
         )}
 
@@ -216,22 +217,6 @@ export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
             canEdit={canEdit}
             onEditLinkedEvent={setEditingEvent}
           />
-        )}
-
-        {totalPanels > 0 && canEdit && (
-          <button
-            type="button"
-            onClick={() => setCreatingManual(true)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium"
-            style={{
-              background: "transparent",
-              color: "var(--color-bt-accent)",
-              border: "1.5px dashed var(--color-bt-accent)",
-            }}
-          >
-            <Plus size={14} />
-            Add Venue Manually
-          </button>
         )}
       </div>
 
@@ -392,6 +377,7 @@ function ScheduledSection({
   venuesTyped,
   canEdit,
   onEditLinkedEvent,
+  onAddManual,
 }: {
   tripId: string;
   competitionId: string;
@@ -402,6 +388,7 @@ function ScheduledSection({
   venuesTyped: VenueRow[];
   canEdit: boolean;
   onEditLinkedEvent: (event: EventRow) => void;
+  onAddManual: () => void;
 }) {
   // Section label removed — the column header in MatchupPanel already
   // reads "Confirmed Venues", so this would be the third level of
@@ -458,6 +445,22 @@ function ScheduledSection({
             onEditLinkedEvent={onEditLinkedEvent}
           />
         ))}
+
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onAddManual}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-accent)",
+              border: "1.5px dashed var(--color-bt-accent)",
+            }}
+          >
+            <Plus size={14} />
+            Add Venue
+          </button>
+        )}
       </div>
     </section>
   );
@@ -531,7 +534,7 @@ function UnlinkedScheduleRow({
       onDrop={canEdit ? handleDrop : undefined}
       data-testid={`unlinked-schedule-${item.id}`}
     >
-      <Flag size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      <MapPin size={14} style={{ color: "var(--color-bt-text-dim)" }} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
           {item.course_name ?? item.title}
@@ -638,7 +641,14 @@ function VenueRowView({
       data-testid={`venue-${venue.id}`}
     >
       <div className="flex items-center gap-3">
-        <Flag size={14} style={{ color: "var(--color-bt-accent)" }} />
+        {/* Manual venues (no schedule_item linkage) get the lodging icon
+            so they read as "venue we typed in by hand" rather than a
+            tee-time-derived row. */}
+        {venue.schedule_item_id ? (
+          <MapPin size={14} style={{ color: "var(--color-bt-accent)" }} />
+        ) : (
+          <Hotel size={14} style={{ color: "var(--color-bt-accent)" }} />
+        )}
         <div className="min-w-0 flex-1">
           <p
             className="truncate text-sm font-medium"

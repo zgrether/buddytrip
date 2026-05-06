@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Calendar, ChevronDown, MapPin } from "lucide-react";
+import { ArrowRight, ChevronDown, Flag, MapPin } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { EventsPanel } from "./EventsPanel";
 import { VenuesPanel } from "./VenuesPanel";
@@ -54,7 +54,7 @@ export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
     <CollapsiblePanel
       icon={
         <div className="flex items-center" aria-hidden>
-          <Calendar size={14} />
+          <Flag size={14} />
           <ArrowRight size={11} className="mx-0.5" />
           <MapPin size={14} />
         </div>
@@ -68,7 +68,7 @@ export function MatchupPanel({ competitionId, tripId, canEdit }: Props) {
     >
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-4">
         <Column
-          icon={<Calendar size={12} />}
+          icon={<Flag size={12} />}
           label="Unassigned Events"
           hint={canEdit ? "Drag a card onto a venue to assign" : undefined}
         >
