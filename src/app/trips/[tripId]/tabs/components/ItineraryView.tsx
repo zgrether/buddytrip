@@ -385,7 +385,7 @@ const PILL_TONES: Record<PillTone, { bg: string; color: string; border: string }
   events: {
     bg: "var(--color-bt-ready-bg)",
     color: "var(--color-bt-ready)",
-    border: "rgba(167,139,250,0.25)",
+    border: "var(--color-bt-ready-border)",
   },
 };
 
@@ -499,32 +499,27 @@ function EventCard({ event }: { event: ItineraryEvent }) {
 
   const timeLabel = event.time ? fmtTime12(event.time) : "All day";
 
-  // Each category gets its own surface tone so the day-by-day list reads
-  // as colored stripes — Lodging blue, Travel teal, Events violet. The
-  // FilterPill colors above match these tones so the "I'm filtering by X"
-  // intent is reinforced visually.
-  let cardBg: string;
-  let borderColor: string;
+  // Left accent stripe — neutral card with a 3px colored left border so
+  // each category is scannable without the heavy full-background tint.
+  // Stripe color matches the FilterPill tones for visual consistency.
+  let stripeColor: string;
   let iconBg: string;
   let iconColor: string;
   let Icon: LucideIcon | null;
 
   if (category === "lodging") {
-    cardBg = "var(--color-bt-blue-bg)";
-    borderColor = "var(--color-bt-planning-border)";
-    iconBg = "rgba(96,165,250,0.18)";
+    stripeColor = "var(--color-bt-planning)";
+    iconBg = "var(--color-bt-blue-bg)";
     iconColor = "var(--color-bt-planning)";
     Icon = Home;
   } else if (category === "travel") {
-    cardBg = "var(--color-bt-accent-faint)";
-    borderColor = "var(--color-bt-accent-border)";
-    iconBg = "rgba(45,212,191,0.18)";
+    stripeColor = "var(--color-bt-accent)";
+    iconBg = "var(--color-bt-accent-faint)";
     iconColor = "var(--color-bt-accent)";
     Icon = Plane;
   } else {
-    cardBg = "var(--color-bt-ready-bg)";
-    borderColor = "rgba(167,139,250,0.25)";
-    iconBg = "rgba(167,139,250,0.18)";
+    stripeColor = "var(--color-bt-ready)";
+    iconBg = "var(--color-bt-ready-bg)";
     iconColor = "var(--color-bt-ready)";
     Icon = Clock;
   }
@@ -537,8 +532,9 @@ function EventCard({ event }: { event: ItineraryEvent }) {
     <div
       className="flex items-start gap-3 rounded-xl px-3 py-2.5"
       style={{
-        background: cardBg,
-        border: `1px solid ${borderColor}`,
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+        borderLeft: `3px solid ${stripeColor}`,
       }}
     >
       {event.kind === "arrival" ? (

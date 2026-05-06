@@ -20,8 +20,9 @@
   --color-bt-blue-bg: #eff6ff;       /* blue-50 */
   --color-bt-planning-border: rgba(37, 99, 235, 0.22);
 
-  --color-bt-ready: #7c3aed;         /* violet-600 — richer purple */
-  --color-bt-ready-bg: #f5f3ff;      /* violet-50 */
+  --color-bt-ready: #f97316;         /* orange-500 — events tone, warm + distinct from amber-600 owner */
+  --color-bt-ready-bg: #fff7ed;      /* orange-50 */
+  --color-bt-ready-border: rgba(249, 115, 22, 0.22);
 
   --color-bt-owner: #d97706;         /* amber-600 — more vivid */
   --color-bt-warning: #d97706;
@@ -81,8 +82,9 @@
   --color-bt-blue-bg: #1e3a5f;
   --color-bt-planning-border: rgba(96, 165, 250, 0.25);
 
-  --color-bt-ready: #a78bfa;         /* violet-400 — unchanged, already good */
-  --color-bt-ready-bg: #2e1065;
+  --color-bt-ready: #fb923c;         /* orange-400 — events tone on dark */
+  --color-bt-ready-bg: #431407;      /* orange-950 */
+  --color-bt-ready-border: rgba(251, 146, 60, 0.25);
 
   --color-bt-owner: #fbbf24;         /* amber-400 — brighter */
   --color-bt-warning: #fbbf24;
