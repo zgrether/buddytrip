@@ -133,7 +133,7 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
       <div className="space-y-2">
         {visibleEvents.length === 0 && (
           <EventsEmptyState
-            canEdit={canEdit}
+            canEdit={canEdit && !bare}
             onAdd={() => setCreating(true)}
             assignedCount={
               bare ? eventsTyped.length - visibleEvents.length : 0
@@ -152,7 +152,9 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
           />
         ))}
 
-        {visibleEvents.length > 0 && canEdit && (
+        {/* Bottom Add Event button is hidden in bare mode — MatchupPanel
+            renders its own above the column header instead. */}
+        {!bare && visibleEvents.length > 0 && canEdit && (
           <AddEventButton onClick={() => setCreating(true)} />
         )}
       </div>
@@ -291,7 +293,7 @@ function EventsEmptyState({
   );
 }
 
-function AddEventButton({
+export function AddEventButton({
   onClick,
   className,
 }: {

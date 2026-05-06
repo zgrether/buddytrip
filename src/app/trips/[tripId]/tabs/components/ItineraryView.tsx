@@ -179,10 +179,16 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
 
       {showFilterPills && (
         <div className="flex flex-wrap items-center gap-2">
-          <FilterPill label="All" active={activeFilters.has("all")} onClick={() => toggleFilter("all")} />
+          <FilterPill
+            label="All"
+            tone="all"
+            active={activeFilters.has("all")}
+            onClick={() => toggleFilter("all")}
+          />
           {hasLodging && (
             <FilterPill
               label="Lodging"
+              tone="lodging"
               active={activeFilters.has("lodging")}
               onClick={() => toggleFilter("lodging")}
             />
@@ -190,6 +196,7 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
           {hasTravel && gettingThereEnabled && (
             <FilterPill
               label="Travel"
+              tone="travel"
               active={activeFilters.has("travel")}
               onClick={() => toggleFilter("travel")}
             />
@@ -197,6 +204,7 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
           {hasEvents && (
             <FilterPill
               label="Events"
+              tone="events"
               active={activeFilters.has("events")}
               onClick={() => toggleFilter("events")}
             />
@@ -356,15 +364,43 @@ function SkeletonRow({
 
 // ── FilterPill ────────────────────────────────────────────────────────────
 
+type PillTone = "all" | "lodging" | "travel" | "events";
+
+const PILL_TONES: Record<PillTone, { bg: string; color: string; border: string }> = {
+  all: {
+    bg: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+  lodging: {
+    bg: "var(--color-bt-blue-bg)",
+    color: "var(--color-bt-planning)",
+    border: "var(--color-bt-planning-border)",
+  },
+  travel: {
+    bg: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+  events: {
+    bg: "var(--color-bt-ready-bg)",
+    color: "var(--color-bt-ready)",
+    border: "rgba(167,139,250,0.25)",
+  },
+};
+
 function FilterPill({
   label,
+  tone,
   active,
   onClick,
 }: {
   label: string;
+  tone: PillTone;
   active: boolean;
   onClick: () => void;
 }) {
+  const cfg = PILL_TONES[tone];
   return (
     <button
       type="button"
@@ -374,9 +410,9 @@ function FilterPill({
       style={
         active
           ? {
-              background: "var(--color-bt-accent-faint)",
-              color: "var(--color-bt-accent)",
-              border: "1px solid var(--color-bt-accent-border)",
+              background: cfg.bg,
+              color: cfg.color,
+              border: `1px solid ${cfg.border}`,
             }
           : {
               background: "var(--color-bt-card-raised)",
@@ -463,25 +499,33 @@ function EventCard({ event }: { event: ItineraryEvent }) {
 
   const timeLabel = event.time ? fmtTime12(event.time) : "All day";
 
+  // Each category gets its own surface tone so the day-by-day list reads
+  // as colored stripes — Lodging blue, Travel teal, Events violet. The
+  // FilterPill colors above match these tones so the "I'm filtering by X"
+  // intent is reinforced visually.
+  let cardBg: string;
   let borderColor: string;
   let iconBg: string;
   let iconColor: string;
   let Icon: LucideIcon | null;
 
   if (category === "lodging") {
-    borderColor = "rgba(96,165,250,0.2)";
-    iconBg = "rgba(96,165,250,0.12)";
-    iconColor = "#60a5fa";
+    cardBg = "var(--color-bt-blue-bg)";
+    borderColor = "var(--color-bt-planning-border)";
+    iconBg = "rgba(96,165,250,0.18)";
+    iconColor = "var(--color-bt-planning)";
     Icon = Home;
   } else if (category === "travel") {
+    cardBg = "var(--color-bt-accent-faint)";
     borderColor = "var(--color-bt-accent-border)";
-    iconBg = "var(--color-bt-accent-faint)";
+    iconBg = "rgba(45,212,191,0.18)";
     iconColor = "var(--color-bt-accent)";
     Icon = Plane;
   } else {
-    borderColor = "var(--color-bt-border)";
-    iconBg = "var(--color-bt-card-raised)";
-    iconColor = "var(--color-bt-text-dim)";
+    cardBg = "var(--color-bt-ready-bg)";
+    borderColor = "rgba(167,139,250,0.25)";
+    iconBg = "rgba(167,139,250,0.18)";
+    iconColor = "var(--color-bt-ready)";
     Icon = Clock;
   }
 
@@ -493,7 +537,7 @@ function EventCard({ event }: { event: ItineraryEvent }) {
     <div
       className="flex items-start gap-3 rounded-xl px-3 py-2.5"
       style={{
-        background: "var(--color-bt-card)",
+        background: cardBg,
         border: `1px solid ${borderColor}`,
       }}
     >

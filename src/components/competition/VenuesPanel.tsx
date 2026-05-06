@@ -209,6 +209,7 @@ export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
           <VenuesEmptyState
             canEdit={canEdit}
             onAddManual={() => setCreatingManual(true)}
+            showButton={!bare}
           />
         )}
 
@@ -224,6 +225,7 @@ export function VenuesPanel({ competitionId, tripId, canEdit, bare }: Props) {
             canEdit={canEdit}
             onEditLinkedEvent={setEditingEvent}
             onAddManual={() => setCreatingManual(true)}
+            showAddButton={!bare}
           />
         )}
 
@@ -354,16 +356,22 @@ function CollapsiblePanel({
 function VenuesEmptyState({
   canEdit,
   onAddManual,
+  showButton,
 }: {
   canEdit: boolean;
   onAddManual: () => void;
+  /** When false (bare mode), the inline button is suppressed because
+   *  the parent (MatchupPanel) renders its own above the column. */
+  showButton: boolean;
 }) {
   return (
     <div className="py-2 text-center">
       <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        No venues yet. Add tee times in Schedule, or add one manually below.
+        {showButton
+          ? "No venues yet. Add tee times in Schedule, or use the button below."
+          : "No venues yet. Add tee times in Schedule, or use Add Venue above."}
       </p>
-      {canEdit && (
+      {canEdit && showButton && (
         <div className="mx-auto mt-3 max-w-xs">
           <AddVenueButton onClick={onAddManual} />
         </div>
@@ -372,7 +380,7 @@ function VenuesEmptyState({
   );
 }
 
-function AddVenueButton({
+export function AddVenueButton({
   onClick,
   className,
 }: {
@@ -381,6 +389,8 @@ function AddVenueButton({
 }) {
   // Matches the Lodging/Schedule "+ Property / + Item" affordance:
   // card-raised background, regular border, icon-then-Plus-then-noun.
+  // Re-exported so MatchupPanel can render its own copy above the
+  // Confirmed Venues column header.
   return (
     <button
       type="button"
@@ -413,6 +423,7 @@ function ScheduledSection({
   canEdit,
   onEditLinkedEvent,
   onAddManual,
+  showAddButton,
 }: {
   tripId: string;
   competitionId: string;
@@ -424,6 +435,8 @@ function ScheduledSection({
   canEdit: boolean;
   onEditLinkedEvent: (event: EventRow) => void;
   onAddManual: () => void;
+  /** Hidden in bare mode — MatchupPanel owns the above-column copy. */
+  showAddButton: boolean;
 }) {
   // Section label removed — the column header in MatchupPanel already
   // reads "Confirmed Venues", so this would be the third level of
@@ -481,7 +494,7 @@ function ScheduledSection({
           />
         ))}
 
-        {canEdit && <AddVenueButton onClick={onAddManual} />}
+        {canEdit && showAddButton && <AddVenueButton onClick={onAddManual} />}
       </div>
     </section>
   );
@@ -1101,9 +1114,12 @@ function AnytimeDropZone({
     }
   }
 
+  // Sized to match a Confirmed Venues row (px-3 py-2.5 with title + dim
+  // subtext) so the drop zone reads as a peer surface, not an
+  // afterthought tucked under the section.
   return (
     <div
-      className="mt-1.5 flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-center transition-colors"
+      className="mt-1.5 flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors"
       style={{
         background: dragOver
           ? "var(--color-bt-accent-faint)"
@@ -1126,25 +1142,32 @@ function AnytimeDropZone({
       data-testid="anytime-dropzone"
     >
       <Cloud
-        size={13}
+        size={14}
         style={{
           color: dragOver
             ? "var(--color-bt-accent)"
             : "var(--color-bt-text-dim)",
+          flexShrink: 0,
         }}
       />
-      <span
-        className="text-[11px]"
-        style={{
-          color: dragOver
-            ? "var(--color-bt-accent)"
-            : "var(--color-bt-text-dim)",
-        }}
-      >
-        {canEdit
-          ? "Drop here for anytime — no fixed time or place"
-          : "Anytime events appear here"}
-      </span>
+      <div className="min-w-0 flex-1">
+        <p
+          className="text-sm font-medium"
+          style={{
+            color: dragOver
+              ? "var(--color-bt-accent)"
+              : "var(--color-bt-text)",
+          }}
+        >
+          {canEdit ? "Drop here for Anytime" : "Anytime events"}
+        </p>
+        <p
+          className="text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          No fixed time or place
+        </p>
+      </div>
     </div>
   );
 }
@@ -1333,7 +1356,7 @@ function DeleteVenueConfirm({
 
 // ── ManualVenueSheet ────────────────────────────────────────────────────────
 
-function ManualVenueSheet({
+export function ManualVenueSheet({
   tripId,
   competitionId,
   onClose,
