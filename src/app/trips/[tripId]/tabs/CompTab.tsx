@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
@@ -48,14 +48,16 @@ export function CompTab({
     tripId,
   });
 
-  // Seed the per-panel caches synchronously during render so the
+  // Seed the per-panel caches from the hydrate snapshot so the
   // children's useQuery calls — which mount inside the
   // `ExistingCompetitionView` returned below — read from cache
-  // instead of firing their own network requests. Guarded by a ref
-  // keyed on the hydrate snapshot so we only seed once per fetch.
-  const seededRef = useRef<unknown>(null);
-  if (hydrateData && seededRef.current !== hydrateData) {
-    seededRef.current = hydrateData;
+  // instead of firing their own network requests. Uses the
+  // "derive state from props" pattern (setState during render with
+  // a sentinel guard) which React explicitly supports for this kind
+  // of side-effect-free cache derivation.
+  const [seededFor, setSeededFor] = useState<unknown>(null);
+  if (hydrateData && seededFor !== hydrateData) {
+    setSeededFor(hydrateData);
     const { competition, teams, assignments, members, events, venues, golfItems } =
       hydrateData;
     utils.tripMembers.list.setData({ tripId }, members);
