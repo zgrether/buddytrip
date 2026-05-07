@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import {
   ArrowRight,
   ChevronDown,
+  GripVertical,
   Pencil,
   Plus,
   Sparkles,
@@ -871,6 +872,11 @@ function CrewRoster({
                     border: "1px solid var(--color-bt-border)",
                   }}
                 >
+                  <GripVertical
+                    size={14}
+                    className="flex-shrink-0"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  />
                   <UserAvatar
                     name={m.displayName}
                     avatarUrl={m.user?.avatar_url ?? null}
