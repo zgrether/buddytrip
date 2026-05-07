@@ -406,9 +406,6 @@ export function ScheduleTab({
   const unscheduledItems = dayGroups.find((g) => g.date === null)?.items ?? [];
   const scheduledGroups = dayGroups.filter((g) => g.date !== null);
 
-  // Items that exist but haven't been dragged to a specific day yet
-  // (trip has dates, but item.scheduled_date is still null).
-  const undatedCount = allItems.filter((i) => !i.scheduled_date).length;
   // Items assigned to a day but not yet confirmed.
   const unconfirmedCount = allItems.filter((i) => !i.is_confirmed && !!i.scheduled_date).length;
   // Items with a scheduled_date that falls outside the trip date range —
@@ -791,6 +788,7 @@ export function ScheduleTab({
                   </p>
                 ) : (
                   <div className="space-y-1.5">
+                    {/* eslint-disable react-hooks/refs */}
                     {unscheduledItems.map((item, idx) => (
                       <ScheduleItemRow
                         key={item.id}
@@ -827,6 +825,7 @@ export function ScheduleTab({
                         }}
                       />
                     ))}
+                    {/* eslint-enable react-hooks/refs */}
                   </div>
                 )}
               </div>
@@ -867,6 +866,7 @@ export function ScheduleTab({
                 </p>
               ) : (
                 <div className="space-y-5">
+                  {/* eslint-disable react-hooks/refs */}
                   {scheduledGroups.map((group) => (
                     <div
                       key={group.date!}
@@ -1003,6 +1003,7 @@ export function ScheduleTab({
                       )}
                     </div>
                   ))}
+                  {/* eslint-enable react-hooks/refs */}
                 </div>
               )}
             </section>
