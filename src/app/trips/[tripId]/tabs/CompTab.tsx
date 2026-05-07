@@ -23,18 +23,16 @@ interface CompTabProps extends TabProps {
  * CompTab — competition hub for a trip.
  *
  * Four states:
- *   1. Loading        → skeleton panels (same height as real ones)
+ *   1. Loading        → null (instant — data is pre-warmed by page.tsx)
  *   2. None + canEdit → full-width CompetitionSetupPanel in create mode
  *   3. None + member  → read-only "not set up yet" empty state
- *   4. Exists         → CompetitionHeader + Teams + Events + Groups stack
+ *   4. Exists         → CompetitionHeader + Teams + Matchup stack
  *
- * Loads everything via the bundled `competitions.hydrate` procedure so
- * the slow path is one HTTP round trip + one server-side procedure
- * (which fans out to its inline list helpers in parallel). The
- * granular per-panel caches are seeded from the hydrate result; the
- * panels' own useQuery calls return that cached data immediately and
- * skip the network. Invalidations after mutations still refetch the
- * granular endpoint as before.
+ * `competitions.getByTrip` is already called in page.tsx and cached in
+ * TanStack Query before this tab ever mounts, so `isLoading` is always
+ * false on the first render — no skeleton flash. The panel-level queries
+ * (teams, assignments, events, venues) fire in parallel when the tab
+ * mounts and httpBatchLink bundles them into one HTTP round trip.
  */
 export function CompTab({
   trip,
@@ -43,40 +41,14 @@ export function CompTab({
   onCompetitionDeleted,
 }: CompTabProps) {
   const tripId = trip.id;
-  const utils = trpc.useUtils();
-  const { data: hydrateData, isLoading } = trpc.competitions.hydrate.useQuery({
-    tripId,
-  });
 
-  // Seed the per-panel caches from the hydrate snapshot so the
-  // children's useQuery calls — which mount inside the
-  // `ExistingCompetitionView` returned below — read from cache
-  // instead of firing their own network requests. Uses the
-  // "derive state from props" pattern (setState during render with
-  // a sentinel guard) which React explicitly supports for this kind
-  // of side-effect-free cache derivation.
-  const [seededFor, setSeededFor] = useState<unknown>(null);
-  if (hydrateData && seededFor !== hydrateData) {
-    setSeededFor(hydrateData);
-    const { competition, teams, assignments, members, events, venues, golfItems } =
-      hydrateData;
-    utils.tripMembers.list.setData({ tripId }, members);
-    utils.schedule.listGolf.setData({ tripId }, golfItems);
-    if (competition) {
-      const key = { tripId, competitionId: competition.id };
-      utils.competitions.getByTrip.setData({ tripId }, competition);
-      utils.teams.list.setData(key, teams);
-      utils.teamAssignments.list.setData(key, assignments);
-      utils.events.list.setData(key, events);
-      utils.venues.list.setData(key, venues);
-    } else {
-      utils.competitions.getByTrip.setData({ tripId }, null);
-    }
-  }
+  // Already cached by page.tsx — isLoading is false on first render.
+  const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery(
+    { tripId },
+  );
 
-  if (isLoading || !hydrateData) return <SkeletonPanels />;
-
-  const competition = hydrateData.competition;
+  // Still loading (shouldn't normally happen given page.tsx pre-warms this).
+  if (isLoading) return null;
 
   if (!competition && canEdit) {
     return (
@@ -127,8 +99,7 @@ function ExistingCompetitionView({
 }) {
   // Creation state lives at this level so the +Team / +Event / +Venue
   // buttons in CompetitionHeader can drive the same sheets that the
-  // panels' empty-state CTAs trigger. The actual sheet/modal markup
-  // still lives inside each panel — they just consume the prop.
+  // panels' empty-state CTAs trigger.
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [creatingManualVenue, setCreatingManualVenue] = useState(false);
@@ -162,25 +133,6 @@ function ExistingCompetitionView({
         creatingManualVenue={creatingManualVenue}
         onCreatingManualVenueChange={setCreatingManualVenue}
       />
-    </div>
-  );
-}
-
-// ── SkeletonPanels ──────────────────────────────────────────────────────────
-
-function SkeletonPanels() {
-  return (
-    <div className="space-y-3 px-4" data-testid="comp-skeleton">
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="h-16 animate-pulse rounded-xl"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        />
-      ))}
     </div>
   );
 }
@@ -221,4 +173,3 @@ function NotSetUpEmptyState() {
     </div>
   );
 }
-
