@@ -253,6 +253,7 @@ function CollapsiblePanel({
   icon,
   label,
   note,
+  state,
   open,
   onToggle,
   testId,
@@ -271,19 +272,16 @@ function CollapsiblePanel({
   testId?: string;
   children: React.ReactNode;
 }) {
-  // Always neutral. Was previously: accent-bordered when in-progress,
-  // accent-faint flooded when done. The user pointed out that flipping
-  // the whole panel teal as soon as one event lands felt redundant.
-  const labelColor = "var(--color-bt-text-dim)";
-  const borderColor = "var(--color-bt-border)";
-  const bg = "var(--color-bt-card)";
+  // Neutral panel chrome — icon picks up accent color once progress is made.
+  const iconColor =
+    state !== "todo" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
 
   return (
     <div
       className="overflow-hidden rounded-xl"
       style={{
-        background: bg,
-        border: `1px solid ${borderColor}`,
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
         boxShadow: "var(--shadow-raised)",
       }}
       data-testid={testId}
@@ -293,11 +291,11 @@ function CollapsiblePanel({
         onClick={onToggle}
         className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
       >
-        <span style={{ color: labelColor }}>{icon}</span>
+        <span style={{ color: iconColor }}>{icon}</span>
         <div className="min-w-0 flex-1">
           <p
             className="text-sm font-semibold leading-tight"
-            style={{ color: labelColor }}
+            style={{ color: "var(--color-bt-text)" }}
           >
             {label}
           </p>
@@ -320,7 +318,7 @@ function CollapsiblePanel({
       {open && (
         <div
           className="px-4 pb-4 pt-3"
-          style={{ borderTop: `1px solid ${borderColor}` }}
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
           {children}
         </div>

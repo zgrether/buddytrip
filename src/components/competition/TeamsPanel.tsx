@@ -351,20 +351,17 @@ function CollapsiblePanel({
   testId?: string;
   children: React.ReactNode;
 }) {
-  // Always neutral — matches the Events & Venues panel. The panel doesn't
-  // need to flip teal once everyone's on a team; confirmation is conveyed
-  // by the populated team chips inside.
-  void state;
-  const labelColor = "var(--color-bt-text-dim)";
-  const borderColor = "var(--color-bt-border)";
-  const bg = "var(--color-bt-card)";
+  // Neutral panel chrome — confirmation is conveyed by the content inside.
+  // Icon picks up accent color once progress is made (any state beyond todo).
+  const iconColor =
+    state !== "todo" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
 
   return (
     <div
       className="overflow-hidden rounded-xl"
       style={{
-        background: bg,
-        border: `1px solid ${borderColor}`,
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
         boxShadow: "var(--shadow-raised)",
       }}
       data-testid={testId}
@@ -374,9 +371,9 @@ function CollapsiblePanel({
         onClick={onToggle}
         className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
       >
-        <span style={{ color: labelColor }}>{icon}</span>
+        <span style={{ color: iconColor }}>{icon}</span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold leading-tight" style={{ color: labelColor }}>
+          <p className="text-sm font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
             {label}
           </p>
           <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -395,7 +392,7 @@ function CollapsiblePanel({
       {open && (
         <div
           className="px-4 pb-4 pt-3"
-          style={{ borderTop: `1px solid ${borderColor}` }}
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
           {children}
         </div>
