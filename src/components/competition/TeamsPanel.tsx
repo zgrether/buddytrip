@@ -629,6 +629,7 @@ function TeamCard({
               <UserAvatar
                 name={m.displayName}
                 avatarUrl={m.user?.avatar_url ?? null}
+                isGuest={m.isGuest}
                 size="sm"
               />
               <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
