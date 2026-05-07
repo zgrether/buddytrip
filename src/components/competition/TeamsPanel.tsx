@@ -245,7 +245,7 @@ export function TeamsPanel({
           <Users size={14} />
         </div>
       }
-      label="Players &amp; Teams"
+      label="Team Rosters"
       note={statusText}
       state={headerState}
       open={open}
@@ -517,11 +517,8 @@ function TeamCard({
 
   return (
     <div
-      className="rounded-xl p-3 transition-colors"
+      className="overflow-hidden rounded-xl transition-colors"
       style={{
-        background: dragOver
-          ? `color-mix(in srgb, ${team.color} 10%, transparent)`
-          : `color-mix(in srgb, ${team.color} 6%, transparent)`,
         border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
           dragOver ? team.color : `color-mix(in srgb, ${team.color} 35%, var(--color-bt-border))`
         }`,
@@ -539,7 +536,14 @@ function TeamCard({
       onDrop={canEdit ? handleDrop : undefined}
       data-testid={`team-card-${team.id}`}
     >
-      <div className="flex items-center gap-3">
+      <div
+        className="flex items-center gap-3 px-3 py-2.5"
+        style={{
+          background: dragOver
+            ? `color-mix(in srgb, ${team.color} 14%, var(--color-bt-card-raised))`
+            : `color-mix(in srgb, ${team.color} 8%, var(--color-bt-card-raised))`,
+        }}
+      >
         <span
           className="h-6 w-6 flex-shrink-0 rounded-full"
           style={{ background: team.color }}
@@ -594,7 +598,7 @@ function TeamCard({
 
       {/* Members area — chips sit directly on the team card, no inner box */}
       <div
-        className="mt-3 flex flex-wrap gap-2"
+        className="flex flex-wrap gap-2 px-3 pb-3 pt-2"
         style={{ minHeight: 40 }}
       >
         {teamMembers.length === 0 && (
@@ -1245,7 +1249,7 @@ function TeamSheet({
             className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            Save Team
+            {isEdit ? "Save Team" : "Add Team"}
           </button>
         </div>
       </div>
