@@ -406,7 +406,7 @@ function ActionTile({
         type="button"
         onClick={onAdd}
         aria-label={`Add ${label.toLowerCase()}`}
-        className="flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-80 active:scale-[0.98]"
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-80 active:scale-[0.98]"
         style={{
           background: "var(--color-bt-card-raised)",
           border: "0.5px solid var(--color-bt-border)",
