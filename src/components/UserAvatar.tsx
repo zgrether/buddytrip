@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Ghost } from "lucide-react";
 
 interface UserAvatarProps {
   name: string | null;
@@ -12,16 +13,15 @@ interface UserAvatarProps {
 }
 
 const SIZE_MAP = {
-  sm: { px: 24, text: "text-[10px]" },
-  md: { px: 32, text: "text-xs" },
-  lg: { px: 44, text: "text-base" },
+  sm: { px: 24, iconPx: 12 },
+  md: { px: 32, iconPx: 14 },
+  lg: { px: 44, iconPx: 20 },
 } as const;
 
 export function UserAvatar({ name, avatarUrl, size = "md", sizePx }: UserAvatarProps) {
   const preset = SIZE_MAP[size];
   const px = sizePx ?? preset.px;
-  const text = sizePx && sizePx >= 64 ? "text-3xl" : sizePx && sizePx >= 36 ? "text-lg" : preset.text;
-  const initial = ((name ?? "?").charAt(0) || "?").toUpperCase();
+  const iconPx = sizePx ? Math.round(px * 0.45) : preset.iconPx;
 
   if (avatarUrl) {
     return (
@@ -38,15 +38,15 @@ export function UserAvatar({ name, avatarUrl, size = "md", sizePx }: UserAvatarP
 
   return (
     <div
-      className={`flex flex-shrink-0 items-center justify-center rounded-full font-semibold ${text}`}
+      className="flex flex-shrink-0 items-center justify-center rounded-full"
       style={{
         width: px,
         height: px,
-        background: "var(--color-bt-card-raised)",
-        color: "var(--color-bt-accent)",
+        background: "var(--color-bt-border)",
+        color: "var(--color-bt-text-dim)",
       }}
     >
-      {initial}
+      <Ghost size={iconPx} />
     </div>
   );
 }
