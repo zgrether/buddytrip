@@ -873,7 +873,7 @@ function CrewRoster({
                   }}
                   className="flex cursor-grab items-center gap-2 rounded-lg px-3 py-2 active:cursor-grabbing"
                   style={{
-                    background: "var(--color-bt-card)",
+                    background: "var(--color-bt-card-raised)",
                     border: "1px solid var(--color-bt-border)",
                   }}
                 >
