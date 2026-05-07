@@ -175,8 +175,8 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
   // affordance is visually consistent across the comp tab.
   const bareDropStyle: React.CSSProperties | undefined = bare
     ? {
-        background: "var(--color-bt-card-raised)",
-        border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+        background: "transparent",
+        border: `${dragOver ? "1.5px" : "1px"} dashed ${
           dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
         }`,
       }

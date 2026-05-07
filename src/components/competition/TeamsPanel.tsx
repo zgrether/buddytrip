@@ -515,9 +515,11 @@ function TeamCard({
     <div
       className="rounded-xl p-3 transition-colors"
       style={{
-        background: "var(--color-bt-card-raised)",
+        background: dragOver
+          ? `color-mix(in srgb, ${team.color} 10%, transparent)`
+          : `color-mix(in srgb, ${team.color} 6%, transparent)`,
         border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
-          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+          dragOver ? team.color : `color-mix(in srgb, ${team.color} 35%, var(--color-bt-border))`
         }`,
       }}
       onDragOver={
@@ -831,8 +833,8 @@ function CrewRoster({
         <div
           className="rounded-xl p-3 transition-colors"
           style={{
-            background: "var(--color-bt-card-raised)",
-            border: `${dragOver ? "1.5px" : "1px"} ${dragOver ? "dashed" : "solid"} ${
+            background: "transparent",
+            border: `${dragOver ? "1.5px" : "1px"} dashed ${
               dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
             }`,
           }}
