@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { UserAvatar } from "@/components/UserAvatar";
+import { TeamMemberChip } from "./TeamMemberChip";
 
 interface Props {
   competitionId: string;
@@ -607,8 +608,12 @@ function TeamCard({
         {teamMembers.map((m) => {
           const id = m.user_id ?? m.memberId;
           return (
-            <div
+            <TeamMemberChip
               key={id}
+              displayName={m.displayName}
+              avatarUrl={m.user?.avatar_url}
+              isGuest={m.isGuest}
+              teamColor={team.color}
               draggable={canEdit}
               onDragStart={
                 canEdit
@@ -618,37 +623,13 @@ function TeamCard({
                     }
                   : undefined
               }
-              className={`flex items-center gap-1.5 rounded-full py-1 pl-2 pr-1 ${
-                canEdit ? "cursor-grab active:cursor-grabbing" : ""
-              }`}
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <UserAvatar
-                name={m.displayName}
-                avatarUrl={m.user?.avatar_url ?? null}
-                isGuest={m.isGuest}
-                size="sm"
-              />
-              <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>
-                {m.displayName}
-              </span>
-              {isOwner && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    remove.mutate({ tripId, competitionId, userId: id })
-                  }
-                  aria-label={`Remove ${m.displayName} from ${team.name}`}
-                  className="ml-0.5 flex h-5 w-5 items-center justify-center rounded-full"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <X size={10} />
-                </button>
-              )}
-            </div>
+              onRemove={
+                isOwner
+                  ? () => remove.mutate({ tripId, competitionId, userId: id })
+                  : undefined
+              }
+              removeAriaLabel={`Remove ${m.displayName} from ${team.name}`}
+            />
           );
         })}
       </div>
