@@ -327,6 +327,7 @@ export function ScheduleTab({
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
+  const [unscheduledDragOver, setUnscheduledDragOver] = useState(false);
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const allItems = scheduleItems as ScheduleItem[];
@@ -398,6 +399,12 @@ export function ScheduleTab({
 
     return groups;
   }, [visibleItems, trip.start_date, trip.end_date]);
+
+  // Derived slices used by the two-column layout.
+  // unscheduledItems — items with no scheduled_date; live in column 1.
+  // scheduledGroups  — day groups with a real date; live in column 2.
+  const unscheduledItems = dayGroups.find((g) => g.date === null)?.items ?? [];
+  const scheduledGroups = dayGroups.filter((g) => g.date !== null);
 
   // Items that exist but haven't been dragged to a specific day yet
   // (trip has dates, but item.scheduled_date is still null).
@@ -556,147 +563,112 @@ export function ScheduleTab({
 
   return (
     <div className={embedded ? undefined : "px-4"}>
-      {/* ── Nudges — sit above the section header so they read as
-          tab-level alerts, not section content. Multiple may stack:
-          unscheduled (no trip dates) / undated (item missing day) /
-          unconfirmed (item not locked) / out-of-range (date outside trip). */}
+      {/* ── Nudges — full-width alerts above the two-column layout ──── */}
 
-        {canEdit && !trip.start_date && allItems.length > 0 && (
-          <div
-            className="mb-4 flex items-center justify-between gap-3 rounded-xl px-4 py-3"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <span
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
-              >
-                <Calendar size={14} />
-              </span>
-              <div>
-                <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                  Items are unscheduled
-                </p>
-                <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Set trip dates to assign items to specific days
-                </p>
-              </div>
+      {canEdit && !trip.start_date && allItems.length > 0 && (
+        <div
+          className="mb-4 flex items-center justify-between gap-3 rounded-xl px-4 py-3"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+            >
+              <Calendar size={14} />
+            </span>
+            <div>
+              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+                Items are unscheduled
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                Set trip dates to assign items to specific days
+              </p>
             </div>
-            {trip.planning_tier === "basic" ? (
+          </div>
+          {trip.planning_tier === "basic" ? (
+            <button
+              onClick={onNavigateToDates}
+              className="flex-shrink-0 text-xs font-semibold"
+              style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
+            >
+              Set dates &rarr;
+            </button>
+          ) : (
+            <>
               <button
-                onClick={onNavigateToDates}
+                onClick={() => setDatesModalOpen(true)}
                 className="flex-shrink-0 text-xs font-semibold"
                 style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
               >
                 Set dates &rarr;
               </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => setDatesModalOpen(true)}
-                  className="flex-shrink-0 text-xs font-semibold"
-                  style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
-                >
-                  Set dates &rarr;
-                </button>
-                <DatesModal
-                  isOpen={datesModalOpen}
-                  onClose={() => setDatesModalOpen(false)}
-                  tripId={tripId}
-                  initialStartDate={null}
-                  initialEndDate={null}
-                />
-              </>
-            )}
-          </div>
-        )}
+              <DatesModal
+                isOpen={datesModalOpen}
+                onClose={() => setDatesModalOpen(false)}
+                tripId={tripId}
+                initialStartDate={null}
+                initialEndDate={null}
+              />
+            </>
+          )}
+        </div>
+      )}
 
-        {canEdit && !!trip.start_date && undatedCount > 0 && (
-          <div
-            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-            }}
+      {canEdit && unconfirmedCount > 0 && !!trip.start_date && (
+        <div
+          className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
           >
-            <span
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-              style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
-            >
-              <Calendar size={14} />
-            </span>
-            <div>
-              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                {undatedCount} item{undatedCount !== 1 ? "s" : ""} haven&apos;t been assigned to a day
-              </p>
-              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                Drag or move items from the Unscheduled group onto a day
-              </p>
-            </div>
+            <Calendar size={14} />
+          </span>
+          <div>
+            <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+              {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+              Confirm items to lock them into the schedule
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {canEdit && unconfirmedCount > 0 && !!trip.start_date && (
-          <div
-            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-            }}
+      {canEdit && outOfRangeCount > 0 && (
+        <div
+          className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <span
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
           >
-            <span
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-              style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
-            >
-              <Calendar size={14} />
-            </span>
-            <div>
-              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
-              </p>
-              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                Confirm items to lock them into the schedule
-              </p>
-            </div>
+            <Calendar size={14} />
+          </span>
+          <div>
+            <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+              {outOfRangeCount} item{outOfRangeCount !== 1 ? "s" : ""} fall outside the trip dates
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+              Double-check the date or update the trip dates if it was entered wrong
+            </p>
           </div>
-        )}
-
-        {canEdit && outOfRangeCount > 0 && (
-          <div
-            className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <span
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-              style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
-            >
-              <Calendar size={14} />
-            </span>
-            <div>
-              <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                {outOfRangeCount} item{outOfRangeCount !== 1 ? "s" : ""} fall outside the trip dates
-              </p>
-              <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                Double-check the date or update the trip dates if it was entered wrong
-              </p>
-            </div>
-          </div>
-        )}
+        </div>
+      )}
 
       <section>
-        <h2
-          className="mb-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Schedule
-        </h2>
-
         {/* Guidance text — stage-aware */}
         <p
           className="mb-3 text-[13px] leading-relaxed"
@@ -707,7 +679,7 @@ export function ScheduleTab({
             : "Keep your schedule up to date — any confirmed items will be shown on the crew's official schedule."}
         </p>
 
-        {/* Type selector — add buttons */}
+        {/* Add buttons — full-width above the two-column grid */}
         {canEdit && (
           <div className="mb-4 flex gap-2">
             <button
@@ -744,74 +716,82 @@ export function ScheduleTab({
             subtext={canEdit ? "Add items to plan your trip's agenda." : "The organizer hasn't added any schedule items yet."}
           />
         ) : (
-          <div className="space-y-5">
-            {/* eslint-disable react-hooks/refs */}
-            {dayGroups.map((group) => (
-              <div
-                key={group.date ?? "__unscheduled"}
-                onDragOver={canEdit ? (e) => {
-                  e.preventDefault();
-                  if (dragState.current && dragState.current.groupDate !== group.date) {
-                    setDragOverGroup(group.date);
-                  }
-                } : undefined}
-                onDragEnter={canEdit ? () => {
-                  if (dragState.current && dragState.current.groupDate !== group.date) {
-                    setDragOverGroup(group.date);
-                  }
-                } : undefined}
-                onDragLeave={canEdit ? (e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                    setDragOverGroup(false);
-                    setDragOverIdx(null);
-                  }
-                } : undefined}
-                onDrop={canEdit ? (e) => {
-                  e.preventDefault();
-                  setDragOverGroup(false);
-                  setDragOverIdx(null);
-                  if (dragState.current) {
-                    handleDragDrop(group.date, group.items, group.items.length);
-                  }
-                } : undefined}
-                className="rounded-xl px-3 py-2 -mx-3 transition-colors"
-                style={{
-                  background: dragOverGroup === group.date
-                    ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
-                    : "transparent",
-                  border: dragOverGroup === group.date
-                    ? "1.5px dashed var(--color-bt-accent-border)"
-                    : "1.5px dashed transparent",
-                }}
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <CalendarDays
-                    size={14}
-                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-                  />
-                  <p
-                    className="text-[13px] font-semibold"
-                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
-                  >
-                    {group.label}
-                    {dragOverGroup === group.date && (
-                      <span className="ml-2 text-[11px] font-normal" style={{ color: "var(--color-bt-accent)" }}>
-                        Drop here
-                      </span>
-                    )}
-                  </p>
-                </div>
+          <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
 
-                {group.items.length === 0 ? (
-                  <p
-                    className="ml-6 text-xs italic"
-                    style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+            {/* ── Column 1: Unscheduled Items ──────────────────────── */}
+            <section style={{ alignSelf: "start" }}>
+              <div className="mb-2">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: "var(--color-bt-text-dim)" }}>
+                    <ClipboardList size={12} />
+                  </span>
+                  <h4
+                    className="text-[11px] font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
+                    Unscheduled Items
+                  </h4>
+                </div>
+                {canEdit && (
+                  <p
+                    className="mt-0.5 text-[10px] italic"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Drag onto a day to schedule
+                  </p>
+                )}
+              </div>
+
+              <div
+                className="rounded-xl p-3 transition-colors"
+                style={{
+                  background: "transparent",
+                  border: `${unscheduledDragOver ? "1.5px" : "1px"} dashed ${
+                    unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+                  }`,
+                }}
+                onDragOver={
+                  canEdit
+                    ? (e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        setUnscheduledDragOver(true);
+                      }
+                    : undefined
+                }
+                onDragLeave={
+                  canEdit
+                    ? (e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setUnscheduledDragOver(false);
+                        }
+                      }
+                    : undefined
+                }
+                onDrop={
+                  canEdit
+                    ? (e) => {
+                        e.preventDefault();
+                        setUnscheduledDragOver(false);
+                        if (dragState.current && dragState.current.groupDate !== null) {
+                          handleDragDrop(null, unscheduledItems, unscheduledItems.length);
+                        }
+                      }
+                    : undefined
+                }
+              >
+                {unscheduledItems.length === 0 ? (
+                  <p
+                    className="text-[11px] italic"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    {canEdit
+                      ? "All items have been scheduled. Drag here to remove from the official schedule."
+                      : "All items have been scheduled."}
                   </p>
                 ) : (
-                  <>
-                    {group.items.map((item, idx) => (
+                  <div className="space-y-1.5">
+                    {unscheduledItems.map((item, idx) => (
                       <ScheduleItemRow
                         key={item.id}
                         item={item}
@@ -819,70 +799,214 @@ export function ScheduleTab({
                         onConfirmToggle={() => handleConfirmToggle(item)}
                         onEdit={() => setEditItem(item)}
                         onRemove={() => setConfirmDelete(item)}
-                        onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
-                        onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
+                        onMoveUp={() => handleMove(null, unscheduledItems, idx, "up")}
+                        onMoveDown={() => handleMove(null, unscheduledItems, idx, "down")}
                         isFirst={idx === 0}
-                        isLast={idx === group.items.length - 1}
+                        isLast={idx === unscheduledItems.length - 1}
                         isDragging={
                           !!dragState.current &&
-                          dragState.current.groupDate === group.date &&
+                          dragState.current.groupDate === null &&
                           dragState.current.idx === idx
                         }
                         showDropIndicator={
                           !!dragOverIdx &&
-                          dragOverIdx.groupDate === group.date &&
+                          dragOverIdx.groupDate === null &&
                           dragOverIdx.idx === idx &&
                           dragState.current?.idx !== idx
                         }
-                        onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
+                        onDragStart={() => {
+                          dragState.current = { groupDate: null, idx, item };
+                        }}
                         onDragOver={(e) => {
                           e.preventDefault();
-                          setDragOverIdx({ groupDate: group.date, idx });
+                          setDragOverIdx({ groupDate: null, idx });
                         }}
                         onDrop={() => {
                           setDragOverIdx(null);
-                          handleDragDrop(group.date, group.items, idx);
+                          handleDragDrop(null, unscheduledItems, idx);
                         }}
                       />
                     ))}
-                    {/* Bottom drop zone — append to end of day */}
-                    {canEdit && dragState.current && (
-                      <div
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDragOverIdx({ groupDate: group.date, idx: group.items.length });
-                        }}
-                        onDragEnter={(e) => {
-                          e.preventDefault();
-                          setDragOverIdx({ groupDate: group.date, idx: group.items.length });
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDragOverIdx(null);
-                          handleDragDrop(group.date, group.items, group.items.length);
-                        }}
-                        className="rounded-md transition-all"
-                        style={{
-                          height:
-                            dragOverIdx?.groupDate === group.date &&
-                            dragOverIdx?.idx === group.items.length
-                              ? "6px"
-                              : "24px",
-                          background:
-                            dragOverIdx?.groupDate === group.date &&
-                            dragOverIdx?.idx === group.items.length
-                              ? "var(--color-bt-accent)"
-                              : "transparent",
-                        }}
-                      />
-                    )}
-                  </>
+                  </div>
                 )}
               </div>
-            ))}
-            {/* eslint-enable react-hooks/refs */}
+            </section>
+
+            {/* ── Column 2: Schedule (day groups only) ─────────────── */}
+            <section>
+              <div className="mb-2">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: "var(--color-bt-text-dim)" }}>
+                    <CalendarDays size={12} />
+                  </span>
+                  <h4
+                    className="text-[11px] font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Schedule
+                  </h4>
+                </div>
+                {canEdit && (
+                  <p
+                    className="mt-0.5 text-[10px] italic"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Drop an item onto a day to schedule it
+                  </p>
+                )}
+              </div>
+
+              {scheduledGroups.length === 0 ? (
+                <p
+                  className="text-[11px] italic"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  {trip.start_date
+                    ? "No items scheduled yet — drag from the left column onto a day."
+                    : "Set trip dates to see the calendar."}
+                </p>
+              ) : (
+                <div className="space-y-5">
+                  {scheduledGroups.map((group) => (
+                    <div
+                      key={group.date!}
+                      onDragOver={canEdit ? (e) => {
+                        e.preventDefault();
+                        if (dragState.current && dragState.current.groupDate !== group.date) {
+                          setDragOverGroup(group.date);
+                        }
+                      } : undefined}
+                      onDragEnter={canEdit ? () => {
+                        if (dragState.current && dragState.current.groupDate !== group.date) {
+                          setDragOverGroup(group.date);
+                        }
+                      } : undefined}
+                      onDragLeave={canEdit ? (e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setDragOverGroup(false);
+                          setDragOverIdx(null);
+                        }
+                      } : undefined}
+                      onDrop={canEdit ? (e) => {
+                        e.preventDefault();
+                        setDragOverGroup(false);
+                        setDragOverIdx(null);
+                        if (dragState.current) {
+                          handleDragDrop(group.date, group.items, group.items.length);
+                        }
+                      } : undefined}
+                      className="rounded-xl px-3 py-2 -mx-3 transition-colors"
+                      style={{
+                        background: dragOverGroup === group.date
+                          ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
+                          : "transparent",
+                        border: dragOverGroup === group.date
+                          ? "1.5px dashed var(--color-bt-accent-border)"
+                          : "1.5px dashed transparent",
+                      }}
+                    >
+                      <div className="mb-2 flex items-center gap-2">
+                        <CalendarDays
+                          size={14}
+                          style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                        />
+                        <p
+                          className="text-[13px] font-semibold"
+                          style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
+                        >
+                          {group.label}
+                          {dragOverGroup === group.date && (
+                            <span className="ml-2 text-[11px] font-normal" style={{ color: "var(--color-bt-accent)" }}>
+                              Drop here
+                            </span>
+                          )}
+                        </p>
+                      </div>
+
+                      {group.items.length === 0 ? (
+                        <p
+                          className="ml-6 text-xs italic"
+                          style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                        >
+                          {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
+                        </p>
+                      ) : (
+                        <>
+                          {group.items.map((item, idx) => (
+                            <ScheduleItemRow
+                              key={item.id}
+                              item={item}
+                              canEdit={canEdit}
+                              onConfirmToggle={() => handleConfirmToggle(item)}
+                              onEdit={() => setEditItem(item)}
+                              onRemove={() => setConfirmDelete(item)}
+                              onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
+                              onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
+                              isFirst={idx === 0}
+                              isLast={idx === group.items.length - 1}
+                              isDragging={
+                                !!dragState.current &&
+                                dragState.current.groupDate === group.date &&
+                                dragState.current.idx === idx
+                              }
+                              showDropIndicator={
+                                !!dragOverIdx &&
+                                dragOverIdx.groupDate === group.date &&
+                                dragOverIdx.idx === idx &&
+                                dragState.current?.idx !== idx
+                              }
+                              onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                setDragOverIdx({ groupDate: group.date, idx });
+                              }}
+                              onDrop={() => {
+                                setDragOverIdx(null);
+                                handleDragDrop(group.date, group.items, idx);
+                              }}
+                            />
+                          ))}
+                          {/* Bottom drop zone — append to end of day */}
+                          {canEdit && dragState.current && (
+                            <div
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDragOverIdx({ groupDate: group.date, idx: group.items.length });
+                              }}
+                              onDragEnter={(e) => {
+                                e.preventDefault();
+                                setDragOverIdx({ groupDate: group.date, idx: group.items.length });
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDragOverIdx(null);
+                                handleDragDrop(group.date, group.items, group.items.length);
+                              }}
+                              className="rounded-md transition-all"
+                              style={{
+                                height:
+                                  dragOverIdx?.groupDate === group.date &&
+                                  dragOverIdx?.idx === group.items.length
+                                    ? "6px"
+                                    : "24px",
+                                background:
+                                  dragOverIdx?.groupDate === group.date &&
+                                  dragOverIdx?.idx === group.items.length
+                                    ? "var(--color-bt-accent)"
+                                    : "transparent",
+                              }}
+                            />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
           </div>
         )}
       </section>
