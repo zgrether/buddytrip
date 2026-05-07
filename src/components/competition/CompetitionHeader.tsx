@@ -200,7 +200,7 @@ export function CompetitionHeader({
           centralizes the +Team / +Event / +Venue buttons that used to
           live inside the inner panels. */}
       <div
-        className="grid grid-cols-1 gap-2 px-3 py-2.5 sm:grid-cols-3 sm:gap-2"
+        className="flex flex-wrap items-center gap-2 px-3 py-2.5"
         style={{ borderTop: "1px solid var(--color-bt-border)" }}
       >
         <ActionTile
@@ -409,21 +409,48 @@ function ActionTile({
    *  (read-only members or unsupported state). */
   onAdd?: () => void;
 }) {
+  // Clickable variant — compact secondary add button (icon + "+ Label").
+  // Status copy lives in the panel headers below; the button itself just
+  // needs to be clearly actionable, not a second status readout.
+  if (onAdd) {
+    return (
+      <button
+        type="button"
+        onClick={onAdd}
+        aria-label={`Add ${label.toLowerCase()}`}
+        className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-80 active:scale-[0.98]"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          border: "0.5px solid var(--color-bt-border)",
+          color: "var(--color-bt-text)",
+        }}
+      >
+        <span style={{ color: "var(--color-bt-text-dim)" }}>{icon}</span>
+        <Plus size={11} style={{ color: "var(--color-bt-text-dim)" }} />
+        <span>{label}</span>
+      </button>
+    );
+  }
+
+  // Read-only variant — status tile for non-editors.
   const accent = complete
     ? "var(--color-bt-accent)"
     : "var(--color-bt-text-dim)";
-  const content = (
-    <>
+  return (
+    <div
+      className="flex items-center gap-2 rounded-lg px-2.5 py-2"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
       <span style={{ color: accent }}>{icon}</span>
-      <div className="min-w-0 flex-1 text-left">
+      <div className="min-w-0 flex-1">
         <p
-          className="flex items-center gap-1 text-[12px] font-semibold leading-tight"
+          className="text-[12px] font-semibold leading-tight"
           style={{ color: "var(--color-bt-text)" }}
         >
-          <span>{label}</span>
-          {onAdd && (
-            <Plus size={11} style={{ color: "var(--color-bt-text-dim)" }} />
-          )}
+          {label}
         </p>
         <p
           className="mt-0.5 text-[11px] leading-tight"
@@ -432,35 +459,6 @@ function ActionTile({
           {status}
         </p>
       </div>
-    </>
-  );
-
-  if (!onAdd) {
-    return (
-      <div
-        className="flex items-center gap-2 rounded-lg px-2.5 py-2"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {content}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onAdd}
-      aria-label={`Add ${label.toLowerCase()}`}
-      className="flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:brightness-105"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      {content}
-    </button>
+    </div>
   );
 }
