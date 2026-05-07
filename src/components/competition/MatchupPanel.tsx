@@ -90,7 +90,7 @@ export function MatchupPanel({
           <MapPin size={14} />
         </div>
       }
-      label="Events &amp; Venues"
+      label="Competition Builder"
       note={statusText}
       state={headerState}
       open={open}
@@ -118,7 +118,7 @@ export function MatchupPanel({
           </Column>
           <Column
             icon={<MapPin size={12} />}
-            label="Confirmed Venues"
+            label="Competition Schedule"
             hint={canEdit ? "Drop an event here" : undefined}
           >
             <VenuesPanel

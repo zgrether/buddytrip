@@ -436,11 +436,9 @@ function ScheduledSection({
   /** Hidden in bare mode — MatchupPanel owns the above-column copy. */
   showAddButton: boolean;
 }) {
-  // Section label removed — the column header in MatchupPanel already
-  // reads "Confirmed Venues", so this would be the third level of
-  // header on the screen.
   return (
     <section>
+      <SectionLabel>Confirmed Venues</SectionLabel>
       {golfItems.length === 0 && manualScheduledVenues.length === 0 && (
         <p
           className="text-[11px]"
