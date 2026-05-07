@@ -225,21 +225,23 @@ function Column({
 }) {
   return (
     <section className={className}>
-      <div className="mb-2 flex items-baseline gap-2">
-        <span style={{ color: "var(--color-bt-text-dim)" }}>{icon}</span>
-        <h4
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {label}
-        </h4>
+      <div className="mb-2">
+        <div className="flex items-center gap-2">
+          <span style={{ color: "var(--color-bt-text-dim)" }}>{icon}</span>
+          <h4
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {label}
+          </h4>
+        </div>
         {hint && (
-          <span
-            className="text-[10px] italic"
+          <p
+            className="mt-0.5 text-[10px] italic"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             {hint}
-          </span>
+          </p>
         )}
       </div>
       {children}

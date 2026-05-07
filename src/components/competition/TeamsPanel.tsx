@@ -276,23 +276,25 @@ export function TeamsPanel({
             {/* Teams column — 2/3 of the panel width on desktop. The
                 +Team button moved up to CompetitionHeader's action bar. */}
             <div>
-              <div className="mb-2 flex items-baseline gap-2">
-                <span style={{ color: "var(--color-bt-text-dim)" }}>
-                  <Users size={12} />
-                </span>
-                <h4
-                  className="text-[11px] font-semibold uppercase tracking-wider"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Teams
-                </h4>
+              <div className="mb-2">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: "var(--color-bt-text-dim)" }}>
+                    <Users size={12} />
+                  </span>
+                  <h4
+                    className="text-[11px] font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Teams
+                  </h4>
+                </div>
                 {canEdit && (
-                  <span
-                    className="text-[10px] italic"
+                  <p
+                    className="mt-0.5 text-[10px] italic"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     Drop a crew member here
-                  </span>
+                  </p>
                 )}
               </div>
               <div className="space-y-3">
@@ -806,23 +808,25 @@ function CrewRoster({
     <>
       {/* ── Desktop column: drag-and-drop unassigned roster ─────────── */}
       <section className="hidden lg:block" style={{ alignSelf: "start" }}>
-        <div className="mb-2 flex items-baseline gap-2">
-          <span style={{ color: "var(--color-bt-text-dim)" }}>
-            <User size={12} />
-          </span>
-          <h4
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Unassigned Crew
-          </h4>
+        <div className="mb-2">
+          <div className="flex items-center gap-2">
+            <span style={{ color: "var(--color-bt-text-dim)" }}>
+              <User size={12} />
+            </span>
+            <h4
+              className="text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Unassigned Crew
+            </h4>
+          </div>
           {canEdit && (
-            <span
-              className="text-[10px] italic"
+            <p
+              className="mt-0.5 text-[10px] italic"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
               Drag onto a team to assign
-            </span>
+            </p>
           )}
         </div>
         <div
