@@ -217,14 +217,11 @@ export function TeamsPanel({
   const allAssigned = teamsExist && totalMembers > 0 && assignedCount === totalMembers;
 
   // Open state — null sentinel means "use the data-derived default":
-  // open while no teams exist (so the empty-state CTA is visible), closed
-  // once teams exist (compact overview on revisits).
-  // Clicking Add Team or toggling the chevron commits an explicit value
-  // so adding the first team doesn't immediately collapse the panel
-  // out from under the user. An effect-driven setState here would trip
-  // react-hooks/set-state-in-effect, hence the override pattern.
+  // Always expanded by default — the panel only collapses when the user
+  // explicitly clicks the chevron. An explicit override is stored so
+  // adding the first team doesn't reset a user-chosen collapsed state.
   const [openOverride, setOpenOverride] = useState<boolean | null>(null);
-  const open = openOverride ?? !teamsExist;
+  const open = openOverride ?? true;
   const handleToggle = () => setOpenOverride(!open);
   const handleOpenAddTeam = () => {
     setOpenOverride(true);
