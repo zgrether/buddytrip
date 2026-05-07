@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Flag, MapPin, Pencil, Plus, Trash2, Trophy, Users } from "lucide-react";
+import { Flag, MapPin, Pencil, Plus, Trash2, Trophy, Users, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { CompetitionSetupPanel } from "./CompetitionSetupPanel";
 
 interface Competition {
   id: string;
@@ -59,9 +58,9 @@ interface Props {
 /**
  * CompetitionHeader — title strip + at-a-glance setup progress.
  *
- * Tap the pencil (canEdit) to expand CompetitionSetupPanel inline for
- * editing. Owners can also wipe the whole competition via the trash
- * button — clears all teams / events / groups via the schema's CASCADE.
+ * Tap the pencil (canEdit) to open the edit modal. Owners can also
+ * wipe the whole competition via the trash button — clears all teams /
+ * events / groups via the schema's CASCADE.
  */
 export function CompetitionHeader({
   competition,
@@ -228,20 +227,11 @@ export function CompetitionHeader({
       </div>
 
       {editing && (
-        <div
-          className="mt-3 rounded-xl px-4 pb-4 pt-3"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <CompetitionSetupPanel
-            tripId={tripId}
-            competition={competition}
-            onSuccess={() => setEditing(false)}
-            onCancel={() => setEditing(false)}
-          />
-        </div>
+        <CompetitionEditModal
+          tripId={tripId}
+          competition={competition}
+          onClose={() => setEditing(false)}
+        />
       )}
 
       {confirming && (
@@ -364,6 +354,176 @@ function describeCascade(teamAssignments: number, events: number): string {
 }
 
 // ── Subcomponents ───────────────────────────────────────────────────────────
+
+// ── CompetitionEditModal ────────────────────────────────────────────────────
+
+function CompetitionEditModal({
+  tripId,
+  competition,
+  onClose,
+}: {
+  tripId: string;
+  competition: Competition;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [name, setName] = useState(competition.name);
+  const [tagline, setTagline] = useState(competition.tagline ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  const updateComp = trpc.competitions.update.useMutation({
+    onMutate: async (vars) => {
+      await utils.competitions.getByTrip.cancel({ tripId });
+      const previous = utils.competitions.getByTrip.getData({ tripId });
+      if (previous) {
+        utils.competitions.getByTrip.setData({ tripId }, {
+          ...previous,
+          name: vars.name ?? previous.name,
+          tagline: vars.tagline ?? previous.tagline,
+        });
+      }
+      return { previous };
+    },
+    onError: (e, _vars, ctx) => {
+      if (ctx?.previous) {
+        utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
+      }
+      setError(e.message ?? "Failed to update competition");
+    },
+    onSettled: () => {
+      utils.competitions.getByTrip.invalidate({ tripId });
+    },
+    onSuccess: () => onClose(),
+  });
+
+  const trimmedName = name.trim();
+  const disabled = updateComp.isPending || trimmedName.length < 2;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ background: "var(--color-bt-overlay)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+        style={{
+          background: "var(--color-bt-card-float)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+        >
+          <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
+            Edit Competition
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 items-center justify-center rounded-full"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="space-y-4 px-5 py-4">
+          <div>
+            <label
+              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Competition Name <span style={{ color: "var(--color-bt-text-dim)" }}>required</span>
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. BBMI 2026, The Yert Open"
+              maxLength={200}
+              className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            />
+          </div>
+
+          <div>
+            <label
+              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Tagline <span className="normal-case font-normal">optional</span>
+            </label>
+            <input
+              value={tagline}
+              onChange={(e) => setTagline(e.target.value)}
+              placeholder="e.g. May the best team win"
+              maxLength={500}
+              className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
+              {error}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex gap-2 px-5 pb-6 pt-2"
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={updateComp.isPending}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "0.5px solid var(--color-bt-border)",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              updateComp.mutate({
+                tripId,
+                competitionId: competition.id,
+                name: trimmedName,
+                tagline: tagline.trim() || null,
+              })
+            }
+            disabled={disabled}
+            className="flex flex-1 items-center justify-center rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {updateComp.isPending ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── StatusBadge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: Competition["status"] }) {
   const cfg = STATUS_CHIP[status];
