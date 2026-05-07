@@ -588,23 +588,17 @@ function TeamCard({
         )}
       </div>
 
-      {/* Members area — drop target hint when empty + populated when assigned */}
+      {/* Members area — chips sit directly on the team card, no inner box */}
       <div
-        className="mt-3 flex flex-wrap gap-2 rounded-lg p-2"
-        style={{
-          minHeight: 56,
-          background: "var(--color-bt-card)",
-          border: "1px dashed var(--color-bt-border)",
-        }}
+        className="mt-3 flex flex-wrap gap-2"
+        style={{ minHeight: 40 }}
       >
         {teamMembers.length === 0 && (
           <p
-            className="m-auto text-[11px]"
+            className="text-[11px] italic"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            {canEdit
-              ? "Drop a crew member here"
-              : "No members assigned"}
+            {canEdit ? "Drop a crew member here" : "No members assigned"}
           </p>
         )}
         {teamMembers.map((m) => {
