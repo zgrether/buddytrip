@@ -871,7 +871,7 @@ function CrewRoster({
                     e.dataTransfer.setData(DND_USER_KEY, id);
                     e.dataTransfer.effectAllowed = "move";
                   }}
-                  className="flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 active:cursor-grabbing"
+                  className="flex cursor-grab items-center gap-2 rounded-lg px-3 py-2 active:cursor-grabbing"
                   style={{
                     background: "var(--color-bt-card)",
                     border: "1px solid var(--color-bt-border)",
@@ -885,7 +885,8 @@ function CrewRoster({
                   <UserAvatar
                     name={m.displayName}
                     avatarUrl={m.user?.avatar_url ?? null}
-                    size="sm"
+                    isGuest={m.isGuest}
+                    size="md"
                   />
                   <span
                     className="truncate text-sm"
@@ -926,10 +927,11 @@ function CrewRoster({
                 <UserAvatar
                   name={m.displayName}
                   avatarUrl={m.user?.avatar_url ?? null}
-                  size="sm"
+                  isGuest={m.isGuest}
+                  size="md"
                 />
                 <span
-                  className="flex-1 truncate text-sm"
+                  className="flex-1 truncate text-sm font-medium"
                   style={{ color: "var(--color-bt-text)" }}
                 >
                   {m.displayName}
