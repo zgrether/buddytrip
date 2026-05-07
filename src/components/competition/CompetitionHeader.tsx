@@ -122,15 +122,9 @@ export function CompetitionHeader({
   });
 
   return (
-    <div
-      className="rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-      data-testid="competition-header"
-    >
-      <div className="flex items-start gap-3 px-4 py-3.5">
+    <div data-testid="competition-header">
+      {/* Title row — no outer card, sits directly on the page background */}
+      <div className="flex items-start gap-3 pb-3">
         <div
           className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
           style={{
@@ -174,10 +168,7 @@ export function CompetitionHeader({
             <Pencil size={14} />
           </button>
         )}
-        {/* Delete is only available before the competition has gone live —
-            once status flips to active or completed the data is meaningful
-            and shouldn't be wiped from the header. Phase B can offer an
-            archive flow for that case. */}
+        {/* Delete only before the competition goes live */}
         {isOwner && !editing && competition.status === "upcoming" && (
           <button
             type="button"
@@ -195,14 +186,8 @@ export function CompetitionHeader({
         )}
       </div>
 
-      {/* Action bar — three columns combining a status line with an
-          add affordance. Replaces the old plain ProgressPill strip and
-          centralizes the +Team / +Event / +Venue buttons that used to
-          live inside the inner panels. */}
-      <div
-        className="flex flex-wrap items-center gap-2 px-3 py-2.5"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
-      >
+      {/* Action bar — equal-width three-column grid */}
+      <div className="grid grid-cols-3 gap-2">
         <ActionTile
           icon={<Users size={14} />}
           label="Team"
@@ -244,8 +229,11 @@ export function CompetitionHeader({
 
       {editing && (
         <div
-          className="px-4 pb-4 pt-3"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
+          className="mt-3 rounded-xl px-4 pb-4 pt-3"
+          style={{
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
         >
           <CompetitionSetupPanel
             tripId={tripId}
@@ -418,7 +406,7 @@ function ActionTile({
         type="button"
         onClick={onAdd}
         aria-label={`Add ${label.toLowerCase()}`}
-        className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-80 active:scale-[0.98]"
+        className="flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-80 active:scale-[0.98]"
         style={{
           background: "var(--color-bt-card-raised)",
           border: "0.5px solid var(--color-bt-border)",
