@@ -206,11 +206,12 @@ function CrewMemberRow({
             )
           )}
 
-          {/* Make-planner button — owner only, member rows with email */}
+          {/* Make-planner button — owner only, member rows with email.
+              Hidden on desktop (lg+) where drag-and-drop handles promotion. */}
           {canPromoteToCoplanner && (
             <button
               onClick={(e) => { e.stopPropagation(); if (m.user_id) onUpdateRole?.(m.user_id, "Planner"); }}
-              className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
+              className="lg:hidden rounded-lg px-2 py-1 text-xs disabled:opacity-40"
               style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
             >
               Make planner
@@ -544,7 +545,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           {/* ── Two-column layout: Planners | Crew ── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
-            {/* ── Column 1: Planners — drop zone for Member→Planner ── */}
+            {/* ── Column 1: Planners — Owner above drop zone, Planners inside ── */}
             <section style={{ alignSelf: "start" }}>
               <h2
                 className="mb-2 text-xs font-semibold uppercase tracking-wider"
@@ -552,55 +553,93 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
               >
                 Planners
               </h2>
-              <div
-                className="overflow-hidden rounded-xl transition-colors"
-                style={{
-                  background: "var(--color-bt-card)",
-                  border: plannersDragOver
-                    ? "1.5px dashed var(--color-bt-accent)"
-                    : "1px solid var(--color-bt-border)",
-                }}
-                onDragOver={(e) => { e.preventDefault(); setPlannersDragOver(true); }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                    setPlannersDragOver(false);
-                  }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setPlannersDragOver(false);
-                  const userId = e.dataTransfer.getData(DND_CREW_KEY);
-                  if (userId && dragSource.current?.role === "Member") {
-                    handleUpdateRole(userId, "Planner");
-                  }
-                  dragSource.current = null;
-                }}
-              >
-                {plannersSorted.map((m) => {
-                  const isMe = m.user_id === currentUser?.id;
-                  // Planners (not the owner, not ourselves) can be dragged to the Crew column
-                  const isDraggable = isOwner && m.role === "Planner" && !isMe;
-                  return (
+
+              {/* Owner row — static, outside the drop zone */}
+              {plannersSorted.filter((m) => m.role === "Owner").map((m) => {
+                const isMe = m.user_id === currentUser?.id;
+                return (
+                  <div
+                    key={m.memberId}
+                    className="mb-2 overflow-hidden rounded-xl"
+                    style={{
+                      background: "var(--color-bt-card)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
                     <CrewMemberRow
-                      key={m.memberId}
                       member={m}
                       tripId={tripId}
                       isOwnerView={isOwner}
                       isMe={isMe}
-                      isExpanded={expandedId === m.user_id}
+                      isExpanded={false}
                       isPlannerSection
-                      draggable={isDraggable}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData(DND_CREW_KEY, m.user_id ?? "");
-                        dragSource.current = { userId: m.user_id ?? "", role: m.role };
-                      }}
-                      onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                      onToggle={() => {}}
                       onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
                       onUpdateRole={handleUpdateRole}
                     />
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
+
+              {/* Planner rows — this card is the drop zone */}
+              {(() => {
+                const plannerRows = plannersSorted.filter((m) => m.role === "Planner");
+                return (
+                  <div
+                    className="overflow-hidden rounded-xl transition-colors"
+                    style={{
+                      background: "var(--color-bt-card)",
+                      border: plannersDragOver
+                        ? "1.5px dashed var(--color-bt-accent)"
+                        : "1px solid var(--color-bt-border)",
+                    }}
+                    onDragOver={(e) => { e.preventDefault(); setPlannersDragOver(true); }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setPlannersDragOver(false);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setPlannersDragOver(false);
+                      const userId = e.dataTransfer.getData(DND_CREW_KEY);
+                      if (userId && dragSource.current?.role === "Member") {
+                        handleUpdateRole(userId, "Planner");
+                      }
+                      dragSource.current = null;
+                    }}
+                  >
+                    {plannerRows.map((m) => {
+                      const isMe = m.user_id === currentUser?.id;
+                      const isDraggable = isOwner && !isMe;
+                      return (
+                        <CrewMemberRow
+                          key={m.memberId}
+                          member={m}
+                          tripId={tripId}
+                          isOwnerView={isOwner}
+                          isMe={isMe}
+                          isExpanded={expandedId === m.user_id}
+                          isPlannerSection
+                          draggable={isDraggable}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(DND_CREW_KEY, m.user_id ?? "");
+                            dragSource.current = { userId: m.user_id ?? "", role: m.role };
+                          }}
+                          onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                          onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                          onUpdateRole={handleUpdateRole}
+                        />
+                      );
+                    })}
+                    {plannerRows.length === 0 && (
+                      <p className="py-5 text-center text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                        Drag a crew member here to make them a planner.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </section>
 
             {/* ── Column 2: Crew — drop zone for Planner→Member ── */}
