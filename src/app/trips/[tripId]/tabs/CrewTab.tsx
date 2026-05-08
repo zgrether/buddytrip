@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Ghost, Mail, X, Crown, ChevronDown, Plus, Trash2, Users } from "lucide-react";
+import { useRef, useState } from "react";
+import { Ghost, GripVertical, Mail, X, Crown, ChevronDown, Plus, Trash2, Users } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -32,8 +32,11 @@ function CrewMemberRow({
   isExpanded,
   isPlannerSection,
   hidePlannerBadge,
+  draggable,
+  onDragStart,
   onToggle,
   onUpdated,
+  onUpdateRole,
 }: {
   member: Member;
   tripId: string;
@@ -43,16 +46,18 @@ function CrewMemberRow({
   isPlannerSection?: boolean;
   /** Member view hides Planner badges — Owner badge still surfaces. */
   hidePlannerBadge?: boolean;
+  /** True for rows that can be dragged between Planners / Crew columns. */
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
   onToggle: () => void;
   onUpdated: () => void;
+  /** Hoisted to CrewTab so drag-drop and buttons share one optimistic mutation. */
+  onUpdateRole?: (userId: string, role: "Planner" | "Member") => void;
 }) {
   const utils = trpc.useUtils();
   const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
   const [confirmRemove, setConfirmRemove] = useState(false);
 
-  const updateRole = trpc.tripMembers.updateRole.useMutation({
-    onSuccess() { utils.tripMembers.list.invalidate({ tripId }); },
-  });
   const removeMember = trpc.tripMembers.remove.useMutation({
     onSuccess() { utils.tripMembers.list.invalidate({ tripId }); onUpdated(); },
   });
@@ -97,6 +102,8 @@ function CrewMemberRow({
   return (
     <div
       className="border-b last:border-b-0"
+      draggable={draggable}
+      onDragStart={draggable ? onDragStart : undefined}
       style={{
         borderColor: "var(--color-bt-border)",
         background: isExpanded
@@ -104,14 +111,23 @@ function CrewMemberRow({
           : isBTMember
             ? "color-mix(in srgb, var(--color-bt-accent) 5%, transparent)"
             : undefined,
+        cursor: draggable ? "grab" : undefined,
       }}
     >
       {/* ── Main row (tappable when expandable) ────────────────────────── */}
       <div
         className="flex items-center gap-3 py-2.5 px-3"
-        style={{ cursor: expandable ? "pointer" : undefined }}
+        style={{ cursor: expandable ? "pointer" : draggable ? "grab" : undefined }}
         onClick={expandable ? onToggle : undefined}
       >
+        {/* Grip handle — only on draggable owner-view rows */}
+        {draggable && isOwnerView && (
+          <GripVertical
+            size={14}
+            className="flex-shrink-0"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          />
+        )}
         {/* Avatar */}
         {m.isGuest ? (
           <div
@@ -164,8 +180,7 @@ function CrewMemberRow({
           {isPlannerRow && !hidePlannerBadge && (
             canActOnPlanner ? (
               <button
-                onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Member" }); }}
-                disabled={updateRole.isPending}
+                onClick={(e) => { e.stopPropagation(); if (m.user_id) onUpdateRole?.(m.user_id, "Member"); }}
                 aria-label={`Remove ${display} as planner`}
                 className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 hover:opacity-75 transition-opacity"
                 style={{
@@ -194,8 +209,7 @@ function CrewMemberRow({
           {/* Make-planner button — owner only, member rows with email */}
           {canPromoteToCoplanner && (
             <button
-              onClick={(e) => { e.stopPropagation(); if (m.user_id) updateRole.mutate({ tripId, userId: m.user_id, role: "Planner" }); }}
-              disabled={updateRole.isPending}
+              onClick={(e) => { e.stopPropagation(); if (m.user_id) onUpdateRole?.(m.user_id, "Planner"); }}
               className="rounded-lg px-2 py-1 text-xs disabled:opacity-40"
               style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
             >
@@ -304,6 +318,9 @@ function CrewMemberRow({
 
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
+// Drag-and-drop key for crew role reassignment
+const DND_CREW_KEY = "application/x-buddytrip-crew-user-id";
+
 export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boolean }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
@@ -314,6 +331,9 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [addMemberName, setAddMemberName] = useState("");
+  const [plannersDragOver, setPlannersDragOver] = useState(false);
+  const [crewDragOver, setCrewDragOver] = useState(false);
+  const dragSource = useRef<{ userId: string; role: string } | null>(null);
 
   const createGuest = trpc.ghostCrew.create.useMutation({
     onSuccess() {
@@ -322,6 +342,28 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
       utils.tripMembers.list.invalidate({ tripId });
     },
   });
+
+  // Hoisted updateRole — shared by drag-drop and the inline buttons in
+  // CrewMemberRow. Optimistic so the member chip jumps columns instantly.
+  const updateRole = trpc.tripMembers.updateRole.useMutation({
+    onMutate: async (vars) => {
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      utils.tripMembers.list.setData({ tripId }, (old) =>
+        (old ?? []).map((m) =>
+          m.user_id === vars.userId ? { ...m, role: vars.role } : m
+        )
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
+    },
+    onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
+
+  const handleUpdateRole = (userId: string, role: "Planner" | "Member") =>
+    updateRole.mutate({ tripId, userId, role });
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -421,7 +463,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
       )}
 
       {canEdit && (
-      <div className="space-y-4">
+        <div className="space-y-4">
           {/* ── Owner blurb + action buttons ── */}
           {isOwner && (
             <div className="space-y-2.5">
@@ -499,92 +541,147 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
             </div>
           )}
 
-          {/* ── PLANNERS section ── */}
-          <div>
-            <h2
-              className="mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Planners
-            </h2>
-            <div
-              className="overflow-hidden rounded-xl"
-              style={{
-                background: "var(--color-bt-card)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              {plannersSorted.map((m) => {
-                const isMe = m.user_id === currentUser?.id;
-                return (
-                  <CrewMemberRow
-                    key={m.memberId}
-                    member={m}
-                    tripId={tripId}
-                    isOwnerView={isOwner}
-                    isMe={isMe}
-                    isExpanded={expandedId === m.user_id}
-                    isPlannerSection
-                    onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
-                    onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-                  />
-                );
-              })}
-            </div>
-          </div>
+          {/* ── Two-column layout: Planners | Crew ── */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
-          {/* ── REST OF THE CREW section ── */}
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
+            {/* ── Column 1: Planners — drop zone for Member→Planner ── */}
+            <section style={{ alignSelf: "start" }}>
               <h2
-                className="text-xs font-semibold uppercase tracking-wider"
+                className="mb-2 text-xs font-semibold uppercase tracking-wider"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                Rest of the crew
+                Planners
               </h2>
-              {crewSorted.some((m) => m.isGuest) && (
-                <div
-                  className="flex items-center gap-1.5 text-[11px]"
+              <div
+                className="overflow-hidden rounded-xl transition-colors"
+                style={{
+                  background: "var(--color-bt-card)",
+                  border: plannersDragOver
+                    ? "1.5px dashed var(--color-bt-accent)"
+                    : "1px solid var(--color-bt-border)",
+                }}
+                onDragOver={(e) => { e.preventDefault(); setPlannersDragOver(true); }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setPlannersDragOver(false);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setPlannersDragOver(false);
+                  const userId = e.dataTransfer.getData(DND_CREW_KEY);
+                  if (userId && dragSource.current?.role === "Member") {
+                    handleUpdateRole(userId, "Planner");
+                  }
+                  dragSource.current = null;
+                }}
+              >
+                {plannersSorted.map((m) => {
+                  const isMe = m.user_id === currentUser?.id;
+                  // Planners (not the owner, not ourselves) can be dragged to the Crew column
+                  const isDraggable = isOwner && m.role === "Planner" && !isMe;
+                  return (
+                    <CrewMemberRow
+                      key={m.memberId}
+                      member={m}
+                      tripId={tripId}
+                      isOwnerView={isOwner}
+                      isMe={isMe}
+                      isExpanded={expandedId === m.user_id}
+                      isPlannerSection
+                      draggable={isDraggable}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DND_CREW_KEY, m.user_id ?? "");
+                        dragSource.current = { userId: m.user_id ?? "", role: m.role };
+                      }}
+                      onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                      onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                      onUpdateRole={handleUpdateRole}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* ── Column 2: Crew — drop zone for Planner→Member ── */}
+            <section style={{ alignSelf: "start" }}>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h2
+                  className="text-xs font-semibold uppercase tracking-wider"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  <span
-                    className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
-                    style={{ background: "var(--color-bt-border)" }}
+                  Rest of the crew
+                </h2>
+                {crewSorted.some((m) => m.isGuest) && (
+                  <div
+                    className="flex items-center gap-1.5 text-[11px]"
+                    style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    <Ghost size={10} />
-                  </span>
-                  <span>= not a BuddyTrip member</span>
-                </div>
-              )}
-            </div>
-            <div
-              className="overflow-hidden rounded-xl"
-              style={{
-                background: "var(--color-bt-card)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              {crewSorted.map((m) => {
-                const isMe = m.user_id === currentUser?.id;
-                return (
-                  <CrewMemberRow
-                    key={m.memberId}
-                    member={m}
-                    tripId={tripId}
-                    isOwnerView={isOwner}
-                    isMe={isMe}
-                    isExpanded={expandedId === m.user_id}
-                    onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
-                    onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-                  />
-                );
-              })}
-              {crewSorted.length === 0 && !isOwner && (
-                <p className="py-4 text-center text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                  No crew members yet.
-                </p>
-              )}
-            </div>
+                    <span
+                      className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full"
+                      style={{ background: "var(--color-bt-border)" }}
+                    >
+                      <Ghost size={10} />
+                    </span>
+                    <span>= not a BuddyTrip member</span>
+                  </div>
+                )}
+              </div>
+              <div
+                className="overflow-hidden rounded-xl transition-colors"
+                style={{
+                  background: "var(--color-bt-card)",
+                  border: crewDragOver
+                    ? "1.5px dashed var(--color-bt-accent)"
+                    : "1px solid var(--color-bt-border)",
+                }}
+                onDragOver={(e) => { e.preventDefault(); setCrewDragOver(true); }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setCrewDragOver(false);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setCrewDragOver(false);
+                  const userId = e.dataTransfer.getData(DND_CREW_KEY);
+                  if (userId && dragSource.current?.role === "Planner") {
+                    handleUpdateRole(userId, "Member");
+                  }
+                  dragSource.current = null;
+                }}
+              >
+                {crewSorted.map((m) => {
+                  const isMe = m.user_id === currentUser?.id;
+                  // Real BT accounts (non-guests with a user_id) can be dragged to the Planners column
+                  const isDraggable = isOwner && !m.isGuest && !!m.user_id;
+                  return (
+                    <CrewMemberRow
+                      key={m.memberId}
+                      member={m}
+                      tripId={tripId}
+                      isOwnerView={isOwner}
+                      isMe={isMe}
+                      isExpanded={expandedId === m.user_id}
+                      draggable={isDraggable}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DND_CREW_KEY, m.user_id ?? "");
+                        dragSource.current = { userId: m.user_id ?? "", role: m.role };
+                      }}
+                      onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                      onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                      onUpdateRole={handleUpdateRole}
+                    />
+                  );
+                })}
+                {crewSorted.length === 0 && (
+                  <p className="py-6 text-center text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {isOwner ? "Drag a planner here to move them to crew." : "No crew members yet."}
+                  </p>
+                )}
+              </div>
+            </section>
+
           </div>
         </div>
       )}
