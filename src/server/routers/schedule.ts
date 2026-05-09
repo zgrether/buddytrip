@@ -141,7 +141,16 @@ export const scheduleRouter = router({
       const update: Record<string, unknown> = {};
       if (input.title !== undefined) update.title = input.title;
       if (input.detail !== undefined) update.detail = input.detail;
-      if (input.scheduledDate !== undefined) update.scheduled_date = input.scheduledDate;
+      if (input.scheduledDate !== undefined) {
+        update.scheduled_date = input.scheduledDate;
+        // Clearing the date moves the item back to On Deck — it can no longer
+        // be "confirmed" without a day assigned, so unconfirm it automatically.
+        if (input.scheduledDate === null) {
+          update.is_confirmed = false;
+          update.confirmed_at = null;
+          update.confirmed_by = null;
+        }
+      }
       if (input.scheduledTime !== undefined) update.scheduled_time = input.scheduledTime;
       if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
       if (input.courseName !== undefined) update.course_name = input.courseName;

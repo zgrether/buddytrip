@@ -469,7 +469,22 @@ export function ScheduleTab({
       utils.schedule.list.setData({ tripId }, (old) =>
         old?.map((item) =>
           item.id === vars.itemId
-            ? { ...item, scheduled_date: vars.scheduledDate ?? item.scheduled_date }
+            ? {
+                ...item,
+                // Use !== undefined so null is treated as "clear the date"
+                // (drops item back to On Deck). ?? would fall through on null.
+                scheduled_date: vars.scheduledDate !== undefined
+                  ? vars.scheduledDate
+                  : item.scheduled_date,
+                // Clearing the date moves the item to On Deck — unconfirm it
+                // immediately so the confirmed badge disappears without waiting
+                // for the server round-trip.
+                ...(vars.scheduledDate === null && {
+                  is_confirmed: false,
+                  confirmed_at: null,
+                  confirmed_by: null,
+                }),
+              }
             : item
         )
       );
@@ -701,7 +716,7 @@ export function ScheduleTab({
             subtext={canEdit ? "Add activities, golf rounds, and ideas — then drag them onto days to build the schedule." : "The organizer hasn't added anything yet."}
           />
         ) : (
-          <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
+          <div className="grid gap-5 lg:grid-cols-2">
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
             <section style={{ alignSelf: "start" }}>
@@ -883,14 +898,14 @@ export function ScheduleTab({
                           handleDragDrop(group.date, group.items, group.items.length);
                         }
                       } : undefined}
-                      className="rounded-xl px-3 py-2 -mx-3 transition-colors"
+                      className="rounded-xl p-3 transition-colors"
                       style={{
                         background: dragOverGroup === group.date
                           ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
                           : "transparent",
                         border: dragOverGroup === group.date
-                          ? "1.5px dashed var(--color-bt-accent-border)"
-                          : "1.5px dashed transparent",
+                          ? "1.5px dashed var(--color-bt-accent)"
+                          : "1px dashed var(--color-bt-border)",
                       }}
                     >
                       <div className="mb-2 flex items-center gap-2">
