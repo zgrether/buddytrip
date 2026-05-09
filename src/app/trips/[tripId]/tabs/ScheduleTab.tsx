@@ -701,7 +701,7 @@ export function ScheduleTab({
             subtext={canEdit ? "Add activities, golf rounds, and ideas — then drag them onto days to build the schedule." : "The organizer hasn't added anything yet."}
           />
         ) : (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="grid gap-5 lg:grid-cols-2">
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
             <section style={{ alignSelf: "start" }}>
