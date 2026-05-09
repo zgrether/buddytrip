@@ -65,14 +65,15 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const myMember = (members as TripMemberLite[]).find(
     (m) => m.user_id === currentUser?.id,
   );
-  // Real BuddyTrip members (excluding viewer) — used for the pending tally.
-  const otherMembers = (members as TripMemberLite[]).filter(
-    (m) => m.user_id !== currentUser?.id && !m.isGuest,
+  // All crew except the viewer — shown to the owner (expandable) or as
+  // read-only rows for non-owners who've shared their travel.
+  const allOtherMembers = (members as TripMemberLite[]).filter(
+    (m) => m.user_id !== currentUser?.id,
   );
-  // Ghost crew — the owner can set their travel; everyone can see it once set.
-  const guestMembers = (members as TripMemberLite[]).filter((m) => m.isGuest);
-  // Crew (excluding the viewer and guests) who have shared their travel.
-  const sharedOthers = otherMembers.filter((m) => !!m.travel_mode);
+  // Non-owner view: real members who've shared (pending tally counts the rest)
+  const sharedOthers = allOtherMembers.filter((m) => !!m.travel_mode && !m.isGuest);
+  // Real members only for the pending tally (ghosts are always shown in owner view)
+  const realOtherMembers = allOtherMembers.filter((m) => !m.isGuest);
 
   // Always start collapsed — the user opens the row deliberately by
   // tapping. Auto-expanding when empty was visually noisy and made the
@@ -83,7 +84,8 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   // Empty-state mock-up only shows when nobody on the trip has shared
   // travel yet. As soon as anyone shares (the viewer or another crew
   // member), real rows take its place.
-  const someoneShared = hasMyTravel || sharedOthers.length > 0;
+  const anyoneElseShared = allOtherMembers.some((m) => !!m.travel_mode);
+  const someoneShared = hasMyTravel || anyoneElseShared;
   const showEmptyState = !!myMember && !someoneShared && !expanded;
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -126,26 +128,23 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
             />
           )}
 
-          {sharedOthers.map((m) => (
-            <CrewTravelRow key={m.memberId} member={m} />
-          ))}
+          {/* Owner: every other member gets a full editable row.
+              Non-owner: read-only rows for members who've shared, plus a tally. */}
+          {isOwner
+            ? allOtherMembers.map((m) => (
+                <OtherMemberTravelRow
+                  key={m.memberId}
+                  tripId={tripId}
+                  member={m}
+                  tripStartDate={tripStartDate}
+                  onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
+                />
+              ))
+            : sharedOthers.map((m) => (
+                <CrewTravelRow key={m.memberId} member={m} />
+              ))}
 
-          {/* Ghost crew — owner can set their travel; read-only for everyone once set */}
-          {guestMembers.map((m) =>
-            isOwner ? (
-              <GhostTravelRow
-                key={m.memberId}
-                tripId={tripId}
-                member={m}
-                onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
-              />
-            ) : m.travel_mode ? (
-              <CrewTravelRow key={m.memberId} member={m} />
-            ) : null
-          )}
-
-          {/* Owner-only pending tally (real members only — ghosts are always shown above) */}
-          {isOwner && <PendingTravelRow members={otherMembers} />}
+          {!isOwner && <PendingTravelRow members={realOtherMembers} />}
         </div>
       )}
     </div>
@@ -179,281 +178,107 @@ function CrewTravelRow({ member }: { member: TripMemberLite }) {
   );
 }
 
-// ── GhostTravelRow ────────────────────────────────────────────────────────
-// Owner-editable row for ghost crew members. Renders a slim inline form
-// (mode select + details text) instead of the full TravelExpandForm — no
-// date/time picker since the owner is filling in on someone else's behalf
-// and we want to keep it quick. Everyone can see it read-only once set.
+// ── OtherMemberTravelRow ──────────────────────────────────────────────────
+// Owner-expandable row for every other crew member (real and ghost alike).
+// Same expand/collapse pattern as YourTravelRow but uses updateMemberTravel.
+// Ghost members get a Ghost avatar; real members get UserAvatar.
 
-type GuestTravelMode = "driving" | "flying" | "other";
-
-function GhostTravelRow({
+function OtherMemberTravelRow({
   tripId,
   member: m,
+  tripStartDate,
   onSaved,
 }: {
   tripId: string;
   member: TripMemberLite;
+  tripStartDate: string | null;
   onSaved: () => void;
 }) {
-  const utils = trpc.useUtils();
+  const [expanded, setExpanded] = useState(false);
   const hasTravel = !!m.travel_mode;
-  const [editing, setEditing] = useState(false);
-  const [mode, setMode] = useState<GuestTravelMode>(
-    (m.travel_mode as GuestTravelMode) ?? "driving",
-  );
-  const [details, setDetails] = useState(
-    m.travel_mode === "flying"
-      ? [m.flight_airline, m.flight_number].filter(Boolean).join(" ")
-      : m.travel_detail ?? "",
-  );
-  const [arrivalDate, setArrivalDate] = useState(() => parseArrivalDate(m.flight_arrival_time));
-  const [arrivalTime, setArrivalTime] = useState(() => parseArrivalTime(m.flight_arrival_time));
 
-  const updateGuestTravel = trpc.tripMembers.updateGuestTravel.useMutation({
-    onMutate: async (vars) => {
-      await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
-      utils.tripMembers.list.setData({ tripId }, (old) =>
-        (old ?? []).map((row) =>
-          row.user_id === vars.guestUserId
-            ? {
-                ...row,
-                travel_mode: vars.travelMode,
-                travel_detail: vars.travelDetail ?? null,
-                flight_airline: vars.flightAirline ?? null,
-                flight_arrival_time: vars.flightArrivalTime ?? null,
-              }
-            : row
-        )
-      );
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
-    },
-    onSuccess: () => {
-      setEditing(false);
-      onSaved();
-    },
-    onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
-  });
-
-  const buildArrivalISO = (): string | null => {
-    if (!arrivalDate) return null;
-    return arrivalTime
-      ? `${arrivalDate}T${arrivalTime}:00`
-      : `${arrivalDate}T00:00:00`;
-  };
-
-  const handleSave = () => {
-    if (!m.user_id) return;
-    updateGuestTravel.mutate({
-      tripId,
-      guestUserId: m.user_id,
-      travelMode: mode,
-      travelDetail: mode !== "flying" ? details.trim() || null : null,
-      flightAirline: mode === "flying" ? details.trim() || null : null,
-      flightArrivalTime: buildArrivalISO(),
-    });
-  };
-
-  const handleClear = () => {
-    if (!m.user_id) return;
-    updateGuestTravel.mutate({
-      tripId,
-      guestUserId: m.user_id,
-      travelMode: null,
-      travelDetail: null,
-      flightAirline: null,
-      flightArrivalTime: null,
-    });
-    setMode("driving");
-    setDetails("");
-    setArrivalDate("");
-    setArrivalTime("");
-    setEditing(false);
-  };
-
-  const openEdit = () => {
-    setMode((m.travel_mode as GuestTravelMode) ?? "driving");
-    setDetails(
-      m.travel_mode === "flying"
-        ? [m.flight_airline, m.flight_number].filter(Boolean).join(" ")
-        : m.travel_detail ?? "",
-    );
-    setArrivalDate(parseArrivalDate(m.flight_arrival_time));
-    setArrivalTime(parseArrivalTime(m.flight_arrival_time));
-    setEditing(true);
-  };
-
-  return (
+  const avatar = m.isGuest ? (
     <div
-      className="border-t"
-      style={{ borderColor: "var(--color-bt-border)" }}
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
     >
-      {/* ── Collapsed row ── */}
-      {!editing && (
-        <button
-          type="button"
-          onClick={openEdit}
-          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
-        >
-          <div
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+      <Ghost size={14} />
+    </div>
+  ) : (
+    <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
+  );
+
+  if (!hasTravel) {
+    return (
+      <div className="border-t px-4 py-3" style={{ borderColor: "var(--color-bt-border)" }}>
+        {expanded ? (
+          <TravelExpandForm
+            tripId={tripId}
+            member={m}
+            tripStartDate={tripStartDate}
+            targetUserId={m.user_id ?? undefined}
+            onSaved={() => { onSaved(); setExpanded(false); }}
+            onCancel={() => setExpanded(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="flex w-full items-center gap-3 text-left"
           >
-            <Ghost size={14} />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              {m.displayName}
-            </p>
-            {hasTravel ? (
-              <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                {summarizeTravel(m)}
-              </p>
-            ) : (
-              <p className="truncate text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                Tap to add travel info
-              </p>
-            )}
-          </div>
-
-          {hasTravel ? (
-            <TravelModeBadge mode={m.travel_mode as GuestTravelMode} />
-          ) : (
-            <Plus size={14} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-          )}
-        </button>
-      )}
-
-      {/* ── Inline edit form ── */}
-      {editing && (
-        <div
-          className="space-y-2.5 px-4 py-3"
-          style={{ background: "var(--color-bt-card-raised)" }}
-        >
-          {/* Row 1: ghost label + mode select + details */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2" style={{ flex: "0 0 auto" }}>
-              <div
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
-                style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-              >
-                <Ghost size={12} />
-              </div>
-              <span className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {avatar}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                 {m.displayName}
-              </span>
+              </p>
+              <p className="truncate text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                No travel info yet — tap to add
+              </p>
             </div>
+            <Plus size={14} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+          </button>
+        )}
+      </div>
+    );
+  }
 
-            <select
-              value={mode}
-              onChange={(e) => setMode(e.target.value as GuestTravelMode)}
-              className="rounded-lg border px-2 py-1.5 text-xs outline-none"
-              style={{
-                background: "var(--color-bt-base)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-                flex: "0 0 auto",
-              }}
-            >
-              <option value="driving">Driving</option>
-              <option value="flying">Flying</option>
-              <option value="other">Other</option>
-            </select>
-
-            <input
-              type="text"
-              value={details}
-              onChange={(e) => setDetails(e.target.value)}
-              placeholder={mode === "flying" ? "e.g. Delta 1733" : "e.g. from Charlotte"}
-              className="min-w-0 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-              style={{
-                background: "var(--color-bt-base)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-                flex: "1 1 140px",
-              }}
-            />
-          </div>
-
-          {/* Row 2: arrival date + time + action buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div style={{ flex: "1 1 120px" }}>
-              <label
-                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Arriving
-              </label>
-              <input
-                type="date"
-                value={arrivalDate}
-                onChange={(e) => setArrivalDate(e.target.value)}
-                className="w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-                style={{
-                  background: "var(--color-bt-base)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                  colorScheme: "dark",
-                }}
-              />
-            </div>
-            <div style={{ flex: "1 1 100px" }}>
-              <label
-                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Time
-              </label>
-              <input
-                type="time"
-                value={arrivalTime}
-                onChange={(e) => setArrivalTime(e.target.value)}
-                className="w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-                style={{
-                  background: "var(--color-bt-base)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                  colorScheme: "dark",
-                }}
-              />
-            </div>
-
-            <div className="flex flex-shrink-0 items-end gap-2 pb-0">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={updateGuestTravel.isPending}
-                className="rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-40"
-                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-              >
-                {updateGuestTravel.isPending ? "…" : "Save"}
-              </button>
-              {hasTravel && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  disabled={updateGuestTravel.isPending}
-                  className="rounded-lg border px-2.5 py-1.5 text-xs disabled:opacity-40"
-                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                >
-                  Clear
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setEditing(false)}
-                className="rounded-lg border px-2.5 py-1.5 text-xs"
-                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+  // Has travel — same collapsible row pattern as YourTravelRow
+  return (
+    <div className="border-t" style={{ borderColor: "var(--color-bt-border)" }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+      >
+        {avatar}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {m.displayName}
+          </p>
+          <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {summarizeTravel(m)}
+          </p>
+        </div>
+        <TravelModeBadge mode={m.travel_mode as TravelMode | null} />
+        <ChevronDown
+          size={16}
+          className="flex-shrink-0 transition-transform"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            transform: expanded ? "rotate(180deg)" : undefined,
+          }}
+        />
+      </button>
+      {expanded && (
+        <div className="border-t px-4 pb-4 pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
+          <TravelExpandForm
+            tripId={tripId}
+            member={m}
+            tripStartDate={tripStartDate}
+            targetUserId={m.user_id ?? undefined}
+            onSaved={() => { onSaved(); setExpanded(false); }}
+            onCancel={() => setExpanded(false)}
+          />
         </div>
       )}
     </div>
@@ -683,12 +508,16 @@ function TravelExpandForm({
   tripId,
   member,
   tripStartDate,
+  targetUserId,
   onSaved,
   onCancel,
 }: {
   tripId: string;
   member: TripMemberLite;
   tripStartDate: string | null;
+  /** When set, the owner is editing on behalf of another member.
+   *  Uses updateMemberTravel instead of updateTravel. */
+  targetUserId?: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -711,9 +540,11 @@ function TravelExpandForm({
     parseArrivalTime(member.flight_arrival_time),
   );
 
-  const updateTravel = trpc.tripMembers.updateTravel.useMutation({
-    onSuccess: onSaved,
-  });
+  // Both mutations are always called (React hook rules). Only one fires per save.
+  const updateTravel = trpc.tripMembers.updateTravel.useMutation({ onSuccess: onSaved });
+  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({ onSuccess: onSaved });
+
+  const isPending = targetUserId ? updateMemberTravel.isPending : updateTravel.isPending;
 
   const handleSave = () => {
     // Combine arrival date + time into a local ISO timestamp (no TZ
@@ -726,12 +557,26 @@ function TravelExpandForm({
         : `${arrivalDate}T00:00:00`;
     }
 
-    if (mode === "flying") {
+    const flightAirline = mode === "flying" ? details.trim() || null : null;
+    const travelDetail = mode !== "flying" ? details.trim() || null : null;
+
+    if (targetUserId) {
+      updateMemberTravel.mutate({
+        tripId,
+        targetUserId,
+        travelMode: mode,
+        travelDetail,
+        flightAirline,
+        flightNumber: null,
+        flightArrivalTime: arrivalISO,
+        flightAirport: null,
+      });
+    } else if (mode === "flying") {
       updateTravel.mutate({
         tripId,
         travelMode: mode,
         travelDetail: null,
-        flightAirline: details.trim() || null,
+        flightAirline,
         flightNumber: null,
         flightArrivalTime: arrivalISO,
         flightAirport: null,
@@ -744,7 +589,7 @@ function TravelExpandForm({
       updateTravel.mutate({
         tripId,
         travelMode: mode,
-        travelDetail: details.trim() || null,
+        travelDetail,
         flightAirline: null,
         flightNumber: null,
         flightArrivalTime: arrivalISO,
@@ -893,7 +738,7 @@ function TravelExpandForm({
         <button
           type="button"
           onClick={onCancel}
-          disabled={updateTravel.isPending}
+          disabled={isPending}
           className="flex-shrink-0 rounded-lg border px-3 py-2 text-xs disabled:opacity-40"
           style={{
             borderColor: "var(--color-bt-border)",
@@ -907,7 +752,7 @@ function TravelExpandForm({
         <button
           type="button"
           onClick={handleSave}
-          disabled={updateTravel.isPending}
+          disabled={isPending}
           className="flex-shrink-0 rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-40"
           style={{
             background: "var(--color-bt-accent)",
@@ -915,7 +760,7 @@ function TravelExpandForm({
             whiteSpace: "nowrap",
           }}
         >
-          {updateTravel.isPending ? "Saving…" : "Save"}
+          {isPending ? "Saving…" : "Save"}
         </button>
       </div>
     </div>

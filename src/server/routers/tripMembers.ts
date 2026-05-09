@@ -487,51 +487,55 @@ export const tripMembersRouter = router({
   // The owner fills it in on their behalf — this keeps the Getting There
   // panel useful even when some crew haven't joined BuddyTrip yet.
   // -----------------------------------------------------------------------
-  updateGuestTravel: authedProcedure
+  // updateMemberTravel — Owner sets travel info for any crew member.
+  //
+  // Ghost members can't log in so the owner fills in their travel.
+  // Owners can also correct/fill in for any real member who hasn't yet.
+  // -----------------------------------------------------------------------
+  updateMemberTravel: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
-        guestUserId: z.string(),
+        targetUserId: z.string(),
         travelMode: z.enum(["driving", "flying", "other"]).nullable(),
         travelDetail: z.string().max(500).nullable().optional(),
         flightAirline: z.string().max(100).nullable().optional(),
+        flightNumber: z.string().max(50).nullable().optional(),
         flightArrivalTime: z.string().nullable().optional(),
+        flightAirport: z.string().max(100).nullable().optional(),
       })
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // Confirm the target is actually a member of this trip
       const { data: member } = await ctx.supabase
         .from("trip_members")
         .select("id")
         .eq("trip_id", ctx.tripId)
-        .eq("user_id", input.guestUserId)
+        .eq("user_id", input.targetUserId)
         .maybeSingle();
 
       if (!member) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Member not found in this trip",
-        });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found in this trip" });
       }
+
+      const update: Record<string, unknown> = {
+        travel_mode: input.travelMode,
+        travel_shared: true,
+      };
+      if (input.travelDetail !== undefined) update.travel_detail = input.travelDetail;
+      if (input.flightAirline !== undefined) update.flight_airline = input.flightAirline;
+      if (input.flightNumber !== undefined) update.flight_number = input.flightNumber;
+      if (input.flightArrivalTime !== undefined) update.flight_arrival_time = input.flightArrivalTime;
+      if (input.flightAirport !== undefined) update.flight_airport = input.flightAirport;
 
       const { error } = await ctx.supabase
         .from("trip_members")
-        .update({
-          travel_mode: input.travelMode,
-          travel_detail: input.travelDetail ?? null,
-          flight_airline: input.flightAirline ?? null,
-          flight_arrival_time: input.flightArrivalTime ?? null,
-          travel_shared: true,
-        })
+        .update(update)
         .eq("trip_id", ctx.tripId)
-        .eq("user_id", input.guestUserId);
+        .eq("user_id", input.targetUserId);
 
       if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update travel info",
-        });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update travel info" });
       }
 
       return { success: true };
