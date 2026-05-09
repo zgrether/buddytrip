@@ -64,7 +64,7 @@ export function getNotificationText(notification: NotificationEvent): string {
         ? `You've been added to ${p.trip_name} by ${p.adder_name}`
         : `${p.member_name} joined ${p.trip_name}`;
     case "stage_advanced":
-      return `${p.trip_name} is official — check your RSVP`;
+      return `${p.trip_name} is a go — check the Home tab for the latest`;
     case "idea_voted":
       return `${p.voter_name} and others voted on destination ideas for ${p.trip_name}`;
     case "date_poll_voted":
