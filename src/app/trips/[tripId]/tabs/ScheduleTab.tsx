@@ -119,6 +119,7 @@ function ScheduleItemRow({
   onDrop,
   onCompEventDrop,
   onUnlinkCompEvent,
+  onUnschedule,
   compDragType,
 }: {
   item: ScheduleItem;
@@ -137,6 +138,10 @@ function ScheduleItemRow({
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
   onUnlinkCompEvent?: () => void;
+  /** Day-by-Day rows pass this — the trailing button becomes an X that
+   *  sends the item back to On Deck (clears its date). When omitted, the
+   *  trailing button is a trash can wired to onRemove (delete). */
+  onUnschedule?: () => void;
   /** When non-null, a competition event is being dragged. The row computes
    *  whether it's a valid target and highlights itself accordingly. */
   compDragType?: "GOLF" | "GENERIC" | null;
@@ -347,14 +352,26 @@ function ScheduleItemRow({
           </button>
         )}
 
-        {canEdit && !item.is_confirmed && (
+        {canEdit && !item.is_confirmed && onUnschedule && (
+          <button
+            onClick={onUnschedule}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Send back to On Deck"
+            title="Send back to On Deck"
+          >
+            <X size={14} />
+          </button>
+        )}
+        {canEdit && !item.is_confirmed && !onUnschedule && (
           <button
             onClick={onRemove}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
             style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Remove item"
+            aria-label="Delete item"
+            title="Delete item"
           >
-            <X size={14} />
+            <Trash2 size={13} />
           </button>
         )}
       </div>
@@ -1234,6 +1251,9 @@ export function ScheduleTab({
                                 linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
                               } : undefined}
                               compDragType={compDragType}
+                              onUnschedule={() => {
+                                updateItem.mutate({ tripId, itemId: item.id, scheduledDate: null });
+                              }}
                             />
                           ))}
                           {/* Bottom drop zone — append to end of day */}
