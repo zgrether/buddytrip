@@ -751,12 +751,39 @@ export function ScheduleTab({
       return;
     }
 
-    // Cross-group — move item to new day
+    // Cross-group — move item to a new day AND position at toIdx within
+    // that day. updateItem changes the date; reorder writes sort_orders so
+    // the dropped item lands exactly where the user released it (instead of
+    // wherever its old sort_order happens to fall).
     updateItem.mutate({
       tripId,
       itemId: draggedItem.id,
       scheduledDate: targetGroupDate,
     });
+
+    // Build the post-move ordering for the target group: insert dragged item
+    // at toIdx. targetItems is the target group's items as they were at the
+    // moment of drop — since the dragged item came from a different group,
+    // it isn't already in targetItems.
+    const newTargetItems = [...targetItems];
+    newTargetItems.splice(toIdx, 0, draggedItem);
+
+    // Compose the full ordered list across all groups, omitting the dragged
+    // item from its source group and inserting it into the target group.
+    const newAll: ScheduleItem[] = [];
+    for (const g of dayGroups) {
+      if (g.date === sourceDate) {
+        newAll.push(...g.items.filter((i) => i.id !== draggedItem.id));
+      } else if (g.date === targetGroupDate) {
+        newAll.push(...newTargetItems);
+      } else {
+        newAll.push(...g.items);
+      }
+    }
+    const ids = newAll.map((i) => i.id);
+    if (ids.length > 0) {
+      reorder.mutate({ tripId, itemIds: ids });
+    }
   };
 
   return (
