@@ -481,6 +481,59 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // updateGuestTravel — Owner sets travel info for a ghost crew member.
+  //
+  // Ghost members can't log in so they can't use updateTravel themselves.
+  // The owner fills it in on their behalf — this keeps the Getting There
+  // panel useful even when some crew haven't joined BuddyTrip yet.
+  // -----------------------------------------------------------------------
+  updateGuestTravel: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        guestUserId: z.string(),
+        travelMode: z.enum(["driving", "flying", "other"]).nullable(),
+        travelDetail: z.string().max(500).nullable().optional(),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      // Confirm the target is actually a member of this trip
+      const { data: member } = await ctx.supabase
+        .from("trip_members")
+        .select("id")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.guestUserId)
+        .maybeSingle();
+
+      if (!member) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Member not found in this trip",
+        });
+      }
+
+      const { error } = await ctx.supabase
+        .from("trip_members")
+        .update({
+          travel_mode: input.travelMode,
+          travel_detail: input.travelDetail ?? null,
+          travel_shared: true,
+        })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.guestUserId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update travel info",
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // sendInvitationBlast — Owner sends the trip invitation email to a
   // selected subset of crew members. Updates last_invited_at per recipient
   // and last_blast_sent_at on the trip.
