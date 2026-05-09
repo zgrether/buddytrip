@@ -14,7 +14,7 @@ export async function listEvents(
     .select(`
       *,
       point_distributions:event_point_distributions(*),
-      agenda_item:schedule_items(id, title, item_type, course_name, scheduled_date)
+      agenda_item:schedule_items!events_agenda_item_id_fkey(id, title, item_type, course_name, scheduled_date)
     `)
     .eq("competition_id", competitionId)
     .order("sort_order", { ascending: true })
