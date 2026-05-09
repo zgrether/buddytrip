@@ -118,7 +118,6 @@ function ScheduleItemRow({
   onDragOver,
   onDrop,
   onCompEventDrop,
-  onUnlinkCompEvent,
 }: {
   item: ScheduleItem;
   canEdit: boolean;
@@ -135,13 +134,8 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
-  onUnlinkCompEvent?: () => void;
 }) {
   const movable = canEdit;
-  // Track when a competition event is hovering over this specific item.
-  // dataTransfer.types IS readable during dragover (unlike getData), so we
-  // can detect comp-event drags without global state.
-  const [compHover, setCompHover] = useState(false);
 
   return (
     <>
@@ -155,29 +149,8 @@ function ScheduleItemRow({
       <div
         draggable={movable}
         onDragStart={movable ? onDragStart : undefined}
-        onDragOver={canEdit ? (e) => {
-          // Distinguish competition-event drags from agenda-item drags.
-          // dataTransfer.types is readable during dragover; getData is not.
-          if (e.dataTransfer.types.includes(DND_EVENT_KEY)) {
-            if (item.item_type === "golf") {
-              e.preventDefault();
-              e.stopPropagation();
-              e.dataTransfer.dropEffect = "link";
-              setCompHover(true);
-            }
-            // Non-golf items silently ignore comp-event drags (no highlight).
-            return;
-          }
-          onDragOver(e);
-        } : undefined}
-        onDragLeave={canEdit ? (e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-            setCompHover(false);
-          }
-        } : undefined}
-        onDragEnd={() => setCompHover(false)}
+        onDragOver={canEdit ? onDragOver : undefined}
         onDrop={canEdit ? (e) => {
-          setCompHover(false);
           const compEventId = e.dataTransfer.getData(DND_EVENT_KEY);
           if (compEventId) {
             e.preventDefault();
@@ -189,14 +162,8 @@ function ScheduleItemRow({
         } : undefined}
         className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
         style={{
-          background: compHover
-            ? "var(--color-bt-accent-faint)"
-            : item.is_confirmed
-            ? "var(--color-bt-tag-bg)"
-            : "var(--color-bt-card)",
-          border: compHover
-            ? "1.5px solid var(--color-bt-accent)"
-            : `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+          background: item.is_confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+          border: `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
           opacity: isDragging ? 0.4 : 1,
         }}
       >
@@ -269,17 +236,6 @@ function ScheduleItemRow({
             <span className="text-[11px]" style={{ color: "var(--color-bt-accent)" }}>
               {item.competition_event.title}
             </span>
-            {canEdit && onUnlinkCompEvent && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(); }}
-                className="flex h-3.5 w-3.5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
-                style={{ color: "var(--color-bt-accent)" }}
-                title="Remove competition link"
-                aria-label="Remove competition link"
-              >
-                <X size={10} />
-              </button>
-            )}
           </div>
         )}
         {/* General: location + time */}
@@ -984,9 +940,6 @@ export function ScheduleTab({
                           setDragOverIdx(null);
                           handleDragDrop(null, unscheduledItems, idx);
                         }}
-                        onUnlinkCompEvent={item.competition_event_id ? () => {
-                          linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
-                        } : undefined}
                       />
                     ))}
                     {/* eslint-enable react-hooks/refs */}
@@ -1173,9 +1126,6 @@ export function ScheduleTab({
                                   linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: item.id });
                                 }
                               }}
-                              onUnlinkCompEvent={item.competition_event_id ? () => {
-                                linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
-                              } : undefined}
                             />
                           ))}
                           {/* Bottom drop zone — append to end of day */}
