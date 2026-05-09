@@ -75,10 +75,16 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   // Real members only for the pending tally (ghosts are always shown in owner view)
   const realOtherMembers = allOtherMembers.filter((m) => !m.isGuest);
 
+  // Owner view: split other members by whether travel is confirmed.
+  const confirmedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
+  const pendingOthers = allOtherMembers.filter((m) => !m.travel_mode);
+
   // Always start collapsed — the user opens the row deliberately by
   // tapping. Auto-expanding when empty was visually noisy and made the
   // panel default to a half-filled form for users who hadn't engaged yet.
   const [expanded, setExpanded] = useState(false);
+  // "No travel yet" section starts collapsed in owner view.
+  const [pendingOpen, setPendingOpen] = useState(false);
 
   const hasMyTravel = !!myMember?.travel_mode;
   // Empty-state mock-up only shows when nobody on the trip has shared
@@ -128,10 +134,12 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
             />
           )}
 
-          {/* Owner: every other member gets a full editable row.
+          {/* Owner: confirmed travel rows first, then a collapsible
+              "no travel yet" section for those who haven't added info.
               Non-owner: read-only rows for members who've shared, plus a tally. */}
-          {isOwner
-            ? allOtherMembers.map((m) => (
+          {isOwner ? (
+            <>
+              {confirmedOthers.map((m) => (
                 <OtherMemberTravelRow
                   key={m.memberId}
                   tripId={tripId}
@@ -139,10 +147,59 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
                   tripStartDate={tripStartDate}
                   onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
                 />
-              ))
-            : sharedOthers.map((m) => (
-                <CrewTravelRow key={m.memberId} member={m} />
               ))}
+
+              {pendingOthers.length > 0 && (
+                <>
+                  {/* Collapsed header */}
+                  <button
+                    type="button"
+                    onClick={() => setPendingOpen((v) => !v)}
+                    className="flex w-full items-center gap-3 border-t px-4 py-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                    style={{ borderColor: "var(--color-bt-border)" }}
+                  >
+                    <span
+                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                      style={{
+                        background: "var(--color-bt-card-raised)",
+                        color: "var(--color-bt-text-dim)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      {pendingOthers.length}
+                    </span>
+                    <span className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {pendingOthers.length === 1 ? "person" : "people"} without travel info
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        color: "var(--color-bt-text-dim)",
+                        transform: pendingOpen ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform 150ms",
+                        flexShrink: 0,
+                      }}
+                    />
+                  </button>
+
+                  {/* Expanded pending rows */}
+                  {pendingOpen && pendingOthers.map((m) => (
+                    <OtherMemberTravelRow
+                      key={m.memberId}
+                      tripId={tripId}
+                      member={m}
+                      tripStartDate={tripStartDate}
+                      onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
+                    />
+                  ))}
+                </>
+              )}
+            </>
+          ) : (
+            sharedOthers.map((m) => (
+              <CrewTravelRow key={m.memberId} member={m} />
+            ))
+          )}
 
           {!isOwner && <PendingTravelRow members={realOtherMembers} />}
         </div>
