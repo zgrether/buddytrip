@@ -422,39 +422,73 @@ export function ScheduleTab({
 
   const linkToAgendaItem = trpc.events.linkToAgendaItem.useMutation({
     async onMutate(vars) {
-      await utils.events.list.cancel({ tripId, competitionId: competition?.id ?? "" });
+      const competitionId = competition?.id ?? "";
+      await utils.events.list.cancel({ tripId, competitionId });
       await utils.schedule.list.cancel({ tripId });
-      const prevEvents = utils.events.list.getData({ tripId, competitionId: competition?.id ?? "" });
+      const prevEvents = utils.events.list.getData({ tripId, competitionId });
       const prevSchedule = utils.schedule.list.getData({ tripId });
 
-      // Optimistically update events: set agenda_item
-      utils.events.list.setData({ tripId, competitionId: competition?.id ?? "" }, (old) =>
-        (old as EventRow[] | undefined)?.map((e) =>
-          e.id === vars.eventId
-            ? { ...e, agenda_item: vars.agendaItemId ? { id: vars.agendaItemId, title: "", item_type: "", course_name: null, scheduled_date: null } : null }
-            : (e.agenda_item?.id === vars.agendaItemId && vars.agendaItemId ? { ...e, agenda_item: null } : e)
-        ) as never
+      // Look up the real event so the optimistic badge has the actual title
+      // (otherwise the trophy chip shows blank text until the server returns).
+      const sourceEvent = (prevEvents as EventRow[] | undefined)?.find((e) => e.id === vars.eventId);
+      // And look up the target item so the optimistic event badge has the
+      // agenda item's real title/details for symmetry.
+      const targetItem = (prevSchedule as ScheduleItem[] | undefined)?.find((s) => s.id === vars.agendaItemId);
+
+      // Optimistically update events: set / clear agenda_item
+      utils.events.list.setData({ tripId, competitionId }, (old) =>
+        (old as EventRow[] | undefined)?.map((e) => {
+          if (e.id === vars.eventId) {
+            return {
+              ...e,
+              agenda_item: vars.agendaItemId && targetItem
+                ? {
+                    id: targetItem.id,
+                    title: targetItem.title,
+                    item_type: targetItem.item_type,
+                    course_name: targetItem.course_name ?? null,
+                    scheduled_date: targetItem.scheduled_date ?? null,
+                  }
+                : null,
+            };
+          }
+          // Another event currently linked to the same target item — unlink it.
+          if (vars.agendaItemId && e.agenda_item?.id === vars.agendaItemId) {
+            return { ...e, agenda_item: null };
+          }
+          return e;
+        }) as never
       );
 
-      // Optimistically update schedule items: set competition_event
+      // Optimistically update schedule items: set / clear competition_event
       utils.schedule.list.setData({ tripId }, (old) =>
-        (old as ScheduleItem[] | undefined)?.map((s) =>
-          s.id === vars.agendaItemId
-            ? { ...s, competition_event_id: vars.eventId, competition_event: { id: vars.eventId, title: "", type: "" } }
-            : s.competition_event_id === vars.eventId
-            ? { ...s, competition_event_id: null, competition_event: null }
-            : s
-        ) as never
+        (old as ScheduleItem[] | undefined)?.map((s) => {
+          if (s.id === vars.agendaItemId) {
+            return {
+              ...s,
+              competition_event_id: vars.eventId,
+              competition_event: sourceEvent
+                ? { id: sourceEvent.id, title: sourceEvent.title, type: sourceEvent.type }
+                : { id: vars.eventId, title: "", type: "" },
+            };
+          }
+          // Any item previously linked to this event (covers both unlink and
+          // re-link to a new item) — clear it.
+          if (s.competition_event_id === vars.eventId) {
+            return { ...s, competition_event_id: null, competition_event: null };
+          }
+          return s;
+        }) as never
       );
 
-      return { prevEvents, prevSchedule };
+      return { prevEvents, prevSchedule, competitionId };
     },
     onError(_e, _v, ctx) {
-      if (ctx?.prevEvents) utils.events.list.setData({ tripId, competitionId: competition?.id ?? "" }, ctx.prevEvents);
+      if (ctx?.prevEvents) utils.events.list.setData({ tripId, competitionId: ctx.competitionId }, ctx.prevEvents);
       if (ctx?.prevSchedule) utils.schedule.list.setData({ tripId }, ctx.prevSchedule);
     },
-    onSettled: () => {
-      utils.events.list.invalidate({ tripId, competitionId: competition?.id ?? "" });
+    onSettled: (_d, _e, _v, ctx) => {
+      utils.events.list.invalidate({ tripId, competitionId: ctx?.competitionId ?? competition?.id ?? "" });
       utils.schedule.list.invalidate({ tripId });
     },
   });
