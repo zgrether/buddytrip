@@ -494,6 +494,8 @@ export const tripMembersRouter = router({
         guestUserId: z.string(),
         travelMode: z.enum(["driving", "flying", "other"]).nullable(),
         travelDetail: z.string().max(500).nullable().optional(),
+        flightAirline: z.string().max(100).nullable().optional(),
+        flightArrivalTime: z.string().nullable().optional(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -518,6 +520,8 @@ export const tripMembersRouter = router({
         .update({
           travel_mode: input.travelMode,
           travel_detail: input.travelDetail ?? null,
+          flight_airline: input.flightAirline ?? null,
+          flight_arrival_time: input.flightArrivalTime ?? null,
           travel_shared: true,
         })
         .eq("trip_id", ctx.tripId)

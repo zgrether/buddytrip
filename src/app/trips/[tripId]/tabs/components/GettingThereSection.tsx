@@ -207,6 +207,8 @@ function GhostTravelRow({
       ? [m.flight_airline, m.flight_number].filter(Boolean).join(" ")
       : m.travel_detail ?? "",
   );
+  const [arrivalDate, setArrivalDate] = useState(() => parseArrivalDate(m.flight_arrival_time));
+  const [arrivalTime, setArrivalTime] = useState(() => parseArrivalTime(m.flight_arrival_time));
 
   const updateGuestTravel = trpc.tripMembers.updateGuestTravel.useMutation({
     onMutate: async (vars) => {
@@ -215,7 +217,13 @@ function GhostTravelRow({
       utils.tripMembers.list.setData({ tripId }, (old) =>
         (old ?? []).map((row) =>
           row.user_id === vars.guestUserId
-            ? { ...row, travel_mode: vars.travelMode, travel_detail: vars.travelDetail ?? null }
+            ? {
+                ...row,
+                travel_mode: vars.travelMode,
+                travel_detail: vars.travelDetail ?? null,
+                flight_airline: vars.flightAirline ?? null,
+                flight_arrival_time: vars.flightArrivalTime ?? null,
+              }
             : row
         )
       );
@@ -231,6 +239,13 @@ function GhostTravelRow({
     onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
   });
 
+  const buildArrivalISO = (): string | null => {
+    if (!arrivalDate) return null;
+    return arrivalTime
+      ? `${arrivalDate}T${arrivalTime}:00`
+      : `${arrivalDate}T00:00:00`;
+  };
+
   const handleSave = () => {
     if (!m.user_id) return;
     updateGuestTravel.mutate({
@@ -238,6 +253,8 @@ function GhostTravelRow({
       guestUserId: m.user_id,
       travelMode: mode,
       travelDetail: mode !== "flying" ? details.trim() || null : null,
+      flightAirline: mode === "flying" ? details.trim() || null : null,
+      flightArrivalTime: buildArrivalISO(),
     });
   };
 
@@ -248,9 +265,13 @@ function GhostTravelRow({
       guestUserId: m.user_id,
       travelMode: null,
       travelDetail: null,
+      flightAirline: null,
+      flightArrivalTime: null,
     });
     setMode("driving");
     setDetails("");
+    setArrivalDate("");
+    setArrivalTime("");
     setEditing(false);
   };
 
@@ -261,6 +282,8 @@ function GhostTravelRow({
         ? [m.flight_airline, m.flight_number].filter(Boolean).join(" ")
         : m.travel_detail ?? "",
     );
+    setArrivalDate(parseArrivalDate(m.flight_arrival_time));
+    setArrivalTime(parseArrivalTime(m.flight_arrival_time));
     setEditing(true);
   };
 
@@ -276,7 +299,6 @@ function GhostTravelRow({
           onClick={openEdit}
           className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
         >
-          {/* Ghost avatar */}
           <div
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
             style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
@@ -307,94 +329,131 @@ function GhostTravelRow({
         </button>
       )}
 
-      {/* ── Inline edit form — slim: mode select + details only ── */}
+      {/* ── Inline edit form ── */}
       {editing && (
         <div
-          className="flex flex-wrap items-center gap-2 px-4 py-3"
+          className="space-y-2.5 px-4 py-3"
           style={{ background: "var(--color-bt-card-raised)" }}
         >
-          {/* Ghost label */}
-          <div className="flex items-center gap-2" style={{ flex: "0 0 auto" }}>
-            <div
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
-              style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              <Ghost size={12} />
+          {/* Row 1: ghost label + mode select + details */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2" style={{ flex: "0 0 auto" }}>
+              <div
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+              >
+                <Ghost size={12} />
+              </div>
+              <span className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                {m.displayName}
+              </span>
             </div>
-            <span className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              {m.displayName}
-            </span>
+
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as GuestTravelMode)}
+              className="rounded-lg border px-2 py-1.5 text-xs outline-none"
+              style={{
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+                flex: "0 0 auto",
+              }}
+            >
+              <option value="driving">Driving</option>
+              <option value="flying">Flying</option>
+              <option value="other">Other</option>
+            </select>
+
+            <input
+              type="text"
+              value={details}
+              onChange={(e) => setDetails(e.target.value)}
+              placeholder={mode === "flying" ? "e.g. Delta 1733" : "e.g. from Charlotte"}
+              className="min-w-0 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+              style={{
+                background: "var(--color-bt-base)",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+                flex: "1 1 140px",
+              }}
+            />
           </div>
 
-          {/* Mode select */}
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value as GuestTravelMode)}
-            className="rounded-lg border px-2 py-1.5 text-xs outline-none"
-            style={{
-              background: "var(--color-bt-base)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-              flex: "0 0 auto",
-            }}
-          >
-            <option value="driving">Driving</option>
-            <option value="flying">Flying</option>
-            <option value="other">Other</option>
-          </select>
+          {/* Row 2: arrival date + time + action buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div style={{ flex: "1 1 120px" }}>
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Arriving
+              </label>
+              <input
+                type="date"
+                value={arrivalDate}
+                onChange={(e) => setArrivalDate(e.target.value)}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                  colorScheme: "dark",
+                }}
+              />
+            </div>
+            <div style={{ flex: "1 1 100px" }}>
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Time
+              </label>
+              <input
+                type="time"
+                value={arrivalTime}
+                onChange={(e) => setArrivalTime(e.target.value)}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none"
+                style={{
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text)",
+                  colorScheme: "dark",
+                }}
+              />
+            </div>
 
-          {/* Details */}
-          <input
-            type="text"
-            value={details}
-            onChange={(e) => setDetails(e.target.value)}
-            placeholder={mode === "flying" ? "e.g. Delta 1733" : "e.g. from Charlotte"}
-            className="min-w-0 rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-            style={{
-              background: "var(--color-bt-base)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-              flex: "1 1 140px",
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSave();
-              if (e.key === "Escape") setEditing(false);
-            }}
-          />
-
-          {/* Save */}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={updateGuestTravel.isPending}
-            className="rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)", flexShrink: 0 }}
-          >
-            {updateGuestTravel.isPending ? "…" : "Save"}
-          </button>
-
-          {/* Clear — only if travel was already set */}
-          {hasTravel && (
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={updateGuestTravel.isPending}
-              className="rounded-lg border px-2.5 py-1.5 text-xs disabled:opacity-40"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)", flexShrink: 0 }}
-            >
-              Clear
-            </button>
-          )}
-
-          {/* Cancel */}
-          <button
-            type="button"
-            onClick={() => setEditing(false)}
-            className="rounded-lg border px-2.5 py-1.5 text-xs"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)", flexShrink: 0 }}
-          >
-            Cancel
-          </button>
+            <div className="flex flex-shrink-0 items-end gap-2 pb-0">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={updateGuestTravel.isPending}
+                className="rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+                style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+              >
+                {updateGuestTravel.isPending ? "…" : "Save"}
+              </button>
+              {hasTravel && (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  disabled={updateGuestTravel.isPending}
+                  className="rounded-lg border px-2.5 py-1.5 text-xs disabled:opacity-40"
+                  style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-lg border px-2.5 py-1.5 text-xs"
+                style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
