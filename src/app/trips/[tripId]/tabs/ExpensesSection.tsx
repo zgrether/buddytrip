@@ -200,34 +200,28 @@ export function ExpensesSection({
 
   return (
     <div className="space-y-3">
-      {/* Add receipt button — matches the Schedule/Lodging add-on-top
-          button styling (rounded-xl, card-raised bg, subtle border,
-          icon + Plus + label). */}
-      {canEdit && (
-        <button
-          data-testid="show-add-expense-btn"
-          onClick={() => setShowAdd(true)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-          style={{
-            background: "var(--color-bt-card-raised)",
-            color: "var(--color-bt-text)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <Receipt size={15} />
-          <Plus size={12} /> Receipt
-        </button>
-      )}
+      {/* Add receipt button — any trip member can log a receipt (server
+          enforces requireTripMember). canEdit gates only the split-edit
+          and delete actions below. */}
+      <button
+        data-testid="show-add-expense-btn"
+        onClick={() => setShowAdd(true)}
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          color: "var(--color-bt-text)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        <Receipt size={15} />
+        <Plus size={12} /> Receipt
+      </button>
 
       {!hasExpenses ? (
         <EmptyState
           icon={<Receipt className="h-10 w-10" />}
           headline="No receipts yet"
-          subtext={
-            canEdit
-              ? "Add receipts to track who paid for what so we can square everyone up at the end of the trip."
-              : "Nobody has logged a receipt for this trip yet."
-          }
+          subtext="Add receipts to track who paid for what so we can square everyone up at the end of the trip."
         />
       ) : (
         <>

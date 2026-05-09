@@ -26,8 +26,12 @@ interface TripTabBarProps {
   canEdit?: boolean;
   /** Trip stage — used to disable Expenses in PLANNING and hide Competition */
   stage?: string;
-  /** Tabs that have a notification dot. Dot is hidden when the tab is active. */
-  badges?: Partial<Record<TabId, boolean>>;
+  /**
+   * Tabs that have a notification dot. Dot is hidden when the tab is active.
+   * "info"    → teal  (normal action item, e.g. unconfirmed items)
+   * "warning" → yellow (needs attention, e.g. dates out of range)
+   */
+  badges?: Partial<Record<TabId, "info" | "warning">>;
 }
 
 export const TripTabBar: FC<TripTabBarProps> = ({
@@ -78,7 +82,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({
     >
       {tabs.map(({ id, label, Icon }) => {
         const active = activeTab === id;
-        const hasBadge = !!badges?.[id];
+        const badgeTier = badges?.[id];
         return (
           <button
             key={id}
@@ -97,10 +101,14 @@ export const TripTabBar: FC<TripTabBarProps> = ({
                 visual consistency between basic and advanced modes. */}
             <span className="relative inline-flex items-center justify-center">
               <Icon size={iconMode ? 20 : 16} strokeWidth={1.75} />
-              {hasBadge && (
+              {badgeTier && !active && (
                 <span
                   className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full"
-                  style={{ background: "var(--color-bt-accent)" }}
+                  style={{
+                    background: badgeTier === "warning"
+                      ? "var(--color-bt-warning)"
+                      : "var(--color-bt-accent)",
+                  }}
                 />
               )}
             </span>

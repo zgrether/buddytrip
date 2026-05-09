@@ -53,7 +53,7 @@ export default function TripDetailPage() {
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: poll, isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
-  const { data: prefetchedReservations = [], isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
+  const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
   const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
@@ -67,6 +67,7 @@ export default function TripDetailPage() {
   // ── Background prefetch for tab badge conditions ───────────────────────
   // Not added to dataLoading — loads in parallel, dot appears when ready.
   const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
+  const { data: prefetchedLogistics = [] } = trpc.logistics.list.useQuery({ tripId });
 
   const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
     || reservationsLoading || tilesLoading || competitionLoading;
@@ -162,19 +163,38 @@ export default function TripDetailPage() {
     (prefetchedSchedule as Array<{ is_confirmed: boolean; scheduled_date?: string | null }>).some(
       (item) => !item.scheduled_date || !item.is_confirmed
     );
-  // lodgingDot: fires when the editor has lodging items that haven't been
-  // confirmed yet — mirrors the scheduleDot pattern so the owner is nudged
-  // to lock in where everyone is staying.
-  const lodgingDot =
+  // lodging badge: two tiers.
+  //  "warning" — one or more lodging properties have check-in/out dates
+  //              that fall outside the trip date range (likely a typo).
+  //  "info"    — all dates are in range but at least one property hasn't
+  //              been confirmed yet (normal planning-stage action item).
+  // Warning takes priority; only shown to editors.
+  const lodgingItems = (prefetchedLogistics as Array<{
+    type?: string | null;
+    is_confirmed?: boolean | null;
+    check_in_time?: string | null;
+    check_out_time?: string | null;
+  }>).filter((i) => i.type === "lodging");
+  const tripStart = (trip as { start_date?: string | null }).start_date ?? null;
+  const tripEnd   = (trip as { end_date?: string | null }).end_date ?? null;
+  const lodgingOutOfRange =
     effectiveCanEdit &&
-    (prefetchedReservations as Array<{ is_confirmed?: boolean | null }>).length > 0 &&
-    (prefetchedReservations as Array<{ is_confirmed?: boolean | null }>).some(
-      (item) => !item.is_confirmed
-    );
-  const tabBadges: Partial<Record<TabId, boolean>> = {};
-  if (crewDot) tabBadges.crew = true;
-  if (scheduleDot) tabBadges.schedule = true;
-  if (lodgingDot) tabBadges.lodging = true;
+    tripStart && tripEnd &&
+    lodgingItems.some((i) => {
+      const ci = i.check_in_time?.slice(0, 10) ?? null;
+      const co = i.check_out_time?.slice(0, 10) ?? null;
+      return (ci && (ci < tripStart || ci > tripEnd)) ||
+             (co && (co < tripStart || co > tripEnd));
+    });
+  const lodgingUnconfirmed =
+    effectiveCanEdit &&
+    lodgingItems.length > 0 &&
+    lodgingItems.some((i) => !i.is_confirmed);
+  const tabBadges: Partial<Record<TabId, "info" | "warning">> = {};
+  if (crewDot) tabBadges.crew = "info";
+  if (scheduleDot) tabBadges.schedule = "info";
+  if (lodgingOutOfRange) tabBadges.lodging = "warning";
+  else if (lodgingUnconfirmed) tabBadges.lodging = "info";
 
   // Settings gear is now rendered INSIDE TripHeader (top-right). The header
   // calls `onSettingsClick` when tapped — pass it through only when the owner
