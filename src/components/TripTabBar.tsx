@@ -14,7 +14,7 @@ const ALL_TABS: TabDef[] = [
   { id: "home",     label: "Home",        Icon: House       },
   { id: "crew",     label: "Crew",        Icon: Users       },
   { id: "lodging",  label: "Lodging",     Icon: Hotel       },
-  { id: "schedule", label: "Schedule",    Icon: Calendar    },
+  { id: "schedule", label: "Agenda",      Icon: Calendar    },
   { id: "expenses", label: "Receipts",    Icon: DollarSign  },
   { id: "comp",     label: "Competition", Icon: Trophy      },
 ];

@@ -97,7 +97,10 @@ export function AddScheduleItemSheet({
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
   const isEditing = !!editItem;
-  const isGolf = itemType === "golf";
+  // In add mode the user can switch between Activity and Golf Round via a
+  // segmented control inside the sheet. In edit mode the type is locked.
+  const [activeType, setActiveType] = useState<"general" | "golf">(itemType);
+  const isGolf = activeType === "golf";
 
   // General fields
   const [title, setTitle] = useState(editItem?.title ?? "");
@@ -153,6 +156,22 @@ export function AddScheduleItemSheet({
   );
   const [showLocationSearch, setShowLocationSearch] = useState(false);
   const locationSearch = usePlacesSearch();
+
+  // Reset type-specific fields when the user switches between Activity and Golf Round.
+  // Only runs in add mode — edit mode type is locked.
+  useEffect(() => {
+    if (isEditing) return;
+    setTitle("");
+    setDetail("");
+    setSelectedCourse(null);
+    setShowSearch(activeType === "golf");
+    setTeeTimes([""]);
+    setSelectedLocation(null);
+    setShowLocationSearch(false);
+    placesSearch.clear();
+    locationSearch.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeType]);
 
   // Mutations
   const create = trpc.schedule.create.useMutation({
@@ -333,9 +352,51 @@ export function AddScheduleItemSheet({
           style={{ color: "var(--color-bt-text)" }}
         >
           {isEditing
-            ? isGolf ? "Edit Golf Round" : "Edit Schedule Item"
-            : isGolf ? "Add Golf Round" : "Add Schedule Item"}
+            ? isGolf ? "Edit Golf Round" : "Edit Activity"
+            : "Add to Agenda"}
         </h2>
+
+        {/* ── Type selector (add mode only) ────────────────────────────── */}
+        {!isEditing && (
+          <div
+            className="mt-4 inline-flex rounded-xl p-1"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            {(
+              [
+                { value: "general" as const, label: "Activity" },
+                { value: "golf"    as const, label: "Golf Round" },
+              ] as const
+            ).map(({ value, label }) => {
+              const active = activeType === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setActiveType(value)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
+                  style={
+                    active
+                      ? {
+                          background: "var(--color-bt-card)",
+                          color: "var(--color-bt-text)",
+                          boxShadow: "var(--shadow-card)",
+                        }
+                      : {
+                          background: "transparent",
+                          color: "var(--color-bt-text-dim)",
+                        }
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── Golf: course search ──────────────────────────────────────── */}
         {isGolf && (
@@ -608,7 +669,7 @@ export function AddScheduleItemSheet({
             ? isEditing ? "Saving..." : "Adding..."
             : isEditing
             ? "Save changes"
-            : isGolf ? "Add golf round" : "Add item"}
+            : isGolf ? "Add Golf Round" : "Add Activity"}
         </button>
         <button
           onClick={onClose}
