@@ -106,7 +106,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
           className="text-xs font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Getting there
+          Travel Plans
         </h2>
       )}
 
@@ -155,11 +155,11 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
                   <button
                     type="button"
                     onClick={() => setPendingOpen((v) => !v)}
-                    className="flex w-full items-center gap-3 border-t px-4 py-2.5 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                    className="flex w-full items-center gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
                     style={{ borderColor: "var(--color-bt-border)" }}
                   >
                     <span
-                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
                       style={{
                         background: "var(--color-bt-card-raised)",
                         color: "var(--color-bt-text-dim)",
@@ -168,8 +168,8 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
                     >
                       {pendingOthers.length}
                     </span>
-                    <span className="flex-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {pendingOthers.length === 1 ? "person" : "people"} without travel info
+                    <span className="flex-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {pendingOthers.length === 1 ? "hasn't" : "haven't"} confirmed their travel plans
                     </span>
                     <ChevronDown
                       size={14}
