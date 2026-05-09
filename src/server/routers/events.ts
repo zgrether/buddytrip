@@ -11,9 +11,13 @@ export async function listEvents(
 ) {
   const { data, error } = await ctx.supabase
     .from("events")
-    .select("*, point_distributions:event_point_distributions(*)")
+    .select(`
+      *,
+      point_distributions:event_point_distributions(*),
+      agenda_item:schedule_items(id, title, item_type, course_name, scheduled_date)
+    `)
     .eq("competition_id", competitionId)
-    .order("day", { ascending: true, nullsFirst: false })
+    .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -203,13 +207,89 @@ export const eventsRouter = router({
         const id = input.orderedIds[i];
         const { error } = await ctx.supabase
           .from("events")
-          .update({ day: i + 1, updated_at: new Date().toISOString() })
+          .update({ sort_order: i, updated_at: new Date().toISOString() })
           .eq("id", id)
           .eq("competition_id", input.competitionId);
         if (error) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: `Failed to reorder events: ${error.message}`,
+          });
+        }
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // linkToAgendaItem — link/unlink a competition event to a schedule item.
+  // Syncs both sides: events.agenda_item_id and schedule_items.competition_event_id.
+  // Pass agendaItemId: null to unlink.
+  // -----------------------------------------------------------------------
+  linkToAgendaItem: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        eventId: z.string(),
+        agendaItemId: z.string().uuid().nullable(),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      // 1. Find any schedule_item currently linked to this event, clear it.
+      const { data: oldItem } = await ctx.supabase
+        .from("schedule_items")
+        .select("id")
+        .eq("competition_event_id", input.eventId)
+        .maybeSingle();
+
+      if (oldItem) {
+        await ctx.supabase
+          .from("schedule_items")
+          .update({ competition_event_id: null })
+          .eq("id", oldItem.id);
+      }
+
+      // 2. If linking to a new item, clear any event currently on that item.
+      if (input.agendaItemId) {
+        const { data: targetItem } = await ctx.supabase
+          .from("schedule_items")
+          .select("competition_event_id")
+          .eq("id", input.agendaItemId)
+          .maybeSingle();
+
+        if (targetItem?.competition_event_id && targetItem.competition_event_id !== input.eventId) {
+          await ctx.supabase
+            .from("events")
+            .update({ agenda_item_id: null })
+            .eq("id", targetItem.competition_event_id);
+        }
+      }
+
+      // 3. Update events.agenda_item_id.
+      const { error: eventErr } = await ctx.supabase
+        .from("events")
+        .update({ agenda_item_id: input.agendaItemId })
+        .eq("id", input.eventId);
+
+      if (eventErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update event: ${eventErr.message}`,
+        });
+      }
+
+      // 4. Update schedule_items.competition_event_id.
+      if (input.agendaItemId) {
+        const { error: siErr } = await ctx.supabase
+          .from("schedule_items")
+          .update({ competition_event_id: input.eventId })
+          .eq("id", input.agendaItemId);
+
+        if (siErr) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to update schedule item: ${siErr.message}`,
           });
         }
       }

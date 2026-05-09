@@ -94,14 +94,13 @@ describe("competitions router", () => {
     expect(result.teams).toEqual([]);
     expect(result.assignments).toEqual([]);
     expect(result.events).toEqual([]);
-    expect(result.venues).toEqual([]);
     // members + golfItems are still loaded — the comp tab uses them
     // for setup-mode UI even when the competition itself doesn't exist.
     expect(result.members.length).toBeGreaterThan(0);
     expect(Array.isArray(result.golfItems)).toBe(true);
   });
 
-  it("hydrate — bundles comp + teams + assignments + events + venues", async () => {
+  it("hydrate — bundles comp + teams + assignments + events", async () => {
     const ownerCaller = ctx.caller();
     const comp = await ownerCaller.competitions.create({
       tripId,
@@ -132,7 +131,6 @@ describe("competitions router", () => {
     expect(result.teams.find((t) => t.id === team.id)).toBeDefined();
     expect(result.events.find((e) => e.id === event.id)).toBeDefined();
     expect(Array.isArray(result.assignments)).toBe(true);
-    expect(Array.isArray(result.venues)).toBe(true);
     expect(Array.isArray(result.members)).toBe(true);
     expect(Array.isArray(result.golfItems)).toBe(true);
   });

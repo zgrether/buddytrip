@@ -9,6 +9,8 @@ import {
   Flag,
   MapPin,
   Plus,
+  Star,
+  Trophy,
   X,
   GripVertical,
   ChevronUp,
@@ -21,6 +23,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
+import { DND_EVENT_KEY } from "@/components/competition/EventsPanel";
+import type { EventRow } from "@/components/competition/EventsPanel";
 import type { TabProps } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -48,6 +52,9 @@ interface ScheduleItem {
     lat?: number | null;
     lng?: number | null;
   } | null;
+  // Competition event link
+  competition_event_id?: string | null;
+  competition_event?: { id: string; title: string; type: string } | null;
 }
 
 interface DayGroup {
@@ -110,6 +117,7 @@ function ScheduleItemRow({
   onDragStart,
   onDragOver,
   onDrop,
+  onCompEventDrop,
 }: {
   item: ScheduleItem;
   canEdit: boolean;
@@ -125,6 +133,7 @@ function ScheduleItemRow({
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
+  onCompEventDrop?: (eventId: string, itemType: string) => void;
 }) {
   const movable = canEdit;
 
@@ -141,7 +150,16 @@ function ScheduleItemRow({
         draggable={movable}
         onDragStart={movable ? onDragStart : undefined}
         onDragOver={canEdit ? onDragOver : undefined}
-        onDrop={canEdit ? onDrop : undefined}
+        onDrop={canEdit ? (e) => {
+          const compEventId = e.dataTransfer.getData(DND_EVENT_KEY);
+          if (compEventId) {
+            e.preventDefault();
+            e.stopPropagation();
+            onCompEventDrop?.(compEventId, item.item_type);
+            return;
+          }
+          onDrop();
+        } : undefined}
         className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
         style={{
           background: item.is_confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
@@ -209,6 +227,15 @@ function ScheduleItemRow({
                 {fmtTime12(t)}
               </span>
             ))}
+          </div>
+        )}
+        {/* Competition event badge — shown when linked to a competition event */}
+        {item.competition_event && (
+          <div className="mt-0.5 flex items-center gap-1">
+            <Trophy size={11} style={{ color: "var(--color-bt-accent)" }} />
+            <span className="text-[11px]" style={{ color: "var(--color-bt-accent)" }}>
+              {item.competition_event.title}
+            </span>
           </div>
         )}
         {/* General: location + time */}
@@ -307,6 +334,44 @@ function ScheduleItemRow({
   );
 }
 
+// ── CompEventChip ────────────────────────────────────────────────────────
+
+function CompEventChip({
+  event,
+  canEdit,
+}: {
+  event: EventRow;
+  canEdit: boolean;
+}) {
+  const isGolf = event.type === "GOLF";
+  return (
+    <div
+      draggable={canEdit}
+      onDragStart={canEdit ? (e) => {
+        e.dataTransfer.setData(DND_EVENT_KEY, event.id);
+        e.dataTransfer.effectAllowed = "move";
+      } : undefined}
+      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: isGolf && !event.agenda_item ? "1px solid var(--color-bt-warning)" : "1px solid var(--color-bt-border)",
+      }}
+    >
+      <span style={{ color: isGolf ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+        {isGolf ? <Flag size={12} /> : <Star size={12} />}
+      </span>
+      <p className="min-w-0 flex-1 truncate text-[12px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+        {event.title}
+      </p>
+      {event.scoring_format && (
+        <span className="text-[10px] font-semibold uppercase" style={{ color: "var(--color-bt-text-dim)" }}>
+          {event.scoring_format}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── ScheduleTab ─────────────────────────────────────────────────────────
 
 type AddMode = "general" | "golf" | null;
@@ -331,6 +396,55 @@ export function ScheduleTab({
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const allItems = scheduleItems as ScheduleItem[];
+
+  // Competition data — drives the On Deck competition events panel and
+  // the drag-to-link interaction onto Day-by-Day agenda items.
+  const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
+  const { data: competitionEvents = [] } = trpc.events.list.useQuery(
+    { tripId, competitionId: competition?.id ?? "" },
+    { enabled: !!competition?.id }
+  );
+  const compEventsTyped = competitionEvents as EventRow[];
+  const unlinkedCompEvents = compEventsTyped.filter((e) => !e.agenda_item);
+
+  const linkToAgendaItem = trpc.events.linkToAgendaItem.useMutation({
+    async onMutate(vars) {
+      await utils.events.list.cancel({ tripId, competitionId: competition?.id ?? "" });
+      await utils.schedule.list.cancel({ tripId });
+      const prevEvents = utils.events.list.getData({ tripId, competitionId: competition?.id ?? "" });
+      const prevSchedule = utils.schedule.list.getData({ tripId });
+
+      // Optimistically update events: set agenda_item
+      utils.events.list.setData({ tripId, competitionId: competition?.id ?? "" }, (old) =>
+        (old as EventRow[] | undefined)?.map((e) =>
+          e.id === vars.eventId
+            ? { ...e, agenda_item: vars.agendaItemId ? { id: vars.agendaItemId, title: "", item_type: "", course_name: null, scheduled_date: null } : null }
+            : (e.agenda_item?.id === vars.agendaItemId && vars.agendaItemId ? { ...e, agenda_item: null } : e)
+        ) as never
+      );
+
+      // Optimistically update schedule items: set competition_event
+      utils.schedule.list.setData({ tripId }, (old) =>
+        (old as ScheduleItem[] | undefined)?.map((s) =>
+          s.id === vars.agendaItemId
+            ? { ...s, competition_event_id: vars.eventId, competition_event: { id: vars.eventId, title: "", type: "" } }
+            : s.competition_event_id === vars.eventId
+            ? { ...s, competition_event_id: null, competition_event: null }
+            : s
+        ) as never
+      );
+
+      return { prevEvents, prevSchedule };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prevEvents) utils.events.list.setData({ tripId, competitionId: competition?.id ?? "" }, ctx.prevEvents);
+      if (ctx?.prevSchedule) utils.schedule.list.setData({ tripId }, ctx.prevSchedule);
+    },
+    onSettled: () => {
+      utils.events.list.invalidate({ tripId, competitionId: competition?.id ?? "" });
+      utils.schedule.list.invalidate({ tripId });
+    },
+  });
 
   // Non-editors only see confirmed items
   const visibleItems = canEdit ? allItems : allItems.filter((i) => i.is_confirmed);
@@ -832,6 +946,43 @@ export function ScheduleTab({
                   </div>
                 )}
               </div>
+              {/* Competition Events — shown below On Deck when competition is active.
+                  Drag a competition event onto a Day-by-Day agenda item to link it.
+                  Linked events disappear from here (they belong to the agenda item). */}
+              {competition && compEventsTyped.length > 0 && (
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                      Competition Events
+                    </h4>
+                  </div>
+                  <p className="mb-2 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {canEdit ? "Drag onto a golf round to link to scorecards" : "Competition events for this trip"}
+                  </p>
+                  <div
+                    className="rounded-xl p-3 transition-colors space-y-1.5"
+                    style={{
+                      border: "1px dashed var(--color-bt-border)",
+                      background: "transparent",
+                    }}
+                  >
+                    {unlinkedCompEvents.length === 0 ? (
+                      <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                        All competition events are linked to agenda items.
+                      </p>
+                    ) : (
+                      unlinkedCompEvents.map((event) => (
+                        <CompEventChip
+                          key={event.id}
+                          event={event}
+                          canEdit={canEdit}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* ── Column 2: Schedule (day groups only) ─────────────── */}
@@ -966,6 +1117,14 @@ export function ScheduleTab({
                               onDrop={() => {
                                 setDragOverIdx(null);
                                 handleDragDrop(group.date, group.items, idx);
+                              }}
+                              onCompEventDrop={(eventId, itemType) => {
+                                // GOLF events can only link to golf agenda items
+                                const draggedEvent = compEventsTyped.find((e) => e.id === eventId);
+                                if (draggedEvent?.type === "GOLF" && itemType !== "golf") return;
+                                if (competition?.id) {
+                                  linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: item.id });
+                                }
                               }}
                             />
                           ))}

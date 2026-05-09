@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext } from "../../__tests__/helpers/test-setup";
+import { TestContext, getAdminClient } from "../../__tests__/helpers/test-setup";
 
 let ctx: TestContext;
 let tripId: string;
@@ -108,5 +108,121 @@ describe("events router (scored activities)", () => {
     const target = events[0];
     const result = await caller.events.delete({ tripId, eventId: target.id });
     expect(result).toEqual({ success: true });
+  });
+});
+
+// ── linkToAgendaItem ────────────────────────────────────────────────────────
+
+describe("events.linkToAgendaItem", () => {
+  let ctx: TestContext;
+  let tripId: string;
+  let competitionId: string;
+  let eventId: string;
+  let scheduleItemId: string;
+  let scheduleItemId2: string;
+
+  beforeAll(async () => {
+    ctx = await TestContext.create();
+    tripId = await ctx.createTrip("Link Test");
+    await ctx.addTripMember(tripId, "member", "Member");
+    competitionId = await ctx.createCompetition(tripId, "Link Cup");
+    eventId = await ctx.createEvent(competitionId, { type: "GOLF", title: "Round 1" });
+
+    // Create schedule items directly via admin client (bypasses RLS for test setup)
+    const admin = getAdminClient();
+    const { data: si1, error: e1 } = await admin
+      .from("schedule_items")
+      .insert({
+        trip_id: tripId,
+        item_type: "golf",
+        title: "Golf Day 1",
+        sort_order: 0,
+        is_confirmed: false,
+        created_by: ctx.user.id,
+      })
+      .select("id")
+      .single();
+    if (e1 || !si1) throw new Error(`Failed to create schedule item: ${e1?.message}`);
+    scheduleItemId = si1.id;
+
+    const { data: si2, error: e2 } = await admin
+      .from("schedule_items")
+      .insert({
+        trip_id: tripId,
+        item_type: "golf",
+        title: "Golf Day 2",
+        sort_order: 1,
+        is_confirmed: false,
+        created_by: ctx.user.id,
+      })
+      .select("id")
+      .single();
+    if (e2 || !si2) throw new Error(`Failed to create schedule item: ${e2?.message}`);
+    scheduleItemId2 = si2.id;
+  });
+
+  afterAll(async () => {
+    // Clean up schedule items
+    const admin = getAdminClient();
+    await admin.from("schedule_items").delete().eq("id", scheduleItemId);
+    await admin.from("schedule_items").delete().eq("id", scheduleItemId2);
+    await ctx.cleanup();
+  });
+
+  it("link — owner can link a competition event to an agenda item", async () => {
+    const caller = ctx.caller();
+    const result = await caller.events.linkToAgendaItem({
+      tripId,
+      eventId,
+      agendaItemId: scheduleItemId,
+    });
+    expect(result).toEqual({ success: true });
+
+    // Verify the link on both sides
+    const events = await caller.events.list({ tripId, competitionId });
+    const linked = events.find((e) => e.id === eventId) as { agenda_item?: { id: string } | null };
+    expect(linked?.agenda_item?.id).toBe(scheduleItemId);
+  });
+
+  it("relink — linking to a new agenda item moves the link", async () => {
+    const caller = ctx.caller();
+    // Relink to a different agenda item
+    const result = await caller.events.linkToAgendaItem({
+      tripId,
+      eventId,
+      agendaItemId: scheduleItemId2,
+    });
+    expect(result).toEqual({ success: true });
+
+    // Verify the link moved
+    const events = await caller.events.list({ tripId, competitionId });
+    const linked = events.find((e) => e.id === eventId) as { agenda_item?: { id: string } | null };
+    expect(linked?.agenda_item?.id).toBe(scheduleItemId2);
+  });
+
+  it("unlink — passing null removes the link", async () => {
+    const caller = ctx.caller();
+    const result = await caller.events.linkToAgendaItem({
+      tripId,
+      eventId,
+      agendaItemId: null,
+    });
+    expect(result).toEqual({ success: true });
+
+    // Verify the link was cleared
+    const events = await caller.events.list({ tripId, competitionId });
+    const unlinked = events.find((e) => e.id === eventId) as { agenda_item?: unknown };
+    expect(unlinked?.agenda_item).toBeFalsy();
+  });
+
+  it("link — member cannot link", async () => {
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.events.linkToAgendaItem({
+        tripId,
+        eventId,
+        agendaItemId: scheduleItemId,
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

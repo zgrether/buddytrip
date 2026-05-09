@@ -8,13 +8,13 @@ import { TestContext } from "../../../../__tests__/helpers/test-setup";
  * Testing Library + jsdom aren't yet in this repo, so we cover the spec
  * matrix through the data layer that drives each render branch.
  *
- * Revisions matrix (CC_COMPETITION_REVISIONS):
+ * Revisions matrix:
  *   - GroupsPanel removed                  → no groups assertions
  *   - Status badge                         → "status badge"
  *   - Delete gated on upcoming             → "delete gating"
  *   - Event form: no day, no course        → "event form simplified"
- *   - VenuesPanel + venue → event linkage  → "venue linkage"
- *   - Event status line reflects venue     → "event venue status line"
+ *   - Venues replaced by agenda-item link  → "agenda item linkage"
+ *   - Event status line reflects agenda    → "event agenda status line"
  */
 
 let ctx: TestContext;
@@ -52,21 +52,19 @@ describe("CompTab data layer (revisions)", () => {
     expect(fetched?.status).toBe("upcoming"); // status badge → "Setup"
   });
 
-  it("competition exists — sibling panels (Teams, Events, Venues) all resolve", async () => {
+  it("competition exists — sibling panels (Teams, Events) all resolve", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     expect(competition).not.toBeNull();
 
-    const [teams, events, assignments, venues] = await Promise.all([
+    const [teams, events, assignments] = await Promise.all([
       caller.teams.list({ tripId, competitionId: competition!.id }),
       caller.events.list({ tripId, competitionId: competition!.id }),
       caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
-      caller.venues.list({ tripId, competitionId: competition!.id }),
     ]);
     expect(teams).toEqual([]);
     expect(events).toEqual([]);
     expect(assignments).toEqual([]);
-    expect(venues).toEqual([]);
   });
 
   it("teams unassigned — members exist but no assignments yet", async () => {
@@ -108,7 +106,7 @@ describe("CompTab data layer (revisions)", () => {
     // EventCard's status line reads "Practice · Not scored" off this flag.
   });
 
-  it("event venue status line — non-practice event with no venue reads 'Not assigned'", async () => {
+  it("event agenda status line — non-practice GOLF event has no agenda_item initially", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
     const created = await caller.events.create({
@@ -120,97 +118,13 @@ describe("CompTab data layer (revisions)", () => {
     });
     expect(created.is_practice).toBe(false);
 
-    const venues = await caller.venues.list({
+    const events = await caller.events.list({
       tripId,
       competitionId: competition!.id,
     });
-    const linked = venues.find((a) => a.event_id === created.id);
-    expect(linked).toBeUndefined(); // EventCard surfaces the warning state
-  });
-
-  it("venue linkage — manual venue + assignEvent flips an event into 'Anytime'", async () => {
-    const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-
-    const event = await caller.events.create({
-      tripId,
-      competitionId: competition!.id,
-      type: "GENERIC",
-      title: "Cornhole Championship",
-      pointsAvailable: 5,
-    });
-
-    const venue = await caller.venues.create({
-      tripId,
-      competitionId: competition!.id,
-      name: "Cornhole Championship",
-      isAnytime: true,
-    });
-    expect(venue.is_anytime).toBe(true);
-    expect(venue.event_id).toBeNull();
-
-    const linked = await caller.venues.assignEvent({
-      tripId,
-      venueId: venue.id,
-      eventId: event.id,
-    });
-    expect(linked.event_id).toBe(event.id);
-    expect(linked.is_anytime).toBe(true);
-    // EventCard's status line now resolves to "Anytime" via this venue row.
-  });
-
-  it("venue linkage — assignEvent moves an already-pinned event to the new venue", async () => {
-    // Drag-to-assign relies on this: dragging a linked event from one
-    // venue to another is a clean reassignment, not a CONFLICT. The
-    // partial unique index venues_event_unique still enforces "one
-    // event per venue per competition" — assignEvent now detaches
-    // from any prior venue first so the move lands cleanly.
-    const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-
-    const event = await caller.events.create({
-      tripId,
-      competitionId: competition!.id,
-      type: "GENERIC",
-      title: "Putting Contest",
-      pointsAvailable: 2,
-    });
-
-    const venueA = await caller.venues.create({
-      tripId,
-      competitionId: competition!.id,
-      name: "Putting Contest A",
-      isAnytime: true,
-    });
-    const venueB = await caller.venues.create({
-      tripId,
-      competitionId: competition!.id,
-      name: "Putting Contest B",
-      isAnytime: true,
-    });
-
-    await caller.venues.assignEvent({
-      tripId,
-      venueId: venueA.id,
-      eventId: event.id,
-    });
-
-    const moved = await caller.venues.assignEvent({
-      tripId,
-      venueId: venueB.id,
-      eventId: event.id,
-    });
-    expect(moved.id).toBe(venueB.id);
-    expect(moved.event_id).toBe(event.id);
-
-    // venueA should no longer reference the event — assignEvent detached
-    // it as part of the move.
-    const list = await caller.venues.list({
-      tripId,
-      competitionId: competition!.id,
-    });
-    const a = list.find((v) => v.id === venueA.id);
-    expect(a?.event_id).toBeNull();
+    const found = events.find((e) => e.id === created.id) as { agenda_item?: unknown };
+    // No agenda item linked yet — EventCard surfaces the unlinked GOLF warning
+    expect(found?.agenda_item).toBeFalsy();
   });
 
   it("delete gating — owner can delete while status is upcoming", async () => {

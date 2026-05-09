@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
+  AlertTriangle,
   Calendar,
   ChevronDown,
-  Cloud,
   Flag,
   GripVertical,
   Info,
@@ -21,12 +21,6 @@ interface Props {
   competitionId: string;
   tripId: string;
   canEdit: boolean;
-  /**
-   * When true, render just the body (cards + add button + sheet) without
-   * the collapsible chrome. MatchupPanel uses this so a single outer
-   * collapsible owns the open/close state for both columns.
-   */
-  bare?: boolean;
 }
 
 type EventType = "GOLF" | "GENERIC";
@@ -46,6 +40,14 @@ interface PointDistribution {
   points: number;
 }
 
+interface AgendaItemLink {
+  id: string;
+  title: string;
+  item_type: string;
+  course_name: string | null;
+  scheduled_date: string | null;
+}
+
 export interface EventRow {
   id: string;
   competition_id: string;
@@ -55,24 +57,14 @@ export interface EventRow {
   scoring_format: ScoringFormat | null;
   is_practice: boolean;
   points_available: number | null;
+  sort_order: number;
   status: "upcoming" | "active" | "completed";
   point_distributions?: PointDistribution[];
+  agenda_item?: AgendaItemLink | null;
 }
 
-interface VenueLink {
-  event_id: string | null;
-  is_anytime: boolean;
-  // Joined schedule_items (when venue is scheduled) — see VenuesPanel
-  // for the full shape; we only need the display fields here.
-  schedule_item?: {
-    course_name?: string | null;
-    scheduled_date?: string | null;
-  } | null;
-  name?: string | null;
-}
-
-// Shared dataTransfer key — VenuesPanel reads the same string when an
-// event is dropped onto an unlinked venue row.
+// Shared dataTransfer key — ScheduleTab reads this when a competition
+// event is dropped onto an agenda item.
 export const DND_EVENT_KEY = "application/x-buddytrip-event-id";
 
 const FORMAT_LABELS: Record<ScoringFormat, string> = {
@@ -87,11 +79,12 @@ const FORMAT_LABELS: Record<ScoringFormat, string> = {
 
 // ── EventsPanel ─────────────────────────────────────────────────────────────
 
-export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
+export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
   const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState<EventRow | null>(null);
   const [creating, setCreating] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const dragState = useRef<{ idx: number } | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
   const { data: events = [] } = trpc.events.list.useQuery(
@@ -99,173 +92,96 @@ export function EventsPanel({ competitionId, tripId, canEdit, bare }: Props) {
     { enabled: !!competitionId }
   );
 
-  // Drop-to-unassign: a LinkedEventDetails chip dragged out of a venue
-  // card lands here and we look up which venue currently holds it, then
-  // call venues.unassignEvent. Mirrors the crew column's unassign drop.
-  const unassign = trpc.venues.unassignEvent.useMutation({
-    onMutate: async (vars) => {
-      await utils.venues.list.cancel({ tripId, competitionId });
-      const previous = utils.venues.list.getData({ tripId, competitionId });
-      utils.venues.list.setData({ tripId, competitionId }, (old) => {
-        const list = (old as Array<{ id: string; event_id: string | null; is_anytime: boolean }> | undefined) ?? [];
-        return list.map((v) =>
-          v.id === vars.venueId ? { ...v, event_id: null, is_anytime: false } : v
-        ) as never;
-      });
-      return { previous };
+  const eventsTyped = events as EventRow[];
+
+  const reorder = trpc.events.reorder.useMutation({
+    async onMutate(vars) {
+      await utils.events.list.cancel({ tripId, competitionId });
+      const prev = utils.events.list.getData({ tripId, competitionId });
+      const orderMap = new Map(vars.orderedIds.map((id, i) => [id, i]));
+      utils.events.list.setData({ tripId, competitionId }, (old) =>
+        (old as EventRow[] | undefined)
+          ?.map((e) => {
+            const newOrder = orderMap.get(e.id);
+            return newOrder !== undefined ? { ...e, sort_order: newOrder } : e;
+          })
+          .sort((a, b) => a.sort_order - b.sort_order) as never
+      );
+      return { prev };
     },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) {
-        utils.venues.list.setData({ tripId, competitionId }, ctx.previous);
-      }
+    onError(_e, _v, ctx) {
+      if (ctx?.prev) utils.events.list.setData({ tripId, competitionId }, ctx.prev);
     },
-    onSettled: () => utils.venues.list.invalidate({ tripId, competitionId }),
+    onSettled: () => utils.events.list.invalidate({ tripId, competitionId }),
   });
 
-  // Venue linkage drives the per-card status line. The venues router is
-  // optional — if it isn't loaded yet (cold cache) we just render the
-  // "not assigned" warning, which matches the actual not-yet-linked state.
-  const { data: venues = [] } = trpc.venues.list.useQuery(
-    { tripId, competitionId },
-    { enabled: !!competitionId }
-  );
-
-  const eventsTyped = events as EventRow[];
-  const venuesTyped = venues as VenueLink[];
-
-  // When rendered inside MatchupPanel, this column shows ONLY events
-  // that haven't been pinned to a venue yet — assigned events render
-  // inside their venue card on the right column. Standalone (non-bare)
-  // mode still shows everything for discoverability.
-  const visibleEvents = bare
-    ? eventsTyped.filter(
-        (e) => !venuesTyped.some((v) => v.event_id === e.id)
-      )
-    : eventsTyped;
+  const handleReorderDrop = (toIdx: number) => {
+    if (!dragState.current) return;
+    const fromIdx = dragState.current.idx;
+    dragState.current = null;
+    setDragOverIdx(null);
+    if (fromIdx === toIdx) return;
+    const newOrder = [...eventsTyped];
+    const [moved] = newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, moved);
+    reorder.mutate({ tripId, competitionId, orderedIds: newOrder.map((e) => e.id) });
+  };
 
   const totalEvents = eventsTyped.length;
   const practiceCount = eventsTyped.filter((e) => e.is_practice).length;
+  const unlinkedGolf = eventsTyped.filter((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item).length;
 
   const statusText = totalEvents === 0
     ? "Not set up"
     : `${totalEvents} event${totalEvents === 1 ? "" : "s"}${
         practiceCount > 0 ? ` · ${practiceCount} practice` : ""
-      }`;
+      }${unlinkedGolf > 0 ? ` · ${unlinkedGolf} unlinked` : ""}`;
   const headerState = totalEvents === 0 ? "todo" : "inProgress";
-
-  // The bare-mode column itself acts as a drop target so an event chip
-  // dragged off a venue card can be returned to the unassigned pool.
-  const handleUnassignDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const eventId = e.dataTransfer.getData(DND_EVENT_KEY);
-    if (!eventId) return;
-    const venue = venuesTyped.find((v) => v.event_id === eventId) as
-      | { id?: string }
-      | undefined;
-    if (!venue?.id) return;
-    unassign.mutate({ tripId, venueId: venue.id });
-  };
-
-  const allAssigned =
-    bare && eventsTyped.length > 0 && visibleEvents.length === 0;
-
-  // In bare mode the events column is always a card-shaped drop target —
-  // mirrors the crew column treatment so the "drop here to unassign"
-  // affordance is visually consistent across the comp tab.
-  const bareDropStyle: React.CSSProperties | undefined = bare
-    ? {
-        background: "transparent",
-        border: `${dragOver ? "1.5px" : "1px"} dashed ${
-          dragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
-        }`,
-      }
-    : undefined;
-
-  const inner = (
-    <>
-      {visibleEvents.length === 0 && !allAssigned && !bare && (
-        <EventsEmptyState
-          canEdit={canEdit && !bare}
-          onAdd={() => setCreating(true)}
-        />
-      )}
-
-      {bare && visibleEvents.length === 0 && (
-        <p
-          className="text-[11px]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {allAssigned
-            ? canEdit
-              ? "All events assigned to venues. Drop here to unassign."
-              : "All events assigned to venues."
-            : canEdit
-              ? "No unassigned events. Drop here to unassign."
-              : "No unassigned events."}
-        </p>
-      )}
-
-      {visibleEvents.map((event) => (
-        <EventCard
-          key={event.id}
-          event={event}
-          venue={venuesTyped.find((v) => v.event_id === event.id) ?? null}
-          canEdit={canEdit}
-          tripId={tripId}
-          onEdit={() => setEditing(event)}
-        />
-      ))}
-
-      {/* Bottom Add Event button is hidden in bare mode — the +Event
-          affordance lives in CompetitionHeader's action bar now. */}
-      {!bare && visibleEvents.length > 0 && canEdit && (
-        <AddEventButton onClick={() => setCreating(true)} />
-      )}
-    </>
-  );
 
   const body = (
     <>
-      <div
-        className={`${bare ? "rounded-xl p-3" : ""} space-y-2 transition-colors`}
-        style={bareDropStyle}
-        onDragOver={
-          bare && canEdit
-            ? (e) => {
-                if (!e.dataTransfer.types.includes(DND_EVENT_KEY)) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDragOver(true);
-              }
-            : undefined
-        }
-        onDragLeave={bare && canEdit ? () => setDragOver(false) : undefined}
-        onDrop={bare && canEdit ? handleUnassignDrop : undefined}
-      >
-        {inner}
+      {eventsTyped.length === 0 && (
+        <EventsEmptyState canEdit={canEdit} onAdd={() => setCreating(true)} />
+      )}
+
+      <div className="space-y-2">
+        {eventsTyped.map((event, idx) => (
+          <EventCard
+            key={event.id}
+            event={event}
+            canEdit={canEdit}
+            tripId={tripId}
+            isDragging={dragState.current?.idx === idx}
+            showDropIndicator={dragOverIdx === idx && dragState.current?.idx !== idx}
+            onEdit={() => setEditing(event)}
+            onDragStart={() => { dragState.current = { idx }; }}
+            onDragOver={() => setDragOverIdx(idx)}
+            onDrop={() => handleReorderDrop(idx)}
+          />
+        ))}
       </div>
+
+      {eventsTyped.length > 0 && canEdit && (
+        <div className="mt-2">
+          <AddEventButton onClick={() => setCreating(true)} />
+        </div>
+      )}
 
       {(creating || editing) && (
         <EventSheet
           tripId={tripId}
           competitionId={competitionId}
           event={editing}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
+          onClose={() => { setCreating(false); setEditing(null); }}
         />
       )}
     </>
   );
 
-  if (bare) return body;
-
   return (
     <CollapsiblePanel
       icon={<Calendar size={16} />}
-      label="Events"
+      label="Competition Builder"
       note={statusText}
       state={headerState}
       open={open}
@@ -401,26 +317,28 @@ export function AddEventButton({
 
 function EventCard({
   event,
-  venue,
   canEdit,
   tripId,
+  isDragging,
+  showDropIndicator,
   onEdit,
+  onDragStart,
+  onDragOver,
+  onDrop,
 }: {
   event: EventRow;
-  venue: VenueLink | null;
   canEdit: boolean;
   tripId: string;
+  isDragging: boolean;
+  showDropIndicator: boolean;
   onEdit: () => void;
+  onDragStart: () => void;
+  onDragOver: () => void;
+  onDrop: () => void;
 }) {
   const utils = trpc.useUtils();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isGolf = event.type === "GOLF";
-
-  // Practice rounds still happen at real venues (a tee time at a
-  // course) — they just don't count toward points. Both practice and
-  // scored events advertise the drag affordance so every card has a
-  // grip when canEdit.
-  const draggable = canEdit;
 
   const remove = trpc.events.delete.useMutation({
     onSettled: () => utils.events.list.invalidate(),
@@ -435,134 +353,145 @@ function EventCard({
         .join(" · ")
     : null;
 
-  const statusLine = describeStatus(event, venue);
+  const statusLine = describeStatus(event);
 
   return (
-    <div
-      // Whole-card drag, matching the Schedule tab pattern. The
-      // GripVertical inside is just a visual indicator. Buttons inside
-      // (Edit / Delete) still receive clicks because the browser only
-      // initiates a drag on actual mouse movement.
-      draggable={draggable}
-      onDragStart={
-        draggable
-          ? (e) => {
-              e.dataTransfer.setData(DND_EVENT_KEY, event.id);
-              e.dataTransfer.effectAllowed = "move";
-            }
-          : undefined
-      }
-      className={`flex items-start gap-3 rounded-xl px-3 py-3 ${
-        draggable ? "cursor-grab active:cursor-grabbing" : ""
-      }`}
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-        opacity: event.is_practice ? 0.85 : 1,
-      }}
-      data-testid={`event-card-${event.id}`}
-    >
-      {draggable && (
-        <GripVertical
-          size={16}
-          className="mt-0.5 hidden flex-shrink-0 lg:block"
-          strokeWidth={2}
-          style={{ color: "var(--color-bt-text-dim)" }}
+    <>
+      {/* Drop insertion line */}
+      {showDropIndicator && (
+        <div
+          className="mb-1 h-0.5 rounded-full"
+          style={{ background: "var(--color-bt-accent)" }}
         />
       )}
       <div
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
+        draggable={canEdit}
+        onDragStart={canEdit ? (e) => {
+          e.dataTransfer.setData(DND_EVENT_KEY, event.id);
+          e.dataTransfer.effectAllowed = "move";
+          onDragStart();
+        } : undefined}
+        onDragOver={canEdit ? (e) => {
+          if (!e.dataTransfer.types.includes(DND_EVENT_KEY)) return;
+          e.preventDefault();
+          onDragOver();
+        } : undefined}
+        onDrop={canEdit ? (e) => {
+          e.preventDefault();
+          onDrop();
+        } : undefined}
+        onDragEnd={canEdit ? () => { /* cleanup handled by parent */ } : undefined}
+        className={`flex items-start gap-3 rounded-xl px-3 py-3 ${
+          canEdit ? "cursor-grab active:cursor-grabbing" : ""
+        }`}
         style={{
-          background: "var(--color-bt-accent-faint)",
-          color: "var(--color-bt-accent)",
+          background: "var(--color-bt-card-raised)",
+          border: isGolf && !event.is_practice && !event.agenda_item
+            ? "3px solid var(--color-bt-warning)"
+            : "1px solid var(--color-bt-border)",
+          opacity: isDragging ? 0.4 : event.is_practice ? 0.85 : 1,
         }}
+        data-testid={`event-card-${event.id}`}
       >
-        {isGolf ? <Flag size={15} /> : <Star size={15} />}
-      </div>
+        {canEdit && (
+          <GripVertical
+            size={16}
+            className="mt-0.5 hidden flex-shrink-0 lg:block"
+            strokeWidth={2}
+            style={{ color: "var(--color-bt-text-dim)" }}
+          />
+        )}
+        <div
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            color: "var(--color-bt-accent)",
+          }}
+        >
+          {isGolf ? <Flag size={15} /> : <Star size={15} />}
+        </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            {event.title}
-          </p>
-          {isGolf && event.scoring_format && (
-            <span
-              className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
-              style={{
-                background: "var(--color-bt-card)",
-                color: "var(--color-bt-text-dim)",
-                border: "1px solid var(--color-bt-border)",
-              }}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {event.title}
+            </p>
+            {isGolf && event.scoring_format && (
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
+                style={{
+                  background: "var(--color-bt-card)",
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                {FORMAT_LABELS[event.scoring_format]}
+              </span>
+            )}
+            {event.is_practice && (
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
+                style={{
+                  background: "var(--color-bt-warning-faint)",
+                  color: "var(--color-bt-warning)",
+                }}
+              >
+                Practice
+              </span>
+            )}
+          </div>
+
+          {statusLine && (
+            <div
+              className="mt-0.5 flex items-center gap-1 text-[11px]"
+              style={{ color: statusLine.color }}
             >
-              {FORMAT_LABELS[event.scoring_format]}
-            </span>
+              <statusLine.Icon size={11} />
+              <span>{statusLine.text}</span>
+            </div>
           )}
-          {event.is_practice && (
-            <span
-              className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
-              style={{
-                background: "var(--color-bt-warning-faint)",
-                color: "var(--color-bt-warning)",
-              }}
-            >
-              Practice
-            </span>
+
+          {!event.is_practice && distSummary && (
+            <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              {distSummary}
+              {event.points_available !== null && ` · ${event.points_available}pt total`}
+            </p>
           )}
         </div>
 
-        {/* Status line — only shown when there's something useful to say
-            (linked venue, anytime, or "Practice · Not scored"). An
-            unassigned non-practice event renders no status line. */}
-        {statusLine && (
-          <div
-            className="mt-0.5 flex items-center gap-1 text-[11px]"
-            style={{ color: statusLine.color }}
-          >
-            <statusLine.Icon size={11} />
-            <span>{statusLine.text}</span>
+        {canEdit && (
+          <div className="flex flex-shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={onEdit}
+              aria-label={`Edit ${event.title}`}
+              className="flex h-7 w-7 items-center justify-center rounded-lg"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              aria-label={`Delete ${event.title}`}
+              className="flex h-7 w-7 items-center justify-center rounded-lg"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <Trash2 size={13} />
+            </button>
           </div>
         )}
 
-        {!event.is_practice && distSummary && (
-          <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            {distSummary}
-            {event.points_available !== null && ` · ${event.points_available}pt total`}
-          </p>
+        {confirmingDelete && (
+          <DeleteEventConfirmModal
+            eventTitle={event.title}
+            isPending={remove.isPending}
+            onCancel={() => setConfirmingDelete(false)}
+            onConfirm={() => remove.mutate({ tripId, eventId: event.id })}
+          />
         )}
       </div>
-
-      {canEdit && (
-        <div className="flex flex-shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`Edit ${event.title}`}
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <Pencil size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingDelete(true)}
-            aria-label={`Delete ${event.title}`}
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <Trash2 size={13} />
-          </button>
-        </div>
-      )}
-
-      {confirmingDelete && (
-        <DeleteEventConfirmModal
-          eventTitle={event.title}
-          isPending={remove.isPending}
-          onCancel={() => setConfirmingDelete(false)}
-          onConfirm={() => remove.mutate({ tripId, eventId: event.id })}
-        />
-      )}
-    </div>
+    </>
   );
 }
 
@@ -613,8 +542,8 @@ function DeleteEventConfirmModal({
             className="mt-1.5 text-sm leading-relaxed"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Removes the event and its point distribution. Any venue it was
-            assigned to becomes unlinked.
+            Removes the event and its point distribution. Any agenda item it was
+            linked to becomes unlinked.
           </p>
         </div>
         <div className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end">
@@ -647,8 +576,7 @@ function DeleteEventConfirmModal({
 }
 
 function describeStatus(
-  event: EventRow,
-  venue: VenueLink | null
+  event: EventRow
 ): { Icon: typeof Flag; text: string; color: string } | null {
   if (event.is_practice) {
     return {
@@ -657,35 +585,24 @@ function describeStatus(
       color: "var(--color-bt-text-dim)",
     };
   }
-  if (venue?.is_anytime) {
-    return {
-      Icon: Cloud,
-      text: "Anytime",
-      color: "var(--color-bt-text-dim)",
-    };
-  }
-  if (venue?.schedule_item) {
-    const courseName = venue.schedule_item.course_name ?? venue.name ?? "Scheduled";
-    const date = venue.schedule_item.scheduled_date
-      ? formatShortDate(venue.schedule_item.scheduled_date)
+  if (event.agenda_item) {
+    const name = event.agenda_item.course_name ?? event.agenda_item.title;
+    const date = event.agenda_item.scheduled_date
+      ? formatShortDate(event.agenda_item.scheduled_date)
       : null;
     return {
       Icon: MapPin,
-      text: date ? `${courseName} · ${date}` : courseName,
+      text: date ? `${name} · ${date}` : name,
       color: "var(--color-bt-text-dim)",
     };
   }
-  if (venue?.name) {
+  if (event.type === "GOLF") {
     return {
-      Icon: MapPin,
-      text: venue.name,
-      color: "var(--color-bt-text-dim)",
+      Icon: AlertTriangle,
+      text: "No agenda item linked — scorecard entry unavailable",
+      color: "var(--color-bt-warning)",
     };
   }
-  // Unassigned non-practice event — that's an OK resting state (the user
-  // might keep extra events around in case something gets cut from the
-  // schedule). Don't render the status line at all rather than nag with
-  // a warning.
   return null;
 }
 

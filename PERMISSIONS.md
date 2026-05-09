@@ -108,6 +108,13 @@
 | Add / remove side events | ✓ | ✓ | — | `canEdit` | TripDetail CompTab |
 | Enter scores | ✓ | ✓ | ✓ | None (any trip member) | LiveLeaderboard |
 
+### Competition Event — Agenda Link
+
+| Action | Owner | Planner | Member | Gate |
+|--------|:-----:|:-------:|:------:|------|
+| Link competition event to agenda item | ✓ | ✓ | — | `canEdit` |
+| Unlink competition event from agenda item | ✓ | ✓ | — | `canEdit` |
+
 ### Logistics
 
 | Action | Owner | Planner | Member | Gate | Component |

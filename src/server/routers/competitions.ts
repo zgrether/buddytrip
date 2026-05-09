@@ -93,7 +93,6 @@ export const competitionsRouter = router({
       const { listTeams } = await import("./teams");
       const { listTeamAssignments } = await import("./teamAssignments");
       const { listEvents } = await import("./events");
-      const { listVenues } = await import("./venues");
 
       const competition = await fetchCompetition(ctx, tripId);
 
@@ -108,20 +107,18 @@ export const competitionsRouter = router({
           assignments: [],
           members,
           events: [],
-          venues: [],
           golfItems,
         };
       }
 
       const competitionId = competition.id;
 
-      const [teams, assignments, members, events, venues, golfItems] =
+      const [teams, assignments, members, events, golfItems] =
         await Promise.all([
           listTeams(ctx, competitionId),
           listTeamAssignments(ctx, competitionId),
           listMembers(ctx, tripId),
           listEvents(ctx, competitionId),
-          listVenues(ctx, competitionId),
           listGolfSchedule(ctx, tripId),
         ]);
 
@@ -131,7 +128,6 @@ export const competitionsRouter = router({
         assignments,
         members,
         events,
-        venues,
         golfItems,
       };
     }),

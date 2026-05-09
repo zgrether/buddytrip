@@ -68,6 +68,11 @@ export default function TripDetailPage() {
   // Not added to dataLoading — loads in parallel, dot appears when ready.
   const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
   const { data: prefetchedLogistics = [] } = trpc.logistics.list.useQuery({ tripId });
+  // Background prefetch for competition events — drives the comp tab warning badge.
+  const { data: prefetchedCompEvents = [] } = trpc.events.list.useQuery(
+    { tripId, competitionId: competition?.id ?? "" },
+    { enabled: !!competition?.id }
+  );
 
   const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
     || reservationsLoading || tilesLoading || competitionLoading;
@@ -190,11 +195,18 @@ export default function TripDetailPage() {
     effectiveCanEdit &&
     lodgingItems.length > 0 &&
     lodgingItems.some((i) => !i.is_confirmed);
+  // compDot: warning when any scored GOLF event has no agenda item linked.
+  const compDot =
+    !!competition &&
+    (prefetchedCompEvents as Array<{ type: string; is_practice: boolean; agenda_item?: unknown }>)
+      .some((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item);
+
   const tabBadges: Partial<Record<TabId, "info" | "warning">> = {};
   if (crewDot) tabBadges.crew = "info";
   if (scheduleDot) tabBadges.schedule = "info";
   if (lodgingOutOfRange) tabBadges.lodging = "warning";
   else if (lodgingUnconfirmed) tabBadges.lodging = "info";
+  if (compDot) tabBadges.comp = "warning";
 
   // Settings gear is now rendered INSIDE TripHeader (top-right). The header
   // calls `onSettingsClick` when tapped — pass it through only when the owner

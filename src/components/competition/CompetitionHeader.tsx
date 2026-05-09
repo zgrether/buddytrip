@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Flag, MapPin, Pencil, Plus, Trash2, Trophy, Users, X } from "lucide-react";
+import { Flag, Pencil, Plus, Trash2, Trophy, Users, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 interface Competition {
@@ -48,11 +48,10 @@ interface Props {
    */
   onDeleted?: () => void;
   /** Action-bar handlers — when provided, the header renders +Team /
-   *  +Event / +Venue affordances inline below the title strip so the
+   *  +Event affordances inline below the title strip so the
    *  inner panels don't have to surface them. */
   onAddTeam?: () => void;
   onAddEvent?: () => void;
-  onAddVenue?: () => void;
 }
 
 /**
@@ -70,7 +69,6 @@ export function CompetitionHeader({
   onDeleted,
   onAddTeam,
   onAddEvent,
-  onAddVenue,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -98,15 +96,6 @@ export function CompetitionHeader({
   const scoredEvents = eventsTyped.filter((e) => !e.is_practice).length;
   const eventsComplete = scoredEvents > 0;
 
-  const { data: venues = [] } = trpc.venues.list.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: !!competition.id }
-  );
-  const venuesTyped = venues as Array<{ event_id: string | null }>;
-  const venuesLinked = venuesTyped.filter((v) => v.event_id !== null).length;
-  const venuesComplete = scoredEvents > 0 && venuesLinked === scoredEvents;
-
-  void venuesTyped; // referenced via the count + complete derivations above
   const teamsCount = (assignments as Array<unknown>).length;
   const eventsCount = eventsTyped.length;
 
@@ -185,8 +174,8 @@ export function CompetitionHeader({
         )}
       </div>
 
-      {/* Action bar — equal-width three-column grid */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Action bar — equal-width two-column grid */}
+      <div className="grid grid-cols-2 gap-2">
         <ActionTile
           icon={<Users size={14} />}
           label="Team"
@@ -212,17 +201,6 @@ export function CompetitionHeader({
           }
           complete={eventsComplete}
           onAdd={canEdit ? onAddEvent : undefined}
-        />
-        <ActionTile
-          icon={<MapPin size={14} />}
-          label="Venue"
-          status={
-            venuesTyped.length === 0
-              ? "Not set up"
-              : `${venuesLinked}/${scoredEvents || venuesTyped.length} linked`
-          }
-          complete={venuesComplete}
-          onAdd={canEdit ? onAddVenue : undefined}
         />
       </div>
 
