@@ -5,6 +5,9 @@ import {
   AlertTriangle,
   Car,
   ChevronDown,
+  Eye,
+  EyeOff,
+  Ghost,
   HelpCircle,
   Plane,
   Plus,
@@ -16,6 +19,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { UserAvatar } from "@/components/UserAvatar";
 
 type TravelMode = "driving" | "flying" | "other";
+type TravelFilterKey = "all" | "driving" | "flying" | "other";
 
 interface TripMemberLite {
   memberId: string;
@@ -36,6 +40,60 @@ export interface GettingThereSectionProps {
   /** When provided (owner only), shows an X on the empty-state mock-up
       that backs out of the activation entirely. */
   onCancel?: () => void;
+}
+
+// ── TravelFilterPill ──────────────────────────────────────────────────────
+// Same shape as ItineraryView's FilterPill — tones match TravelModeBadge.
+
+const TRAVEL_PILL_TONES: Record<TravelFilterKey, { bg: string; color: string; border: string }> = {
+  all: {
+    bg: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+  driving: {
+    bg: "var(--color-bt-warning-faint)",
+    color: "var(--color-bt-warning)",
+    border: "var(--color-bt-warning-border)",
+  },
+  flying: {
+    bg: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+  other: {
+    bg: "var(--color-bt-blue-bg)",
+    color: "var(--color-bt-planning)",
+    border: "var(--color-bt-planning-border)",
+  },
+};
+
+function TravelFilterPill({
+  label,
+  filterKey,
+  active,
+  onClick,
+}: {
+  label: string;
+  filterKey: TravelFilterKey;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const cfg = TRAVEL_PILL_TONES[filterKey];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full px-3 py-1.5 text-xs font-semibold"
+      style={
+        active
+          ? { background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }
+          : { background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }
+      }
+    >
+      {label}
+    </button>
+  );
 }
 
 /**
@@ -61,30 +119,65 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
   const tripStartDate = trip?.start_date ?? null;
 
+  // Visibility toggle — owner controls whether non-owners see this panel.
+  // Defaults to true (visible) when the column hasn't been set.
+  const crewVisible = (trip as { travel_plans_crew_visible?: boolean | null } | undefined)
+    ?.travel_plans_crew_visible !== false;
+  const setTravelPlansVisible = trpc.trips.setTravelPlansVisible.useMutation({
+    onSuccess: () => utils.trips.getById.invalidate({ tripId }),
+  });
+
   const myMember = (members as TripMemberLite[]).find(
     (m) => m.user_id === currentUser?.id,
   );
-  // Travel coordination is for real BuddyTrip members — guests can't
-  // log in to share their plans, so excluding them from the pending
-  // tally and the read-only rows keeps the panel focused on actionable
-  // people. They'll still appear in the Crew tab; just not here.
-  const otherMembers = (members as TripMemberLite[]).filter(
-    (m) => m.user_id !== currentUser?.id && !m.isGuest,
+  // All crew except the viewer — shown to the owner (expandable) or as
+  // read-only rows for non-owners who've shared their travel.
+  const allOtherMembers = (members as TripMemberLite[]).filter(
+    (m) => m.user_id !== currentUser?.id,
   );
-  // Crew (excluding the viewer and guests) who have shared their travel.
-  const sharedOthers = otherMembers.filter((m) => !!m.travel_mode);
+  // Non-owner view: all members (including guests) who've confirmed travel.
+  const sharedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
+  // Pending tally counts only real (non-guest) members — guests can't share their own.
+  const realOtherMembers = allOtherMembers.filter((m) => !m.isGuest);
 
+  // All hooks must be called before any early return (rules-of-hooks).
   // Always start collapsed — the user opens the row deliberately by
-  // tapping. Auto-expanding when empty was visually noisy and made the
-  // panel default to a half-filled form for users who hadn't engaged yet.
+  // tapping. Auto-expanding when empty was visually noisy.
   const [expanded, setExpanded] = useState(false);
+  // "No travel yet" section starts collapsed in owner view.
+  const [pendingOpen, setPendingOpen] = useState(false);
+  // Filter pills — radio (single-select): clicking the active pill resets to All.
+  const [activeFilter, setActiveFilter] = useState<TravelFilterKey>("all");
+
+  // Non-owners are locked out entirely when the owner has hidden this panel.
+  if (!isOwner && !crewVisible) return null;
+
+  // Owner view: split other members by whether travel is confirmed.
+  const confirmedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
+  const pendingOthers = allOtherMembers.filter((m) => !m.travel_mode);
+
+  const toggleFilter = (key: TravelFilterKey) => {
+    setActiveFilter((prev) => (prev === key ? "all" : key));
+  };
+
+  const matchesFilter = (mode: string | null | undefined) =>
+    activeFilter === "all" || mode === activeFilter;
 
   const hasMyTravel = !!myMember?.travel_mode;
   // Empty-state mock-up only shows when nobody on the trip has shared
   // travel yet. As soon as anyone shares (the viewer or another crew
   // member), real rows take its place.
-  const someoneShared = hasMyTravel || sharedOthers.length > 0;
+  const anyoneElseShared = allOtherMembers.some((m) => !!m.travel_mode);
+  const someoneShared = hasMyTravel || anyoneElseShared;
   const showEmptyState = !!myMember && !someoneShared && !expanded;
+
+  // Only show pills once there are multiple distinct modes in use.
+  const allConfirmedMembers = [
+    ...(myMember?.travel_mode ? [myMember] : []),
+    ...confirmedOthers,
+  ];
+  const modesInUse = new Set(allConfirmedMembers.map((m) => m.travel_mode));
+  const showFilterPills = !showEmptyState && modesInUse.size > 1;
 
   // ── Render ──────────────────────────────────────────────────────────────
   // GETTING THERE header sits OUTSIDE the rows card so the card always
@@ -94,15 +187,40 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   return (
     <div className="space-y-3" data-testid="getting-there-section">
       {!showEmptyState && (
-        <h2
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Getting there
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2
+            className="text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Travel Plans
+          </h2>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() =>
+                setTravelPlansVisible.mutate({ tripId, visible: !crewVisible })
+              }
+              disabled={setTravelPlansVisible.isPending}
+              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider disabled:opacity-40 transition-colors"
+              style={{ color: crewVisible ? "var(--color-bt-text-dim)" : "var(--color-bt-warning)" }}
+            >
+              {crewVisible ? <Eye size={11} /> : <EyeOff size={11} />}
+              {crewVisible ? "Visible to crew" : "Hidden from crew"}
+            </button>
+          )}
+        </div>
       )}
 
       {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
+
+      {showFilterPills && (
+        <div className="flex flex-wrap items-center gap-2">
+          <TravelFilterPill label="All"     filterKey="all"     active={activeFilter === "all"}     onClick={() => toggleFilter("all")} />
+          {modesInUse.has("driving") && <TravelFilterPill label="Driving" filterKey="driving" active={activeFilter === "driving"} onClick={() => toggleFilter("driving")} />}
+          {modesInUse.has("flying")  && <TravelFilterPill label="Flying"  filterKey="flying"  active={activeFilter === "flying"}  onClick={() => toggleFilter("flying")} />}
+          {modesInUse.has("other")   && <TravelFilterPill label="Other"   filterKey="other"   active={activeFilter === "other"}   onClick={() => toggleFilter("other")} />}
+        </div>
+      )}
 
       {!showEmptyState && (
         <div
@@ -112,7 +230,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
             border: "1px solid var(--color-bt-border)",
           }}
         >
-          {myMember && (
+          {myMember && matchesFilter(myMember.travel_mode) && (
             <YourTravelRow
               tripId={tripId}
               member={myMember}
@@ -126,12 +244,74 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
             />
           )}
 
-          {sharedOthers.map((m) => (
-            <CrewTravelRow key={m.memberId} member={m} />
-          ))}
+          {/* Owner: confirmed travel rows first, then a collapsible
+              "no travel yet" section for those who haven't added info.
+              Non-owner: read-only rows for members who've shared, plus a tally. */}
+          {isOwner ? (
+            <>
+              {confirmedOthers.filter((m) => matchesFilter(m.travel_mode)).map((m) => (
+                <OtherMemberTravelRow
+                  key={m.memberId}
+                  tripId={tripId}
+                  member={m}
+                  tripStartDate={tripStartDate}
+                  onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
+                />
+              ))}
 
-          {/* Owner-only pending tally */}
-          {isOwner && <PendingTravelRow members={otherMembers} />}
+              {pendingOthers.length > 0 && (
+                <>
+                  {/* Collapsed header */}
+                  <button
+                    type="button"
+                    onClick={() => setPendingOpen((v) => !v)}
+                    className="flex w-full items-center gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                    style={{ borderColor: "var(--color-bt-border)" }}
+                  >
+                    <span
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                      style={{
+                        background: "var(--color-bt-card-raised)",
+                        color: "var(--color-bt-text-dim)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      {pendingOthers.length}
+                    </span>
+                    <span className="flex-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {pendingOthers.length === 1 ? "hasn't" : "haven't"} confirmed their travel plans
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        color: "var(--color-bt-text-dim)",
+                        transform: pendingOpen ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform 150ms",
+                        flexShrink: 0,
+                      }}
+                    />
+                  </button>
+
+                  {/* Expanded pending rows */}
+                  {pendingOpen && pendingOthers.map((m) => (
+                    <OtherMemberTravelRow
+                      key={m.memberId}
+                      tripId={tripId}
+                      member={m}
+                      tripStartDate={tripStartDate}
+                      onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
+                    />
+                  ))}
+                </>
+              )}
+            </>
+          ) : (
+            sharedOthers.filter((m) => matchesFilter(m.travel_mode)).map((m) => (
+              <CrewTravelRow key={m.memberId} member={m} />
+            ))
+          )}
+
+          {!isOwner && <PendingTravelRow members={realOtherMembers} />}
         </div>
       )}
     </div>
@@ -144,12 +324,23 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 // without the chevron / expand affordance.
 
 function CrewTravelRow({ member }: { member: TripMemberLite }) {
+  const avatar = member.isGuest ? (
+    <div
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+    >
+      <Ghost size={14} />
+    </div>
+  ) : (
+    <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+  );
+
   return (
     <div
       className="flex w-full items-center gap-3 border-t px-4 py-3"
       style={{ borderColor: "var(--color-bt-border)" }}
     >
-      <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+      {avatar}
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
@@ -161,6 +352,113 @@ function CrewTravelRow({ member }: { member: TripMemberLite }) {
       </div>
 
       <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
+    </div>
+  );
+}
+
+// ── OtherMemberTravelRow ──────────────────────────────────────────────────
+// Owner-expandable row for every other crew member (real and ghost alike).
+// Same expand/collapse pattern as YourTravelRow but uses updateMemberTravel.
+// Ghost members get a Ghost avatar; real members get UserAvatar.
+
+function OtherMemberTravelRow({
+  tripId,
+  member: m,
+  tripStartDate,
+  onSaved,
+}: {
+  tripId: string;
+  member: TripMemberLite;
+  tripStartDate: string | null;
+  onSaved: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasTravel = !!m.travel_mode;
+
+  const avatar = m.isGuest ? (
+    <div
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+    >
+      <Ghost size={14} />
+    </div>
+  ) : (
+    <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
+  );
+
+  if (!hasTravel) {
+    return (
+      <div className="border-t px-4 py-3" style={{ borderColor: "var(--color-bt-border)" }}>
+        {expanded ? (
+          <TravelExpandForm
+            tripId={tripId}
+            member={m}
+            tripStartDate={tripStartDate}
+            targetUserId={m.user_id ?? undefined}
+            onSaved={() => { onSaved(); setExpanded(false); }}
+            onCancel={() => setExpanded(false)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="flex w-full items-center gap-3 text-left"
+          >
+            {avatar}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                {m.displayName}
+              </p>
+              <p className="truncate text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                No travel info yet — tap to add
+              </p>
+            </div>
+            <Plus size={14} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Has travel — same collapsible row pattern as YourTravelRow
+  return (
+    <div className="border-t" style={{ borderColor: "var(--color-bt-border)" }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+      >
+        {avatar}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {m.displayName}
+          </p>
+          <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {summarizeTravel(m)}
+          </p>
+        </div>
+        <TravelModeBadge mode={m.travel_mode as TravelMode | null} />
+        <ChevronDown
+          size={16}
+          className="flex-shrink-0 transition-transform"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            transform: expanded ? "rotate(180deg)" : undefined,
+          }}
+        />
+      </button>
+      {expanded && (
+        <div className="border-t px-4 pb-4 pt-3" style={{ borderColor: "var(--color-bt-border)" }}>
+          <TravelExpandForm
+            tripId={tripId}
+            member={m}
+            tripStartDate={tripStartDate}
+            targetUserId={m.user_id ?? undefined}
+            onSaved={() => { onSaved(); setExpanded(false); }}
+            onCancel={() => setExpanded(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -388,12 +686,16 @@ function TravelExpandForm({
   tripId,
   member,
   tripStartDate,
+  targetUserId,
   onSaved,
   onCancel,
 }: {
   tripId: string;
   member: TripMemberLite;
   tripStartDate: string | null;
+  /** When set, the owner is editing on behalf of another member.
+   *  Uses updateMemberTravel instead of updateTravel. */
+  targetUserId?: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -416,9 +718,11 @@ function TravelExpandForm({
     parseArrivalTime(member.flight_arrival_time),
   );
 
-  const updateTravel = trpc.tripMembers.updateTravel.useMutation({
-    onSuccess: onSaved,
-  });
+  // Both mutations are always called (React hook rules). Only one fires per save.
+  const updateTravel = trpc.tripMembers.updateTravel.useMutation({ onSuccess: onSaved });
+  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({ onSuccess: onSaved });
+
+  const isPending = targetUserId ? updateMemberTravel.isPending : updateTravel.isPending;
 
   const handleSave = () => {
     // Combine arrival date + time into a local ISO timestamp (no TZ
@@ -431,12 +735,26 @@ function TravelExpandForm({
         : `${arrivalDate}T00:00:00`;
     }
 
-    if (mode === "flying") {
+    const flightAirline = mode === "flying" ? details.trim() || null : null;
+    const travelDetail = mode !== "flying" ? details.trim() || null : null;
+
+    if (targetUserId) {
+      updateMemberTravel.mutate({
+        tripId,
+        targetUserId,
+        travelMode: mode,
+        travelDetail,
+        flightAirline,
+        flightNumber: null,
+        flightArrivalTime: arrivalISO,
+        flightAirport: null,
+      });
+    } else if (mode === "flying") {
       updateTravel.mutate({
         tripId,
         travelMode: mode,
         travelDetail: null,
-        flightAirline: details.trim() || null,
+        flightAirline,
         flightNumber: null,
         flightArrivalTime: arrivalISO,
         flightAirport: null,
@@ -449,7 +767,7 @@ function TravelExpandForm({
       updateTravel.mutate({
         tripId,
         travelMode: mode,
-        travelDetail: details.trim() || null,
+        travelDetail,
         flightAirline: null,
         flightNumber: null,
         flightArrivalTime: arrivalISO,
@@ -598,7 +916,7 @@ function TravelExpandForm({
         <button
           type="button"
           onClick={onCancel}
-          disabled={updateTravel.isPending}
+          disabled={isPending}
           className="flex-shrink-0 rounded-lg border px-3 py-2 text-xs disabled:opacity-40"
           style={{
             borderColor: "var(--color-bt-border)",
@@ -612,7 +930,7 @@ function TravelExpandForm({
         <button
           type="button"
           onClick={handleSave}
-          disabled={updateTravel.isPending}
+          disabled={isPending}
           className="flex-shrink-0 rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-40"
           style={{
             background: "var(--color-bt-accent)",
@@ -620,7 +938,7 @@ function TravelExpandForm({
             whiteSpace: "nowrap",
           }}
         >
-          {updateTravel.isPending ? "Saving…" : "Save"}
+          {isPending ? "Saving…" : "Save"}
         </button>
       </div>
     </div>
@@ -647,9 +965,9 @@ function TravelModeBadge({ mode }: { mode: TravelMode | null }) {
     label = "Driving";
     Icon = Car;
   } else {
-    style.background = "var(--color-bt-card-raised)";
-    style.color = "var(--color-bt-text-dim)";
-    style.border = "1px solid var(--color-bt-border)";
+    style.background = "var(--color-bt-blue-bg)";
+    style.color = "var(--color-bt-planning)";
+    style.border = "1px solid var(--color-bt-planning-border)";
     label = "Other";
     Icon = HelpCircle;
   }

@@ -28,6 +28,8 @@ export interface TripData {
   /** Panel activation flags — owner taps the invitation card to flip these on. */
   itinerary_enabled?: boolean | null;
   getting_there_enabled?: boolean | null;
+  /** When false, the Travel Plans panel is hidden from non-owners. Defaults to true. */
+  travel_plans_crew_visible?: boolean | null;
   /** Set true when owner Xs out the Quick Info empty state on the home tab. */
   quick_info_dismissed?: boolean | null;
   owner_alert?: string | null;

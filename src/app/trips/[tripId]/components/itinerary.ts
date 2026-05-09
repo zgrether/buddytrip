@@ -205,10 +205,10 @@ export function buildItinerary(input: {
 
   // ── 3. Shared member arrivals ──
   for (const m of input.members) {
-    // Guest (non-BuddyTrip) members can't actually share travel for
-    // themselves — skip even if a stale travel_shared flag is set.
-    if (m.isGuest) continue;
-    if (!m.travel_shared) continue;
+    // Guests can't log in to share their own travel, but the owner can
+    // now enter it on their behalf — include them if travel_mode is set.
+    if (m.isGuest && !m.travel_mode) continue;
+    if (!m.isGuest && !m.travel_shared) continue;
     if (!m.flight_arrival_time) continue;
 
     const date = localDateOfTimestamp(m.flight_arrival_time);

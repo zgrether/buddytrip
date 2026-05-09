@@ -99,20 +99,38 @@ export function HomeTab({
             isDismissed={!!trip.quick_info_dismissed}
           />
 
-          {/* Two-column layout: Getting There (1/3) + Itinerary (2/3).
-              Stacks single-column on mobile — Getting There appears first. */}
-          <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
-            <div style={{ alignSelf: "start" }}>
-              <GettingTherePanel
-                tripId={trip.id}
-                trip={trip}
-                isOwner={!!isOwner}
-                isActivated={!!trip.getting_there_enabled}
-                hasDates={!!trip.start_date}
-                onOpenDatesModal={() => onTabChange?.("schedule")}
-              />
-            </div>
-            <div>
+          {/* Two-column layout: Travel Plans (1/3) + Itinerary (2/3).
+              Stacks single-column on mobile — Travel Plans appears first.
+              When the owner has hidden Travel Plans from crew the left column
+              is omitted entirely so Itinerary expands to full width.
+              minmax(0,…) stops filter-pill min-content from widening columns. */}
+          {(() => {
+            const showTravelColumn =
+              !!isOwner ||
+              (trip as { travel_plans_crew_visible?: boolean | null }).travel_plans_crew_visible !== false;
+            return showTravelColumn ? (
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                <div style={{ alignSelf: "start" }}>
+                  <GettingTherePanel
+                    tripId={trip.id}
+                    trip={trip}
+                    isOwner={!!isOwner}
+                    isActivated={!!trip.getting_there_enabled}
+                    hasDates={!!trip.start_date}
+                    onOpenDatesModal={() => onTabChange?.("schedule")}
+                  />
+                </div>
+                <div>
+                  <ItineraryPanel
+                    tripId={trip.id}
+                    trip={trip}
+                    isOwner={!!isOwner}
+                    isActivated={!!trip.itinerary_enabled}
+                    hasContent={hasItineraryContent}
+                  />
+                </div>
+              </div>
+            ) : (
               <ItineraryPanel
                 tripId={trip.id}
                 trip={trip}
@@ -120,8 +138,8 @@ export function HomeTab({
                 isActivated={!!trip.itinerary_enabled}
                 hasContent={hasItineraryContent}
               />
-            </div>
-          </div>
+            );
+          })()}
 
           <CompetitionInvitationCard
             canEdit={canEditProp}

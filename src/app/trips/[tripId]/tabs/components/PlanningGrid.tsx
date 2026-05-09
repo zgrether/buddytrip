@@ -822,7 +822,7 @@ const PLANNING_MOBILE_TABS = [
   { id: "dates" as const, label: "Dates", Icon: CalendarRange },
   { id: "crew" as const, label: "Crew", Icon: Users },
   { id: "lodging" as const, label: "Lodging", Icon: Hotel },
-  { id: "schedule" as const, label: "Schedule", Icon: Calendar },
+  { id: "schedule" as const, label: "Agenda", Icon: Calendar },
 ];
 
 // ── Main grid ─────────────────────────────────────────────────────────────
@@ -1426,13 +1426,13 @@ export function PlanningGrid({
         <Tile
           testId="planning-tile-schedule"
           icon={Calendar}
-          label="Schedule"
+          label="Agenda"
           state={scheduleState}
           isActive={activePanel === "schedule"}
           emptyDescription="Nothing planned yet"
           emptyCTA="Add items"
           completeValue={`${scheduleCount} ${scheduleCount === 1 ? "item" : "items"}`}
-          editLabel="Manage schedule"
+          editLabel="Manage agenda"
           preview={schedulePreview}
           anyPanelOpen={!!activePanel}
 
@@ -1585,7 +1585,7 @@ export function PlanningGrid({
           {mobileActiveTab === "schedule" && (
             scheduleState === "skipped" ? (
               <div className="flex flex-col items-center gap-3 px-6 py-8">
-                <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of schedule</p>
+                <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>Opted out of agenda</p>
                 {canEdit && (
                   <button type="button" onClick={() => handleUnskip("schedule")} disabled={pendingTile === "schedule"}
                     className="rounded-lg px-4 py-1.5 text-sm font-semibold disabled:opacity-40"

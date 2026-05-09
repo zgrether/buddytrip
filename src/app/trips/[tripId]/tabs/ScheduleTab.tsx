@@ -579,10 +579,10 @@ export function ScheduleTab({
             </span>
             <div>
               <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-                Items are unscheduled
+                Set dates to schedule your agenda
               </p>
               <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                Set trip dates to assign items to specific days
+                Trip dates let you assign agenda items to specific days
               </p>
             </div>
           </div>
@@ -634,7 +634,7 @@ export function ScheduleTab({
               {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
             </p>
             <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Confirm items to lock them into the schedule
+              Confirm items to lock them onto the official itinerary
             </p>
           </div>
         </div>
@@ -672,36 +672,24 @@ export function ScheduleTab({
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {stage === "planning"
-            ? "Start adding items to your schedule — you can edit and reorganize at any time. All confirmed items will appear on the official schedule for the crew once the trip has been officially kicked off."
-            : "Keep your schedule up to date — any confirmed items will be shown on the crew's official schedule."}
+            ? "Add ideas and activities to your agenda — you can reorder and schedule them at any time. Confirmed items appear on the crew's itinerary once the trip kicks off."
+            : "Keep your agenda up to date — confirmed items are shown on the crew's itinerary."}
         </p>
 
-        {/* Add buttons — full-width above the two-column grid */}
+        {/* Add button — full-width above the two-column grid */}
         {canEdit && (
-          <div className="mb-4 flex gap-2">
+          <div className="mb-4">
             <button
               onClick={() => setAddMode("general")}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
               style={{
                 background: "var(--color-bt-card-raised)",
                 color: "var(--color-bt-text)",
                 border: "1px solid var(--color-bt-border)",
               }}
             >
-              <ClipboardList size={15} />
-              <Plus size={12} /> Item
-            </button>
-            <button
-              onClick={() => setAddMode("golf")}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <Flag size={15} />
-              <Plus size={12} /> Golf
+              <Plus size={14} />
+              Add to Agenda
             </button>
           </div>
         )}
@@ -709,8 +697,8 @@ export function ScheduleTab({
         {allItems.length === 0 ? (
           <EmptyState
             icon={<CalendarDays className="h-10 w-10" />}
-            headline="No schedule items yet"
-            subtext={canEdit ? "Add items to plan your trip's agenda." : "The organizer hasn't added any schedule items yet."}
+            headline="Your agenda is empty"
+            subtext={canEdit ? "Add activities, golf rounds, and ideas — then drag them onto days to build the schedule." : "The organizer hasn't added anything yet."}
           />
         ) : (
           <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
@@ -726,7 +714,7 @@ export function ScheduleTab({
                     className="text-[11px] font-semibold uppercase tracking-wider"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Unscheduled Items
+                    On Deck
                   </h4>
                 </div>
                 {canEdit && (
@@ -734,7 +722,7 @@ export function ScheduleTab({
                     className="mt-0.5 text-[10px] italic"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Drag onto a day to schedule
+                    Ideas &amp; unscheduled items — drag onto a day
                   </p>
                 )}
               </div>
@@ -783,7 +771,7 @@ export function ScheduleTab({
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     {canEdit
-                      ? "All items have been scheduled. Drag here to remove from the official schedule."
+                      ? "All items have been scheduled. Drag here to move something back to the idea pool."
                       : "All items have been scheduled."}
                   </p>
                 ) : (
@@ -842,7 +830,7 @@ export function ScheduleTab({
                     className="text-[11px] font-semibold uppercase tracking-wider"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Schedule
+                    Day-by-Day
                   </h4>
                 </div>
                 {canEdit && (
@@ -861,8 +849,8 @@ export function ScheduleTab({
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   {trip.start_date
-                    ? "No items scheduled yet — drag from the left column onto a day."
-                    : "Set trip dates to see the calendar."}
+                    ? "Nothing on the schedule yet — drag from On Deck onto a day."
+                    : "Set trip dates to see the day-by-day schedule."}
                 </p>
               ) : (
                 <div className="space-y-5">
@@ -1012,11 +1000,8 @@ export function ScheduleTab({
         )}
       </section>
 
-      {addMode === "general" && (
+      {addMode !== null && (
         <AddScheduleItemSheet tripId={tripId} itemType="general" onClose={() => setAddMode(null)} />
-      )}
-      {addMode === "golf" && (
-        <AddScheduleItemSheet tripId={tripId} itemType="golf" onClose={() => setAddMode(null)} />
       )}
 
       {/* Edit sheet */}
@@ -1045,10 +1030,10 @@ export function ScheduleTab({
               className="text-base font-semibold"
               style={{ color: "var(--color-bt-text)" }}
             >
-              Delete schedule item?
+              Remove from agenda?
             </p>
             <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              &ldquo;{confirmDelete.title}&rdquo; will be permanently removed from the schedule.
+              &ldquo;{confirmDelete.title}&rdquo; will be permanently removed.
             </p>
             <div className="mt-4 flex gap-3">
               <button

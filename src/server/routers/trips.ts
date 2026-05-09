@@ -827,6 +827,30 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // setTravelPlansVisible — owner toggles whether non-owners can see the
+  // Travel Plans panel. Defaults to true; owner can hide it once the trip
+  // is underway (the itinerary carries the same info).
+  // -----------------------------------------------------------------------
+  setTravelPlansVisible: authedProcedure
+    .input(z.object({ tripId: z.string(), visible: z.boolean() }))
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ input, ctx }) => {
+      const { error } = await ctx.supabase
+        .from("trips")
+        .update({ travel_plans_crew_visible: input.visible })
+        .eq("id", ctx.tripId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update travel plans visibility: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
   // dismissQuickInfo — owner taps the X on the Quick Info empty state.
   // Flag stays set until restored. Idempotent.
   // -----------------------------------------------------------------------
