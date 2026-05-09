@@ -476,6 +476,14 @@ export function ScheduleTab({
                 scheduled_date: vars.scheduledDate !== undefined
                   ? vars.scheduledDate
                   : item.scheduled_date,
+                // Clearing the date moves the item to On Deck — unconfirm it
+                // immediately so the confirmed badge disappears without waiting
+                // for the server round-trip.
+                ...(vars.scheduledDate === null && {
+                  is_confirmed: false,
+                  confirmed_at: null,
+                  confirmed_by: null,
+                }),
               }
             : item
         )
