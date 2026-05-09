@@ -60,9 +60,9 @@ const TRAVEL_PILL_TONES: Record<TravelFilterKey, { bg: string; color: string; bo
     border: "var(--color-bt-accent-border)",
   },
   other: {
-    bg: "var(--color-bt-card-raised)",
-    color: "var(--color-bt-text-dim)",
-    border: "var(--color-bt-border)",
+    bg: "var(--color-bt-blue-bg)",
+    color: "var(--color-bt-planning)",
+    border: "var(--color-bt-planning-border)",
   },
 };
 
@@ -140,25 +140,15 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const [expanded, setExpanded] = useState(false);
   // "No travel yet" section starts collapsed in owner view.
   const [pendingOpen, setPendingOpen] = useState(false);
-  // Filter pills — same multi-select pattern as ItineraryView.
-  const [activeFilters, setActiveFilters] = useState<Set<TravelFilterKey>>(new Set(["all"]));
+  // Filter pills — radio (single-select): clicking the active pill resets to All.
+  const [activeFilter, setActiveFilter] = useState<TravelFilterKey>("all");
 
   const toggleFilter = (key: TravelFilterKey) => {
-    setActiveFilters((prev) => {
-      if (key === "all") return new Set<TravelFilterKey>(["all"]);
-      const next = new Set(prev);
-      next.delete("all");
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next.size === 0 ? new Set<TravelFilterKey>(["all"]) : next;
-    });
+    setActiveFilter((prev) => (prev === key ? "all" : key));
   };
 
-  const matchesFilter = (mode: string | null | undefined) => {
-    if (activeFilters.has("all")) return true;
-    if (!mode) return false;
-    return activeFilters.has(mode as TravelFilterKey);
-  };
+  const matchesFilter = (mode: string | null | undefined) =>
+    activeFilter === "all" || mode === activeFilter;
 
   const hasMyTravel = !!myMember?.travel_mode;
   // Empty-state mock-up only shows when nobody on the trip has shared
@@ -196,10 +186,10 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 
       {showFilterPills && (
         <div className="flex flex-wrap items-center gap-2">
-          <TravelFilterPill label="All"     filterKey="all"     active={activeFilters.has("all")}     onClick={() => toggleFilter("all")} />
-          {modesInUse.has("driving") && <TravelFilterPill label="Driving" filterKey="driving" active={activeFilters.has("driving")} onClick={() => toggleFilter("driving")} />}
-          {modesInUse.has("flying")  && <TravelFilterPill label="Flying"  filterKey="flying"  active={activeFilters.has("flying")}  onClick={() => toggleFilter("flying")} />}
-          {modesInUse.has("other")   && <TravelFilterPill label="Other"   filterKey="other"   active={activeFilters.has("other")}   onClick={() => toggleFilter("other")} />}
+          <TravelFilterPill label="All"     filterKey="all"     active={activeFilter === "all"}     onClick={() => toggleFilter("all")} />
+          {modesInUse.has("driving") && <TravelFilterPill label="Driving" filterKey="driving" active={activeFilter === "driving"} onClick={() => toggleFilter("driving")} />}
+          {modesInUse.has("flying")  && <TravelFilterPill label="Flying"  filterKey="flying"  active={activeFilter === "flying"}  onClick={() => toggleFilter("flying")} />}
+          {modesInUse.has("other")   && <TravelFilterPill label="Other"   filterKey="other"   active={activeFilter === "other"}   onClick={() => toggleFilter("other")} />}
         </div>
       )}
 
@@ -935,9 +925,9 @@ function TravelModeBadge({ mode }: { mode: TravelMode | null }) {
     label = "Driving";
     Icon = Car;
   } else {
-    style.background = "var(--color-bt-card-raised)";
-    style.color = "var(--color-bt-text-dim)";
-    style.border = "1px solid var(--color-bt-border)";
+    style.background = "var(--color-bt-blue-bg)";
+    style.color = "var(--color-bt-planning)";
+    style.border = "1px solid var(--color-bt-planning-border)";
     label = "Other";
     Icon = HelpCircle;
   }
