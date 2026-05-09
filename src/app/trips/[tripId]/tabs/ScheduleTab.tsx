@@ -469,7 +469,14 @@ export function ScheduleTab({
       utils.schedule.list.setData({ tripId }, (old) =>
         old?.map((item) =>
           item.id === vars.itemId
-            ? { ...item, scheduled_date: vars.scheduledDate ?? item.scheduled_date }
+            ? {
+                ...item,
+                // Use !== undefined so null is treated as "clear the date"
+                // (drops item back to On Deck). ?? would fall through on null.
+                scheduled_date: vars.scheduledDate !== undefined
+                  ? vars.scheduledDate
+                  : item.scheduled_date,
+              }
             : item
         )
       );
