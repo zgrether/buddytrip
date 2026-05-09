@@ -205,7 +205,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
               style={{ color: crewVisible ? "var(--color-bt-text-dim)" : "var(--color-bt-warning)" }}
             >
               {crewVisible ? <Eye size={11} /> : <EyeOff size={11} />}
-              {crewVisible ? "Crew visible" : "Hidden from crew"}
+              {crewVisible ? "Visible to crew" : "Hidden from crew"}
             </button>
           )}
         </div>
