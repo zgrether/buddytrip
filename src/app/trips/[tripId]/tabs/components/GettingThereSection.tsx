@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   Car,
   ChevronDown,
+  Eye,
+  EyeOff,
   Ghost,
   HelpCircle,
   Plane,
@@ -117,6 +119,14 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
   const tripStartDate = trip?.start_date ?? null;
 
+  // Visibility toggle — owner controls whether non-owners see this panel.
+  // Defaults to true (visible) when the column hasn't been set.
+  const crewVisible = (trip as { travel_plans_crew_visible?: boolean | null } | undefined)
+    ?.travel_plans_crew_visible !== false;
+  const setTravelPlansVisible = trpc.trips.setTravelPlansVisible.useMutation({
+    onSuccess: () => utils.trips.getById.invalidate({ tripId }),
+  });
+
   const myMember = (members as TripMemberLite[]).find(
     (m) => m.user_id === currentUser?.id,
   );
@@ -125,10 +135,13 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const allOtherMembers = (members as TripMemberLite[]).filter(
     (m) => m.user_id !== currentUser?.id,
   );
-  // Non-owner view: real members who've shared (pending tally counts the rest)
-  const sharedOthers = allOtherMembers.filter((m) => !!m.travel_mode && !m.isGuest);
-  // Real members only for the pending tally (ghosts are always shown in owner view)
+  // Non-owner view: all members (including guests) who've confirmed travel.
+  const sharedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
+  // Pending tally counts only real (non-guest) members — guests can't share their own.
   const realOtherMembers = allOtherMembers.filter((m) => !m.isGuest);
+
+  // Non-owners are locked out entirely when the owner has hidden this panel.
+  if (!isOwner && !crewVisible) return null;
 
   // Owner view: split other members by whether travel is confirmed.
   const confirmedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
@@ -174,12 +187,28 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   return (
     <div className="space-y-3" data-testid="getting-there-section">
       {!showEmptyState && (
-        <h2
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Travel Plans
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2
+            className="text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Travel Plans
+          </h2>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() =>
+                setTravelPlansVisible.mutate({ tripId, visible: !crewVisible })
+              }
+              disabled={setTravelPlansVisible.isPending}
+              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider disabled:opacity-40 transition-colors"
+              style={{ color: crewVisible ? "var(--color-bt-text-dim)" : "var(--color-bt-warning)" }}
+            >
+              {crewVisible ? <Eye size={11} /> : <EyeOff size={11} />}
+              {crewVisible ? "Crew visible" : "Hidden from crew"}
+            </button>
+          )}
+        </div>
       )}
 
       {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
@@ -295,12 +324,23 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 // without the chevron / expand affordance.
 
 function CrewTravelRow({ member }: { member: TripMemberLite }) {
+  const avatar = member.isGuest ? (
+    <div
+      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+    >
+      <Ghost size={14} />
+    </div>
+  ) : (
+    <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+  );
+
   return (
     <div
       className="flex w-full items-center gap-3 border-t px-4 py-3"
       style={{ borderColor: "var(--color-bt-border)" }}
     >
-      <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+      {avatar}
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
