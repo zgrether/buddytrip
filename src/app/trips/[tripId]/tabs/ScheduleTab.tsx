@@ -119,6 +119,7 @@ function ScheduleItemRow({
   onDrop,
   onCompEventDrop,
   onUnlinkCompEvent,
+  compDragType,
 }: {
   item: ScheduleItem;
   canEdit: boolean;
@@ -136,13 +137,22 @@ function ScheduleItemRow({
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
   onUnlinkCompEvent?: () => void;
+  /** When non-null, a competition event is being dragged. The row computes
+   *  whether it's a valid target and highlights itself accordingly. */
+  compDragType?: "GOLF" | "GENERIC" | null;
 }) {
   const movable = canEdit;
+  // GOLF events can only land on golf items; non-GOLF events land on anything.
+  const isValidCompTarget =
+    !!compDragType && (compDragType === "GENERIC" || item.item_type === "golf");
+  // Suppress the agenda-reorder drop indicator while a comp event is being
+  // dragged — its visual cue would be confusing alongside the comp highlight.
+  const showReorderIndicator = !compDragType && showDropIndicator;
 
   return (
     <>
       {/* Drop insertion line */}
-      {showDropIndicator && (
+      {showReorderIndicator && (
         <div
           className="mb-1 h-0.5 rounded-full"
           style={{ background: "var(--color-bt-accent)" }}
@@ -164,8 +174,14 @@ function ScheduleItemRow({
         } : undefined}
         className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
         style={{
-          background: item.is_confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-          border: `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+          background: isValidCompTarget
+            ? "var(--color-bt-accent-faint)"
+            : item.is_confirmed
+            ? "var(--color-bt-tag-bg)"
+            : "var(--color-bt-card)",
+          border: isValidCompTarget
+            ? "1.5px solid var(--color-bt-accent)"
+            : `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
           opacity: isDragging ? 0.4 : 1,
         }}
       >
@@ -352,9 +368,13 @@ function ScheduleItemRow({
 function CompEventChip({
   event,
   canEdit,
+  onDragStarted,
+  onDragEnded,
 }: {
   event: EventRow;
   canEdit: boolean;
+  onDragStarted?: (type: "GOLF" | "GENERIC") => void;
+  onDragEnded?: () => void;
 }) {
   const isGolf = event.type === "GOLF";
   return (
@@ -363,7 +383,9 @@ function CompEventChip({
       onDragStart={canEdit ? (e) => {
         e.dataTransfer.setData(DND_EVENT_KEY, event.id);
         e.dataTransfer.effectAllowed = "move";
+        onDragStarted?.(event.type);
       } : undefined}
+      onDragEnd={canEdit ? () => onDragEnded?.() : undefined}
       className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{
         background: "var(--color-bt-card-raised)",
@@ -406,6 +428,9 @@ export function ScheduleTab({
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
   const [unscheduledDragOver, setUnscheduledDragOver] = useState(false);
+  // Type of competition event currently being dragged (null when no comp drag).
+  // Drives per-item highlighting on Day-by-Day rows.
+  const [compDragType, setCompDragType] = useState<"GOLF" | "GENERIC" | null>(null);
 
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const allItems = scheduleItems as ScheduleItem[];
@@ -1027,6 +1052,8 @@ export function ScheduleTab({
                           key={event.id}
                           event={event}
                           canEdit={canEdit}
+                          onDragStarted={(t) => setCompDragType(t)}
+                          onDragEnded={() => setCompDragType(null)}
                         />
                       ))
                     )}
@@ -1179,6 +1206,7 @@ export function ScheduleTab({
                               onUnlinkCompEvent={item.competition_event_id ? () => {
                                 linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
                               } : undefined}
+                              compDragType={compDragType}
                             />
                           ))}
                           {/* Bottom drop zone — append to end of day */}
