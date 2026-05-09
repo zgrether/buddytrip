@@ -118,6 +118,7 @@ function ScheduleItemRow({
   onDragOver,
   onDrop,
   onCompEventDrop,
+  onUnlinkCompEvent,
 }: {
   item: ScheduleItem;
   canEdit: boolean;
@@ -134,6 +135,7 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
+  onUnlinkCompEvent?: () => void;
 }) {
   const movable = canEdit;
 
@@ -236,6 +238,17 @@ function ScheduleItemRow({
             <span className="text-[11px]" style={{ color: "var(--color-bt-accent)" }}>
               {item.competition_event.title}
             </span>
+            {canEdit && onUnlinkCompEvent && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(); }}
+                className="flex h-3.5 w-3.5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-accent)" }}
+                title="Remove competition link"
+                aria-label="Remove competition link"
+              >
+                <X size={10} />
+              </button>
+            )}
           </div>
         )}
         {/* General: location + time */}
@@ -940,6 +953,9 @@ export function ScheduleTab({
                           setDragOverIdx(null);
                           handleDragDrop(null, unscheduledItems, idx);
                         }}
+                        onUnlinkCompEvent={item.competition_event_id ? () => {
+                          linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
+                        } : undefined}
                       />
                     ))}
                     {/* eslint-enable react-hooks/refs */}
@@ -1126,6 +1142,9 @@ export function ScheduleTab({
                                   linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: item.id });
                                 }
                               }}
+                              onUnlinkCompEvent={item.competition_event_id ? () => {
+                                linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
+                              } : undefined}
                             />
                           ))}
                           {/* Bottom drop zone — append to end of day */}
