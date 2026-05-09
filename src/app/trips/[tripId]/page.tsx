@@ -53,7 +53,7 @@ export default function TripDetailPage() {
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: poll, isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
-  const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
+  const { data: prefetchedReservations = [], isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
   const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
@@ -162,9 +162,19 @@ export default function TripDetailPage() {
     (prefetchedSchedule as Array<{ is_confirmed: boolean; scheduled_date?: string | null }>).some(
       (item) => !item.scheduled_date || !item.is_confirmed
     );
+  // lodgingDot: fires when the editor has lodging items that haven't been
+  // confirmed yet — mirrors the scheduleDot pattern so the owner is nudged
+  // to lock in where everyone is staying.
+  const lodgingDot =
+    effectiveCanEdit &&
+    (prefetchedReservations as Array<{ is_confirmed?: boolean | null }>).length > 0 &&
+    (prefetchedReservations as Array<{ is_confirmed?: boolean | null }>).some(
+      (item) => !item.is_confirmed
+    );
   const tabBadges: Partial<Record<TabId, boolean>> = {};
   if (crewDot) tabBadges.crew = true;
   if (scheduleDot) tabBadges.schedule = true;
+  if (lodgingDot) tabBadges.lodging = true;
 
   // Settings gear is now rendered INSIDE TripHeader (top-right). The header
   // calls `onSettingsClick` when tapped — pass it through only when the owner
