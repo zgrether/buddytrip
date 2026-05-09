@@ -140,21 +140,21 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   // Pending tally counts only real (non-guest) members — guests can't share their own.
   const realOtherMembers = allOtherMembers.filter((m) => !m.isGuest);
 
+  // All hooks must be called before any early return (rules-of-hooks).
+  // Always start collapsed — the user opens the row deliberately by
+  // tapping. Auto-expanding when empty was visually noisy.
+  const [expanded, setExpanded] = useState(false);
+  // "No travel yet" section starts collapsed in owner view.
+  const [pendingOpen, setPendingOpen] = useState(false);
+  // Filter pills — radio (single-select): clicking the active pill resets to All.
+  const [activeFilter, setActiveFilter] = useState<TravelFilterKey>("all");
+
   // Non-owners are locked out entirely when the owner has hidden this panel.
   if (!isOwner && !crewVisible) return null;
 
   // Owner view: split other members by whether travel is confirmed.
   const confirmedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
   const pendingOthers = allOtherMembers.filter((m) => !m.travel_mode);
-
-  // Always start collapsed — the user opens the row deliberately by
-  // tapping. Auto-expanding when empty was visually noisy and made the
-  // panel default to a half-filled form for users who hadn't engaged yet.
-  const [expanded, setExpanded] = useState(false);
-  // "No travel yet" section starts collapsed in owner view.
-  const [pendingOpen, setPendingOpen] = useState(false);
-  // Filter pills — radio (single-select): clicking the active pill resets to All.
-  const [activeFilter, setActiveFilter] = useState<TravelFilterKey>("all");
 
   const toggleFilter = (key: TravelFilterKey) => {
     setActiveFilter((prev) => (prev === key ? "all" : key));
