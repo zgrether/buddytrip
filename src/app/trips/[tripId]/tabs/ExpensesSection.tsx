@@ -199,149 +199,168 @@ export function ExpensesSection({
     });
 
   return (
-    <div className="space-y-3">
-      {/* Add receipt button — any trip member can log a receipt (server
-          enforces requireTripMember). canEdit gates only the split-edit
-          and delete actions below. */}
-      <button
-        data-testid="show-add-expense-btn"
-        onClick={() => setShowAdd(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          color: "var(--color-bt-text)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <Receipt size={15} />
-        <Plus size={12} /> Receipt
-      </button>
+    <>
+      {/* ── Two-column layout: receipts (2/3) | balances (1/3) ──────────
+          Stacks single-column on mobile — receipts first, balances below.
+          minmax(0,…) prevents min-content from pushing column widths. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
 
-      {!hasExpenses ? (
-        <EmptyState
-          icon={<Receipt className="h-10 w-10" />}
-          headline="No receipts yet"
-          subtext="Add receipts to track who paid for what so we can square everyone up at the end of the trip."
-        />
-      ) : (
-        <>
-          <div className="space-y-2">
-            {(expenses as ExpenseItem[]).map((expense) => {
-              const userSplit = currentUser
-                ? expense.splits.find((s) => s.user_id === currentUser.id)
-                : null;
-              const isOptedOut = userSplit?.opted_out === true;
-              const activeSplitCount = expense.splits.filter((s) => !s.opted_out).length;
-              const userShare = currentUser
-                ? computeUserShare(expense, currentUser.id)
-                : null;
+        {/* ── Left: add button + receipt list ─────────────────────────── */}
+        <div className="space-y-3">
+          {/* Add receipt button — any trip member can log a receipt (server
+              enforces requireTripMember). canEdit gates only the split-edit
+              and delete actions below. */}
+          <button
+            data-testid="show-add-expense-btn"
+            onClick={() => setShowAdd(true)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <Receipt size={15} />
+            <Plus size={12} /> Receipt
+          </button>
 
-              return (
-                <div
-                  key={expense.id}
-                  data-testid={`expense-row-${expense.id}`}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                  style={{
-                    background: isOptedOut ? "var(--color-bt-base)" : "var(--color-bt-card)",
-                    border: "1px solid var(--color-bt-border)",
-                    opacity: isOptedOut ? 0.7 : 1,
-                  }}
-                >
-                  <DollarSign size={14} style={{ color: "var(--color-bt-accent)" }} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                      <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                        {expense.title}
-                      </p>
-                      {expense.date && (
-                        <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                          {new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </span>
+          {!hasExpenses ? (
+            <EmptyState
+              icon={<Receipt className="h-10 w-10" />}
+              headline="No receipts yet"
+              subtext="Add receipts to track who paid for what so we can square everyone up at the end of the trip."
+            />
+          ) : (
+            <div className="space-y-2">
+              {(expenses as ExpenseItem[]).map((expense) => {
+                const userSplit = currentUser
+                  ? expense.splits.find((s) => s.user_id === currentUser.id)
+                  : null;
+                const isOptedOut = userSplit?.opted_out === true;
+                const activeSplitCount = expense.splits.filter((s) => !s.opted_out).length;
+                const userShare = currentUser
+                  ? computeUserShare(expense, currentUser.id)
+                  : null;
+
+                return (
+                  <div
+                    key={expense.id}
+                    data-testid={`expense-row-${expense.id}`}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                    style={{
+                      background: isOptedOut ? "var(--color-bt-base)" : "var(--color-bt-card)",
+                      border: "1px solid var(--color-bt-border)",
+                      opacity: isOptedOut ? 0.7 : 1,
+                    }}
+                  >
+                    <DollarSign size={14} style={{ color: "var(--color-bt-accent)" }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                          {expense.title}
+                        </p>
+                        {expense.date && (
+                          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-x-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                        <span>Paid by {memberName(members, expense.paid_by_user_id)}</span>
+                        <span>split {activeSplitCount} ways</span>
+                      </div>
+                      {userSplit && (
+                        <p className="mt-0.5 text-xs" style={{
+                          color: isOptedOut ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
+                        }}>
+                          {isOptedOut
+                            ? "Opted out"
+                            : userShare !== null
+                              ? `Your share: $${userShare.toFixed(2)}`
+                              : null}
+                        </p>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-x-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      <span>Paid by {memberName(members, expense.paid_by_user_id)}</span>
-                      <span>split {activeSplitCount} ways</span>
-                    </div>
+                    <span className="flex-shrink-0 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                      ${expense.amount.toFixed(2)}
+                    </span>
                     {userSplit && (
-                      <p className="mt-0.5 text-xs" style={{
-                        color: isOptedOut ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
-                      }}>
-                        {isOptedOut
-                          ? "Opted out"
-                          : userShare !== null
-                            ? `Your share: $${userShare.toFixed(2)}`
-                            : null}
-                      </p>
+                      <button
+                        onClick={() =>
+                          optOutMutation.mutate({
+                            tripId,
+                            expenseId: expense.id,
+                            optOut: !isOptedOut,
+                          })
+                        }
+                        disabled={optOutMutation.isPending}
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70 disabled:opacity-40"
+                        style={{ color: isOptedOut ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                        title={isOptedOut ? "Rejoin" : "Opt out"}
+                      >
+                        {isOptedOut ? <UserPlus size={13} /> : <UserMinus size={13} />}
+                      </button>
+                    )}
+                    {isOwner && (
+                      <button
+                        data-testid={`edit-splits-${expense.id}`}
+                        onClick={() => setEditingExpense(expense)}
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        data-testid={`remove-expense-${expense.id}`}
+                        onClick={() =>
+                          removeExpense.mutate({ tripId, expenseId: expense.id })
+                        }
+                        disabled={removeExpense.isPending}
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-40"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     )}
                   </div>
-                  <span className="flex-shrink-0 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                    ${expense.amount.toFixed(2)}
-                  </span>
-                  {userSplit && (
-                    <button
-                      onClick={() =>
-                        optOutMutation.mutate({
-                          tripId,
-                          expenseId: expense.id,
-                          optOut: !isOptedOut,
-                        })
-                      }
-                      disabled={optOutMutation.isPending}
-                      className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70 disabled:opacity-40"
-                      style={{ color: isOptedOut ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-                      title={isOptedOut ? "Rejoin" : "Opt out"}
-                    >
-                      {isOptedOut ? <UserPlus size={13} /> : <UserMinus size={13} />}
-                    </button>
-                  )}
-                  {isOwner && (
-                    <button
-                      data-testid={`edit-splits-${expense.id}`}
-                      onClick={() => setEditingExpense(expense)}
-                      className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      <Pencil size={13} />
-                    </button>
-                  )}
-                  {canEdit && (
-                    <button
-                      data-testid={`remove-expense-${expense.id}`}
-                      onClick={() =>
-                        removeExpense.mutate({ tripId, expenseId: expense.id })
-                      }
-                      disabled={removeExpense.isPending}
-                      className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-40"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-          {/* ── Balances ──────────────────────────────────────────────── */}
-          {balanceRows.length > 0 && (
-            <div>
-              <h2
-                className="mb-2 text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Balances
-              </h2>
+        {/* ── Right: balances ──────────────────────────────────────────── */}
+        {/* alignSelf start keeps the panel pinned at the top of the row
+            while the left column grows with more receipts. Hidden on
+            mobile when empty to avoid dead whitespace. */}
+        <div style={{ alignSelf: "start" }}>
+          <h2
+            className="mb-2 text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Balances
+          </h2>
+          {balanceRows.length > 0 ? (
+            <div
+              className="rounded-xl overflow-hidden"
+              style={{ border: "1px solid var(--color-bt-border)" }}
+            >
               {balanceRows.map((m, i) => {
                 const bal = balances.get(m.user_id) ?? 0;
                 const isCurrentUser = m.user_id === currentUser?.id;
                 return (
                   <div
                     key={m.user_id}
-                    className="flex items-center justify-between border-b px-1 py-2.5"
+                    className="flex items-center justify-between px-3 py-2.5"
                     style={{
-                      borderColor: "var(--color-bt-border)",
-                      background: i % 2 === 1 ? (isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.025)") : undefined,
+                      background: i % 2 === 0
+                        ? "var(--color-bt-card)"
+                        : isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.018)",
+                      borderBottom: i < balanceRows.length - 1
+                        ? "1px solid var(--color-bt-border)"
+                        : undefined,
                     }}
                   >
                     <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
@@ -350,16 +369,25 @@ export function ExpensesSection({
                         <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
                       )}
                     </span>
-                    <span className="text-sm font-medium" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
+                    <span className="text-sm font-semibold tabular-nums" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
                       {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
                     </span>
                   </div>
                 );
               })}
             </div>
+          ) : hasExpenses ? (
+            <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              All settled up 🎉
+            </p>
+          ) : (
+            <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Balances appear once receipts are added.
+            </p>
           )}
-        </>
-      )}
+        </div>
+
+      </div>
 
       {/* ── Add Expense Modal ─────────────────────────────────────────── */}
       {showAdd && (
@@ -379,6 +407,6 @@ export function ExpensesSection({
           onClose={() => setEditingExpense(null)}
         />
       )}
-    </div>
+    </>
   );
 }
