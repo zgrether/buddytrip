@@ -27,6 +27,13 @@ import { DND_EVENT_KEY } from "@/components/competition/EventsPanel";
 import type { EventRow } from "@/components/competition/EventsPanel";
 import type { TabProps } from "./types";
 
+// ── Module-level comp event drag tracker ─────────────────────────────────
+// e.dataTransfer.types is readable during dragover but can be unreliable
+// after a mutation cycle in some browsers. We keep a module-level variable
+// set in dragstart / cleared in dragend or drop so onDragOver and onDrop
+// always know what's in flight without depending on the browser's DnD API.
+let _compEventDragId: string | null = null;
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 interface ScheduleItem {
@@ -156,9 +163,12 @@ function ScheduleItemRow({
         draggable={movable}
         onDragStart={movable ? onDragStart : undefined}
         onDragOver={canEdit ? (e) => {
-          // Distinguish competition-event drags from agenda-item drags.
-          // dataTransfer.types is readable during dragover; getData is not.
-          if (e.dataTransfer.types.includes(DND_EVENT_KEY)) {
+          // Detect comp-event drags via types (preferred) OR the module tracker
+          // (fallback — reliable even when dataTransfer.types is stale after a
+          // mutation cycle in some browsers).
+          const isCompDrag =
+            e.dataTransfer.types.includes(DND_EVENT_KEY) || _compEventDragId !== null;
+          if (isCompDrag) {
             if (item.item_type === "golf") {
               e.preventDefault();
               e.stopPropagation();
@@ -178,7 +188,10 @@ function ScheduleItemRow({
         onDragEnd={() => setCompHover(false)}
         onDrop={canEdit ? (e) => {
           setCompHover(false);
-          const compEventId = e.dataTransfer.getData(DND_EVENT_KEY);
+          // Use getData first; fall back to the module tracker in case
+          // getData returns empty (can happen after a mutation cycle).
+          const compEventId = e.dataTransfer.getData(DND_EVENT_KEY) || _compEventDragId;
+          _compEventDragId = null; // always clear after drop
           if (compEventId) {
             e.preventDefault();
             e.stopPropagation();
@@ -394,7 +407,9 @@ function CompEventChip({
       onDragStart={canEdit ? (e) => {
         e.dataTransfer.setData(DND_EVENT_KEY, event.id);
         e.dataTransfer.effectAllowed = "move";
+        _compEventDragId = event.id;
       } : undefined}
+      onDragEnd={canEdit ? () => { _compEventDragId = null; } : undefined}
       className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{
         background: "var(--color-bt-card-raised)",
