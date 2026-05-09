@@ -17,6 +17,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { UserAvatar } from "@/components/UserAvatar";
 
 type TravelMode = "driving" | "flying" | "other";
+type TravelFilterKey = "all" | "driving" | "flying" | "other";
 
 interface TripMemberLite {
   memberId: string;
@@ -37,6 +38,60 @@ export interface GettingThereSectionProps {
   /** When provided (owner only), shows an X on the empty-state mock-up
       that backs out of the activation entirely. */
   onCancel?: () => void;
+}
+
+// ── TravelFilterPill ──────────────────────────────────────────────────────
+// Same shape as ItineraryView's FilterPill — tones match TravelModeBadge.
+
+const TRAVEL_PILL_TONES: Record<TravelFilterKey, { bg: string; color: string; border: string }> = {
+  all: {
+    bg: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+  driving: {
+    bg: "var(--color-bt-warning-faint)",
+    color: "var(--color-bt-warning)",
+    border: "var(--color-bt-warning-border)",
+  },
+  flying: {
+    bg: "var(--color-bt-accent-faint)",
+    color: "var(--color-bt-accent)",
+    border: "var(--color-bt-accent-border)",
+  },
+  other: {
+    bg: "var(--color-bt-card-raised)",
+    color: "var(--color-bt-text-dim)",
+    border: "var(--color-bt-border)",
+  },
+};
+
+function TravelFilterPill({
+  label,
+  filterKey,
+  active,
+  onClick,
+}: {
+  label: string;
+  filterKey: TravelFilterKey;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const cfg = TRAVEL_PILL_TONES[filterKey];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full px-3 py-1.5 text-xs font-semibold"
+      style={
+        active
+          ? { background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }
+          : { background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }
+      }
+    >
+      {label}
+    </button>
+  );
 }
 
 /**
@@ -85,6 +140,25 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const [expanded, setExpanded] = useState(false);
   // "No travel yet" section starts collapsed in owner view.
   const [pendingOpen, setPendingOpen] = useState(false);
+  // Filter pills — same multi-select pattern as ItineraryView.
+  const [activeFilters, setActiveFilters] = useState<Set<TravelFilterKey>>(new Set(["all"]));
+
+  const toggleFilter = (key: TravelFilterKey) => {
+    setActiveFilters((prev) => {
+      if (key === "all") return new Set<TravelFilterKey>(["all"]);
+      const next = new Set(prev);
+      next.delete("all");
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next.size === 0 ? new Set<TravelFilterKey>(["all"]) : next;
+    });
+  };
+
+  const matchesFilter = (mode: string | null | undefined) => {
+    if (activeFilters.has("all")) return true;
+    if (!mode) return false;
+    return activeFilters.has(mode as TravelFilterKey);
+  };
 
   const hasMyTravel = !!myMember?.travel_mode;
   // Empty-state mock-up only shows when nobody on the trip has shared
@@ -93,6 +167,14 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const anyoneElseShared = allOtherMembers.some((m) => !!m.travel_mode);
   const someoneShared = hasMyTravel || anyoneElseShared;
   const showEmptyState = !!myMember && !someoneShared && !expanded;
+
+  // Only show pills once there are multiple distinct modes in use.
+  const allConfirmedMembers = [
+    ...(myMember?.travel_mode ? [myMember] : []),
+    ...confirmedOthers,
+  ];
+  const modesInUse = new Set(allConfirmedMembers.map((m) => m.travel_mode));
+  const showFilterPills = !showEmptyState && modesInUse.size > 1;
 
   // ── Render ──────────────────────────────────────────────────────────────
   // GETTING THERE header sits OUTSIDE the rows card so the card always
@@ -112,6 +194,15 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 
       {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
 
+      {showFilterPills && (
+        <div className="flex flex-wrap items-center gap-2">
+          <TravelFilterPill label="All"     filterKey="all"     active={activeFilters.has("all")}     onClick={() => toggleFilter("all")} />
+          {modesInUse.has("driving") && <TravelFilterPill label="Driving" filterKey="driving" active={activeFilters.has("driving")} onClick={() => toggleFilter("driving")} />}
+          {modesInUse.has("flying")  && <TravelFilterPill label="Flying"  filterKey="flying"  active={activeFilters.has("flying")}  onClick={() => toggleFilter("flying")} />}
+          {modesInUse.has("other")   && <TravelFilterPill label="Other"   filterKey="other"   active={activeFilters.has("other")}   onClick={() => toggleFilter("other")} />}
+        </div>
+      )}
+
       {!showEmptyState && (
         <div
           className="overflow-hidden rounded-xl"
@@ -120,7 +211,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
             border: "1px solid var(--color-bt-border)",
           }}
         >
-          {myMember && (
+          {myMember && matchesFilter(myMember.travel_mode) && (
             <YourTravelRow
               tripId={tripId}
               member={myMember}
@@ -139,7 +230,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
               Non-owner: read-only rows for members who've shared, plus a tally. */}
           {isOwner ? (
             <>
-              {confirmedOthers.map((m) => (
+              {confirmedOthers.filter((m) => matchesFilter(m.travel_mode)).map((m) => (
                 <OtherMemberTravelRow
                   key={m.memberId}
                   tripId={tripId}
@@ -196,7 +287,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
               )}
             </>
           ) : (
-            sharedOthers.map((m) => (
+            sharedOthers.filter((m) => matchesFilter(m.travel_mode)).map((m) => (
               <CrewTravelRow key={m.memberId} member={m} />
             ))
           )}
