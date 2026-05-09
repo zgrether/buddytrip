@@ -883,14 +883,14 @@ export function ScheduleTab({
                           handleDragDrop(group.date, group.items, group.items.length);
                         }
                       } : undefined}
-                      className="rounded-xl px-3 py-2 -mx-3 transition-colors"
+                      className="rounded-xl p-3 transition-colors"
                       style={{
                         background: dragOverGroup === group.date
                           ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
                           : "transparent",
                         border: dragOverGroup === group.date
-                          ? "1.5px dashed var(--color-bt-accent-border)"
-                          : "1.5px dashed transparent",
+                          ? "1.5px dashed var(--color-bt-accent)"
+                          : "1px dashed var(--color-bt-border)",
                       }}
                     >
                       <div className="mb-2 flex items-center gap-2">
