@@ -950,6 +950,11 @@ export function ScheduleTab({
                     On Deck
                   </h4>
                 </div>
+                {canEdit && (
+                  <p className="mt-0.5 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Drag these to a day to add it to the agenda
+                  </p>
+                )}
               </div>
 
               {unscheduledItems.length === 0 && canEdit ? (
@@ -1174,64 +1179,55 @@ export function ScheduleTab({
                 <div className="space-y-5">
                   {/* eslint-disable react-hooks/refs */}
                   {scheduledGroups.map((group) => (
-                    <div
-                      key={group.date!}
-                      onDragOver={canEdit ? (e) => {
-                        e.preventDefault();
-                        if (dragState.current && dragState.current.groupDate !== group.date) {
-                          setDragOverGroup(group.date);
-                        }
-                      } : undefined}
-                      onDragEnter={canEdit ? () => {
-                        if (dragState.current && dragState.current.groupDate !== group.date) {
-                          setDragOverGroup(group.date);
-                        }
-                      } : undefined}
-                      onDragLeave={canEdit ? (e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                          setDragOverGroup(false);
-                          setDragOverIdx(null);
-                        }
-                      } : undefined}
-                      onDrop={canEdit ? (e) => {
-                        e.preventDefault();
-                        setDragOverGroup(false);
-                        setDragOverIdx(null);
-                        if (dragState.current) {
-                          handleDragDrop(group.date, group.items, group.items.length);
-                        }
-                      } : undefined}
-                      className="rounded-xl p-3 transition-colors"
-                      style={{
-                        background: dragOverGroup === group.date
-                          ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
-                          : "transparent",
-                        border: dragOverGroup === group.date
-                          ? "1.5px dashed var(--color-bt-accent)"
-                          : "1px dashed var(--color-bt-border)",
-                      }}
-                    >
-                      <div className="mb-2 flex items-center gap-2">
-                        <CalendarDays
-                          size={14}
-                          style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-                        />
-                        <p
-                          className="text-[13px] font-semibold"
-                          style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
-                        >
+                    <div key={group.date!}>
+                      {/* Day label — sits above the dashed drop zone */}
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <CalendarDays size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                        <p className="text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
                           {group.label}
-                          {dragOverGroup === group.date && (
-                            <span className="ml-2 text-[11px] font-normal" style={{ color: "var(--color-bt-accent)" }}>
-                              Drop here
-                            </span>
-                          )}
                         </p>
                       </div>
 
+                      {/* Dashed drop zone */}
+                      <div
+                        onDragOver={canEdit ? (e) => {
+                          e.preventDefault();
+                          if (dragState.current && dragState.current.groupDate !== group.date) {
+                            setDragOverGroup(group.date);
+                          }
+                        } : undefined}
+                        onDragEnter={canEdit ? () => {
+                          if (dragState.current && dragState.current.groupDate !== group.date) {
+                            setDragOverGroup(group.date);
+                          }
+                        } : undefined}
+                        onDragLeave={canEdit ? (e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setDragOverGroup(false);
+                            setDragOverIdx(null);
+                          }
+                        } : undefined}
+                        onDrop={canEdit ? (e) => {
+                          e.preventDefault();
+                          setDragOverGroup(false);
+                          setDragOverIdx(null);
+                          if (dragState.current) {
+                            handleDragDrop(group.date, group.items, group.items.length);
+                          }
+                        } : undefined}
+                        className="rounded-xl p-3 transition-colors"
+                        style={{
+                          background: dragOverGroup === group.date
+                            ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
+                            : "transparent",
+                          border: dragOverGroup === group.date
+                            ? "1.5px dashed var(--color-bt-accent)"
+                            : "1px dashed var(--color-bt-border)",
+                        }}
+                      >
                       {group.items.length === 0 ? (
                         <p
-                          className="ml-6 text-xs italic"
+                          className="text-xs italic"
                           style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                         >
                           {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
@@ -1322,6 +1318,7 @@ export function ScheduleTab({
                           )}
                         </>
                       )}
+                      </div>
                     </div>
                   ))}
                   {/* eslint-enable react-hooks/refs */}
