@@ -280,22 +280,28 @@ function ScheduleItemRow({
             )}
           </>
         )}
-        {/* Competition event badge — shown when linked to a competition event */}
+        {/* Competition event chip — matches CompEventChip size/style */}
         {item.competition_event && (
-          <div className="mt-0.5 flex items-center gap-1">
-            <Trophy size={11} style={{ color: "var(--color-bt-accent)" }} />
-            <span className="text-[11px]" style={{ color: "var(--color-bt-accent)" }}>
+          <div
+            className="mt-2 flex items-center gap-2 rounded-lg px-2.5 py-2"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <Trophy size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+            <p className="min-w-0 flex-1 truncate text-[12px] font-medium" style={{ color: "var(--color-bt-text)" }}>
               {item.competition_event.title}
-            </span>
+            </p>
             {canEdit && onUnlinkCompEvent && (
               <button
                 onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(); }}
-                className="flex h-3.5 w-3.5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
-                style={{ color: "var(--color-bt-accent)" }}
+                className="ml-auto flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
                 title="Remove competition link"
                 aria-label="Remove competition link"
               >
-                <X size={10} />
+                <X size={12} />
               </button>
             )}
           </div>
