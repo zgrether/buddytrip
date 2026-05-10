@@ -181,14 +181,16 @@ function ScheduleItemRow({
         } : undefined}
         className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
         style={{
+          // Teal highlight = "locked in": non-golf needs a date; golf needs
+          // a date AND tee times (or walk-on). Unconfirmed golf on a day stays grey.
           background: isValidCompTarget
             ? "var(--color-bt-accent-faint)"
-            : item.scheduled_date
+            : (item.item_type === "golf" ? item.is_confirmed : !!item.scheduled_date)
             ? "var(--color-bt-tag-bg)"
             : "var(--color-bt-card)",
           border: isValidCompTarget
             ? "1.5px solid var(--color-bt-accent)"
-            : `1px solid ${item.scheduled_date ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+            : `1px solid ${(item.item_type === "golf" ? item.is_confirmed : !!item.scheduled_date) ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
           opacity: isDragging ? 0.4 : 1,
         }}
       >
