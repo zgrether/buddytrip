@@ -4,9 +4,12 @@ import { useMemo, useState } from "react";
 import {
   Calendar,
   Clock,
+  Flag,
   Home,
   MapPin,
   Plane,
+  Star,
+  Trophy,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -570,6 +573,14 @@ function EventCard({ event }: { event: ItineraryEvent }) {
             {event.subtitle}
           </p>
         )}
+        {event.kind === "schedule" && event.competitionEvents?.map((ce) => (
+          <div key={ce.id} className="mt-1.5 flex items-center gap-1.5">
+            <Trophy size={11} style={{ color: "var(--color-bt-accent)" }} />
+            <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {ce.title}
+            </span>
+          </div>
+        ))}
       </div>
       {address && (
         <a
