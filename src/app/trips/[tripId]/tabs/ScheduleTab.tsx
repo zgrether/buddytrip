@@ -457,8 +457,8 @@ function CompEventChip({
           onClick={(e) => { e.stopPropagation(); onLinkToItem(); }}
           className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
           style={{ color: "var(--color-bt-accent)" }}
-          aria-label="Link to agenda item"
-          title="Link to agenda item"
+          aria-label="Add to an agenda item"
+          title="Add to an agenda item"
         >
           <CalendarDays size={14} />
         </button>
@@ -1463,7 +1463,7 @@ export function ScheduleTab({
           >
             <div className="px-5 pb-3 pt-5">
               <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                Link to agenda item
+                Add to an agenda item
               </p>
               <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
                 {linkCompEvent.title}
