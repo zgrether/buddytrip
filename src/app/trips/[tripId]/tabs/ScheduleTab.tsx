@@ -241,22 +241,42 @@ function ScheduleItemRow({
             )}
           </div>
         )}
-        {item.item_type === "golf" && item.tee_times && item.tee_times.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {item.tee_times.map((t, i) => (
-              <span
-                key={i}
-                className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                {fmtTime12(t)}
-              </span>
-            ))}
-          </div>
+        {item.item_type === "golf" && (
+          <>
+            {/* Specific tee times */}
+            {item.tee_times && item.tee_times.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {item.tee_times.map((t, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {fmtTime12(t)}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Walk on — confirmed without a specific tee time (tee_times = []) */}
+            {Array.isArray(item.tee_times) && item.tee_times.length === 0 && (
+              <div className="mt-1">
+                <span
+                  className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                  style={{
+                    background: "var(--color-bt-accent-faint)",
+                    color: "var(--color-bt-accent)",
+                    border: "1px solid var(--color-bt-accent-border)",
+                  }}
+                >
+                  Walk on
+                </span>
+              </div>
+            )}
+          </>
         )}
         {/* Competition event badge — shown when linked to a competition event */}
         {item.competition_event && (
@@ -321,8 +341,9 @@ function ScheduleItemRow({
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-1">
-        {/* Confirm toggle: only when item has a date */}
-        {canEdit && item.scheduled_date && (
+        {/* Confirm toggle: non-golf only. Golf confirmation is implicit from
+            tee times (shown as pills) or walk-on (shown as a chip). */}
+        {canEdit && item.scheduled_date && item.item_type !== "golf" && (
           <button
             onClick={onConfirmToggle}
             className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
@@ -333,7 +354,7 @@ function ScheduleItemRow({
             {item.is_confirmed ? "Confirmed 🔒" : "Confirm"}
           </button>
         )}
-        {!canEdit && item.is_confirmed && (
+        {!canEdit && item.is_confirmed && item.item_type !== "golf" && (
           <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
             Confirmed ✓
           </span>

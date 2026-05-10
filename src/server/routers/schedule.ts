@@ -131,6 +131,7 @@ export const scheduleRouter = router({
         scheduledDate: z.string().nullable().optional(),
         scheduledTime: z.string().nullable().optional(),
         sortOrder: z.number().int().optional(),
+        isConfirmed: z.boolean().optional(),
         courseName: z.string().max(200).nullable().optional(),
         courseLocation: z.string().max(500).nullable().optional(),
         teeTimes: z.array(z.string()).nullable().optional(),
@@ -153,6 +154,19 @@ export const scheduleRouter = router({
       }
       if (input.scheduledTime !== undefined) update.scheduled_time = input.scheduledTime;
       if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
+      // isConfirmed can be set explicitly (e.g. when tee times change on a
+      // golf item). The scheduledDate === null branch above takes precedence
+      // since a dateless item must always be unconfirmed.
+      if (input.isConfirmed !== undefined && input.scheduledDate !== null) {
+        update.is_confirmed = input.isConfirmed;
+        if (input.isConfirmed) {
+          update.confirmed_at = new Date().toISOString();
+          update.confirmed_by = ctx.user!.id;
+        } else {
+          update.confirmed_at = null;
+          update.confirmed_by = null;
+        }
+      }
       if (input.courseName !== undefined) update.course_name = input.courseName;
       if (input.courseLocation !== undefined) update.course_location = input.courseLocation;
       if (input.teeTimes !== undefined) update.tee_times = input.teeTimes;
