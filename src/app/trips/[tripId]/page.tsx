@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Lock, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
-import { TripBottomNav, type TabId } from "@/components/BottomNav";
+import { type TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
@@ -421,16 +421,8 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* ── Bottom navigation ─────────────────────────────────────────────
-          Only renders once a real competition exists, not merely when
-          the user has clicked through the comp setup intent
-          (compUnlocked). Until then, the second nav slot ("Live") would
-          be the only destination, and a bottom nav with one button is
-          wasted chrome. The new model stores this on competitions, not
-          trips.event_id. */}
-      {!!competition && (
-        <TripBottomNav tripId={tripId} eventId={competition.id} />
-      )}
+      {/* Bottom navigation intentionally hidden — will be re-enabled
+          once competition scoring is live. */}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (

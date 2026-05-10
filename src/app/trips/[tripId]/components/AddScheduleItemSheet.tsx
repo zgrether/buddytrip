@@ -105,9 +105,8 @@ export function AddScheduleItemSheet({
   // General fields
   const [title, setTitle] = useState(editItem?.title ?? "");
   const [detail, setDetail] = useState(editItem?.detail ?? "");
-  const [scheduledDate, setScheduledDate] = useState(editItem?.scheduled_date ?? "");
+  const [scheduledDate] = useState(editItem?.scheduled_date ?? "");
   const [scheduledTime, setScheduledTime] = useState(editItem?.scheduled_time ?? "");
-  const [isConfirmed, setIsConfirmed] = useState(editItem?.is_confirmed ?? false);
 
   // Golf fields
   const [selectedCourse, setSelectedCourse] = useState<{
@@ -135,10 +134,22 @@ export function AddScheduleItemSheet({
         }
       : null
   );
+  // tee_times === [] (non-null empty array) means "walk on" — confirmed without
+  // a specific time. tee_times === null means no tee time intent at all.
+  const [isWalkOn, setIsWalkOn] = useState<boolean>(
+    !!editItem &&
+    editItem.item_type === "golf" &&
+    Array.isArray(editItem.tee_times) &&
+    editItem.tee_times.length === 0
+  );
   const [teeTimes, setTeeTimes] = useState<string[]>(
     editItem?.tee_times?.length ? editItem.tee_times : [""]
   );
   const [showSearch, setShowSearch] = useState(!selectedCourse && isGolf);
+  // Manual entry fallback — shown when the Places search doesn't find the course.
+  const [manualMode, setManualMode] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualAddress, setManualAddress] = useState("");
 
   const placesSearch = usePlacesSearch(isGolf ? GOLF_TYPES : undefined);
 
@@ -165,7 +176,11 @@ export function AddScheduleItemSheet({
     setDetail("");
     setSelectedCourse(null);
     setShowSearch(activeType === "golf");
+    setManualMode(false);
+    setManualName("");
+    setManualAddress("");
     setTeeTimes([""]);
+    setIsWalkOn(false);
     setSelectedLocation(null);
     setShowLocationSearch(false);
     placesSearch.clear();
@@ -181,22 +196,8 @@ export function AddScheduleItemSheet({
     },
   });
 
-  const confirm = trpc.schedule.confirm.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
-  });
-  const unconfirm = trpc.schedule.unconfirm.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
-  });
-
   const update = trpc.schedule.update.useMutation({
     onSuccess: () => {
-      if (editItem && scheduledDate) {
-        if (isConfirmed && !editItem.is_confirmed) {
-          confirm.mutate({ tripId, itemId: editItem.id });
-        } else if (!isConfirmed && editItem.is_confirmed) {
-          unconfirm.mutate({ tripId, itemId: editItem.id });
-        }
-      }
       utils.schedule.list.invalidate({ tripId });
       onClose();
     },
@@ -261,6 +262,17 @@ export function AddScheduleItemSheet({
     const filteredTeeTimes = teeTimes.filter((t) => t.trim());
 
     if (isGolf && selectedCourse) {
+      // Golf confirmation is implicit: walk-on or at least one tee time = confirmed.
+      // tee_times: null   → no intent (unconfirmed)
+      // tee_times: []     → walk on (confirmed, no specific time)
+      // tee_times: [...]  → confirmed with specific times
+      const golfTeeTimes = isWalkOn
+        ? []
+        : filteredTeeTimes.length > 0
+        ? filteredTeeTimes
+        : null;
+      const golfConfirmed = isWalkOn || filteredTeeTimes.length > 0;
+
       // Find or create the golf course record
       const course = await findOrCreate.mutateAsync({
         placeId: selectedCourse.placeId || `manual-${Date.now()}`,
@@ -276,9 +288,12 @@ export function AddScheduleItemSheet({
           itemId: editItem!.id,
           title: selectedCourse.name,
           scheduledDate: scheduledDate || null,
+          // Golf: confirmed as soon as tee times or walk-on are set,
+          // regardless of whether the round is on a day yet.
+          isConfirmed: golfConfirmed,
           courseName: selectedCourse.name,
           courseLocation: selectedCourse.address || null,
-          teeTimes: filteredTeeTimes.length > 0 ? filteredTeeTimes : null,
+          teeTimes: golfTeeTimes,
         });
       } else {
         create.mutate({
@@ -286,15 +301,15 @@ export function AddScheduleItemSheet({
           itemType: "golf",
           title: selectedCourse.name,
           scheduledDate: scheduledDate || undefined,
-          isConfirmed: scheduledDate ? isConfirmed : false,
+          isConfirmed: golfConfirmed,
           courseId: course.id,
           courseName: selectedCourse.name,
           courseLocation: selectedCourse.address || undefined,
-          teeTimes: filteredTeeTimes.length > 0 ? filteredTeeTimes : undefined,
+          teeTimes: golfTeeTimes ?? undefined,
         });
       }
     } else {
-      // General item
+      // General item — confirmed automatically when assigned to a day.
       if (isEditing) {
         update.mutate({
           tripId,
@@ -303,6 +318,7 @@ export function AddScheduleItemSheet({
           detail: detail.trim() || null,
           scheduledDate: scheduledDate || null,
           scheduledTime: scheduledTime || null,
+          isConfirmed: !!scheduledDate,
           courseName: selectedLocation?.name || null,
           courseLocation: selectedLocation?.address || null,
         });
@@ -314,7 +330,7 @@ export function AddScheduleItemSheet({
           detail: detail.trim() || undefined,
           scheduledDate: scheduledDate || undefined,
           scheduledTime: scheduledTime || undefined,
-          isConfirmed: scheduledDate ? isConfirmed : false,
+          isConfirmed: !!scheduledDate,
           courseName: selectedLocation?.name || undefined,
           courseLocation: selectedLocation?.address || undefined,
         });
@@ -402,6 +418,7 @@ export function AddScheduleItemSheet({
         {isGolf && (
           <>
             {selectedCourse && !showSearch ? (
+              /* ── Selected course card ── */
               <div
                 className="mt-3 flex items-center gap-3 rounded-xl px-3 py-2.5"
                 style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-accent-border)" }}
@@ -418,14 +435,71 @@ export function AddScheduleItemSheet({
                   )}
                 </div>
                 <button
-                  onClick={() => { setSelectedCourse(null); setShowSearch(true); }}
+                  onClick={() => {
+                    setSelectedCourse(null);
+                    setManualMode(false);
+                    setManualName("");
+                    setManualAddress("");
+                    setShowSearch(true);
+                  }}
                   className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <X size={14} />
                 </button>
               </div>
+            ) : manualMode ? (
+              /* ── Manual entry fallback ── */
+              <div className="mt-3 space-y-2">
+                <input
+                  type="text"
+                  placeholder="Course name"
+                  value={manualName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setManualName(val);
+                    if (val.trim()) {
+                      setSelectedCourse({ placeId: "", name: val.trim(), address: manualAddress });
+                    } else {
+                      setSelectedCourse(null);
+                    }
+                  }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                  autoFocus
+                />
+                <input
+                  type="text"
+                  placeholder="Location (optional)"
+                  value={manualAddress}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setManualAddress(val);
+                    if (selectedCourse) {
+                      setSelectedCourse({ ...selectedCourse, address: val });
+                    }
+                  }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualMode(false);
+                    setManualName("");
+                    setManualAddress("");
+                    setSelectedCourse(null);
+                    setShowSearch(true);
+                    placesSearch.clear();
+                  }}
+                  className="text-xs transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  ← Back to search
+                </button>
+              </div>
             ) : (
+              /* ── Places autocomplete search ── */
               <div className="mt-3 relative">
                 <div className="relative">
                   <Search
@@ -475,6 +549,22 @@ export function AddScheduleItemSheet({
                     Searching...
                   </p>
                 )}
+
+                {/* "Can't find it?" fallback — shown once the user has typed something */}
+                {!placesSearch.loading && placesSearch.query.length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualMode(true);
+                      setManualName(placesSearch.query);
+                      placesSearch.clear();
+                    }}
+                    className="mt-1.5 text-xs transition-opacity hover:opacity-70"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Can&apos;t find it? Enter manually →
+                  </button>
+                )}
               </div>
             )}
 
@@ -485,36 +575,55 @@ export function AddScheduleItemSheet({
             >
               Tee times
             </p>
-            <div className="space-y-1.5">
-              {teeTimes.map((t, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={t}
-                    onChange={(e) => updateTeeTime(idx, e.target.value)}
-                    className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
-                    style={inputStyle}
-                  />
-                  {teeTimes.length > 1 && (
-                    <button
-                      onClick={() => removeTeeTime(idx)}
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-opacity hover:opacity-80"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
+            {!isWalkOn && (
+              <>
+                <div className="space-y-1.5">
+                  {teeTimes.map((t, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={t}
+                        onChange={(e) => updateTeeTime(idx, e.target.value)}
+                        className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                        style={inputStyle}
+                      />
+                      {teeTimes.length > 1 && (
+                        <button
+                          onClick={() => removeTeeTime(idx)}
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-opacity hover:opacity-80"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <button
-              onClick={addTeeTime}
-              className="mt-1.5 flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-80"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              <Plus size={12} />
-              Add tee time
-            </button>
+                <button
+                  onClick={addTeeTime}
+                  className="mt-1.5 flex items-center gap-1 text-xs font-medium transition-opacity hover:opacity-80"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  <Plus size={12} />
+                  Add tee time
+                </button>
+              </>
+            )}
+            {/* Walk on option — confirmed without a specific tee time */}
+            <label className="mt-2.5 flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isWalkOn}
+                onChange={(e) => {
+                  setIsWalkOn(e.target.checked);
+                  if (e.target.checked) setTeeTimes([""]);
+                }}
+                className="h-4 w-4 rounded"
+              />
+              <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Walk on — no specific tee time
+              </span>
+            </label>
           </>
         )}
 
@@ -636,23 +745,6 @@ export function AddScheduleItemSheet({
               style={inputStyle}
             />
           </>
-        )}
-
-        {/* Confirmed checkbox — only meaningful when an item is already
-            scheduled to a day (which only happens via drag-drop or via
-            edit on a pre-scheduled item). */}
-        {scheduledDate && (
-          <label className="mt-3 flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isConfirmed}
-              onChange={(e) => setIsConfirmed(e.target.checked)}
-              className="h-4 w-4 rounded"
-            />
-            <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              Confirmed
-            </span>
-          </label>
         )}
 
         {/* Actions */}

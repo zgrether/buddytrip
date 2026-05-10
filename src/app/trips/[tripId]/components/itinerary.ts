@@ -21,6 +21,8 @@ export interface ItineraryScheduleItem {
   sort_order: number;
   course_name?: string | null;
   course_location?: string | null;
+  tee_times?: string[] | null;
+  competition_events?: Array<{ id: string; title: string; type: string }> | null;
 }
 
 export interface ItineraryLogisticsItem {
@@ -50,7 +52,7 @@ export interface ItineraryTripMember {
   travel_shared?: boolean | null;
   /** Guest (placeholder) members can't share their own travel — exclude them. */
   isGuest?: boolean | null;
-  user?: { name?: string | null; nickname?: string | null } | null;
+  user?: { name?: string | null; nickname?: string | null; avatar_url?: string | null } | null;
 }
 
 // ── Output shape ──────────────────────────────────────────────────────────
@@ -67,6 +69,10 @@ export type ItineraryEvent =
       address?: string | null;
       itemType: "general" | "golf";
       sortOrder: number;
+      /** Golf only. null = no tee times set; [] = walk-on; [...] = specific times. */
+      teeTimes?: string[] | null;
+      /** Competition events linked to this agenda item. */
+      competitionEvents?: Array<{ id: string; title: string; type: string }> | null;
     }
   | {
       kind: "lodging-checkin" | "lodging-checkout";
@@ -87,6 +93,8 @@ export type ItineraryEvent =
       subtitle?: string | null;
       memberId: string;
       displayName: string;
+      avatarUrl?: string | null;
+      isGuest?: boolean | null;
     };
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -143,8 +151,8 @@ export function buildItinerary(input: {
     if (!isDateString(item.scheduled_date)) continue;
 
     const subtitleParts: string[] = [];
-    if (item.item_type === "golf" && item.course_name) {
-      subtitleParts.push(item.course_name);
+    if (item.item_type === "golf") {
+      // Title is already the course name — subtitle shows the address only.
       if (item.course_location) subtitleParts.push(item.course_location);
     } else if (item.detail) {
       subtitleParts.push(item.detail);
@@ -158,16 +166,24 @@ export function buildItinerary(input: {
         ? item.course_location
         : null;
 
+    // For golf, use the earliest tee time (if any) as the sort/display time.
+    const golfTime =
+      item.item_type === "golf" && item.tee_times?.length
+        ? item.tee_times.slice().sort()[0].slice(0, 5)
+        : null;
+
     events.push({
       kind: "schedule",
       id: item.id,
       date: item.scheduled_date.slice(0, 10),
-      time: item.scheduled_time ? item.scheduled_time.slice(0, 5) : null,
+      time: golfTime ?? (item.scheduled_time ? item.scheduled_time.slice(0, 5) : null),
       title: item.title,
       subtitle: subtitleParts.join(" · ") || null,
       address,
       itemType: item.item_type,
       sortOrder: item.sort_order,
+      teeTimes: item.item_type === "golf" ? (item.tee_times ?? null) : undefined,
+      competitionEvents: item.competition_events?.length ? item.competition_events : null,
     });
   }
 
@@ -234,6 +250,8 @@ export function buildItinerary(input: {
       subtitle,
       memberId: m.memberId,
       displayName: m.displayName,
+      avatarUrl: m.user?.avatar_url ?? null,
+      isGuest: m.isGuest ?? false,
     });
   }
 

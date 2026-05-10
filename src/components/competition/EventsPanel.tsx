@@ -85,6 +85,8 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
   const [creating, setCreating] = useState(false);
   const dragState = useRef<{ idx: number } | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  // Separate state for isDragging — refs must not be read during render.
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
   const { data: events = [] } = trpc.events.list.useQuery(
@@ -119,6 +121,7 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
     if (!dragState.current) return;
     const fromIdx = dragState.current.idx;
     dragState.current = null;
+    setDraggingIdx(null);
     setDragOverIdx(null);
     if (fromIdx === toIdx) return;
     const newOrder = [...eventsTyped];
@@ -151,10 +154,10 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
             event={event}
             canEdit={canEdit}
             tripId={tripId}
-            isDragging={dragState.current?.idx === idx}
-            showDropIndicator={dragOverIdx === idx && dragState.current?.idx !== idx}
+            isDragging={draggingIdx === idx}
+            showDropIndicator={dragOverIdx === idx && draggingIdx !== idx}
             onEdit={() => setEditing(event)}
-            onDragStart={() => { dragState.current = { idx }; }}
+            onDragStart={() => { dragState.current = { idx }; setDraggingIdx(idx); }}
             onDragOver={() => setDragOverIdx(idx)}
             onDrop={() => handleReorderDrop(idx)}
           />

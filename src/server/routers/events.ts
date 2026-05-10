@@ -236,37 +236,9 @@ export const eventsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      // 1. Find any schedule_item currently linked to this event, clear it.
-      const { data: oldItem } = await ctx.supabase
-        .from("schedule_items")
-        .select("id")
-        .eq("competition_event_id", input.eventId)
-        .maybeSingle();
-
-      if (oldItem) {
-        await ctx.supabase
-          .from("schedule_items")
-          .update({ competition_event_id: null })
-          .eq("id", oldItem.id);
-      }
-
-      // 2. If linking to a new item, clear any event currently on that item.
-      if (input.agendaItemId) {
-        const { data: targetItem } = await ctx.supabase
-          .from("schedule_items")
-          .select("competition_event_id")
-          .eq("id", input.agendaItemId)
-          .maybeSingle();
-
-        if (targetItem?.competition_event_id && targetItem.competition_event_id !== input.eventId) {
-          await ctx.supabase
-            .from("events")
-            .update({ agenda_item_id: null })
-            .eq("id", targetItem.competition_event_id);
-        }
-      }
-
-      // 3. Update events.agenda_item_id.
+      // Multiple competition events can now link to the same agenda item.
+      // We only need to update events.agenda_item_id on the specific event —
+      // no clearing of other events on the target item.
       const { error: eventErr } = await ctx.supabase
         .from("events")
         .update({ agenda_item_id: input.agendaItemId })
@@ -277,21 +249,6 @@ export const eventsRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to update event: ${eventErr.message}`,
         });
-      }
-
-      // 4. Update schedule_items.competition_event_id.
-      if (input.agendaItemId) {
-        const { error: siErr } = await ctx.supabase
-          .from("schedule_items")
-          .update({ competition_event_id: input.eventId })
-          .eq("id", input.agendaItemId);
-
-        if (siErr) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to update schedule item: ${siErr.message}`,
-          });
-        }
       }
 
       return { success: true };

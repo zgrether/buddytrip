@@ -156,6 +156,14 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   const confirmedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
   const pendingOthers = allOtherMembers.filter((m) => !m.travel_mode);
 
+  const myHasTravel = !!myMember?.travel_mode;
+  // All members with travel (me + others) sorted by arrival time together.
+  // Members with no arrival time sort last.
+  const sortedWithTravel: TripMemberLite[] = [
+    ...(myHasTravel && myMember ? [myMember] : []),
+    ...(isOwner ? confirmedOthers : sharedOthers),
+  ].sort(byArrivalTime);
+
   const toggleFilter = (key: TravelFilterKey) => {
     setActiveFilter((prev) => (prev === key ? "all" : key));
   };
@@ -222,98 +230,137 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
         </div>
       )}
 
-      {!showEmptyState && (
-        <div
-          className="overflow-hidden rounded-xl"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          {myMember && matchesFilter(myMember.travel_mode) && (
-            <YourTravelRow
-              tripId={tripId}
-              member={myMember}
-              tripStartDate={tripStartDate}
-              expanded={expanded}
-              onToggleExpanded={() => setExpanded((v) => !v)}
-              onSaved={() => {
-                utils.tripMembers.list.invalidate({ tripId });
-                setExpanded(false);
-              }}
-            />
-          )}
+      {!showEmptyState && (() => {
+        // "Add travel" row: shown when I have no travel, at the top since it's
+        // an action prompt (position irrelevant — no arrival time to sort by).
+        const addTravelShown =
+          !!myMember && !myHasTravel && matchesFilter(myMember.travel_mode);
 
-          {/* Owner: confirmed travel rows first, then a collapsible
-              "no travel yet" section for those who haven't added info.
-              Non-owner: read-only rows for members who've shared, plus a tally. */}
-          {isOwner ? (
-            <>
-              {confirmedOthers.filter((m) => matchesFilter(m.travel_mode)).map((m) => (
-                <OtherMemberTravelRow
+        // Filtered sorted list of everyone with travel.
+        const filteredWithTravel = sortedWithTravel.filter((m) =>
+          matchesFilter(m.travel_mode),
+        );
+
+        return (
+          <div
+            className="overflow-hidden rounded-xl"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            {/* "Add travel" button — only when I haven't shared yet */}
+            {addTravelShown && (
+              <YourTravelRow
+                tripId={tripId}
+                member={myMember!}
+                tripStartDate={tripStartDate}
+                expanded={expanded}
+                onToggleExpanded={() => setExpanded((v) => !v)}
+                onSaved={() => {
+                  utils.tripMembers.list.invalidate({ tripId });
+                  setExpanded(false);
+                }}
+                highlighted
+              />
+            )}
+
+            {/* All members with travel, sorted by arrival — me included */}
+            {filteredWithTravel.map((m, i) => {
+              const isMe = m.memberId === myMember?.memberId;
+              // Show border-t when something is rendered above this row.
+              const showBorderTop = addTravelShown || i > 0;
+
+              if (isMe) {
+                return (
+                  <YourTravelRow
+                    key={m.memberId}
+                    tripId={tripId}
+                    member={myMember!}
+                    tripStartDate={tripStartDate}
+                    expanded={expanded}
+                    onToggleExpanded={() => setExpanded((v) => !v)}
+                    onSaved={() => {
+                      utils.tripMembers.list.invalidate({ tripId });
+                      setExpanded(false);
+                    }}
+                    showBorderTop={showBorderTop}
+                    highlighted
+                  />
+                );
+              }
+
+              if (isOwner) {
+                return (
+                  <OtherMemberTravelRow
+                    key={m.memberId}
+                    tripId={tripId}
+                    member={m}
+                    tripStartDate={tripStartDate}
+                    onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
+                    showBorderTop={showBorderTop}
+                  />
+                );
+              }
+
+              return (
+                <CrewTravelRow
                   key={m.memberId}
-                  tripId={tripId}
                   member={m}
-                  tripStartDate={tripStartDate}
-                  onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
+                  showBorderTop={showBorderTop}
                 />
-              ))}
+              );
+            })}
 
-              {pendingOthers.length > 0 && (
-                <>
-                  {/* Collapsed header */}
-                  <button
-                    type="button"
-                    onClick={() => setPendingOpen((v) => !v)}
-                    className="flex w-full items-center gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
-                    style={{ borderColor: "var(--color-bt-border)" }}
+            {/* Owner: collapsible "no travel yet" section */}
+            {isOwner && pendingOthers.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPendingOpen((v) => !v)}
+                  className="flex w-full items-center gap-3 border-t px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+                  style={{ borderColor: "var(--color-bt-border)" }}
+                >
+                  <span
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
                   >
-                    <span
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                      style={{
-                        background: "var(--color-bt-card-raised)",
-                        color: "var(--color-bt-text-dim)",
-                        border: "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      {pendingOthers.length}
-                    </span>
-                    <span className="flex-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {pendingOthers.length === 1 ? "hasn't" : "haven't"} confirmed their travel plans
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      style={{
-                        color: "var(--color-bt-text-dim)",
-                        transform: pendingOpen ? "rotate(180deg)" : "rotate(0deg)",
-                        transition: "transform 150ms",
-                        flexShrink: 0,
-                      }}
-                    />
-                  </button>
+                    {pendingOthers.length}
+                  </span>
+                  <span className="flex-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                    {pendingOthers.length === 1 ? "hasn't" : "haven't"} confirmed their travel plans
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    style={{
+                      color: "var(--color-bt-text-dim)",
+                      transform: pendingOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 150ms",
+                      flexShrink: 0,
+                    }}
+                  />
+                </button>
+                {pendingOpen && pendingOthers.map((m) => (
+                  <OtherMemberTravelRow
+                    key={m.memberId}
+                    tripId={tripId}
+                    member={m}
+                    tripStartDate={tripStartDate}
+                    onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
+                    showBorderTop
+                  />
+                ))}
+              </>
+            )}
 
-                  {/* Expanded pending rows */}
-                  {pendingOpen && pendingOthers.map((m) => (
-                    <OtherMemberTravelRow
-                      key={m.memberId}
-                      tripId={tripId}
-                      member={m}
-                      tripStartDate={tripStartDate}
-                      onSaved={() => utils.tripMembers.list.invalidate({ tripId })}
-                    />
-                  ))}
-                </>
-              )}
-            </>
-          ) : (
-            sharedOthers.filter((m) => matchesFilter(m.travel_mode)).map((m) => (
-              <CrewTravelRow key={m.memberId} member={m} />
-            ))
-          )}
-
-          {!isOwner && <PendingTravelRow members={realOtherMembers} />}
-        </div>
-      )}
+            {!isOwner && <PendingTravelRow members={realOtherMembers} />}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -323,7 +370,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 // their travel info. Same shape as YourTravelRow's "has travel" branch but
 // without the chevron / expand affordance.
 
-function CrewTravelRow({ member }: { member: TripMemberLite }) {
+function CrewTravelRow({ member, showBorderTop = true }: { member: TripMemberLite; showBorderTop?: boolean }) {
   const avatar = member.isGuest ? (
     <div
       className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
@@ -337,8 +384,8 @@ function CrewTravelRow({ member }: { member: TripMemberLite }) {
 
   return (
     <div
-      className="flex w-full items-center gap-3 border-t px-4 py-3"
-      style={{ borderColor: "var(--color-bt-border)" }}
+      className="flex w-full items-center gap-3 px-4 py-3"
+      style={showBorderTop ? { borderTop: "1px solid var(--color-bt-border)" } : {}}
     >
       {avatar}
 
@@ -349,6 +396,11 @@ function CrewTravelRow({ member }: { member: TripMemberLite }) {
         <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           {summarizeTravel(member)}
         </p>
+        {arrivalLine(member) && (
+          <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {arrivalLine(member)}
+          </p>
+        )}
       </div>
 
       <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
@@ -366,11 +418,13 @@ function OtherMemberTravelRow({
   member: m,
   tripStartDate,
   onSaved,
+  showBorderTop = true,
 }: {
   tripId: string;
   member: TripMemberLite;
   tripStartDate: string | null;
   onSaved: () => void;
+  showBorderTop?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasTravel = !!m.travel_mode;
@@ -386,9 +440,13 @@ function OtherMemberTravelRow({
     <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
   );
 
+  const borderStyle: React.CSSProperties = showBorderTop
+    ? { borderTop: "1px solid var(--color-bt-border)" }
+    : {};
+
   if (!hasTravel) {
     return (
-      <div className="border-t px-4 py-3" style={{ borderColor: "var(--color-bt-border)" }}>
+      <div className="px-4 py-3" style={borderStyle}>
         {expanded ? (
           <TravelExpandForm
             tripId={tripId}
@@ -422,7 +480,7 @@ function OtherMemberTravelRow({
 
   // Has travel — same collapsible row pattern as YourTravelRow
   return (
-    <div className="border-t" style={{ borderColor: "var(--color-bt-border)" }}>
+    <div style={borderStyle}>
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -436,6 +494,11 @@ function OtherMemberTravelRow({
           <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {summarizeTravel(m)}
           </p>
+          {arrivalLine(m) && (
+            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {arrivalLine(m)}
+            </p>
+          )}
         </div>
         <TravelModeBadge mode={m.travel_mode as TravelMode | null} />
         <ChevronDown
@@ -577,11 +640,10 @@ function SkeletonArrival({
         </p>
       </div>
       <span
-        className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+        className="flex flex-shrink-0 items-center justify-center rounded-full p-1.5"
         style={badgeStyle}
       >
-        <Icon size={9} />
-        {isFlying ? "Flying" : "Driving"}
+        <Icon size={11} />
       </span>
     </div>
   );
@@ -596,6 +658,8 @@ function YourTravelRow({
   expanded,
   onToggleExpanded,
   onSaved,
+  showBorderTop = false,
+  highlighted = false,
 }: {
   tripId: string;
   member: TripMemberLite;
@@ -603,15 +667,25 @@ function YourTravelRow({
   expanded: boolean;
   onToggleExpanded: () => void;
   onSaved: () => void;
+  /** Add a top border (when something is rendered above this row in the card). */
+  showBorderTop?: boolean;
+  /** Subtle background tint to distinguish the viewer's own row. */
+  highlighted?: boolean;
 }) {
   const hasTravel = !!member.travel_mode;
+  const highlightStyle: React.CSSProperties = highlighted
+    ? { background: "var(--color-bt-card-raised)" }
+    : {};
+  const borderStyle: React.CSSProperties = showBorderTop
+    ? { borderTop: "1px solid var(--color-bt-border)" }
+    : {};
 
   // ── No travel info yet — Pattern 1 add button + optional inline form ──
   // Matches Schedule "Item", Lodging "Property", Receipts "Receipt", Crew
   // "Crew member" so add-affordances are consistent across the trip.
   if (!hasTravel) {
     return (
-      <div className="px-4 py-3">
+      <div className="px-4 py-3" style={{ ...borderStyle, ...highlightStyle }}>
         {expanded ? (
           <TravelExpandForm tripId={tripId} member={member} tripStartDate={tripStartDate} onSaved={onSaved} onCancel={onToggleExpanded} />
         ) : (
@@ -635,7 +709,7 @@ function YourTravelRow({
 
   // ── Has travel — existing row pattern (avatar + summary + badge + chevron) ─
   return (
-    <div>
+    <div style={{ ...borderStyle, ...highlightStyle }}>
       <button
         type="button"
         onClick={onToggleExpanded}
@@ -653,6 +727,11 @@ function YourTravelRow({
           <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {summarizeTravel(member)}
           </p>
+          {arrivalLine(member) && (
+            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {arrivalLine(member)}
+            </p>
+          )}
         </div>
 
         <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
@@ -950,34 +1029,29 @@ function TravelExpandForm({
 function TravelModeBadge({ mode }: { mode: TravelMode | null }) {
   if (!mode) return null;
   const style: React.CSSProperties = {};
-  let label: string;
   let Icon: LucideIcon;
   if (mode === "flying") {
     style.background = "var(--color-bt-accent-faint)";
     style.color = "var(--color-bt-accent)";
     style.border = "1px solid var(--color-bt-accent-border)";
-    label = "Flying";
     Icon = Plane;
   } else if (mode === "driving") {
     style.background = "var(--color-bt-warning-faint)";
     style.color = "var(--color-bt-warning)";
     style.border = "1px solid var(--color-bt-warning-border)";
-    label = "Driving";
     Icon = Car;
   } else {
     style.background = "var(--color-bt-blue-bg)";
     style.color = "var(--color-bt-planning)";
     style.border = "1px solid var(--color-bt-planning-border)";
-    label = "Other";
     Icon = HelpCircle;
   }
   return (
     <span
-      className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+      className="flex flex-shrink-0 items-center justify-center rounded-full p-1.5"
       style={style}
     >
-      <Icon size={10} />
-      {label}
+      <Icon size={12} />
     </span>
   );
 }
@@ -1043,23 +1117,32 @@ function PendingTravelRow({ members }: { members: TripMemberLite[] }) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+/** Sort travel members by arrival time ascending; members without an arrival
+ *  time sort to the end. */
+function byArrivalTime(a: TripMemberLite, b: TripMemberLite): number {
+  const at = a.flight_arrival_time;
+  const bt = b.flight_arrival_time;
+  if (!at && !bt) return 0;
+  if (!at) return 1;
+  if (!bt) return -1;
+  return at < bt ? -1 : at > bt ? 1 : 0;
+}
+
+/** Main detail line — flight info or travel description, no arrival time. */
 function summarizeTravel(m: TripMemberLite): string {
-  const arrivalLabel = formatArrivalLabel(m.flight_arrival_time);
   if (m.travel_mode === "flying") {
-    const parts = [
-      m.flight_airline,
-      m.flight_number,
-      arrivalLabel && `arriving ${arrivalLabel}`,
-    ].filter(Boolean);
-    return parts.length ? parts.join(" · ") : "Flying";
+    const parts = [m.flight_airline, m.flight_number].filter(Boolean);
+    return parts.length ? parts.join(" ") : "Flying";
   }
   // Driving / other
-  const parts = [
-    m.travel_detail,
-    arrivalLabel && `arriving ${arrivalLabel}`,
-  ].filter(Boolean);
-  if (parts.length) return parts.join(" · ");
+  if (m.travel_detail) return m.travel_detail;
   return m.travel_mode === "driving" ? "Driving" : "Other";
+}
+
+/** Arrival line — "Arriving Sep 10 · 3:00 PM" or null if no arrival set. */
+function arrivalLine(m: TripMemberLite): string | null {
+  const label = formatArrivalLabel(m.flight_arrival_time);
+  return label ? `Arriving ${label}` : null;
 }
 
 /** Render an ISO timestamp as "Sep 10 · 3:00 PM" — empty string if invalid. */

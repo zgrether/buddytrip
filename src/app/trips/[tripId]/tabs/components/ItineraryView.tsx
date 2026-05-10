@@ -7,6 +7,7 @@ import {
   Home,
   MapPin,
   Plane,
+  Trophy,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -497,7 +498,18 @@ function DaySection({
 function EventCard({ event }: { event: ItineraryEvent }) {
   const category = categoryOf(event);
 
-  const timeLabel = event.time ? fmtTime12(event.time) : "All day";
+  // Golf: show tee times or "Walk on"; everything else falls back to
+  // the stored scheduled_time or "All day".
+  const timeLabel =
+    event.kind === "schedule" && event.itemType === "golf"
+      ? event.teeTimes === null || event.teeTimes === undefined
+        ? "All day"
+        : event.teeTimes.length === 0
+        ? "Walk on"
+        : event.teeTimes.map(fmtTime12).join(" · ")
+      : event.time
+      ? fmtTime12(event.time)
+      : "All day";
 
   // Left accent stripe — neutral card with a 3px colored left border so
   // each category is scannable without the heavy full-background tint.
@@ -538,7 +550,12 @@ function EventCard({ event }: { event: ItineraryEvent }) {
       }}
     >
       {event.kind === "arrival" ? (
-        <UserAvatar name={event.displayName} avatarUrl={null} size="md" />
+        <UserAvatar
+          name={event.displayName}
+          avatarUrl={event.avatarUrl ?? null}
+          isGuest={event.isGuest ?? false}
+          size="md"
+        />
       ) : (
         <span
           className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full"
@@ -559,6 +576,14 @@ function EventCard({ event }: { event: ItineraryEvent }) {
             {event.subtitle}
           </p>
         )}
+        {event.kind === "schedule" && event.competitionEvents?.map((ce) => (
+          <div key={ce.id} className="mt-1.5 flex items-center gap-1.5">
+            <Trophy size={11} style={{ color: "var(--color-bt-accent)" }} />
+            <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {ce.title}
+            </span>
+          </div>
+        ))}
       </div>
       {address && (
         <a

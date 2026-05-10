@@ -37,7 +37,7 @@ export const scheduleRouter = router({
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
         .from("schedule_items")
-        .select("*, course:golf_courses(*), competition_event:events!schedule_items_competition_event_id_fkey(id, title, type)")
+        .select("*, course:golf_courses(*), competition_events:events!events_agenda_item_id_fkey(id, title, type, scoring_format)")
         .eq("trip_id", ctx.tripId)
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true });
@@ -131,6 +131,7 @@ export const scheduleRouter = router({
         scheduledDate: z.string().nullable().optional(),
         scheduledTime: z.string().nullable().optional(),
         sortOrder: z.number().int().optional(),
+        isConfirmed: z.boolean().optional(),
         courseName: z.string().max(200).nullable().optional(),
         courseLocation: z.string().max(500).nullable().optional(),
         teeTimes: z.array(z.string()).nullable().optional(),
@@ -143,16 +144,22 @@ export const scheduleRouter = router({
       if (input.detail !== undefined) update.detail = input.detail;
       if (input.scheduledDate !== undefined) {
         update.scheduled_date = input.scheduledDate;
-        // Clearing the date moves the item back to On Deck — it can no longer
-        // be "confirmed" without a day assigned, so unconfirm it automatically.
-        if (input.scheduledDate === null) {
-          update.is_confirmed = false;
+      }
+      if (input.scheduledTime !== undefined) update.scheduled_time = input.scheduledTime;
+      if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
+      // isConfirmed is always set by the caller — the router never infers it
+      // from the date change. Golf items keep their confirmed status when moved
+      // to On Deck; non-golf callers explicitly pass isConfirmed: false.
+      if (input.isConfirmed !== undefined) {
+        update.is_confirmed = input.isConfirmed;
+        if (input.isConfirmed) {
+          update.confirmed_at = new Date().toISOString();
+          update.confirmed_by = ctx.user!.id;
+        } else {
           update.confirmed_at = null;
           update.confirmed_by = null;
         }
       }
-      if (input.scheduledTime !== undefined) update.scheduled_time = input.scheduledTime;
-      if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
       if (input.courseName !== undefined) update.course_name = input.courseName;
       if (input.courseLocation !== undefined) update.course_location = input.courseLocation;
       if (input.teeTimes !== undefined) update.tee_times = input.teeTimes;

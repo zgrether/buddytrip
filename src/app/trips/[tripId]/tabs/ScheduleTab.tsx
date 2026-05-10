@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Clock,
   Flag,
+  ListPlus,
   MapPin,
   Plus,
   Star,
@@ -52,9 +53,8 @@ interface ScheduleItem {
     lat?: number | null;
     lng?: number | null;
   } | null;
-  // Competition event link
-  competition_event_id?: string | null;
-  competition_event?: { id: string; title: string; type: string } | null;
+  // Competition events linked to this item (many-to-one via events.agenda_item_id)
+  competition_events?: Array<{ id: string; title: string; type: string; scoring_format?: string | null }> | null;
 }
 
 interface DayGroup {
@@ -105,7 +105,6 @@ function dayNumber(date: string, tripStart: string | null): number | null {
 function ScheduleItemRow({
   item,
   canEdit,
-  onConfirmToggle,
   onEdit,
   onRemove,
   onMoveUp,
@@ -121,10 +120,10 @@ function ScheduleItemRow({
   onUnlinkCompEvent,
   onUnschedule,
   compDragType,
+  onAddToDay,
 }: {
   item: ScheduleItem;
   canEdit: boolean;
-  onConfirmToggle: () => void;
   onEdit: () => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -137,7 +136,7 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
-  onUnlinkCompEvent?: () => void;
+  onUnlinkCompEvent?: (eventId: string) => void;
   /** Day-by-Day rows pass this — the trailing button becomes an X that
    *  sends the item back to On Deck (clears its date). When omitted, the
    *  trailing button is a trash can wired to onRemove (delete). */
@@ -145,6 +144,8 @@ function ScheduleItemRow({
   /** When non-null, a competition event is being dragged. The row computes
    *  whether it's a valid target and highlights itself accordingly. */
   compDragType?: "GOLF" | "GENERIC" | null;
+  /** Mobile-only: open day-picker sheet to schedule this On Deck item. */
+  onAddToDay?: () => void;
 }) {
   const movable = canEdit;
   // GOLF events can only land on golf items; non-GOLF events land on anything.
@@ -179,14 +180,18 @@ function ScheduleItemRow({
         } : undefined}
         className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
         style={{
+          // Teal highlight = "locked in":
+          //   non-golf → has a scheduled date
+          //   golf     → has a scheduled date AND tee times / walk-on (is_confirmed)
+          // Golf in On Deck with tee times, or golf on a day without tee times → grey.
           background: isValidCompTarget
             ? "var(--color-bt-accent-faint)"
-            : item.is_confirmed
+            : (!!item.scheduled_date && (item.item_type !== "golf" || item.is_confirmed))
             ? "var(--color-bt-tag-bg)"
             : "var(--color-bt-card)",
           border: isValidCompTarget
             ? "1.5px solid var(--color-bt-accent)"
-            : `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+            : `1px solid ${(!!item.scheduled_date && (item.item_type !== "golf" || item.is_confirmed)) ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
           opacity: isDragging ? 0.4 : 1,
         }}
       >
@@ -198,9 +203,11 @@ function ScheduleItemRow({
         />
       )}
 
-      {/* Type icon */}
-      {item.item_type === "golf" && (
+      {/* Type icon — always present so text aligns across item types */}
+      {item.item_type === "golf" ? (
         <Flag size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+      ) : (
+        <Calendar size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
       )}
 
       <div className="min-w-0 flex-1">
@@ -212,66 +219,76 @@ function ScheduleItemRow({
             {item.detail}
           </p>
         )}
-        {/* Golf: course + tee times */}
-        {item.item_type === "golf" && (item.course?.name || item.course_name) && (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            <span className="font-medium">{item.course?.name ?? item.course_name}</span>
-            {(item.course?.address || item.course_location) && (
-              <a
-                href={
-                  item.course?.lat && item.course?.lng
-                    ? `https://www.google.com/maps/search/?api=1&query=${item.course.lat},${item.course.lng}`
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course?.address ?? item.course_location ?? "")}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-0.5"
-                style={{ color: "var(--color-bt-accent)" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MapPin size={10} />
-                Map
-              </a>
+        {/* Golf: address only. Title is already the course name. Map link lives in the itinerary. */}
+        {item.item_type === "golf" && (item.course?.address || item.course_location) && (
+          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {item.course?.address ?? item.course_location}
+          </p>
+        )}
+        {item.item_type === "golf" && (
+          <>
+            {/* Specific tee times */}
+            {item.tee_times && item.tee_times.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {item.tee_times.map((t, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {fmtTime12(t)}
+                  </span>
+                ))}
+              </div>
             )}
-          </div>
+            {/* Walk on — confirmed without a specific tee time (tee_times = []) */}
+            {Array.isArray(item.tee_times) && item.tee_times.length === 0 && (
+              <div className="mt-1">
+                <span
+                  className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                  style={{
+                    background: "var(--color-bt-accent-faint)",
+                    color: "var(--color-bt-accent)",
+                    border: "1px solid var(--color-bt-accent-border)",
+                  }}
+                >
+                  Walk on
+                </span>
+              </div>
+            )}
+          </>
         )}
-        {item.item_type === "golf" && item.tee_times && item.tee_times.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {item.tee_times.map((t, i) => (
-              <span
-                key={i}
-                className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                {fmtTime12(t)}
-              </span>
-            ))}
-          </div>
-        )}
-        {/* Competition event badge — shown when linked to a competition event */}
-        {item.competition_event && (
-          <div className="mt-0.5 flex items-center gap-1">
-            <Trophy size={11} style={{ color: "var(--color-bt-accent)" }} />
-            <span className="text-[11px]" style={{ color: "var(--color-bt-accent)" }}>
-              {item.competition_event.title}
-            </span>
+        {/* Competition event chips — one per linked event (many-to-one allowed) */}
+        {item.competition_events?.map((ce) => (
+          <div
+            key={ce.id}
+            className="mt-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <Trophy size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+            <p className="min-w-0 flex-1 truncate text-[12px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+              {ce.title}
+            </p>
             {canEdit && onUnlinkCompEvent && (
               <button
-                onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(); }}
-                className="flex h-3.5 w-3.5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
-                style={{ color: "var(--color-bt-accent)" }}
+                onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(ce.id); }}
+                className="ml-auto flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                style={{ color: "var(--color-bt-text-dim)" }}
                 title="Remove competition link"
                 aria-label="Remove competition link"
               >
-                <X size={10} />
+                <X size={12} />
               </button>
             )}
           </div>
-        )}
+        ))}
         {/* General: location + time */}
         {item.item_type !== "golf" && item.course_name && (
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -297,25 +314,33 @@ function ScheduleItemRow({
             {item.scheduled_time}
           </div>
         )}
+        {/* Golf: prompt to add tee time when unconfirmed — placed in the content
+            column so it never competes with the competition chip for width. */}
+        {canEdit && item.scheduled_date && item.item_type === "golf" && !item.is_confirmed && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            className="mt-2 text-[11px] font-medium transition-colors"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Add tee time(s) or walk on
+          </button>
+        )}
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-1">
-        {/* Confirm toggle: only when item has a date */}
-        {canEdit && item.scheduled_date && (
+
+        {/* Mobile-only: schedule to a day via picker (replaces drag on touch).
+            Shown as an icon button in the action column, before reorder arrows. */}
+        {canEdit && onAddToDay && (
           <button
-            onClick={onConfirmToggle}
-            className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
-            style={{
-              color: item.is_confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-            }}
+            onClick={(e) => { e.stopPropagation(); onAddToDay(); }}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
+            style={{ color: "var(--color-bt-accent)" }}
+            aria-label="Add to a day"
+            title="Add to a day"
           >
-            {item.is_confirmed ? "Confirmed 🔒" : "Confirm"}
+            <CalendarDays size={14} />
           </button>
-        )}
-        {!canEdit && item.is_confirmed && (
-          <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
-            Confirmed ✓
-          </span>
         )}
 
         {movable && (
@@ -352,7 +377,7 @@ function ScheduleItemRow({
           </button>
         )}
 
-        {canEdit && !item.is_confirmed && onUnschedule && (
+        {canEdit && onUnschedule && (
           <button
             onClick={onUnschedule}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
@@ -363,7 +388,11 @@ function ScheduleItemRow({
             <X size={14} />
           </button>
         )}
-        {canEdit && !item.is_confirmed && !onUnschedule && (
+        {/* Trash: shown for all On Deck items (onUnschedule absent) regardless of
+            confirmation status. Confirmed golf rounds in On Deck have no X button
+            (they're not on a day) so without this they'd be impossible to remove.
+            Day-by-Day items use the X-to-unschedule flow instead. */}
+        {canEdit && !onUnschedule && (
           <button
             onClick={onRemove}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
@@ -387,11 +416,14 @@ function CompEventChip({
   canEdit,
   onDragStarted,
   onDragEnded,
+  onLinkToItem,
 }: {
   event: EventRow;
   canEdit: boolean;
   onDragStarted?: (type: "GOLF" | "GENERIC") => void;
   onDragEnded?: () => void;
+  /** Mobile-only: open agenda-item picker to link this event. */
+  onLinkToItem?: () => void;
 }) {
   const isGolf = event.type === "GOLF";
   return (
@@ -406,7 +438,7 @@ function CompEventChip({
       className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{
         background: "var(--color-bt-card-raised)",
-        border: isGolf && !event.agenda_item ? "1px solid var(--color-bt-warning)" : "1px solid var(--color-bt-border)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
       <span style={{ color: isGolf ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
@@ -419,6 +451,17 @@ function CompEventChip({
         <span className="text-[10px] font-semibold uppercase" style={{ color: "var(--color-bt-text-dim)" }}>
           {event.scoring_format}
         </span>
+      )}
+      {canEdit && onLinkToItem && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onLinkToItem(); }}
+          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
+          style={{ color: "var(--color-bt-accent)" }}
+          aria-label="Add to an agenda item"
+          title="Add to an agenda item"
+        >
+          <CalendarDays size={14} />
+        </button>
       )}
     </div>
   );
@@ -441,6 +484,8 @@ export function ScheduleTab({
   const [datesModalOpen, setDatesModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
+  const [dayPickerItem, setDayPickerItem] = useState<ScheduleItem | null>(null);
+  const [linkCompEvent, setLinkCompEvent] = useState<EventRow | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
@@ -494,30 +539,32 @@ export function ScheduleTab({
                 : null,
             };
           }
-          // Another event currently linked to the same target item — unlink it.
-          if (vars.agendaItemId && e.agenda_item?.id === vars.agendaItemId) {
-            return { ...e, agenda_item: null };
-          }
           return e;
         }) as never
       );
 
-      // Optimistically update schedule items: set / clear competition_event
+      // Optimistically update schedule items: add/remove from competition_events array
       utils.schedule.list.setData({ tripId }, (old) =>
         (old as ScheduleItem[] | undefined)?.map((s) => {
-          if (s.id === vars.agendaItemId) {
+          // Add event to the target item's array
+          if (vars.agendaItemId && s.id === vars.agendaItemId) {
+            const existing = s.competition_events ?? [];
             return {
               ...s,
-              competition_event_id: vars.eventId,
-              competition_event: sourceEvent
-                ? { id: sourceEvent.id, title: sourceEvent.title, type: sourceEvent.type }
-                : { id: vars.eventId, title: "", type: "" },
+              competition_events: [
+                ...existing.filter((e) => e.id !== vars.eventId),
+                ...(sourceEvent
+                  ? [{ id: sourceEvent.id, title: sourceEvent.title, type: sourceEvent.type }]
+                  : [{ id: vars.eventId, title: "", type: "" }]),
+              ],
             };
           }
-          // Any item previously linked to this event (covers both unlink and
-          // re-link to a new item) — clear it.
-          if (s.competition_event_id === vars.eventId) {
-            return { ...s, competition_event_id: null, competition_event: null };
+          // Remove event from any item that previously had it (re-link or unlink)
+          if (s.competition_events?.some((e) => e.id === vars.eventId)) {
+            return {
+              ...s,
+              competition_events: s.competition_events!.filter((e) => e.id !== vars.eventId),
+            };
           }
           return s;
         }) as never
@@ -609,8 +656,11 @@ export function ScheduleTab({
   const unscheduledItems = dayGroups.find((g) => g.date === null)?.items ?? [];
   const scheduledGroups = dayGroups.filter((g) => g.date !== null);
 
-  // Items assigned to a day but not yet confirmed.
-  const unconfirmedCount = allItems.filter((i) => !i.is_confirmed && !!i.scheduled_date).length;
+  // Golf items assigned to a day but not yet confirmed (no tee times, not walk-on).
+  // Non-golf items are auto-confirmed when assigned to a day.
+  const unconfirmedCount = allItems.filter(
+    (i) => i.item_type === "golf" && !i.is_confirmed && !!i.scheduled_date
+  ).length;
   // Items with a scheduled_date that falls outside the trip date range —
   // either the date or the trip itself was entered wrong.
   const outOfRangeCount =
@@ -621,23 +671,6 @@ export function ScheduleTab({
           return d < trip.start_date! || d > trip.end_date!;
         }).length
       : 0;
-
-  const confirmItem = trpc.schedule.confirm.useMutation({
-    async onMutate(vars) {
-      await utils.schedule.list.cancel({ tripId });
-      const prev = utils.schedule.list.getData({ tripId });
-      utils.schedule.list.setData({ tripId }, (old) =>
-        old?.map((item) =>
-          item.id === vars.itemId ? { ...item, is_confirmed: true } : item
-        )
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
-    },
-    onSettled: () => utils.schedule.list.invalidate({ tripId }),
-  });
 
   const removeItem = trpc.schedule.remove.useMutation({
     onSuccess: () => utils.schedule.list.invalidate({ tripId }),
@@ -679,13 +712,13 @@ export function ScheduleTab({
                 scheduled_date: vars.scheduledDate !== undefined
                   ? vars.scheduledDate
                   : item.scheduled_date,
-                // Clearing the date moves the item to On Deck — unconfirm it
-                // immediately so the confirmed badge disappears without waiting
-                // for the server round-trip.
-                ...(vars.scheduledDate === null && {
-                  is_confirmed: false,
-                  confirmed_at: null,
-                  confirmed_by: null,
+                // Confirmation is driven entirely by the explicit isConfirmed
+                // field. Golf items keep their status when moved to On Deck;
+                // callers pass isConfirmed: false only for non-golf items.
+                ...(vars.isConfirmed !== undefined && {
+                  is_confirmed: vars.isConfirmed,
+                  confirmed_at: vars.isConfirmed ? item.confirmed_at : null,
+                  confirmed_by: vars.isConfirmed ? item.confirmed_by : null,
                 }),
               }
             : item
@@ -698,33 +731,6 @@ export function ScheduleTab({
     },
     onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
-
-  const unconfirmItem = trpc.schedule.unconfirm.useMutation({
-    async onMutate(vars) {
-      await utils.schedule.list.cancel({ tripId });
-      const prev = utils.schedule.list.getData({ tripId });
-      utils.schedule.list.setData({ tripId }, (old) =>
-        old?.map((item) =>
-          item.id === vars.itemId
-            ? { ...item, is_confirmed: false, confirmed_at: null, confirmed_by: null }
-            : item
-        )
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
-    },
-    onSettled: () => utils.schedule.list.invalidate({ tripId }),
-  });
-
-  const handleConfirmToggle = (item: ScheduleItem) => {
-    if (item.is_confirmed) {
-      unconfirmItem.mutate({ tripId, itemId: item.id });
-    } else {
-      confirmItem.mutate({ tripId, itemId: item.id });
-    }
-  };
 
   // Reorder within a day group
   const reorderInGroup = (groupDate: string | null, newGroupItems: ScheduleItem[]) => {
@@ -776,6 +782,11 @@ export function ScheduleTab({
       tripId,
       itemId: draggedItem.id,
       scheduledDate: targetGroupDate,
+      // Non-golf: confirmed when on a day, unconfirmed when in On Deck.
+      // Golf: tee times / walk-on drive confirmation — never touch it here.
+      ...(draggedItem.item_type !== "golf" && {
+        isConfirmed: targetGroupDate !== null,
+      }),
     });
 
     // Build the post-move ordering for the target group: insert dragged item
@@ -787,16 +798,23 @@ export function ScheduleTab({
 
     // Compose the full ordered list across all groups, omitting the dragged
     // item from its source group and inserting it into the target group.
+    // If targetGroupDate is null but dayGroups has no null group yet (all items
+    // were scheduled), we won't find it in the loop — track that and prepend.
     const newAll: ScheduleItem[] = [];
+    let targetInserted = false;
     for (const g of dayGroups) {
       if (g.date === sourceDate) {
         newAll.push(...g.items.filter((i) => i.id !== draggedItem.id));
       } else if (g.date === targetGroupDate) {
         newAll.push(...newTargetItems);
+        targetInserted = true;
       } else {
         newAll.push(...g.items);
       }
     }
+    // targetGroupDate === null but no null group existed (all items were
+    // scheduled) — prepend the moved item as the first On Deck entry.
+    if (!targetInserted) newAll.unshift(...newTargetItems);
     const ids = newAll.map((i) => i.id);
     if (ids.length > 0) {
       reorder.mutate({ tripId, itemIds: ids });
@@ -876,10 +894,10 @@ export function ScheduleTab({
           </span>
           <div>
             <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-              {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
+              {unconfirmedCount} golf round{unconfirmedCount !== 1 ? "s" : ""} still need a tee time
             </p>
             <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Confirm items to lock them onto the official itinerary
+              Add tee times or mark as walk-on to confirm golf rounds for the itinerary
             </p>
           </div>
         </div>
@@ -919,24 +937,6 @@ export function ScheduleTab({
           This is where you add things like dinner reservations, golf tee times, or ideas for things to do on your trip — snorkeling, hiking, whiskey tasting, whatever. Treat it like a rough draft of your itinerary. Once an item feels ready for the rest of the crew, confirm it and it&apos;ll appear on their trip itinerary.
         </p>
 
-        {/* Add button — full-width above the two-column grid */}
-        {canEdit && (
-          <div className="mb-4">
-            <button
-              onClick={() => setAddMode("general")}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <Plus size={14} />
-              Add to Agenda
-            </button>
-          </div>
-        )}
-
         {allItems.length === 0 ? (
           <EmptyState
             icon={<CalendarDays className="h-10 w-10" />}
@@ -961,111 +961,176 @@ export function ScheduleTab({
                   </h4>
                 </div>
                 {canEdit && (
-                  <p
-                    className="mt-0.5 text-[10px] italic"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    Items that need to be added to the schedule. They will not appear on the trip itinerary until they have a confirmed date.
+                  <p className="mt-0.5 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Drag these to a day to add it to the agenda
                   </p>
                 )}
               </div>
 
-              <div
-                className="rounded-xl p-3 transition-colors"
-                style={{
-                  background: "transparent",
-                  border: `${unscheduledDragOver ? "1.5px" : "1px"} dashed ${
-                    unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
-                  }`,
-                }}
-                onDragOver={
-                  canEdit
-                    ? (e) => {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
-                        setUnscheduledDragOver(true);
-                      }
-                    : undefined
-                }
-                onDragLeave={
-                  canEdit
-                    ? (e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                          setUnscheduledDragOver(false);
-                        }
-                      }
-                    : undefined
-                }
-                onDrop={
-                  canEdit
-                    ? (e) => {
-                        e.preventDefault();
-                        setUnscheduledDragOver(false);
-                        if (dragState.current && dragState.current.groupDate !== null) {
-                          handleDragDrop(null, unscheduledItems, unscheduledItems.length);
-                        }
-                      }
-                    : undefined
-                }
-              >
-                {unscheduledItems.length === 0 ? (
-                  <p
-                    className="text-[11px] italic"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    All items have been scheduled.
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {/* eslint-disable react-hooks/refs */}
-                    {unscheduledItems.map((item, idx) => (
-                      <ScheduleItemRow
-                        key={item.id}
-                        item={item}
-                        canEdit={canEdit}
-                        onConfirmToggle={() => handleConfirmToggle(item)}
-                        onEdit={() => setEditItem(item)}
-                        onRemove={() => setConfirmDelete(item)}
-                        onMoveUp={() => handleMove(null, unscheduledItems, idx, "up")}
-                        onMoveDown={() => handleMove(null, unscheduledItems, idx, "down")}
-                        isFirst={idx === 0}
-                        isLast={idx === unscheduledItems.length - 1}
-                        isDragging={
-                          !!dragState.current &&
-                          dragState.current.groupDate === null &&
-                          dragState.current.idx === idx
-                        }
-                        showDropIndicator={
-                          !!dragOverIdx &&
-                          dragOverIdx.groupDate === null &&
-                          dragOverIdx.idx === idx &&
-                          dragState.current?.idx !== idx
-                        }
-                        onDragStart={() => {
-                          dragState.current = { groupDate: null, idx, item };
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setDragOverIdx({ groupDate: null, idx });
-                        }}
-                        onDrop={() => {
-                          setDragOverIdx(null);
-                          handleDragDrop(null, unscheduledItems, idx);
-                        }}
-                        onUnlinkCompEvent={item.competition_event_id ? () => {
-                          linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
-                        } : undefined}
-                      />
-                    ))}
-                    {/* eslint-enable react-hooks/refs */}
-                  </div>
-                )}
+              {/* "Unscheduled" day-label — mirrors "Day N — Date" in the right column
+                  so both columns line up visually at the same level. */}
+              <div className="mb-1.5 flex items-center gap-2">
+                <CalendarDays size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                <p className="text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                  Unscheduled
+                </p>
               </div>
+
+              {unscheduledItems.length === 0 && canEdit ? (
+                /* ── Invitation panel — replaces the outer dashed container ── */
+                /* Also serves as the drop target for dragging items back from  */
+                /* Day-by-Day when On Deck is empty (all items scheduled).      */
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setAddMode("general")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setAddMode("general"); }}
+                  className="flex flex-col items-center justify-center gap-2 rounded-xl px-4 py-8 text-center transition-all cursor-pointer"
+                  style={{
+                    background: unscheduledDragOver ? "var(--color-bt-accent-faint)" : "transparent",
+                    border: `1.5px dashed ${unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setUnscheduledDragOver(true);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setUnscheduledDragOver(false);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setUnscheduledDragOver(false);
+                    if (dragState.current && dragState.current.groupDate !== null) {
+                      handleDragDrop(null, unscheduledItems, unscheduledItems.length);
+                    }
+                  }}
+                >
+                  <ListPlus
+                    size={22}
+                    style={{ color: unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                  />
+                  <span className="text-sm font-semibold" style={{ color: unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
+                    Plan Something
+                  </span>
+                  <span className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Add golf rounds, activities, or ideas —<br />drag them onto a day when you&apos;re ready.
+                  </span>
+                </div>
+              ) : (
+                /* ── Outer dashed container — items present, or viewer ── */
+                <div
+                  className="rounded-xl px-3 pt-3 pb-1 transition-colors"
+                  style={{
+                    background: "transparent",
+                    border: `${unscheduledDragOver ? "1.5px" : "1px"} dashed ${
+                      unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+                    }`,
+                  }}
+                  onDragOver={
+                    canEdit
+                      ? (e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          setUnscheduledDragOver(true);
+                        }
+                      : undefined
+                  }
+                  onDragLeave={
+                    canEdit
+                      ? (e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setUnscheduledDragOver(false);
+                          }
+                        }
+                      : undefined
+                  }
+                  onDrop={
+                    canEdit
+                      ? (e) => {
+                          e.preventDefault();
+                          setUnscheduledDragOver(false);
+                          if (dragState.current && dragState.current.groupDate !== null) {
+                            handleDragDrop(null, unscheduledItems, unscheduledItems.length);
+                          }
+                        }
+                      : undefined
+                  }
+                >
+                  {unscheduledItems.length === 0 ? (
+                    /* Viewer empty state */
+                    <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                      All items have been scheduled.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {/* eslint-disable react-hooks/refs */}
+                      {unscheduledItems.map((item, idx) => (
+                        <ScheduleItemRow
+                          key={item.id}
+                          item={item}
+                          canEdit={canEdit}
+                          onEdit={() => setEditItem(item)}
+                          onRemove={() => setConfirmDelete(item)}
+                          onMoveUp={() => handleMove(null, unscheduledItems, idx, "up")}
+                          onMoveDown={() => handleMove(null, unscheduledItems, idx, "down")}
+                          isFirst={idx === 0}
+                          isLast={idx === unscheduledItems.length - 1}
+                          isDragging={
+                            !!dragState.current &&
+                            dragState.current.groupDate === null &&
+                            dragState.current.idx === idx
+                          }
+                          showDropIndicator={
+                            !!dragOverIdx &&
+                            dragOverIdx.groupDate === null &&
+                            dragOverIdx.idx === idx &&
+                            dragState.current?.idx !== idx
+                          }
+                          onDragStart={() => {
+                            dragState.current = { groupDate: null, idx, item };
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setDragOverIdx({ groupDate: null, idx });
+                          }}
+                          onDrop={() => {
+                            setDragOverIdx(null);
+                            handleDragDrop(null, unscheduledItems, idx);
+                          }}
+                          onUnlinkCompEvent={item.competition_events?.length ? (eventId) => {
+                            linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: null });
+                          } : undefined}
+                        onAddToDay={trip.start_date && trip.end_date ? () => setDayPickerItem(item) : undefined}
+                        />
+                      ))}
+                      {/* eslint-enable react-hooks/refs */}
+                      {/* Ghost add button at the bottom of the On Deck list */}
+                      {canEdit && (
+                        <button
+                          onClick={() => setAddMode("general")}
+                          className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-opacity hover:opacity-70"
+                          style={{
+                            background: "transparent",
+                            color: "var(--color-bt-text-dim)",
+                            border: "1px dashed var(--color-bt-border)",
+                          }}
+                        >
+                          <Plus size={12} />
+                          Plan Something Else
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Competition Events — shown below On Deck when competition is active.
                   Drag a competition event onto a Day-by-Day agenda item to link it.
                   Linked events disappear from here (they belong to the agenda item). */}
-              {competition && compEventsTyped.length > 0 && (
-                <div className="mt-4">
+              {competition && unlinkedCompEvents.length > 0 && (
+                <div className="mt-8">
                   <div className="mb-2 flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
                     <h4 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1082,21 +1147,16 @@ export function ScheduleTab({
                       background: "transparent",
                     }}
                   >
-                    {unlinkedCompEvents.length === 0 ? (
-                      <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                        All competition events are linked to agenda items.
-                      </p>
-                    ) : (
-                      unlinkedCompEvents.map((event) => (
-                        <CompEventChip
-                          key={event.id}
-                          event={event}
-                          canEdit={canEdit}
-                          onDragStarted={(t) => setCompDragType(t)}
-                          onDragEnded={() => setCompDragType(null)}
-                        />
-                      ))
-                    )}
+                    {unlinkedCompEvents.map((event) => (
+                      <CompEventChip
+                        key={event.id}
+                        event={event}
+                        canEdit={canEdit}
+                        onDragStarted={(t) => setCompDragType(t)}
+                        onDragEnded={() => setCompDragType(null)}
+                        onLinkToItem={() => setLinkCompEvent(event)}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -1139,67 +1199,58 @@ export function ScheduleTab({
                 <div className="space-y-5">
                   {/* eslint-disable react-hooks/refs */}
                   {scheduledGroups.map((group) => (
-                    <div
-                      key={group.date!}
-                      onDragOver={canEdit ? (e) => {
-                        e.preventDefault();
-                        if (dragState.current && dragState.current.groupDate !== group.date) {
-                          setDragOverGroup(group.date);
-                        }
-                      } : undefined}
-                      onDragEnter={canEdit ? () => {
-                        if (dragState.current && dragState.current.groupDate !== group.date) {
-                          setDragOverGroup(group.date);
-                        }
-                      } : undefined}
-                      onDragLeave={canEdit ? (e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                          setDragOverGroup(false);
-                          setDragOverIdx(null);
-                        }
-                      } : undefined}
-                      onDrop={canEdit ? (e) => {
-                        e.preventDefault();
-                        setDragOverGroup(false);
-                        setDragOverIdx(null);
-                        if (dragState.current) {
-                          handleDragDrop(group.date, group.items, group.items.length);
-                        }
-                      } : undefined}
-                      className="rounded-xl p-3 transition-colors"
-                      style={{
-                        background: dragOverGroup === group.date
-                          ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
-                          : "transparent",
-                        border: dragOverGroup === group.date
-                          ? "1.5px dashed var(--color-bt-accent)"
-                          : "1px dashed var(--color-bt-border)",
-                      }}
-                    >
-                      <div className="mb-2 flex items-center gap-2">
-                        <CalendarDays
-                          size={14}
-                          style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-                        />
-                        <p
-                          className="text-[13px] font-semibold"
-                          style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}
-                        >
+                    <div key={group.date!}>
+                      {/* Day label — sits above the dashed drop zone */}
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <CalendarDays size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                        <p className="text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
                           {group.label}
-                          {dragOverGroup === group.date && (
-                            <span className="ml-2 text-[11px] font-normal" style={{ color: "var(--color-bt-accent)" }}>
-                              Drop here
-                            </span>
-                          )}
                         </p>
                       </div>
 
+                      {/* Dashed drop zone */}
+                      <div
+                        onDragOver={canEdit ? (e) => {
+                          e.preventDefault();
+                          if (dragState.current && dragState.current.groupDate !== group.date) {
+                            setDragOverGroup(group.date);
+                          }
+                        } : undefined}
+                        onDragEnter={canEdit ? () => {
+                          if (dragState.current && dragState.current.groupDate !== group.date) {
+                            setDragOverGroup(group.date);
+                          }
+                        } : undefined}
+                        onDragLeave={canEdit ? (e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setDragOverGroup(false);
+                            setDragOverIdx(null);
+                          }
+                        } : undefined}
+                        onDrop={canEdit ? (e) => {
+                          e.preventDefault();
+                          setDragOverGroup(false);
+                          setDragOverIdx(null);
+                          if (dragState.current) {
+                            handleDragDrop(group.date, group.items, group.items.length);
+                          }
+                        } : undefined}
+                        className="rounded-xl px-3 pt-3 pb-1 transition-colors"
+                        style={{
+                          background: dragOverGroup === group.date
+                            ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
+                            : "transparent",
+                          border: dragOverGroup === group.date
+                            ? "1.5px dashed var(--color-bt-accent)"
+                            : "1px dashed var(--color-bt-border)",
+                        }}
+                      >
                       {group.items.length === 0 ? (
                         <p
-                          className="ml-6 text-xs italic"
+                          className="mb-2 text-xs italic"
                           style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                         >
-                          {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
+                          {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled yet"}
                         </p>
                       ) : (
                         <>
@@ -1208,7 +1259,6 @@ export function ScheduleTab({
                               key={item.id}
                               item={item}
                               canEdit={canEdit}
-                              onConfirmToggle={() => handleConfirmToggle(item)}
                               onEdit={() => setEditItem(item)}
                               onRemove={() => setConfirmDelete(item)}
                               onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
@@ -1243,12 +1293,19 @@ export function ScheduleTab({
                                   linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: item.id });
                                 }
                               }}
-                              onUnlinkCompEvent={item.competition_event_id ? () => {
-                                linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
+                              onUnlinkCompEvent={item.competition_events?.length ? (eventId) => {
+                                linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: null });
                               } : undefined}
                               compDragType={compDragType}
                               onUnschedule={() => {
-                                updateItem.mutate({ tripId, itemId: item.id, scheduledDate: null });
+                                updateItem.mutate({
+                                  tripId,
+                                  itemId: item.id,
+                                  scheduledDate: null,
+                                  // Non-golf: unconfirmed when sent back to On Deck.
+                                  // Golf: keeps its confirmed status (tee times / walk-on drive it).
+                                  ...(item.item_type !== "golf" && { isConfirmed: false }),
+                                });
                               }}
                             />
                           ))}
@@ -1287,6 +1344,7 @@ export function ScheduleTab({
                           )}
                         </>
                       )}
+                      </div>
                     </div>
                   ))}
                   {/* eslint-enable react-hooks/refs */}
@@ -1310,6 +1368,154 @@ export function ScheduleTab({
           editItem={editItem}
           onClose={() => setEditItem(null)}
         />
+      )}
+
+      {/* Day-picker sheet — mobile scheduling for On Deck items */}
+      {dayPickerItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setDayPickerItem(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pb-3 pt-5">
+              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Add to a day
+              </p>
+              <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {dayPickerItem.title}
+              </p>
+            </div>
+
+            {/* Day list */}
+            <div className="max-h-72 overflow-y-auto px-3 pb-3">
+              {trip.start_date && trip.end_date
+                ? generateTripDays(trip.start_date, trip.end_date).map((date) => {
+                    const num = dayNumber(date, trip.start_date ?? null);
+                    const count = allItems.filter((i) => i.scheduled_date === date).length;
+                    return (
+                      <button
+                        key={date}
+                        onClick={() => {
+                          updateItem.mutate({
+                            tripId,
+                            itemId: dayPickerItem.id,
+                            scheduledDate: date,
+                            // Non-golf: confirmed by being on a day.
+                            ...(dayPickerItem.item_type !== "golf" && { isConfirmed: true }),
+                          });
+                          setDayPickerItem(null);
+                        }}
+                        className="mb-1.5 flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition-opacity hover:opacity-80"
+                        style={{
+                          background: "var(--color-bt-card-raised)",
+                          border: "1px solid var(--color-bt-border)",
+                        }}
+                      >
+                        <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                          {num !== null ? `Day ${num} — ` : ""}{fmtDayHeader(date)}
+                        </span>
+                        {count > 0 && (
+                          <span className="ml-3 flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {count} item{count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                : null}
+            </div>
+
+            {/* Cancel */}
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setDayPickerItem(null)}
+                className="w-full rounded-xl py-2.5 text-sm font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Competition event linker — mobile picker to link a comp event to an agenda item */}
+      {linkCompEvent && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setLinkCompEvent(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 pb-3 pt-5">
+              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Add to an agenda item
+              </p>
+              <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {linkCompEvent.title}
+              </p>
+            </div>
+            <div className="max-h-72 overflow-y-auto px-3 pb-3">
+              {allItems
+                .filter((i) => linkCompEvent.type !== "GOLF" || i.item_type === "golf")
+                .map((i) => (
+                  <button
+                    key={i.id}
+                    onClick={() => {
+                      linkToAgendaItem.mutate({ tripId, eventId: linkCompEvent.id, agendaItemId: i.id });
+                      setLinkCompEvent(null);
+                    }}
+                    className="mb-1.5 flex w-full items-start gap-2 rounded-xl px-4 py-3 text-left transition-opacity hover:opacity-80"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    <span className="mt-0.5 flex-shrink-0" style={{ color: i.item_type === "golf" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+                      {i.item_type === "golf" ? <Flag size={13} /> : <Calendar size={13} />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {i.title}
+                      </p>
+                      {i.scheduled_date && (
+                        <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {fmtDate(i.scheduled_date)}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+            </div>
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setLinkCompEvent(null)}
+                className="w-full rounded-xl py-2.5 text-sm font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete confirmation dialog */}
