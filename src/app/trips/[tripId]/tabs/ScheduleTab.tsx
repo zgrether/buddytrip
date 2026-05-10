@@ -359,6 +359,18 @@ function ScheduleItemRow({
             Confirmed ✓
           </span>
         )}
+        {/* Golf: prompt to add tee time when unconfirmed (no tee times, not walk-on).
+            Opens the edit sheet — same as clicking the pencil — so the user can
+            set a tee time or check Walk on to confirm the round. */}
+        {canEdit && item.scheduled_date && item.item_type === "golf" && !item.is_confirmed && (
+          <button
+            onClick={onEdit}
+            className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Add a tee time
+          </button>
+        )}
 
         {movable && (
           <div className="flex flex-col lg:hidden">
