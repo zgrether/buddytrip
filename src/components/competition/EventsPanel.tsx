@@ -685,7 +685,7 @@ export function EventSheet({
   }
 
   const totalDistPoints = positions.reduce((sum, p) => sum + (p.points || 0), 0);
-  const remainingPoints = (parseFloat(pointsAvailable) || 0) - totalDistPoints;
+  const remainingPoints = Math.round(((parseFloat(pointsAvailable) || 0) - totalDistPoints) * 1e9) / 1e9;
 
   return (
     <div
