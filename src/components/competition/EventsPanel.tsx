@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Calendar,
@@ -604,11 +604,23 @@ export function EventSheet({
   );
   const [error, setError] = useState<string | null>(null);
 
+  const showPoints = !isPractice;
+
+  // Auto-add 1st place row when total points is first set and no
+  // positions exist yet — guides the user straight into distribution.
+  useEffect(() => {
+    if (!showPoints) return;
+    const pts = parseFloat(pointsAvailable);
+    if (pts > 0 && positions.length === 0) {
+      setPositions([{ position: 1, label: "1st Place", points: 0 }]);
+    }
+    // Only fire when pointsAvailable changes, not on every positions update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointsAvailable, showPoints]);
+
   const create = trpc.events.create.useMutation();
   const update = trpc.events.update.useMutation();
   const setDistributions = trpc.events.setPointDistributions.useMutation();
-
-  const showPoints = !isPractice;
 
   async function handleSave() {
     setError(null);
@@ -652,8 +664,8 @@ export function EventSheet({
           tripId,
           eventId: savedId,
           positions: positions.map((p, i) => ({
-            position: p.position || i + 1,
-            label: p.label,
+            position: i + 1,
+            label: `${ordinalShort(i + 1)} Place`,
             points: p.points,
           })),
         });
@@ -803,33 +815,20 @@ export function EventSheet({
                 />
               </Field>
 
-              <Field
-                label="Points Distribution"
-                helper="Add finishing positions and assign points to each."
-              >
-                <div className="space-y-1.5">
+              <Field label="Points Distribution">
+                <div className="space-y-2">
                   {positions.map((p, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <input
-                        value={p.label}
-                        onChange={(e) => {
-                          const next = [...positions];
-                          next[i] = { ...next[i], label: e.target.value };
-                          setPositions(next);
-                        }}
-                        placeholder={`${ordinalShort(i + 1)} place`}
-                        className="flex-1 rounded-lg px-2 py-1.5 text-sm outline-none"
-                        style={{
-                          background: "var(--color-bt-card-raised)",
-                          color: "var(--color-bt-text)",
-                          border: "1px solid var(--color-bt-border)",
-                        }}
-                      />
+                    <div key={i} className="flex items-center gap-3">
+                      <span
+                        className="w-16 flex-shrink-0 text-xs font-semibold"
+                        style={{ color: "var(--color-bt-text)" }}
+                      >
+                        {ordinalShort(i + 1)} place
+                      </span>
                       <input
                         type="number"
                         min={0}
-                        max={99}
-                        value={p.points}
+                        value={p.points || ""}
                         onChange={(e) => {
                           const next = [...positions];
                           next[i] = {
@@ -838,7 +837,8 @@ export function EventSheet({
                           };
                           setPositions(next);
                         }}
-                        className="w-16 rounded-lg px-2 py-1.5 text-sm outline-none"
+                        placeholder="0"
+                        className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none"
                         style={{
                           background: "var(--color-bt-card-raised)",
                           color: "var(--color-bt-text)",
@@ -846,58 +846,79 @@ export function EventSheet({
                         }}
                       />
                       <span
-                        className="text-[10px]"
+                        className="text-[11px]"
                         style={{ color: "var(--color-bt-text-dim)" }}
                       >
                         pts
                       </span>
                       <button
                         type="button"
-                        onClick={() => setPositions(positions.filter((_, j) => j !== i))}
-                        aria-label={`Remove position ${i + 1}`}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg"
+                        onClick={() =>
+                          setPositions(positions.filter((_, j) => j !== i))
+                        }
+                        aria-label={`Remove ${ordinalShort(i + 1)} place`}
+                        className="ml-auto flex h-6 w-6 items-center justify-center rounded-md"
                         style={{ color: "var(--color-bt-text-dim)" }}
                       >
-                        <X size={13} />
+                        <X size={12} />
                       </button>
                     </div>
                   ))}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPositions([
-                        ...positions,
-                        {
-                          position: positions.length + 1,
-                          label: `${ordinalShort(positions.length + 1)} Place`,
-                          points: 0,
-                        },
-                      ])
-                    }
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium"
-                    style={{
-                      background: "transparent",
-                      color: "var(--color-bt-accent)",
-                      border: "1.5px dashed var(--color-bt-accent)",
-                    }}
-                  >
-                    <Plus size={12} />
-                    Add Position
-                  </button>
+
+                  {/* Add next place — only once the previous row has pts */}
+                  {remainingPoints > 0 &&
+                    (positions.length === 0 ||
+                      (positions[positions.length - 1]?.points ?? 0) > 0) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPositions([
+                          ...positions,
+                          {
+                            position: positions.length + 1,
+                            label: `${ordinalShort(positions.length + 1)} Place`,
+                            points: 0,
+                          },
+                        ])
+                      }
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                      style={{
+                        background: "var(--color-bt-card-raised)",
+                        color: "var(--color-bt-text)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      <Plus size={12} style={{ color: "var(--color-bt-accent)" }} />
+                      Add {ordinalShort(positions.length + 1)} place
+                      <span
+                        className="ml-auto"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        {remainingPoints} pts left
+                      </span>
+                    </button>
+                  )}
+
+                  {/* All distributed */}
+                  {remainingPoints === 0 && positions.length > 0 && (
+                    <p
+                      className="text-[11px] font-medium"
+                      style={{ color: "var(--color-bt-accent)" }}
+                    >
+                      All {parseFloat(pointsAvailable)} pts distributed ✓
+                    </p>
+                  )}
+
+                  {/* Over-distributed */}
+                  {remainingPoints < 0 && (
+                    <p
+                      className="text-[11px]"
+                      style={{ color: "var(--color-bt-danger)" }}
+                    >
+                      Over by {Math.abs(remainingPoints)} pts — reduce a position
+                    </p>
+                  )}
                 </div>
-                {pointsAvailable && (
-                  <p
-                    className="mt-2 text-[11px]"
-                    style={{
-                      color:
-                        remainingPoints < 0
-                          ? "var(--color-bt-danger)"
-                          : "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    Points remaining: {remainingPoints}
-                  </p>
-                )}
               </Field>
             </>
           )}
