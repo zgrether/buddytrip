@@ -351,6 +351,11 @@ function CrewTravelRow({ member }: { member: TripMemberLite }) {
         <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           {summarizeTravel(member)}
         </p>
+        {arrivalLine(member) && (
+          <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {arrivalLine(member)}
+          </p>
+        )}
       </div>
 
       <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
@@ -438,6 +443,11 @@ function OtherMemberTravelRow({
           <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {summarizeTravel(m)}
           </p>
+          {arrivalLine(m) && (
+            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {arrivalLine(m)}
+            </p>
+          )}
         </div>
         <TravelModeBadge mode={m.travel_mode as TravelMode | null} />
         <ChevronDown
@@ -654,6 +664,11 @@ function YourTravelRow({
           <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {summarizeTravel(member)}
           </p>
+          {arrivalLine(member) && (
+            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {arrivalLine(member)}
+            </p>
+          )}
         </div>
 
         <TravelModeBadge mode={member.travel_mode as TravelMode | null} />
@@ -1054,23 +1069,21 @@ function byArrivalTime(a: TripMemberLite, b: TripMemberLite): number {
   return at < bt ? -1 : at > bt ? 1 : 0;
 }
 
+/** Main detail line — flight info or travel description, no arrival time. */
 function summarizeTravel(m: TripMemberLite): string {
-  const arrivalLabel = formatArrivalLabel(m.flight_arrival_time);
   if (m.travel_mode === "flying") {
-    const parts = [
-      m.flight_airline,
-      m.flight_number,
-      arrivalLabel && `arriving ${arrivalLabel}`,
-    ].filter(Boolean);
-    return parts.length ? parts.join(" · ") : "Flying";
+    const parts = [m.flight_airline, m.flight_number].filter(Boolean);
+    return parts.length ? parts.join(" ") : "Flying";
   }
   // Driving / other
-  const parts = [
-    m.travel_detail,
-    arrivalLabel && `arriving ${arrivalLabel}`,
-  ].filter(Boolean);
-  if (parts.length) return parts.join(" · ");
+  if (m.travel_detail) return m.travel_detail;
   return m.travel_mode === "driving" ? "Driving" : "Other";
+}
+
+/** Arrival line — "Arriving Sep 10 · 3:00 PM" or null if no arrival set. */
+function arrivalLine(m: TripMemberLite): string | null {
+  const label = formatArrivalLabel(m.flight_arrival_time);
+  return label ? `Arriving ${label}` : null;
 }
 
 /** Render an ISO timestamp as "Sep 10 · 3:00 PM" — empty string if invalid. */
