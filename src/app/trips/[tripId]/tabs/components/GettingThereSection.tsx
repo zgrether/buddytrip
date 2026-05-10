@@ -579,11 +579,10 @@ function SkeletonArrival({
         </p>
       </div>
       <span
-        className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+        className="flex flex-shrink-0 items-center justify-center rounded-full p-1.5"
         style={badgeStyle}
       >
-        <Icon size={9} />
-        {isFlying ? "Flying" : "Driving"}
+        <Icon size={11} />
       </span>
     </div>
   );
@@ -975,11 +974,10 @@ function TravelModeBadge({ mode }: { mode: TravelMode | null }) {
   }
   return (
     <span
-      className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+      className="flex flex-shrink-0 items-center justify-center rounded-full p-1.5"
       style={style}
     >
-      <Icon size={10} />
-      {label}
+      <Icon size={12} />
     </span>
   );
 }
