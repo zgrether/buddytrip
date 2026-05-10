@@ -143,8 +143,8 @@ export function buildItinerary(input: {
     if (!isDateString(item.scheduled_date)) continue;
 
     const subtitleParts: string[] = [];
-    if (item.item_type === "golf" && item.course_name) {
-      subtitleParts.push(item.course_name);
+    if (item.item_type === "golf") {
+      // Title is already the course name — subtitle shows the address only.
       if (item.course_location) subtitleParts.push(item.course_location);
     } else if (item.detail) {
       subtitleParts.push(item.detail);

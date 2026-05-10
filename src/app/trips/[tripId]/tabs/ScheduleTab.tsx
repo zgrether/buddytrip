@@ -220,27 +220,25 @@ function ScheduleItemRow({
             {item.detail}
           </p>
         )}
-        {/* Golf: course + tee times */}
-        {item.item_type === "golf" && (item.course?.name || item.course_name) && (
+        {/* Golf: address + map link. Title is already the course name. */}
+        {item.item_type === "golf" && (item.course?.address || item.course_location) && (
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            <span className="font-medium">{item.course?.name ?? item.course_name}</span>
-            {(item.course?.address || item.course_location) && (
-              <a
-                href={
-                  item.course?.lat && item.course?.lng
-                    ? `https://www.google.com/maps/search/?api=1&query=${item.course.lat},${item.course.lng}`
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course?.address ?? item.course_location ?? "")}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-0.5"
-                style={{ color: "var(--color-bt-accent)" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MapPin size={10} />
-                Map
-              </a>
-            )}
+            <span>{item.course?.address ?? item.course_location}</span>
+            <a
+              href={
+                item.course?.lat && item.course?.lng
+                  ? `https://www.google.com/maps/search/?api=1&query=${item.course.lat},${item.course.lng}`
+                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course?.address ?? item.course_location ?? "")}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-0.5"
+              style={{ color: "var(--color-bt-accent)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MapPin size={10} />
+              Map
+            </a>
           </div>
         )}
         {item.item_type === "golf" && (
