@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { AlertTriangle, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
@@ -98,12 +97,6 @@ function ExistingCompetitionView({
   isOwner: boolean;
   onCompetitionDeleted?: () => void;
 }) {
-  // Creation state lives at this level so the +Team / +Event
-  // buttons in CompetitionHeader can drive the same sheets that the
-  // panels' empty-state CTAs trigger.
-  const [creatingTeam, setCreatingTeam] = useState(false);
-  const [creatingEvent, setCreatingEvent] = useState(false);
-
   // Fetch events to compute unlinked GOLF count for the nudge panel.
   const { data: events = [] } = trpc.events.list.useQuery(
     { tripId, competitionId: competition.id },
@@ -113,7 +106,7 @@ function ExistingCompetitionView({
     .filter((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item).length;
 
   return (
-    <div className="space-y-3 px-4">
+    <div className="space-y-6 px-4">
       {/* Nudge: golf events without an agenda link can't provide scorecards */}
       {canEdit && unlinkedGolfCount > 0 && (
         <div
@@ -146,16 +139,12 @@ function ExistingCompetitionView({
         canEdit={canEdit}
         isOwner={isOwner}
         onDeleted={onCompetitionDeleted}
-        onAddTeam={() => setCreatingTeam(true)}
-        onAddEvent={() => setCreatingEvent(true)}
       />
       <TeamsPanel
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
         isOwner={isOwner}
-        creating={creatingTeam}
-        onCreatingChange={setCreatingTeam}
       />
       <EventsPanel
         competitionId={competition.id}

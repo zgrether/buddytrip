@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import {
   AlertTriangle,
   Calendar,
-  ChevronDown,
   Flag,
   GripVertical,
   Info,
@@ -80,7 +79,6 @@ const FORMAT_LABELS: Record<ScoringFormat, string> = {
 // ── EventsPanel ─────────────────────────────────────────────────────────────
 
 export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
-  const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState<EventRow | null>(null);
   const [creating, setCreating] = useState(false);
   const dragState = useRef<{ idx: number } | null>(null);
@@ -139,7 +137,6 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
     : `${totalEvents} event${totalEvents === 1 ? "" : "s"}${
         practiceCount > 0 ? ` · ${practiceCount} practice` : ""
       }${unlinkedGolf > 0 ? ` · ${unlinkedGolf} unlinked` : ""}`;
-  const headerState = totalEvents === 0 ? "todo" : "inProgress";
 
   const body = (
     <>
@@ -182,89 +179,43 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
   );
 
   return (
-    <CollapsiblePanel
-      icon={<Calendar size={16} />}
-      label="Competition Builder"
-      note={statusText}
-      state={headerState}
-      open={open}
-      onToggle={() => setOpen((v) => !v)}
-      testId="events-panel"
-    >
-      {body}
-    </CollapsiblePanel>
-  );
-}
-
-// ── CollapsiblePanel ────────────────────────────────────────────────────────
-
-function CollapsiblePanel({
-  icon,
-  label,
-  note,
-  state,
-  open,
-  onToggle,
-  testId,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  note: string;
-  state: "done" | "inProgress" | "todo";
-  open: boolean;
-  onToggle: () => void;
-  testId?: string;
-  children: React.ReactNode;
-}) {
-  // Neutral panel chrome — icon picks up accent color once progress is made.
-  const iconColor =
-    state !== "todo" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
-
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-        boxShadow: "var(--shadow-raised)",
-      }}
-      data-testid={testId}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
-      >
-        <span style={{ color: iconColor }}>{icon}</span>
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-sm font-semibold leading-tight"
-            style={{ color: "var(--color-bt-text)" }}
+    <div data-testid="events-panel">
+      {/* Flat section header */}
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span
+            style={{ color: totalEvents > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+            aria-hidden
           >
-            {label}
-          </p>
-          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {note}
-          </p>
+            <Calendar size={16} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Competition Builder
+            </p>
+            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              {statusText}
+            </p>
+          </div>
         </div>
-        <ChevronDown
-          size={15}
-          style={{
-            color: "var(--color-bt-text-dim)",
-            transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 200ms",
-          }}
-        />
-      </button>
-      {open && (
-        <div
-          className="px-4 pb-4 pt-3"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-        >
-          {children}
-        </div>
-      )}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <Plus size={12} />
+            Event
+          </button>
+        )}
+      </div>
+
+      {body}
     </div>
   );
 }

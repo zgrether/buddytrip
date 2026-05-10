@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import {
   ArrowRight,
-  ChevronDown,
   GripVertical,
   Pencil,
   Plus,
@@ -218,45 +217,54 @@ export function TeamsPanel({
   const teamsExist = teamsTyped.length > 0;
   const allAssigned = teamsExist && totalMembers > 0 && assignedCount === totalMembers;
 
-  // Open state — null sentinel means "use the data-derived default":
-  // Always expanded by default — the panel only collapses when the user
-  // explicitly clicks the chevron. An explicit override is stored so
-  // adding the first team doesn't reset a user-chosen collapsed state.
-  const [openOverride, setOpenOverride] = useState<boolean | null>(null);
-  const open = openOverride ?? true;
-  const handleToggle = () => setOpenOverride(!open);
-  const handleOpenAddTeam = () => {
-    setOpenOverride(true);
-    setCreating(true);
-  };
-
   const statusText = !teamsExist
     ? "Not set up"
     : `${teamsTyped.length} team${teamsTyped.length === 1 ? "" : "s"} · ${assignedCount} of ${totalMembers} assigned`;
 
-  const headerState = !teamsExist ? "todo" : allAssigned ? "done" : "inProgress";
-
   return (
-    <CollapsiblePanel
-      icon={
-        <div className="flex items-center" aria-hidden>
-          <User size={14} />
-          <ArrowRight size={11} className="mx-0.5" />
-          <Users size={14} />
+    <div data-testid="teams-panel">
+      {/* Flat section header */}
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span style={{ color: "var(--color-bt-text-dim)" }} aria-hidden>
+            <div className="flex items-center">
+              <User size={14} />
+              <ArrowRight size={11} className="mx-0.5" />
+              <Users size={14} />
+            </div>
+          </span>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Team Rosters
+            </p>
+            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+              {statusText}
+            </p>
+          </div>
         </div>
-      }
-      label="Team Rosters"
-      note={statusText}
-      state={headerState}
-      open={open}
-      onToggle={handleToggle}
-      testId="teams-panel"
-    >
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            <Plus size={12} />
+            Team
+          </button>
+        )}
+      </div>
+
+      {/* Content */}
       <div className="space-y-4">
         {!teamsExist && (
           <NoTeamsEmptyState
             canEdit={canEdit}
-            onAddTeam={handleOpenAddTeam}
+            onAddTeam={() => setCreating(true)}
           />
         )}
 
@@ -274,8 +282,7 @@ export function TeamsPanel({
               order="lg-first"
             />
 
-            {/* Teams column — 2/3 of the panel width on desktop. The
-                +Team button moved up to CompetitionHeader's action bar. */}
+            {/* Teams column — 2/3 of the panel width on desktop */}
             <div>
               <div className="mb-2">
                 <div className="flex items-center gap-2">
@@ -329,77 +336,6 @@ export function TeamsPanel({
             setEditingTeam(null);
           }}
         />
-      )}
-    </CollapsiblePanel>
-  );
-}
-
-// ── CollapsiblePanel ────────────────────────────────────────────────────────
-
-function CollapsiblePanel({
-  icon,
-  label,
-  note,
-  state,
-  open,
-  onToggle,
-  testId,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  note: string;
-  state: "done" | "inProgress" | "todo";
-  open: boolean;
-  onToggle: () => void;
-  testId?: string;
-  children: React.ReactNode;
-}) {
-  // Neutral panel chrome — confirmation is conveyed by the content inside.
-  // Icon picks up accent color once progress is made (any state beyond todo).
-  const iconColor =
-    state !== "todo" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)";
-
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-        boxShadow: "var(--shadow-raised)",
-      }}
-      data-testid={testId}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
-      >
-        <span style={{ color: iconColor }}>{icon}</span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-            {label}
-          </p>
-          <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            {note}
-          </p>
-        </div>
-        <ChevronDown
-          size={15}
-          style={{
-            color: "var(--color-bt-text-dim)",
-            transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 200ms",
-          }}
-        />
-      </button>
-      {open && (
-        <div
-          className="px-4 pb-4 pt-3"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-        >
-          {children}
-        </div>
       )}
     </div>
   );

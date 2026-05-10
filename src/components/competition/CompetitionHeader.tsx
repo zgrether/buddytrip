@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Flag, Pencil, Plus, Trash2, Trophy, Users, X } from "lucide-react";
+import { Pencil, Trash2, Trophy, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 interface Competition {
@@ -47,11 +47,6 @@ interface Props {
    * tab fully disappears (not just for the rest of the crew).
    */
   onDeleted?: () => void;
-  /** Action-bar handlers — when provided, the header renders +Team /
-   *  +Event affordances inline below the title strip so the
-   *  inner panels don't have to surface them. */
-  onAddTeam?: () => void;
-  onAddEvent?: () => void;
 }
 
 /**
@@ -67,14 +62,11 @@ export function CompetitionHeader({
   canEdit,
   isOwner,
   onDeleted,
-  onAddTeam,
-  onAddEvent,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const utils = trpc.useUtils();
 
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
     { tripId, competitionId: competition.id },
     { enabled: !!competition.id }
@@ -84,20 +76,8 @@ export function CompetitionHeader({
     { enabled: !!competition.id }
   );
 
-  const totalMembers = members.length;
-  const assignedCount = assignments.length;
-  const teamsComplete = totalMembers > 0 && assignedCount === totalMembers;
-
-  const eventsTyped = events as Array<{
-    id: string;
-    type?: string | null;
-    is_practice?: boolean | null;
-  }>;
-  const scoredEvents = eventsTyped.filter((e) => !e.is_practice).length;
-  const eventsComplete = scoredEvents > 0;
-
   const teamsCount = (assignments as Array<unknown>).length;
-  const eventsCount = eventsTyped.length;
+  const eventsCount = (events as Array<unknown>).length;
 
   const deleteComp = trpc.competitions.delete.useMutation({
     onSettled: () => {
@@ -172,36 +152,6 @@ export function CompetitionHeader({
             <Trash2 size={14} />
           </button>
         )}
-      </div>
-
-      {/* Action bar — equal-width two-column grid */}
-      <div className="grid grid-cols-2 gap-2">
-        <ActionTile
-          icon={<Users size={14} />}
-          label="Team"
-          status={
-            totalMembers > 0
-              ? `${assignedCount}/${totalMembers} assigned`
-              : "Not set up"
-          }
-          complete={teamsComplete}
-          onAdd={canEdit ? onAddTeam : undefined}
-        />
-        <ActionTile
-          icon={<Flag size={14} />}
-          label="Event"
-          status={
-            eventsTyped.length === 0
-              ? "Not set up"
-              : `${scoredEvents} scored${
-                  eventsTyped.length - scoredEvents > 0
-                    ? ` · ${eventsTyped.length - scoredEvents} practice`
-                    : ""
-                }`
-          }
-          complete={eventsComplete}
-          onAdd={canEdit ? onAddEvent : undefined}
-        />
       </div>
 
       {editing && (
@@ -520,71 +470,3 @@ function StatusBadge({ status }: { status: Competition["status"] }) {
   );
 }
 
-function ActionTile({
-  icon,
-  label,
-  status,
-  complete,
-  onAdd,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  status: string;
-  complete: boolean;
-  /** Undefined → render the tile as a non-interactive status block
-   *  (read-only members or unsupported state). */
-  onAdd?: () => void;
-}) {
-  // Clickable variant — compact secondary add button (icon + "+ Label").
-  // Status copy lives in the panel headers below; the button itself just
-  // needs to be clearly actionable, not a second status readout.
-  if (onAdd) {
-    return (
-      <button
-        type="button"
-        onClick={onAdd}
-        aria-label={`Add ${label.toLowerCase()}`}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-opacity hover:opacity-80 active:scale-[0.98]"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: "0.5px solid var(--color-bt-border)",
-          color: "var(--color-bt-text)",
-        }}
-      >
-        <span style={{ color: "var(--color-bt-text-dim)" }}>{icon}</span>
-        <Plus size={11} style={{ color: "var(--color-bt-text-dim)" }} />
-        <span>{label}</span>
-      </button>
-    );
-  }
-
-  // Read-only variant — status tile for non-editors.
-  const accent = complete
-    ? "var(--color-bt-accent)"
-    : "var(--color-bt-text-dim)";
-  return (
-    <div
-      className="flex items-center gap-2 rounded-lg px-2.5 py-2"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <span style={{ color: accent }}>{icon}</span>
-      <div className="min-w-0 flex-1">
-        <p
-          className="text-[12px] font-semibold leading-tight"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {label}
-        </p>
-        <p
-          className="mt-0.5 text-[11px] leading-tight"
-          style={{ color: accent }}
-        >
-          {status}
-        </p>
-      </div>
-    </div>
-  );
-}
