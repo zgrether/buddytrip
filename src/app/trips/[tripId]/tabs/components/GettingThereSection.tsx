@@ -1029,25 +1029,21 @@ function TravelExpandForm({
 function TravelModeBadge({ mode }: { mode: TravelMode | null }) {
   if (!mode) return null;
   const style: React.CSSProperties = {};
-  let label: string;
   let Icon: LucideIcon;
   if (mode === "flying") {
     style.background = "var(--color-bt-accent-faint)";
     style.color = "var(--color-bt-accent)";
     style.border = "1px solid var(--color-bt-accent-border)";
-    label = "Flying";
     Icon = Plane;
   } else if (mode === "driving") {
     style.background = "var(--color-bt-warning-faint)";
     style.color = "var(--color-bt-warning)";
     style.border = "1px solid var(--color-bt-warning-border)";
-    label = "Driving";
     Icon = Car;
   } else {
     style.background = "var(--color-bt-blue-bg)";
     style.color = "var(--color-bt-planning)";
     style.border = "1px solid var(--color-bt-planning-border)";
-    label = "Other";
     Icon = HelpCircle;
   }
   return (

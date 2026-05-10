@@ -105,7 +105,7 @@ export function AddScheduleItemSheet({
   // General fields
   const [title, setTitle] = useState(editItem?.title ?? "");
   const [detail, setDetail] = useState(editItem?.detail ?? "");
-  const [scheduledDate, setScheduledDate] = useState(editItem?.scheduled_date ?? "");
+  const [scheduledDate] = useState(editItem?.scheduled_date ?? "");
   const [scheduledTime, setScheduledTime] = useState(editItem?.scheduled_time ?? "");
 
   // Golf fields

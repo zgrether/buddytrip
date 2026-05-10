@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Lock, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
-import { TripBottomNav, type TabId } from "@/components/BottomNav";
+import { type TabId } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";

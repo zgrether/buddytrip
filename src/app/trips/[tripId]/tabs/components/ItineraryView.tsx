@@ -4,11 +4,9 @@ import { useMemo, useState } from "react";
 import {
   Calendar,
   Clock,
-  Flag,
   Home,
   MapPin,
   Plane,
-  Star,
   Trophy,
   X,
 } from "lucide-react";
