@@ -1013,9 +1013,7 @@ export function ScheduleTab({
                     className="text-[11px] italic"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    {canEdit
-                      ? "All items have been scheduled. Drag here to move something back to the idea pool."
-                      : "All items have been scheduled."}
+                    All items have been scheduled.
                   </p>
                 ) : (
                   <div className="space-y-1.5">
