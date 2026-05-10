@@ -438,7 +438,7 @@ function CompEventChip({
       className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{
         background: "var(--color-bt-card-raised)",
-        border: isGolf && !event.agenda_item ? "1px solid var(--color-bt-warning)" : "1px solid var(--color-bt-border)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
       <span style={{ color: isGolf ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
