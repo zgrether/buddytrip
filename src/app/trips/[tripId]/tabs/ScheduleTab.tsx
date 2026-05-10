@@ -322,7 +322,7 @@ function ScheduleItemRow({
             className="mt-2 text-[11px] font-medium transition-colors"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Add a tee time
+            Add tee time(s) or walk on
           </button>
         )}
         {/* Mobile-only: schedule to a day via picker (replaces drag on touch) */}
