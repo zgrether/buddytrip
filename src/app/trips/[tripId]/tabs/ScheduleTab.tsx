@@ -199,9 +199,11 @@ function ScheduleItemRow({
         />
       )}
 
-      {/* Type icon */}
-      {item.item_type === "golf" && (
+      {/* Type icon — always present so text aligns across item types */}
+      {item.item_type === "golf" ? (
         <Flag size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+      ) : (
+        <Calendar size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
       )}
 
       <div className="min-w-0 flex-1">
