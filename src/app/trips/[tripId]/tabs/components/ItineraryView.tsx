@@ -552,7 +552,12 @@ function EventCard({ event }: { event: ItineraryEvent }) {
       }}
     >
       {event.kind === "arrival" ? (
-        <UserAvatar name={event.displayName} avatarUrl={event.avatarUrl ?? null} size="md" />
+        <UserAvatar
+          name={event.displayName}
+          avatarUrl={event.avatarUrl ?? null}
+          isGuest={event.isGuest ?? false}
+          size="md"
+        />
       ) : (
         <span
           className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full"

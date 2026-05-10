@@ -94,6 +94,7 @@ export type ItineraryEvent =
       memberId: string;
       displayName: string;
       avatarUrl?: string | null;
+      isGuest?: boolean | null;
     };
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -250,6 +251,7 @@ export function buildItinerary(input: {
       memberId: m.memberId,
       displayName: m.displayName,
       avatarUrl: m.user?.avatar_url ?? null,
+      isGuest: m.isGuest ?? false,
     });
   }
 

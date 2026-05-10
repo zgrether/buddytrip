@@ -1130,7 +1130,7 @@ export function ScheduleTab({
                   Drag a competition event onto a Day-by-Day agenda item to link it.
                   Linked events disappear from here (they belong to the agenda item). */}
               {competition && unlinkedCompEvents.length > 0 && (
-                <div className="mt-4">
+                <div className="mt-8">
                   <div className="mb-2 flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
                     <h4 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
