@@ -136,7 +136,9 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
     (m) => m.user_id !== currentUser?.id,
   );
   // Non-owner view: all members (including guests) who've confirmed travel.
-  const sharedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
+  const sharedOthers = allOtherMembers
+    .filter((m) => !!m.travel_mode)
+    .sort(byArrivalTime);
   // Pending tally counts only real (non-guest) members — guests can't share their own.
   const realOtherMembers = allOtherMembers.filter((m) => !m.isGuest);
 
@@ -153,7 +155,7 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   if (!isOwner && !crewVisible) return null;
 
   // Owner view: split other members by whether travel is confirmed.
-  const confirmedOthers = allOtherMembers.filter((m) => !!m.travel_mode);
+  const confirmedOthers = allOtherMembers.filter((m) => !!m.travel_mode).sort(byArrivalTime);
   const pendingOthers = allOtherMembers.filter((m) => !m.travel_mode);
 
   const toggleFilter = (key: TravelFilterKey) => {
@@ -1042,6 +1044,17 @@ function PendingTravelRow({ members }: { members: TripMemberLite[] }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+/** Sort travel members by arrival time ascending; members without an arrival
+ *  time sort to the end. */
+function byArrivalTime(a: TripMemberLite, b: TripMemberLite): number {
+  const at = a.flight_arrival_time;
+  const bt = b.flight_arrival_time;
+  if (!at && !bt) return 0;
+  if (!at) return 1;
+  if (!bt) return -1;
+  return at < bt ? -1 : at > bt ? 1 : 0;
+}
 
 function summarizeTravel(m: TripMemberLite): string {
   const arrivalLabel = formatArrivalLabel(m.flight_arrival_time);
