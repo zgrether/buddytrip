@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Clock,
   Flag,
+  ListPlus,
   MapPin,
   Plus,
   Star,
@@ -787,16 +788,23 @@ export function ScheduleTab({
 
     // Compose the full ordered list across all groups, omitting the dragged
     // item from its source group and inserting it into the target group.
+    // If targetGroupDate is null but dayGroups has no null group yet (all items
+    // were scheduled), we won't find it in the loop — track that and prepend.
     const newAll: ScheduleItem[] = [];
+    let targetInserted = false;
     for (const g of dayGroups) {
       if (g.date === sourceDate) {
         newAll.push(...g.items.filter((i) => i.id !== draggedItem.id));
       } else if (g.date === targetGroupDate) {
         newAll.push(...newTargetItems);
+        targetInserted = true;
       } else {
         newAll.push(...g.items);
       }
     }
+    // targetGroupDate === null but no null group existed (all items were
+    // scheduled) — prepend the moved item as the first On Deck entry.
+    if (!targetInserted) newAll.unshift(...newTargetItems);
     const ids = newAll.map((i) => i.id);
     if (ids.length > 0) {
       reorder.mutate({ tripId, itemIds: ids });
@@ -944,129 +952,156 @@ export function ScheduleTab({
                 </div>
               </div>
 
-              <div
-                className="rounded-xl p-3 transition-colors"
-                style={{
-                  background: "transparent",
-                  border: `${unscheduledDragOver ? "1.5px" : "1px"} dashed ${
-                    unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
-                  }`,
-                }}
-                onDragOver={
-                  canEdit
-                    ? (e) => {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
-                        setUnscheduledDragOver(true);
-                      }
-                    : undefined
-                }
-                onDragLeave={
-                  canEdit
-                    ? (e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              {unscheduledItems.length === 0 && canEdit ? (
+                /* ── Invitation panel — replaces the outer dashed container ── */
+                /* Also serves as the drop target for dragging items back from  */
+                /* Day-by-Day when On Deck is empty (all items scheduled).      */
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setAddMode("general")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setAddMode("general"); }}
+                  className="flex flex-col items-center justify-center gap-2 rounded-xl px-4 py-8 text-center transition-all cursor-pointer"
+                  style={{
+                    background: unscheduledDragOver ? "var(--color-bt-accent-faint)" : "transparent",
+                    border: `1.5px dashed ${unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setUnscheduledDragOver(true);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setUnscheduledDragOver(false);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setUnscheduledDragOver(false);
+                    if (dragState.current && dragState.current.groupDate !== null) {
+                      handleDragDrop(null, unscheduledItems, unscheduledItems.length);
+                    }
+                  }}
+                >
+                  <ListPlus
+                    size={22}
+                    style={{ color: unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                  />
+                  <span className="text-sm font-semibold" style={{ color: unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
+                    Plan Something
+                  </span>
+                  <span className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Add golf rounds, activities, or ideas —<br />drag them onto a day when you&apos;re ready.
+                  </span>
+                </div>
+              ) : (
+                /* ── Outer dashed container — items present, or viewer ── */
+                <div
+                  className="rounded-xl p-3 transition-colors"
+                  style={{
+                    background: "transparent",
+                    border: `${unscheduledDragOver ? "1.5px" : "1px"} dashed ${
+                      unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+                    }`,
+                  }}
+                  onDragOver={
+                    canEdit
+                      ? (e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          setUnscheduledDragOver(true);
+                        }
+                      : undefined
+                  }
+                  onDragLeave={
+                    canEdit
+                      ? (e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setUnscheduledDragOver(false);
+                          }
+                        }
+                      : undefined
+                  }
+                  onDrop={
+                    canEdit
+                      ? (e) => {
+                          e.preventDefault();
                           setUnscheduledDragOver(false);
+                          if (dragState.current && dragState.current.groupDate !== null) {
+                            handleDragDrop(null, unscheduledItems, unscheduledItems.length);
+                          }
                         }
-                      }
-                    : undefined
-                }
-                onDrop={
-                  canEdit
-                    ? (e) => {
-                        e.preventDefault();
-                        setUnscheduledDragOver(false);
-                        if (dragState.current && dragState.current.groupDate !== null) {
-                          handleDragDrop(null, unscheduledItems, unscheduledItems.length);
-                        }
-                      }
-                    : undefined
-                }
-              >
-                {unscheduledItems.length === 0 ? (
-                  canEdit ? (
-                    /* Invitation panel — empty On Deck */
-                    <button
-                      onClick={() => setAddMode("general")}
-                      className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl px-4 py-6 text-center transition-colors hover:opacity-80"
-                      style={{
-                        background: "var(--color-bt-surface-invitation, transparent)",
-                        border: "1.5px dashed var(--color-bt-border)",
-                      }}
-                    >
-                      <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                        <Plus size={14} />
-                        Plan Something
-                      </span>
-                      <span className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                        Add golf rounds, activities, or ideas —<br />drag them onto a day when you&apos;re ready.
-                      </span>
-                    </button>
-                  ) : (
+                      : undefined
+                  }
+                >
+                  {unscheduledItems.length === 0 ? (
+                    /* Viewer empty state */
                     <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
                       All items have been scheduled.
                     </p>
-                  )
-                ) : (
-                  <div className="space-y-1.5">
-                    {/* eslint-disable react-hooks/refs */}
-                    {unscheduledItems.map((item, idx) => (
-                      <ScheduleItemRow
-                        key={item.id}
-                        item={item}
-                        canEdit={canEdit}
-                        onConfirmToggle={() => handleConfirmToggle(item)}
-                        onEdit={() => setEditItem(item)}
-                        onRemove={() => setConfirmDelete(item)}
-                        onMoveUp={() => handleMove(null, unscheduledItems, idx, "up")}
-                        onMoveDown={() => handleMove(null, unscheduledItems, idx, "down")}
-                        isFirst={idx === 0}
-                        isLast={idx === unscheduledItems.length - 1}
-                        isDragging={
-                          !!dragState.current &&
-                          dragState.current.groupDate === null &&
-                          dragState.current.idx === idx
-                        }
-                        showDropIndicator={
-                          !!dragOverIdx &&
-                          dragOverIdx.groupDate === null &&
-                          dragOverIdx.idx === idx &&
-                          dragState.current?.idx !== idx
-                        }
-                        onDragStart={() => {
-                          dragState.current = { groupDate: null, idx, item };
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setDragOverIdx({ groupDate: null, idx });
-                        }}
-                        onDrop={() => {
-                          setDragOverIdx(null);
-                          handleDragDrop(null, unscheduledItems, idx);
-                        }}
-                        onUnlinkCompEvent={item.competition_event_id ? () => {
-                          linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
-                        } : undefined}
-                      />
-                    ))}
-                    {/* eslint-enable react-hooks/refs */}
-                    {/* Ghost add button at the bottom of the On Deck list */}
-                    {canEdit && (
-                      <button
-                        onClick={() => setAddMode("general")}
-                        className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-opacity hover:opacity-70"
-                        style={{
-                          background: "transparent",
-                          color: "var(--color-bt-text-dim)",
-                          border: "1px dashed var(--color-bt-border)",
-                        }}
-                      >
-                        <Plus size={12} />
-                        Plan Something
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {/* eslint-disable react-hooks/refs */}
+                      {unscheduledItems.map((item, idx) => (
+                        <ScheduleItemRow
+                          key={item.id}
+                          item={item}
+                          canEdit={canEdit}
+                          onConfirmToggle={() => handleConfirmToggle(item)}
+                          onEdit={() => setEditItem(item)}
+                          onRemove={() => setConfirmDelete(item)}
+                          onMoveUp={() => handleMove(null, unscheduledItems, idx, "up")}
+                          onMoveDown={() => handleMove(null, unscheduledItems, idx, "down")}
+                          isFirst={idx === 0}
+                          isLast={idx === unscheduledItems.length - 1}
+                          isDragging={
+                            !!dragState.current &&
+                            dragState.current.groupDate === null &&
+                            dragState.current.idx === idx
+                          }
+                          showDropIndicator={
+                            !!dragOverIdx &&
+                            dragOverIdx.groupDate === null &&
+                            dragOverIdx.idx === idx &&
+                            dragState.current?.idx !== idx
+                          }
+                          onDragStart={() => {
+                            dragState.current = { groupDate: null, idx, item };
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setDragOverIdx({ groupDate: null, idx });
+                          }}
+                          onDrop={() => {
+                            setDragOverIdx(null);
+                            handleDragDrop(null, unscheduledItems, idx);
+                          }}
+                          onUnlinkCompEvent={item.competition_event_id ? () => {
+                            linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
+                          } : undefined}
+                        />
+                      ))}
+                      {/* eslint-enable react-hooks/refs */}
+                      {/* Ghost add button at the bottom of the On Deck list */}
+                      {canEdit && (
+                        <button
+                          onClick={() => setAddMode("general")}
+                          className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-opacity hover:opacity-70"
+                          style={{
+                            background: "transparent",
+                            color: "var(--color-bt-text-dim)",
+                            border: "1px dashed var(--color-bt-border)",
+                          }}
+                        >
+                          <Plus size={12} />
+                          Plan Something Else
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Competition Events — shown below On Deck when competition is active.
                   Drag a competition event onto a Day-by-Day agenda item to link it.
                   Linked events disappear from here (they belong to the agenda item). */}
