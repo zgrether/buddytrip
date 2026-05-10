@@ -183,12 +183,12 @@ function ScheduleItemRow({
         style={{
           background: isValidCompTarget
             ? "var(--color-bt-accent-faint)"
-            : item.is_confirmed
+            : item.scheduled_date
             ? "var(--color-bt-tag-bg)"
             : "var(--color-bt-card)",
           border: isValidCompTarget
             ? "1.5px solid var(--color-bt-accent)"
-            : `1px solid ${item.is_confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+            : `1px solid ${item.scheduled_date ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
           opacity: isDragging ? 0.4 : 1,
         }}
       >
