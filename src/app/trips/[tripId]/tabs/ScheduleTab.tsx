@@ -53,9 +53,8 @@ interface ScheduleItem {
     lat?: number | null;
     lng?: number | null;
   } | null;
-  // Competition event link
-  competition_event_id?: string | null;
-  competition_event?: { id: string; title: string; type: string } | null;
+  // Competition events linked to this item (many-to-one via events.agenda_item_id)
+  competition_events?: Array<{ id: string; title: string; type: string; scoring_format?: string | null }> | null;
 }
 
 interface DayGroup {
@@ -137,7 +136,7 @@ function ScheduleItemRow({
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
-  onUnlinkCompEvent?: () => void;
+  onUnlinkCompEvent?: (eventId: string) => void;
   /** Day-by-Day rows pass this — the trailing button becomes an X that
    *  sends the item back to On Deck (clears its date). When omitted, the
    *  trailing button is a trash can wired to onRemove (delete). */
@@ -263,9 +262,10 @@ function ScheduleItemRow({
             )}
           </>
         )}
-        {/* Competition event chip — matches CompEventChip size/style */}
-        {item.competition_event && (
+        {/* Competition event chips — one per linked event (many-to-one allowed) */}
+        {item.competition_events?.map((ce) => (
           <div
+            key={ce.id}
             className="mt-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2"
             style={{
               background: "var(--color-bt-card-raised)",
@@ -274,11 +274,11 @@ function ScheduleItemRow({
           >
             <Trophy size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
             <p className="min-w-0 flex-1 truncate text-[12px] font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {item.competition_event.title}
+              {ce.title}
             </p>
             {canEdit && onUnlinkCompEvent && (
               <button
-                onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(); }}
+                onClick={(e) => { e.stopPropagation(); onUnlinkCompEvent(ce.id); }}
                 className="ml-auto flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
                 style={{ color: "var(--color-bt-text-dim)" }}
                 title="Remove competition link"
@@ -288,7 +288,7 @@ function ScheduleItemRow({
               </button>
             )}
           </div>
-        )}
+        ))}
         {/* General: location + time */}
         {item.item_type !== "golf" && item.course_name && (
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -525,30 +525,32 @@ export function ScheduleTab({
                 : null,
             };
           }
-          // Another event currently linked to the same target item — unlink it.
-          if (vars.agendaItemId && e.agenda_item?.id === vars.agendaItemId) {
-            return { ...e, agenda_item: null };
-          }
           return e;
         }) as never
       );
 
-      // Optimistically update schedule items: set / clear competition_event
+      // Optimistically update schedule items: add/remove from competition_events array
       utils.schedule.list.setData({ tripId }, (old) =>
         (old as ScheduleItem[] | undefined)?.map((s) => {
-          if (s.id === vars.agendaItemId) {
+          // Add event to the target item's array
+          if (vars.agendaItemId && s.id === vars.agendaItemId) {
+            const existing = s.competition_events ?? [];
             return {
               ...s,
-              competition_event_id: vars.eventId,
-              competition_event: sourceEvent
-                ? { id: sourceEvent.id, title: sourceEvent.title, type: sourceEvent.type }
-                : { id: vars.eventId, title: "", type: "" },
+              competition_events: [
+                ...existing.filter((e) => e.id !== vars.eventId),
+                ...(sourceEvent
+                  ? [{ id: sourceEvent.id, title: sourceEvent.title, type: sourceEvent.type }]
+                  : [{ id: vars.eventId, title: "", type: "" }]),
+              ],
             };
           }
-          // Any item previously linked to this event (covers both unlink and
-          // re-link to a new item) — clear it.
-          if (s.competition_event_id === vars.eventId) {
-            return { ...s, competition_event_id: null, competition_event: null };
+          // Remove event from any item that previously had it (re-link or unlink)
+          if (s.competition_events?.some((e) => e.id === vars.eventId)) {
+            return {
+              ...s,
+              competition_events: s.competition_events!.filter((e) => e.id !== vars.eventId),
+            };
           }
           return s;
         }) as never
@@ -1084,8 +1086,8 @@ export function ScheduleTab({
                             setDragOverIdx(null);
                             handleDragDrop(null, unscheduledItems, idx);
                           }}
-                          onUnlinkCompEvent={item.competition_event_id ? () => {
-                            linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
+                          onUnlinkCompEvent={item.competition_events?.length ? (eventId) => {
+                            linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: null });
                           } : undefined}
                         onAddToDay={trip.start_date && trip.end_date ? () => setDayPickerItem(item) : undefined}
                         />
@@ -1276,8 +1278,8 @@ export function ScheduleTab({
                                   linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: item.id });
                                 }
                               }}
-                              onUnlinkCompEvent={item.competition_event_id ? () => {
-                                linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
+                              onUnlinkCompEvent={item.competition_events?.length ? (eventId) => {
+                                linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: null });
                               } : undefined}
                               compDragType={compDragType}
                               onUnschedule={() => {
