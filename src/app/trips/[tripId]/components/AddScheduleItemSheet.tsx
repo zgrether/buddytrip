@@ -107,7 +107,6 @@ export function AddScheduleItemSheet({
   const [detail, setDetail] = useState(editItem?.detail ?? "");
   const [scheduledDate, setScheduledDate] = useState(editItem?.scheduled_date ?? "");
   const [scheduledTime, setScheduledTime] = useState(editItem?.scheduled_time ?? "");
-  const [isConfirmed, setIsConfirmed] = useState(editItem?.is_confirmed ?? false);
 
   // Golf fields
   const [selectedCourse, setSelectedCourse] = useState<{
@@ -195,13 +194,6 @@ export function AddScheduleItemSheet({
       utils.schedule.list.invalidate({ tripId });
       onClose();
     },
-  });
-
-  const confirm = trpc.schedule.confirm.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
-  });
-  const unconfirm = trpc.schedule.unconfirm.useMutation({
-    onSuccess: () => utils.schedule.list.invalidate({ tripId }),
   });
 
   const update = trpc.schedule.update.useMutation({
@@ -317,7 +309,7 @@ export function AddScheduleItemSheet({
         });
       }
     } else {
-      // General item — confirmation stays manual via checkbox
+      // General item — confirmed automatically when assigned to a day.
       if (isEditing) {
         update.mutate({
           tripId,
@@ -326,7 +318,7 @@ export function AddScheduleItemSheet({
           detail: detail.trim() || null,
           scheduledDate: scheduledDate || null,
           scheduledTime: scheduledTime || null,
-          isConfirmed: scheduledDate ? isConfirmed : false,
+          isConfirmed: !!scheduledDate,
           courseName: selectedLocation?.name || null,
           courseLocation: selectedLocation?.address || null,
         });
@@ -338,7 +330,7 @@ export function AddScheduleItemSheet({
           detail: detail.trim() || undefined,
           scheduledDate: scheduledDate || undefined,
           scheduledTime: scheduledTime || undefined,
-          isConfirmed: scheduledDate ? isConfirmed : false,
+          isConfirmed: !!scheduledDate,
           courseName: selectedLocation?.name || undefined,
           courseLocation: selectedLocation?.address || undefined,
         });
@@ -753,23 +745,6 @@ export function AddScheduleItemSheet({
               style={inputStyle}
             />
           </>
-        )}
-
-        {/* Confirmed checkbox — non-golf items only; golf confirmation is
-            implicit from tee times (or walk-on). Only shown when the item
-            is already scheduled to a day. */}
-        {scheduledDate && !isGolf && (
-          <label className="mt-3 flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isConfirmed}
-              onChange={(e) => setIsConfirmed(e.target.checked)}
-              className="h-4 w-4 rounded"
-            />
-            <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              Confirmed
-            </span>
-          </label>
         )}
 
         {/* Actions */}

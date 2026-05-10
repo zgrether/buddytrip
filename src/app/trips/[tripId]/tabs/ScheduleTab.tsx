@@ -106,7 +106,6 @@ function dayNumber(date: string, tripStart: string | null): number | null {
 function ScheduleItemRow({
   item,
   canEdit,
-  onConfirmToggle,
   onEdit,
   onRemove,
   onMoveUp,
@@ -126,7 +125,6 @@ function ScheduleItemRow({
 }: {
   item: ScheduleItem;
   canEdit: boolean;
-  onConfirmToggle: () => void;
   onEdit: () => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -341,24 +339,6 @@ function ScheduleItemRow({
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-1">
-        {/* Confirm toggle: non-golf only. Golf confirmation is implicit from
-            tee times (shown as pills) or walk-on (shown as a chip). */}
-        {canEdit && item.scheduled_date && item.item_type !== "golf" && (
-          <button
-            onClick={onConfirmToggle}
-            className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
-            style={{
-              color: item.is_confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-            }}
-          >
-            {item.is_confirmed ? "Confirmed 🔒" : "Confirm"}
-          </button>
-        )}
-        {!canEdit && item.is_confirmed && item.item_type !== "golf" && (
-          <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
-            Confirmed ✓
-          </span>
-        )}
         {/* Golf: prompt to add tee time when unconfirmed (no tee times, not walk-on).
             Opens the edit sheet — same as clicking the pencil — so the user can
             set a tee time or check Walk on to confirm the round. */}
@@ -406,7 +386,7 @@ function ScheduleItemRow({
           </button>
         )}
 
-        {canEdit && !item.is_confirmed && onUnschedule && (
+        {canEdit && onUnschedule && (
           <button
             onClick={onUnschedule}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
@@ -668,8 +648,11 @@ export function ScheduleTab({
   const unscheduledItems = dayGroups.find((g) => g.date === null)?.items ?? [];
   const scheduledGroups = dayGroups.filter((g) => g.date !== null);
 
-  // Items assigned to a day but not yet confirmed.
-  const unconfirmedCount = allItems.filter((i) => !i.is_confirmed && !!i.scheduled_date).length;
+  // Golf items assigned to a day but not yet confirmed (no tee times, not walk-on).
+  // Non-golf items are auto-confirmed when assigned to a day.
+  const unconfirmedCount = allItems.filter(
+    (i) => i.item_type === "golf" && !i.is_confirmed && !!i.scheduled_date
+  ).length;
   // Items with a scheduled_date that falls outside the trip date range —
   // either the date or the trip itself was entered wrong.
   const outOfRangeCount =
@@ -680,23 +663,6 @@ export function ScheduleTab({
           return d < trip.start_date! || d > trip.end_date!;
         }).length
       : 0;
-
-  const confirmItem = trpc.schedule.confirm.useMutation({
-    async onMutate(vars) {
-      await utils.schedule.list.cancel({ tripId });
-      const prev = utils.schedule.list.getData({ tripId });
-      utils.schedule.list.setData({ tripId }, (old) =>
-        old?.map((item) =>
-          item.id === vars.itemId ? { ...item, is_confirmed: true } : item
-        )
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
-    },
-    onSettled: () => utils.schedule.list.invalidate({ tripId }),
-  });
 
   const removeItem = trpc.schedule.remove.useMutation({
     onSuccess: () => utils.schedule.list.invalidate({ tripId }),
@@ -758,33 +724,6 @@ export function ScheduleTab({
     onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
-  const unconfirmItem = trpc.schedule.unconfirm.useMutation({
-    async onMutate(vars) {
-      await utils.schedule.list.cancel({ tripId });
-      const prev = utils.schedule.list.getData({ tripId });
-      utils.schedule.list.setData({ tripId }, (old) =>
-        old?.map((item) =>
-          item.id === vars.itemId
-            ? { ...item, is_confirmed: false, confirmed_at: null, confirmed_by: null }
-            : item
-        )
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
-    },
-    onSettled: () => utils.schedule.list.invalidate({ tripId }),
-  });
-
-  const handleConfirmToggle = (item: ScheduleItem) => {
-    if (item.is_confirmed) {
-      unconfirmItem.mutate({ tripId, itemId: item.id });
-    } else {
-      confirmItem.mutate({ tripId, itemId: item.id });
-    }
-  };
-
   // Reorder within a day group
   const reorderInGroup = (groupDate: string | null, newGroupItems: ScheduleItem[]) => {
     const newAll: ScheduleItem[] = [];
@@ -835,10 +774,10 @@ export function ScheduleTab({
       tripId,
       itemId: draggedItem.id,
       scheduledDate: targetGroupDate,
-      // Non-golf items lose confirmation when moved back to On Deck.
-      // Golf items keep theirs — tee times / walk-on drive their status.
-      ...(targetGroupDate === null && draggedItem.item_type !== "golf" && {
-        isConfirmed: false,
+      // Non-golf: confirmed when on a day, unconfirmed when in On Deck.
+      // Golf: tee times / walk-on drive confirmation — never touch it here.
+      ...(draggedItem.item_type !== "golf" && {
+        isConfirmed: targetGroupDate !== null,
       }),
     });
 
@@ -947,10 +886,10 @@ export function ScheduleTab({
           </span>
           <div>
             <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-              {unconfirmedCount} item{unconfirmedCount !== 1 ? "s" : ""} still need confirmation
+              {unconfirmedCount} golf round{unconfirmedCount !== 1 ? "s" : ""} still need a tee time
             </p>
             <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Confirm items to lock them onto the official itinerary
+              Add tee times or mark as walk-on to confirm golf rounds for the itinerary
             </p>
           </div>
         </div>
@@ -1125,7 +1064,6 @@ export function ScheduleTab({
                           key={item.id}
                           item={item}
                           canEdit={canEdit}
-                          onConfirmToggle={() => handleConfirmToggle(item)}
                           onEdit={() => setEditItem(item)}
                           onRemove={() => setConfirmDelete(item)}
                           onMoveUp={() => handleMove(null, unscheduledItems, idx, "up")}
@@ -1312,7 +1250,6 @@ export function ScheduleTab({
                               key={item.id}
                               item={item}
                               canEdit={canEdit}
-                              onConfirmToggle={() => handleConfirmToggle(item)}
                               onEdit={() => setEditItem(item)}
                               onRemove={() => setConfirmDelete(item)}
                               onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
@@ -1356,7 +1293,8 @@ export function ScheduleTab({
                                   tripId,
                                   itemId: item.id,
                                   scheduledDate: null,
-                                  // Golf keeps its confirmed status; non-golf loses it.
+                                  // Non-golf: unconfirmed when sent back to On Deck.
+                                  // Golf: keeps its confirmed status (tee times / walk-on drive it).
                                   ...(item.item_type !== "golf" && { isConfirmed: false }),
                                 });
                               }}
@@ -1455,7 +1393,13 @@ export function ScheduleTab({
                       <button
                         key={date}
                         onClick={() => {
-                          updateItem.mutate({ tripId, itemId: dayPickerItem.id, scheduledDate: date });
+                          updateItem.mutate({
+                            tripId,
+                            itemId: dayPickerItem.id,
+                            scheduledDate: date,
+                            // Non-golf: confirmed by being on a day.
+                            ...(dayPickerItem.item_type !== "golf" && { isConfirmed: true }),
+                          });
                           setDayPickerItem(null);
                         }}
                         className="mb-1.5 flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition-opacity hover:opacity-80"
