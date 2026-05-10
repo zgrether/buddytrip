@@ -1003,7 +1003,7 @@ export function ScheduleTab({
               ) : (
                 /* ── Outer dashed container — items present, or viewer ── */
                 <div
-                  className="rounded-xl p-3 transition-colors"
+                  className="rounded-xl px-3 pt-3 pb-1 transition-colors"
                   style={{
                     background: "transparent",
                     border: `${unscheduledDragOver ? "1.5px" : "1px"} dashed ${
@@ -1215,7 +1215,7 @@ export function ScheduleTab({
                             handleDragDrop(group.date, group.items, group.items.length);
                           }
                         } : undefined}
-                        className="rounded-xl p-3 transition-colors"
+                        className="rounded-xl px-3 pt-3 pb-1 transition-colors"
                         style={{
                           background: dragOverGroup === group.date
                             ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
