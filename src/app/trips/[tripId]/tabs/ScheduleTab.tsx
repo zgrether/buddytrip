@@ -283,7 +283,7 @@ function ScheduleItemRow({
         {/* Competition event chip — matches CompEventChip size/style */}
         {item.competition_event && (
           <div
-            className="mt-2 flex items-center gap-2 rounded-lg px-2.5 py-2"
+            className="mt-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2"
             style={{
               background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
