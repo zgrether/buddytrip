@@ -325,24 +325,23 @@ function ScheduleItemRow({
             Add tee time(s) or walk on
           </button>
         )}
-        {/* Mobile-only: schedule to a day via picker (replaces drag on touch) */}
-        {canEdit && onAddToDay && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onAddToDay(); }}
-            className="mt-2 flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-opacity hover:opacity-80 lg:hidden"
-            style={{
-              color: "var(--color-bt-accent)",
-              background: "var(--color-bt-accent-faint)",
-              border: "1px solid var(--color-bt-accent-border)",
-            }}
-          >
-            <CalendarDays size={11} />
-            Add to a day
-          </button>
-        )}
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-1">
+
+        {/* Mobile-only: schedule to a day via picker (replaces drag on touch).
+            Shown as an icon button in the action column, before reorder arrows. */}
+        {canEdit && onAddToDay && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onAddToDay(); }}
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
+            style={{ color: "var(--color-bt-accent)" }}
+            aria-label="Add to a day"
+            title="Add to a day"
+          >
+            <CalendarDays size={14} />
+          </button>
+        )}
 
         {movable && (
           <div className="flex flex-col lg:hidden">
@@ -417,11 +416,14 @@ function CompEventChip({
   canEdit,
   onDragStarted,
   onDragEnded,
+  onLinkToItem,
 }: {
   event: EventRow;
   canEdit: boolean;
   onDragStarted?: (type: "GOLF" | "GENERIC") => void;
   onDragEnded?: () => void;
+  /** Mobile-only: open agenda-item picker to link this event. */
+  onLinkToItem?: () => void;
 }) {
   const isGolf = event.type === "GOLF";
   return (
@@ -450,6 +452,17 @@ function CompEventChip({
           {event.scoring_format}
         </span>
       )}
+      {canEdit && onLinkToItem && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onLinkToItem(); }}
+          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
+          style={{ color: "var(--color-bt-accent)" }}
+          aria-label="Link to agenda item"
+          title="Link to agenda item"
+        >
+          <CalendarDays size={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -472,6 +485,7 @@ export function ScheduleTab({
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
   const [dayPickerItem, setDayPickerItem] = useState<ScheduleItem | null>(null);
+  const [linkCompEvent, setLinkCompEvent] = useState<EventRow | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
@@ -1140,6 +1154,7 @@ export function ScheduleTab({
                         canEdit={canEdit}
                         onDragStarted={(t) => setCompDragType(t)}
                         onDragEnded={() => setCompDragType(null)}
+                        onLinkToItem={() => setLinkCompEvent(event)}
                       />
                     ))}
                   </div>
@@ -1420,6 +1435,75 @@ export function ScheduleTab({
             <div className="px-5 pb-5">
               <button
                 onClick={() => setDayPickerItem(null)}
+                className="w-full rounded-xl py-2.5 text-sm font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Competition event linker — mobile picker to link a comp event to an agenda item */}
+      {linkCompEvent && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setLinkCompEvent(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 pb-3 pt-5">
+              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Link to agenda item
+              </p>
+              <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {linkCompEvent.title}
+              </p>
+            </div>
+            <div className="max-h-72 overflow-y-auto px-3 pb-3">
+              {allItems
+                .filter((i) => linkCompEvent.type !== "GOLF" || i.item_type === "golf")
+                .map((i) => (
+                  <button
+                    key={i.id}
+                    onClick={() => {
+                      linkToAgendaItem.mutate({ tripId, eventId: linkCompEvent.id, agendaItemId: i.id });
+                      setLinkCompEvent(null);
+                    }}
+                    className="mb-1.5 flex w-full items-start gap-2 rounded-xl px-4 py-3 text-left transition-opacity hover:opacity-80"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    <span className="mt-0.5 flex-shrink-0" style={{ color: i.item_type === "golf" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+                      {i.item_type === "golf" ? <Flag size={13} /> : <Calendar size={13} />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {i.title}
+                      </p>
+                      {i.scheduled_date && (
+                        <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {fmtDate(i.scheduled_date)}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+            </div>
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setLinkCompEvent(null)}
                 className="w-full rounded-xl py-2.5 text-sm font-medium"
                 style={{
                   background: "var(--color-bt-card-raised)",
