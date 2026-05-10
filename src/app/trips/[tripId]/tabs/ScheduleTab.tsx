@@ -220,26 +220,11 @@ function ScheduleItemRow({
             {item.detail}
           </p>
         )}
-        {/* Golf: address + map link. Title is already the course name. */}
+        {/* Golf: address only. Title is already the course name. Map link lives in the itinerary. */}
         {item.item_type === "golf" && (item.course?.address || item.course_location) && (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            <span>{item.course?.address ?? item.course_location}</span>
-            <a
-              href={
-                item.course?.lat && item.course?.lng
-                  ? `https://www.google.com/maps/search/?api=1&query=${item.course.lat},${item.course.lng}`
-                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.course?.address ?? item.course_location ?? "")}`
-              }
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-0.5"
-              style={{ color: "var(--color-bt-accent)" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MapPin size={10} />
-              Map
-            </a>
-          </div>
+          <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            {item.course?.address ?? item.course_location}
+          </p>
         )}
         {item.item_type === "golf" && (
           <>
