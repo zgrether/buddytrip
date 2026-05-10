@@ -1008,6 +1008,15 @@ export function ScheduleTab({
                 )}
               </div>
 
+              {/* "Unscheduled" day-label — mirrors "Day N — Date" in the right column
+                  so both columns line up visually at the same level. */}
+              <div className="mb-1.5 flex items-center gap-2">
+                <CalendarDays size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                <p className="text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                  Unscheduled
+                </p>
+              </div>
+
               {unscheduledItems.length === 0 && canEdit ? (
                 /* ── Invitation panel — replaces the outer dashed container ── */
                 /* Also serves as the drop target for dragging items back from  */
