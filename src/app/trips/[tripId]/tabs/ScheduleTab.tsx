@@ -919,24 +919,6 @@ export function ScheduleTab({
           This is where you add things like dinner reservations, golf tee times, or ideas for things to do on your trip — snorkeling, hiking, whiskey tasting, whatever. Treat it like a rough draft of your itinerary. Once an item feels ready for the rest of the crew, confirm it and it&apos;ll appear on their trip itinerary.
         </p>
 
-        {/* Add button — full-width above the two-column grid */}
-        {canEdit && (
-          <div className="mb-4">
-            <button
-              onClick={() => setAddMode("general")}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <Plus size={14} />
-              Add to Agenda
-            </button>
-          </div>
-        )}
-
         {allItems.length === 0 ? (
           <EmptyState
             icon={<CalendarDays className="h-10 w-10" />}
@@ -960,14 +942,6 @@ export function ScheduleTab({
                     On Deck
                   </h4>
                 </div>
-                {canEdit && (
-                  <p
-                    className="mt-0.5 text-[10px] italic"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    Items that need to be added to the schedule. They will not appear on the trip itinerary until they have a confirmed date.
-                  </p>
-                )}
               </div>
 
               <div
@@ -1009,12 +983,29 @@ export function ScheduleTab({
                 }
               >
                 {unscheduledItems.length === 0 ? (
-                  <p
-                    className="text-[11px] italic"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    All items have been scheduled.
-                  </p>
+                  canEdit ? (
+                    /* Invitation panel — empty On Deck */
+                    <button
+                      onClick={() => setAddMode("general")}
+                      className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl px-4 py-6 text-center transition-colors hover:opacity-80"
+                      style={{
+                        background: "var(--color-bt-surface-invitation, transparent)",
+                        border: "1.5px dashed var(--color-bt-border)",
+                      }}
+                    >
+                      <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                        <Plus size={14} />
+                        Plan Something
+                      </span>
+                      <span className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                        Add golf rounds, activities, or ideas —<br />drag them onto a day when you&apos;re ready.
+                      </span>
+                    </button>
+                  ) : (
+                    <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                      All items have been scheduled.
+                    </p>
+                  )
                 ) : (
                   <div className="space-y-1.5">
                     {/* eslint-disable react-hooks/refs */}
@@ -1058,13 +1049,28 @@ export function ScheduleTab({
                       />
                     ))}
                     {/* eslint-enable react-hooks/refs */}
+                    {/* Ghost add button at the bottom of the On Deck list */}
+                    {canEdit && (
+                      <button
+                        onClick={() => setAddMode("general")}
+                        className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-opacity hover:opacity-70"
+                        style={{
+                          background: "transparent",
+                          color: "var(--color-bt-text-dim)",
+                          border: "1px dashed var(--color-bt-border)",
+                        }}
+                      >
+                        <Plus size={12} />
+                        Plan Something
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
               {/* Competition Events — shown below On Deck when competition is active.
                   Drag a competition event onto a Day-by-Day agenda item to link it.
                   Linked events disappear from here (they belong to the agenda item). */}
-              {competition && compEventsTyped.length > 0 && (
+              {competition && unlinkedCompEvents.length > 0 && (
                 <div className="mt-4">
                   <div className="mb-2 flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
@@ -1082,21 +1088,15 @@ export function ScheduleTab({
                       background: "transparent",
                     }}
                   >
-                    {unlinkedCompEvents.length === 0 ? (
-                      <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                        All competition events are linked to agenda items.
-                      </p>
-                    ) : (
-                      unlinkedCompEvents.map((event) => (
-                        <CompEventChip
-                          key={event.id}
-                          event={event}
-                          canEdit={canEdit}
-                          onDragStarted={(t) => setCompDragType(t)}
-                          onDragEnded={() => setCompDragType(null)}
-                        />
-                      ))
-                    )}
+                    {unlinkedCompEvents.map((event) => (
+                      <CompEventChip
+                        key={event.id}
+                        event={event}
+                        canEdit={canEdit}
+                        onDragStarted={(t) => setCompDragType(t)}
+                        onDragEnded={() => setCompDragType(null)}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
