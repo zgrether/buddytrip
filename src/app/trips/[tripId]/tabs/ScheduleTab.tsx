@@ -916,9 +916,7 @@ export function ScheduleTab({
           className="mb-3 text-[13px] leading-relaxed"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          {stage === "planning"
-            ? "This is where you add things like dinner reservations, golf tee times, or ideas for things to do on your trip — snorkeling, hiking, whiskey tasting, whatever. Treat it like a rough draft of your itinerary. Once an item feels ready for the rest of the crew, confirm it and it'll appear on their trip itinerary."
-            : "Keep your agenda up to date. Confirm items when they're locked in and they'll appear on the crew's itinerary."}
+          This is where you add things like dinner reservations, golf tee times, or ideas for things to do on your trip — snorkeling, hiking, whiskey tasting, whatever. Treat it like a rough draft of your itinerary. Once an item feels ready for the rest of the crew, confirm it and it&apos;ll appear on their trip itinerary.
         </p>
 
         {/* Add button — full-width above the two-column grid */}
