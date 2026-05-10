@@ -207,7 +207,7 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
             }}
           >
             <Plus size={12} />
-            + Event
+            Event
           </button>
         )}
       </div>
@@ -342,9 +342,7 @@ function EventCard({
         }`}
         style={{
           background: "var(--color-bt-card-raised)",
-          border: isGolf && !event.is_practice && !event.agenda_item
-            ? "3px solid var(--color-bt-warning)"
-            : "1px solid var(--color-bt-border)",
+          border: "1px solid var(--color-bt-border)",
           opacity: isDragging ? 0.4 : event.is_practice ? 0.85 : 1,
         }}
         data-testid={`event-card-${event.id}`}
@@ -555,7 +553,7 @@ function describeStatus(
   if (event.type === "GOLF") {
     return {
       Icon: AlertTriangle,
-      text: "No agenda item linked — scorecard entry unavailable",
+      text: "Not connected to a golf course yet — scorecard entry unavailable",
       color: "var(--color-bt-warning)",
     };
   }

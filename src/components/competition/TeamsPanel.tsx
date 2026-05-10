@@ -257,7 +257,7 @@ export function TeamsPanel({
             }}
           >
             <Plus size={12} />
-            + Team
+            Team
           </button>
         )}
       </div>
