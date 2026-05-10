@@ -21,6 +21,7 @@ export interface ItineraryScheduleItem {
   sort_order: number;
   course_name?: string | null;
   course_location?: string | null;
+  tee_times?: string[] | null;
 }
 
 export interface ItineraryLogisticsItem {
@@ -67,6 +68,8 @@ export type ItineraryEvent =
       address?: string | null;
       itemType: "general" | "golf";
       sortOrder: number;
+      /** Golf only. null = no tee times set; [] = walk-on; [...] = specific times. */
+      teeTimes?: string[] | null;
     }
   | {
       kind: "lodging-checkin" | "lodging-checkout";
@@ -158,16 +161,23 @@ export function buildItinerary(input: {
         ? item.course_location
         : null;
 
+    // For golf, use the earliest tee time (if any) as the sort/display time.
+    const golfTime =
+      item.item_type === "golf" && item.tee_times?.length
+        ? item.tee_times.slice().sort()[0].slice(0, 5)
+        : null;
+
     events.push({
       kind: "schedule",
       id: item.id,
       date: item.scheduled_date.slice(0, 10),
-      time: item.scheduled_time ? item.scheduled_time.slice(0, 5) : null,
+      time: golfTime ?? (item.scheduled_time ? item.scheduled_time.slice(0, 5) : null),
       title: item.title,
       subtitle: subtitleParts.join(" · ") || null,
       address,
       itemType: item.item_type,
       sortOrder: item.sort_order,
+      teeTimes: item.item_type === "golf" ? (item.tee_times ?? null) : undefined,
     });
   }
 
