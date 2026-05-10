@@ -222,9 +222,13 @@ export function TeamsPanel({
     : `${teamsTyped.length} team${teamsTyped.length === 1 ? "" : "s"} · ${assignedCount} of ${totalMembers} assigned`;
 
   return (
-    <div data-testid="teams-panel">
-      {/* Flat section header */}
-      <div className="mb-3 flex items-center justify-between">
+    <div
+      data-testid="teams-panel"
+      className="overflow-hidden rounded-xl"
+      style={{ border: "1px solid var(--color-bt-border)" }}
+    >
+      {/* Section header */}
+      <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span style={{ color: "var(--color-bt-text-dim)" }} aria-hidden>
             <div className="flex items-center">
@@ -248,19 +252,21 @@ export function TeamsPanel({
             onClick={() => setCreating(true)}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
             style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-              border: "1px solid var(--color-bt-border)",
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
             }}
           >
             <Plus size={12} />
-            Team
+            + Team
           </button>
         )}
       </div>
 
       {/* Content */}
-      <div className="space-y-4">
+      <div
+        className="space-y-4 px-4 pb-4 pt-3"
+        style={{ borderTop: "1px solid var(--color-bt-border)" }}
+      >
         {!teamsExist && (
           <NoTeamsEmptyState
             canEdit={canEdit}

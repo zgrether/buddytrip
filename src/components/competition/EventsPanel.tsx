@@ -161,12 +161,6 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
         ))}
       </div>
 
-      {eventsTyped.length > 0 && canEdit && (
-        <div className="mt-2">
-          <AddEventButton onClick={() => setCreating(true)} />
-        </div>
-      )}
-
       {(creating || editing) && (
         <EventSheet
           tripId={tripId}
@@ -179,9 +173,13 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
   );
 
   return (
-    <div data-testid="events-panel">
-      {/* Flat section header */}
-      <div className="mb-3 flex items-center justify-between">
+    <div
+      data-testid="events-panel"
+      className="overflow-hidden rounded-xl"
+      style={{ border: "1px solid var(--color-bt-border)" }}
+    >
+      {/* Section header */}
+      <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2.5">
           <span
             style={{ color: totalEvents > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
@@ -204,18 +202,22 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
             onClick={() => setCreating(true)}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
             style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-              border: "1px solid var(--color-bt-border)",
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
             }}
           >
             <Plus size={12} />
-            Event
+            + Event
           </button>
         )}
       </div>
 
-      {body}
+      <div
+        className="px-4 pb-4 pt-3"
+        style={{ borderTop: "1px solid var(--color-bt-border)" }}
+      >
+        {body}
+      </div>
     </div>
   );
 }
