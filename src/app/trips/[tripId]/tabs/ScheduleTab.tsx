@@ -405,7 +405,11 @@ function ScheduleItemRow({
             <X size={14} />
           </button>
         )}
-        {canEdit && !item.is_confirmed && !onUnschedule && (
+        {/* Trash: shown for all On Deck items (onUnschedule absent) regardless of
+            confirmation status. Confirmed golf rounds in On Deck have no X button
+            (they're not on a day) so without this they'd be impossible to remove.
+            Day-by-Day items use the X-to-unschedule flow instead. */}
+        {canEdit && !onUnschedule && (
           <button
             onClick={onRemove}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
