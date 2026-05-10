@@ -722,13 +722,13 @@ export function ScheduleTab({
                 scheduled_date: vars.scheduledDate !== undefined
                   ? vars.scheduledDate
                   : item.scheduled_date,
-                // Clearing the date moves the item to On Deck — unconfirm it
-                // immediately so the confirmed badge disappears without waiting
-                // for the server round-trip.
-                ...(vars.scheduledDate === null && {
-                  is_confirmed: false,
-                  confirmed_at: null,
-                  confirmed_by: null,
+                // Confirmation is driven entirely by the explicit isConfirmed
+                // field. Golf items keep their status when moved to On Deck;
+                // callers pass isConfirmed: false only for non-golf items.
+                ...(vars.isConfirmed !== undefined && {
+                  is_confirmed: vars.isConfirmed,
+                  confirmed_at: vars.isConfirmed ? item.confirmed_at : null,
+                  confirmed_by: vars.isConfirmed ? item.confirmed_by : null,
                 }),
               }
             : item
@@ -819,6 +819,11 @@ export function ScheduleTab({
       tripId,
       itemId: draggedItem.id,
       scheduledDate: targetGroupDate,
+      // Non-golf items lose confirmation when moved back to On Deck.
+      // Golf items keep theirs — tee times / walk-on drive their status.
+      ...(targetGroupDate === null && draggedItem.item_type !== "golf" && {
+        isConfirmed: false,
+      }),
     });
 
     // Build the post-move ordering for the target group: insert dragged item
@@ -1322,7 +1327,13 @@ export function ScheduleTab({
                               } : undefined}
                               compDragType={compDragType}
                               onUnschedule={() => {
-                                updateItem.mutate({ tripId, itemId: item.id, scheduledDate: null });
+                                updateItem.mutate({
+                                  tripId,
+                                  itemId: item.id,
+                                  scheduledDate: null,
+                                  // Golf keeps its confirmed status; non-golf loses it.
+                                  ...(item.item_type !== "golf" && { isConfirmed: false }),
+                                });
                               }}
                             />
                           ))}

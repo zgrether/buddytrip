@@ -144,20 +144,13 @@ export const scheduleRouter = router({
       if (input.detail !== undefined) update.detail = input.detail;
       if (input.scheduledDate !== undefined) {
         update.scheduled_date = input.scheduledDate;
-        // Clearing the date moves the item back to On Deck — it can no longer
-        // be "confirmed" without a day assigned, so unconfirm it automatically.
-        if (input.scheduledDate === null) {
-          update.is_confirmed = false;
-          update.confirmed_at = null;
-          update.confirmed_by = null;
-        }
       }
       if (input.scheduledTime !== undefined) update.scheduled_time = input.scheduledTime;
       if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
-      // isConfirmed can be set explicitly (e.g. when tee times change on a
-      // golf item). The scheduledDate === null branch above takes precedence
-      // since a dateless item must always be unconfirmed.
-      if (input.isConfirmed !== undefined && input.scheduledDate !== null) {
+      // isConfirmed is always set by the caller — the router never infers it
+      // from the date change. Golf items keep their confirmed status when moved
+      // to On Deck; non-golf callers explicitly pass isConfirmed: false.
+      if (input.isConfirmed !== undefined) {
         update.is_confirmed = input.isConfirmed;
         if (input.isConfirmed) {
           update.confirmed_at = new Date().toISOString();
