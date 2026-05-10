@@ -917,8 +917,8 @@ export function ScheduleTab({
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {stage === "planning"
-            ? "Add ideas and activities to your agenda — you can reorder and schedule them at any time. Confirmed items appear on the crew's itinerary once the trip kicks off."
-            : "Keep your agenda up to date — confirmed items are shown on the crew's itinerary."}
+            ? "This is where you add things like dinner reservations, golf tee times, or ideas for things to do on your trip — snorkeling, hiking, whiskey tasting, whatever. Treat it like a rough draft of your itinerary. Once an item feels ready for the rest of the crew, confirm it and it'll appear on their trip itinerary."
+            : "Keep your agenda up to date. Confirm items when they're locked in and they'll appear on the crew's itinerary."}
         </p>
 
         {/* Add button — full-width above the two-column grid */}
@@ -967,7 +967,7 @@ export function ScheduleTab({
                     className="mt-0.5 text-[10px] italic"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Ideas &amp; unscheduled items — drag onto a day
+                    Items that need to be added to the schedule. They will not appear on the trip itinerary until they have a confirmed date.
                   </p>
                 )}
               </div>
@@ -1077,7 +1077,7 @@ export function ScheduleTab({
                     </h4>
                   </div>
                   <p className="mb-2 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {canEdit ? "Drag onto a golf round to link to scorecards" : "Competition events for this trip"}
+                    {canEdit ? "Drag onto an agenda item to add it to the schedule, or keep it unscheduled and complete it at any time" : "Competition events for this trip"}
                   </p>
                   <div
                     className="rounded-xl p-3 transition-colors space-y-1.5"
