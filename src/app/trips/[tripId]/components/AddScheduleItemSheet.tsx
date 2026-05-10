@@ -147,6 +147,10 @@ export function AddScheduleItemSheet({
     editItem?.tee_times?.length ? editItem.tee_times : [""]
   );
   const [showSearch, setShowSearch] = useState(!selectedCourse && isGolf);
+  // Manual entry fallback — shown when the Places search doesn't find the course.
+  const [manualMode, setManualMode] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualAddress, setManualAddress] = useState("");
 
   const placesSearch = usePlacesSearch(isGolf ? GOLF_TYPES : undefined);
 
@@ -173,6 +177,9 @@ export function AddScheduleItemSheet({
     setDetail("");
     setSelectedCourse(null);
     setShowSearch(activeType === "golf");
+    setManualMode(false);
+    setManualName("");
+    setManualAddress("");
     setTeeTimes([""]);
     setIsWalkOn(false);
     setSelectedLocation(null);
@@ -419,6 +426,7 @@ export function AddScheduleItemSheet({
         {isGolf && (
           <>
             {selectedCourse && !showSearch ? (
+              /* ── Selected course card ── */
               <div
                 className="mt-3 flex items-center gap-3 rounded-xl px-3 py-2.5"
                 style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-accent-border)" }}
@@ -435,14 +443,71 @@ export function AddScheduleItemSheet({
                   )}
                 </div>
                 <button
-                  onClick={() => { setSelectedCourse(null); setShowSearch(true); }}
+                  onClick={() => {
+                    setSelectedCourse(null);
+                    setManualMode(false);
+                    setManualName("");
+                    setManualAddress("");
+                    setShowSearch(true);
+                  }}
                   className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   <X size={14} />
                 </button>
               </div>
+            ) : manualMode ? (
+              /* ── Manual entry fallback ── */
+              <div className="mt-3 space-y-2">
+                <input
+                  type="text"
+                  placeholder="Course name"
+                  value={manualName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setManualName(val);
+                    if (val.trim()) {
+                      setSelectedCourse({ placeId: "", name: val.trim(), address: manualAddress });
+                    } else {
+                      setSelectedCourse(null);
+                    }
+                  }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                  autoFocus
+                />
+                <input
+                  type="text"
+                  placeholder="Location (optional)"
+                  value={manualAddress}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setManualAddress(val);
+                    if (selectedCourse) {
+                      setSelectedCourse({ ...selectedCourse, address: val });
+                    }
+                  }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualMode(false);
+                    setManualName("");
+                    setManualAddress("");
+                    setSelectedCourse(null);
+                    setShowSearch(true);
+                    placesSearch.clear();
+                  }}
+                  className="text-xs transition-opacity hover:opacity-70"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  ← Back to search
+                </button>
+              </div>
             ) : (
+              /* ── Places autocomplete search ── */
               <div className="mt-3 relative">
                 <div className="relative">
                   <Search
@@ -491,6 +556,22 @@ export function AddScheduleItemSheet({
                   <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                     Searching...
                   </p>
+                )}
+
+                {/* "Can't find it?" fallback — shown once the user has typed something */}
+                {!placesSearch.loading && placesSearch.query.length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualMode(true);
+                      setManualName(placesSearch.query);
+                      placesSearch.clear();
+                    }}
+                    className="mt-1.5 text-xs transition-opacity hover:opacity-70"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Can&apos;t find it? Enter manually →
+                  </button>
                 )}
               </div>
             )}
