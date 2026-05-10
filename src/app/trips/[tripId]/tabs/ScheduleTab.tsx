@@ -1229,10 +1229,10 @@ export function ScheduleTab({
                       >
                       {group.items.length === 0 ? (
                         <p
-                          className="text-xs italic"
+                          className="mb-2 text-xs italic"
                           style={{ color: dragOverGroup === group.date ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                         >
-                          {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled"}
+                          {dragOverGroup === group.date ? "Drop to schedule here" : "Nothing scheduled yet"}
                         </p>
                       ) : (
                         <>
