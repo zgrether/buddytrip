@@ -122,6 +122,7 @@ function ScheduleItemRow({
   onUnlinkCompEvent,
   onUnschedule,
   compDragType,
+  onAddToDay,
 }: {
   item: ScheduleItem;
   canEdit: boolean;
@@ -146,6 +147,8 @@ function ScheduleItemRow({
   /** When non-null, a competition event is being dragged. The row computes
    *  whether it's a valid target and highlights itself accordingly. */
   compDragType?: "GOLF" | "GENERIC" | null;
+  /** Mobile-only: open day-picker sheet to schedule this On Deck item. */
+  onAddToDay?: () => void;
 }) {
   const movable = canEdit;
   // GOLF events can only land on golf items; non-GOLF events land on anything.
@@ -300,6 +303,21 @@ function ScheduleItemRow({
             {item.scheduled_time}
           </div>
         )}
+        {/* Mobile-only: schedule to a day via picker (replaces drag on touch) */}
+        {canEdit && onAddToDay && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onAddToDay(); }}
+            className="mt-2 flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-opacity hover:opacity-80 lg:hidden"
+            style={{
+              color: "var(--color-bt-accent)",
+              background: "var(--color-bt-accent-faint)",
+              border: "1px solid var(--color-bt-accent-border)",
+            }}
+          >
+            <CalendarDays size={11} />
+            Add to a day
+          </button>
+        )}
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-1">
@@ -444,6 +462,7 @@ export function ScheduleTab({
   const [datesModalOpen, setDatesModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
+  const [dayPickerItem, setDayPickerItem] = useState<ScheduleItem | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
@@ -1087,6 +1106,7 @@ export function ScheduleTab({
                           onUnlinkCompEvent={item.competition_event_id ? () => {
                             linkToAgendaItem.mutate({ tripId, eventId: item.competition_event_id!, agendaItemId: null });
                           } : undefined}
+                        onAddToDay={trip.start_date && trip.end_date ? () => setDayPickerItem(item) : undefined}
                         />
                       ))}
                       {/* eslint-enable react-hooks/refs */}
@@ -1344,6 +1364,79 @@ export function ScheduleTab({
           editItem={editItem}
           onClose={() => setEditItem(null)}
         />
+      )}
+
+      {/* Day-picker sheet — mobile scheduling for On Deck items */}
+      {dayPickerItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={() => setDayPickerItem(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl"
+            style={{ background: "var(--color-bt-card)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 pb-3 pt-5">
+              <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                Add to a day
+              </p>
+              <p className="mt-0.5 truncate text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {dayPickerItem.title}
+              </p>
+            </div>
+
+            {/* Day list */}
+            <div className="max-h-72 overflow-y-auto px-3 pb-3">
+              {trip.start_date && trip.end_date
+                ? generateTripDays(trip.start_date, trip.end_date).map((date) => {
+                    const num = dayNumber(date, trip.start_date ?? null);
+                    const count = allItems.filter((i) => i.scheduled_date === date).length;
+                    return (
+                      <button
+                        key={date}
+                        onClick={() => {
+                          updateItem.mutate({ tripId, itemId: dayPickerItem.id, scheduledDate: date });
+                          setDayPickerItem(null);
+                        }}
+                        className="mb-1.5 flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition-opacity hover:opacity-80"
+                        style={{
+                          background: "var(--color-bt-card-raised)",
+                          border: "1px solid var(--color-bt-border)",
+                        }}
+                      >
+                        <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                          {num !== null ? `Day ${num} — ` : ""}{fmtDayHeader(date)}
+                        </span>
+                        {count > 0 && (
+                          <span className="ml-3 flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {count} item{count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                : null}
+            </div>
+
+            {/* Cancel */}
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setDayPickerItem(null)}
+                className="w-full rounded-xl py-2.5 text-sm font-medium"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete confirmation dialog */}
