@@ -141,7 +141,11 @@ function ExistingCompetitionView({
         isOwner={isOwner}
         onDeleted={onCompetitionDeleted}
       />
-      <ScoreboardPanel competitionId={competition.id} tripId={tripId} />
+      <ScoreboardPanel
+        competitionId={competition.id}
+        tripId={tripId}
+        isOwner={isOwner}
+      />
       <TeamsPanel
         competitionId={competition.id}
         tripId={tripId}

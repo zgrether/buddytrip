@@ -1,11 +1,23 @@
 "use client";
 
-import { BarChart3 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BarChart3, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import {
+  buildMockData,
+  DEFAULT_STYLE,
+  STYLE_COMPONENTS,
+  STYLE_META,
+  type ScoreboardStyleId,
+} from "./scoreboard-styles";
+import { ScoreboardStyleChooser } from "./ScoreboardStyleChooser";
 
 interface Props {
   competitionId: string;
   tripId: string;
+  /** Only the owner sees the style chooser button — they pick the
+   *  official style that everyone else views. */
+  isOwner: boolean;
 }
 
 interface Team {
@@ -13,7 +25,6 @@ interface Team {
   name: string;
   short_name: string;
   color: string;
-  color_dim: string;
 }
 
 interface EventRow {
@@ -22,22 +33,23 @@ interface EventRow {
   type: "GOLF" | "GENERIC";
   is_practice: boolean;
   points_available: number | null;
+  point_distributions?: Array<{ position: number; points: number }>;
 }
 
+const STORAGE_KEY = (compId: string) => `bt-scoreboard-style-${compId}`;
+
 /**
- * ScoreboardPanel — at-a-glance grid showing each team's points per event.
+ * ScoreboardPanel — at-a-glance leaderboard for the competition tab.
  *
- * Layout (rows × cols):
- *   - Header row: blank | Pts (available per event) | one column per team
- *   - One row per non-practice event with the team scores filled in
- *   - Total row aggregating each team's points across all events
+ * Dispatches the actual rendering to one of 8 style variants chosen by
+ * the owner (see `scoreboard-styles/`). The chosen style persists in
+ * localStorage for now; will move to a `competitions.scoreboard_style`
+ * column once the official scoreboard page ships.
  *
- * The grid expands as teams and events get added. Scoring backend isn't
- * wired up yet, so every score cell renders an em-dash placeholder; team
- * totals show zero. When the scoring API lands, the cell value just
- * swaps in for the dash — no layout changes needed.
+ * Scoring data is mocked deterministically while the scoring backend is
+ * still under construction — see `buildMockData` in `mock-score.ts`.
  */
-export function ScoreboardPanel({ competitionId, tripId }: Props) {
+export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
   const { data: teams = [] } = trpc.teams.list.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
@@ -48,20 +60,32 @@ export function ScoreboardPanel({ competitionId, tripId }: Props) {
   );
 
   const teamsTyped = teams as Team[];
-  // Practice rounds don't contribute to the leaderboard, so we hide them
-  // from the grid entirely — matches the "Excluded from tournament points"
-  // copy on the event editor's practice toggle.
   const eventsTyped = (events as EventRow[]).filter((e) => !e.is_practice);
 
-  const totalAvailable = eventsTyped.reduce(
-    (sum, e) => sum + (e.points_available ?? 0),
-    0
+  const [styleId, setStyleId] = useState<ScoreboardStyleId>(() => {
+    if (typeof window === "undefined") return DEFAULT_STYLE;
+    const stored = window.localStorage.getItem(STORAGE_KEY(competitionId));
+    if (stored && stored in STYLE_META) return stored as ScoreboardStyleId;
+    return DEFAULT_STYLE;
+  });
+  const [chooserOpen, setChooserOpen] = useState(false);
+
+  const handlePick = (id: ScoreboardStyleId) => {
+    setStyleId(id);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY(competitionId), id);
+    }
+  };
+
+  const data = useMemo(
+    () => buildMockData(teamsTyped, eventsTyped),
+    [teamsTyped, eventsTyped]
   );
 
   const hasTeams = teamsTyped.length > 0;
   const hasEvents = eventsTyped.length > 0;
 
-  // ── Empty state ─────────────────────────────────────────────────────────
+  // ── Empty state ────────────────────────────────────────────────────────
   if (!hasTeams || !hasEvents) {
     const missing =
       !hasTeams && !hasEvents
@@ -83,122 +107,53 @@ export function ScoreboardPanel({ competitionId, tripId }: Props) {
     );
   }
 
+  const StyleComponent = STYLE_COMPONENTS[styleId];
+  const meta = STYLE_META[styleId];
+
   return (
     <div
       data-testid="scoreboard-panel"
       className="overflow-hidden rounded-xl"
       style={{ border: "1px solid var(--color-bt-border)" }}
     >
-      <PanelHeader
-        accent
-        subtitle={`${totalAvailable} total pts · ${eventsTyped.length} event${
-          eventsTyped.length === 1 ? "" : "s"
-        }`}
-      />
-
-      {/* Scrollable container — many teams/long event names push past
-          phone widths, so we let the table scroll horizontally rather
-          than squashing cells into illegible columns. */}
-      <div
-        className="overflow-x-auto"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
-      >
-        <table className="w-full text-[12px]">
-          <thead>
-            <tr>
-              <th
-                className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Event
-              </th>
-              <th
-                className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Pts
-              </th>
-              {teamsTyped.map((t) => (
-                <th
-                  key={t.id}
-                  className="px-2 py-2 text-right text-[11px] font-semibold"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  <div className="flex items-center justify-end gap-1.5">
-                    <span
-                      className="h-2 w-2 flex-shrink-0 rounded-full"
-                      style={{ background: t.color }}
-                      aria-hidden
-                    />
-                    <span>{t.short_name}</span>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {eventsTyped.map((event) => (
-              <tr
-                key={event.id}
-                style={{ borderTop: "1px solid var(--color-bt-border)" }}
-              >
-                <td
-                  className="px-3 py-2"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {event.title}
-                </td>
-                <td
-                  className="px-2 py-2 text-right"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  {event.points_available ?? "—"}
-                </td>
-                {teamsTyped.map((team) => (
-                  <td
-                    key={team.id}
-                    className="px-2 py-2 text-right tabular-nums"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    —
-                  </td>
-                ))}
-              </tr>
-            ))}
-
-            {/* Totals row — bold, slightly raised background to set it
-                apart from the per-event rows */}
-            <tr
-              style={{
-                borderTop: "1px solid var(--color-bt-border)",
-                background: "var(--color-bt-card-raised)",
-              }}
-            >
-              <td
-                className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Total
-              </td>
-              <td
-                className="px-2 py-2 text-right font-semibold tabular-nums"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                {totalAvailable}
-              </td>
-              {teamsTyped.map((t) => (
-                <td
-                  key={t.id}
-                  className="px-2 py-2 text-right font-semibold tabular-nums"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  0
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <PanelHeader
+          accent
+          subtitle={`${data.totalAvailable} total pts · ${eventsTyped.length} event${
+            eventsTyped.length === 1 ? "" : "s"
+          }`}
+        />
+        {isOwner && (
+          <button
+            type="button"
+            onClick={() => setChooserOpen(true)}
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+            data-testid="scoreboard-style-button"
+            aria-label="Change scoreboard style"
+          >
+            <Sparkles size={12} style={{ color: "var(--color-bt-accent)" }} />
+            {meta.label}
+          </button>
+        )}
       </div>
+
+      <div style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+        <StyleComponent data={data} />
+      </div>
+
+      {chooserOpen && (
+        <ScoreboardStyleChooser
+          current={styleId}
+          data={data}
+          onPick={handlePick}
+          onClose={() => setChooserOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -213,7 +168,7 @@ function PanelHeader({
   subtitle: string;
 }) {
   return (
-    <div className="flex items-center gap-2.5 px-4 py-3">
+    <div className="flex min-w-0 items-center gap-2.5">
       <span
         style={{
           color: accent ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
@@ -222,7 +177,7 @@ function PanelHeader({
       >
         <BarChart3 size={16} />
       </span>
-      <div>
+      <div className="min-w-0">
         <p
           className="text-sm font-semibold"
           style={{ color: "var(--color-bt-text)" }}
@@ -230,7 +185,7 @@ function PanelHeader({
           Scoreboard
         </p>
         <p
-          className="text-[11px]"
+          className="truncate text-[11px]"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {subtitle}
