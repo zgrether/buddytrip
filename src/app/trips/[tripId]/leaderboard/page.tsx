@@ -2,10 +2,11 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Trophy } from "lucide-react";
+import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { TopNav } from "@/components/TopNav";
+import { TripBottomNav } from "@/components/BottomNav";
 import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
 
 /**
@@ -37,19 +38,10 @@ export default function LiveLeaderboardPage() {
     >
       <TopNav />
       <div className="mx-auto max-w-[1024px] px-4 pt-4 pb-24">
-        <Link
-          href={`/trips/${tripId}`}
-          className="inline-flex items-center gap-1.5 text-sm font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          <ArrowLeft size={16} />
-          Back to trip
-        </Link>
-
         {isLoading ? null : !competition || competition.status !== "active" ? (
           <NotLiveEmptyState tripId={tripId} />
         ) : (
-          <div className="mt-6 space-y-3">
+          <div className="space-y-3">
             <div className="px-1">
               <h1
                 className="text-2xl font-bold"
@@ -74,6 +66,14 @@ export default function LiveLeaderboardPage() {
           </div>
         )}
       </div>
+
+      {/* Bottom nav — only render when the comp is live (matches
+          page.tsx). Live tab will highlight as active since pathname
+          matches its href. When not live, the inline CTA in the empty
+          state handles navigation back. */}
+      {competition?.status === "active" && (
+        <TripBottomNav tripId={tripId} showComp={true} />
+      )}
     </div>
   );
 }
