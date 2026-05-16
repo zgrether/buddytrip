@@ -275,7 +275,7 @@ export function TeamsPanel({
         )}
 
         {teamsExist && (
-          <div className="grid gap-4 md:grid-cols-[1fr_2fr]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
             {/* Crew roster: desktop column 1 (1/3 width) / mobile
                 section below teams */}
             <CrewRoster
@@ -303,10 +303,11 @@ export function TeamsPanel({
                   </h4>
                 </div>
                 {canEdit && (
-                  // Hint refers to drag-drop, which only runs at md+; hide
-                  // on mobile where assignment happens via the dropdown.
+                  // Hint refers to drag-drop, which only runs at lg+
+                  // (mouse-capable widths) — hide on tablet/mobile where
+                  // assignment happens via the dropdown.
                   <p
-                    className="mt-0.5 hidden text-[10px] italic md:block"
+                    className="mt-0.5 hidden text-[10px] italic lg:block"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     Drop a crew member here
@@ -532,10 +533,10 @@ function TeamCard({
           >
             {canEdit ? (
               <>
-                {/* Drag affordance lives on md+ only — fall back to a
-                    neutral phrase on touch widths */}
-                <span className="hidden md:inline">Drop a crew member here</span>
-                <span className="md:hidden">No members yet</span>
+                {/* Drag affordance lives on lg+ only — fall back to a
+                    neutral phrase on touch widths (tablet + phone) */}
+                <span className="hidden lg:inline">Drop a crew member here</span>
+                <span className="lg:hidden">No members yet</span>
               </>
             ) : (
               "No members assigned"
@@ -662,12 +663,13 @@ function DeleteTeamConfirmModal({
 
 // ── CrewRoster ──────────────────────────────────────────────────────────────
 //
-// Desktop column (md+) shows ONLY unassigned members as draggable cards.
-// Mobile section (below md) lists unassigned members with a team picker
-// dropdown; once a member gets assigned they fade + collapse out of the
-// list (managed below via the team cards). A short-lived "leaving" set
-// keeps the row mounted during the exit animation so the disappearance
-// isn't jarring.
+// Desktop column (lg+) shows ONLY unassigned members as draggable
+// cards — native HTML5 drag requires pointer events, so this layout is
+// gated to mouse-capable widths. Tablets and phones (below lg) get the
+// touch-friendly dropdown picker; once a member gets assigned they fade
+// + collapse out of the list (managed below via the team cards). A
+// short-lived "leaving" set keeps the row mounted during the exit
+// animation so the disappearance isn't jarring.
 
 function CrewRoster({
   tripId,
@@ -684,7 +686,7 @@ function CrewRoster({
   assignments: Assignment[];
   canEdit: boolean;
   /** Reserved for future ordering tweaks; currently every layout puts the
-   *  roster panel before the teams column on md+. */
+   *  roster panel before the teams column on lg+. */
   order?: "lg-first";
 }) {
   const teamById = useMemo(() => {
@@ -748,7 +750,7 @@ function CrewRoster({
   return (
     <>
       {/* ── Desktop column: drag-and-drop unassigned roster ─────────── */}
-      <section className="hidden md:block" style={{ alignSelf: "start" }}>
+      <section className="hidden lg:block" style={{ alignSelf: "start" }}>
         <div className="mb-2">
           <div className="flex items-center gap-2">
             <span style={{ color: "var(--color-bt-accent)" }}>
@@ -844,7 +846,7 @@ function CrewRoster({
 
       {/* ── Mobile fallback: unassigned members only, with team picker.
            Assigned members get managed via the team cards above. ── */}
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <p
           className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
