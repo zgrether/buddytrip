@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   AlertTriangle,
   Calendar,
@@ -589,27 +589,17 @@ export function EventSheet({
     event?.scoring_format ?? "scramble"
   );
   const [isPractice, setIsPractice] = useState(event?.is_practice ?? false);
-  const [pointsAvailable, setPointsAvailable] = useState<string>(
-    event?.points_available?.toString() ?? ""
-  );
-  const [positions, setPositions] = useState<PointDistribution[]>(
-    event?.point_distributions ?? []
-  );
+  // Positions are the source of truth — total = sum of place points.
+  // Seed with 1st place when there's nothing to load so the user sees
+  // an input immediately instead of an empty section.
+  const [positions, setPositions] = useState<PointDistribution[]>(() => {
+    const existing = event?.point_distributions ?? [];
+    if (existing.length > 0) return existing;
+    return [{ position: 1, label: "1st Place", points: 0 }];
+  });
   const [error, setError] = useState<string | null>(null);
 
   const showPoints = !isPractice;
-
-  // Auto-add 1st place row when total points is first set and no
-  // positions exist yet — guides the user straight into distribution.
-  useEffect(() => {
-    if (!showPoints) return;
-    const pts = parseFloat(pointsAvailable);
-    if (pts > 0 && positions.length === 0) {
-      setPositions([{ position: 1, label: "1st Place", points: 0 }]);
-    }
-    // Only fire when pointsAvailable changes, not on every positions update.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pointsAvailable, showPoints]);
 
   const create = trpc.events.create.useMutation();
   const update = trpc.events.update.useMutation();
@@ -619,9 +609,12 @@ export function EventSheet({
     setError(null);
     if (!title.trim()) return setError("Title is required");
 
-    const pointsValue = pointsAvailable.trim()
-      ? parseFloat(pointsAvailable)
-      : null;
+    // Total points are derived from the distribution — no separate input.
+    const totalFromPositions = positions.reduce(
+      (sum, p) => sum + (p.points || 0),
+      0
+    );
+    const pointsValue = totalFromPositions > 0 ? totalFromPositions : null;
 
     try {
       let savedId: string;
@@ -677,8 +670,9 @@ export function EventSheet({
     }
   }
 
-  const totalDistPoints = positions.reduce((sum, p) => sum + (p.points || 0), 0);
-  const remainingPoints = Math.round(((parseFloat(pointsAvailable) || 0) - totalDistPoints) * 1e9) / 1e9;
+  const totalDistPoints = Math.round(
+    positions.reduce((sum, p) => sum + (p.points || 0), 0) * 1e9
+  ) / 1e9;
 
   return (
     <div
@@ -792,128 +786,110 @@ export function EventSheet({
           )}
 
           {showPoints && (
-            <>
-              <Field label="Total Points" required>
-                <input
-                  type="number"
-                  min={0}
-                  value={pointsAvailable}
-                  onChange={(e) => setPointsAvailable(e.target.value)}
-                  className="w-32 rounded-lg px-3 py-2 text-sm outline-none"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text)",
-                    border: "1px solid var(--color-bt-border)",
-                  }}
-                />
-              </Field>
-
-              <Field label="Points Distribution">
-                <div className="space-y-2">
-                  {positions.map((p, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <span
-                        className="w-16 flex-shrink-0 text-xs font-semibold"
-                        style={{ color: "var(--color-bt-text)" }}
-                      >
-                        {ordinalShort(i + 1)} place
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={p.points || ""}
-                        onChange={(e) => {
-                          const next = [...positions];
-                          next[i] = {
-                            ...next[i],
-                            points: parseFloat(e.target.value) || 0,
-                          };
-                          setPositions(next);
-                        }}
-                        placeholder="0"
-                        className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none"
-                        style={{
-                          background: "var(--color-bt-card-raised)",
-                          color: "var(--color-bt-text)",
-                          border: "1px solid var(--color-bt-border)",
-                        }}
-                      />
-                      <span
-                        className="text-[11px]"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        pts
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPositions(positions.filter((_, j) => j !== i))
-                        }
-                        aria-label={`Remove ${ordinalShort(i + 1)} place`}
-                        className="ml-auto flex h-6 w-6 items-center justify-center rounded-md"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Add next place — only once the previous row has pts */}
-                  {remainingPoints > 0 &&
-                    (positions.length === 0 ||
-                      (positions[positions.length - 1]?.points ?? 0) > 0) && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPositions([
-                          ...positions,
-                          {
-                            position: positions.length + 1,
-                            label: `${ordinalShort(positions.length + 1)} Place`,
-                            points: 0,
-                          },
-                        ])
-                      }
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+            <Field label="Points Distribution">
+              <div className="space-y-2">
+                {positions.map((p, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <span
+                      className="w-16 flex-shrink-0 text-xs font-semibold"
+                      style={{ color: "var(--color-bt-text)" }}
+                    >
+                      {ordinalShort(i + 1)} place
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={p.points || ""}
+                      onChange={(e) => {
+                        const next = [...positions];
+                        next[i] = {
+                          ...next[i],
+                          points: parseFloat(e.target.value) || 0,
+                        };
+                        setPositions(next);
+                      }}
+                      placeholder="0"
+                      className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none"
                       style={{
                         background: "var(--color-bt-card-raised)",
                         color: "var(--color-bt-text)",
                         border: "1px solid var(--color-bt-border)",
                       }}
-                    >
-                      <Plus size={12} style={{ color: "var(--color-bt-accent)" }} />
-                      Add {ordinalShort(positions.length + 1)} place
-                      <span
-                        className="ml-auto"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        {remainingPoints} pts left
-                      </span>
-                    </button>
-                  )}
-
-                  {/* All distributed */}
-                  {remainingPoints === 0 && positions.length > 0 && (
-                    <p
-                      className="text-[11px] font-medium"
-                      style={{ color: "var(--color-bt-accent)" }}
-                    >
-                      All {parseFloat(pointsAvailable)} pts distributed ✓
-                    </p>
-                  )}
-
-                  {/* Over-distributed */}
-                  {remainingPoints < 0 && (
-                    <p
+                    />
+                    <span
                       className="text-[11px]"
-                      style={{ color: "var(--color-bt-danger)" }}
+                      style={{ color: "var(--color-bt-text-dim)" }}
                     >
-                      Over by {Math.abs(remainingPoints)} pts — reduce a position
-                    </p>
-                  )}
-                </div>
-              </Field>
-            </>
+                      pts
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPositions(positions.filter((_, j) => j !== i))
+                      }
+                      aria-label={`Remove ${ordinalShort(i + 1)} place`}
+                      className="ml-auto flex h-6 w-6 items-center justify-center rounded-md"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Add next place — only once the previous row has pts */}
+                {(positions.length === 0 ||
+                  (positions[positions.length - 1]?.points ?? 0) > 0) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPositions([
+                        ...positions,
+                        {
+                          position: positions.length + 1,
+                          label: `${ordinalShort(positions.length + 1)} Place`,
+                          points: 0,
+                        },
+                      ])
+                    }
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      color: "var(--color-bt-text)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    <Plus size={12} style={{ color: "var(--color-bt-accent)" }} />
+                    Add {ordinalShort(positions.length + 1)} place
+                  </button>
+                )}
+
+                {/* Running total — derived from the distribution above */}
+                {positions.length > 0 && (
+                  <div
+                    className="mt-1 flex items-center justify-between pt-2"
+                    style={{ borderTop: "1px solid var(--color-bt-border)" }}
+                  >
+                    <span
+                      className="text-[11px] font-semibold uppercase tracking-wider"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      Total available
+                    </span>
+                    <span
+                      className="text-sm font-bold tabular-nums"
+                      style={{
+                        color:
+                          totalDistPoints > 0
+                            ? "var(--color-bt-accent)"
+                            : "var(--color-bt-text-dim)",
+                      }}
+                    >
+                      {totalDistPoints} pt{totalDistPoints === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </Field>
           )}
 
           {error && (
