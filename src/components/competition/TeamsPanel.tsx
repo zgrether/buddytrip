@@ -275,7 +275,7 @@ export function TeamsPanel({
         )}
 
         {teamsExist && (
-          <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
+          <div className="grid gap-4 md:grid-cols-[1fr_2fr]">
             {/* Crew roster: desktop column 1 (1/3 width) / mobile
                 section below teams */}
             <CrewRoster
@@ -700,7 +700,7 @@ function CrewRoster({
   assignments: Assignment[];
   canEdit: boolean;
   /** Reserved for future ordering tweaks; currently every layout puts the
-   *  roster panel before the teams column on lg+. */
+   *  roster panel before the teams column on md+. */
   order?: "lg-first";
 }) {
   const teamById = useMemo(() => {
@@ -735,7 +735,7 @@ function CrewRoster({
   return (
     <>
       {/* ── Desktop column: drag-and-drop unassigned roster ─────────── */}
-      <section className="hidden lg:block" style={{ alignSelf: "start" }}>
+      <section className="hidden md:block" style={{ alignSelf: "start" }}>
         <div className="mb-2">
           <div className="flex items-center gap-2">
             <span style={{ color: "var(--color-bt-accent)" }}>
@@ -830,7 +830,7 @@ function CrewRoster({
       </section>
 
       {/* ── Mobile fallback: full member list with dropdown / unassign ─ */}
-      <div className="lg:hidden">
+      <div className="md:hidden">
         <p
           className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
