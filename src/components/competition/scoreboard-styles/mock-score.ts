@@ -45,17 +45,16 @@ export function savePlacements(
 }
 
 /**
- * Deterministic mock score generator.
+ * Builds the scoreboard data structure from teams + events.
  *
- * For each event:
- *   - If the owner saved manual placements via the event detail page,
- *     use those (teamId → place lookup).
- *   - Otherwise fall back to a rotating pattern that distributes the
- *     event's point_distributions across teams so the scoreboard
- *     styles render with varied-looking data even before any input.
+ * Cells only carry a place/points value when the owner has saved
+ * manual placements for that event via the event detail page
+ * (localStorage). Events without any saved placements render as
+ * blank cells — no fake demo scores — so a freshly added event
+ * starts unscored, not phantom-populated.
  *
- * Once the scoring API lands, this gets replaced with a real query;
- * every style consumes `ScoreboardData` unchanged.
+ * When the real scoring API ships, replace `loadPlacements` with a
+ * server query; every style consumes `ScoreboardData` unchanged.
  */
 export function buildMockData(
   tripId: string,
@@ -67,19 +66,13 @@ export function buildMockData(
     teams.map((t) => [t.id, 0])
   );
 
-  events.forEach((event, eIdx) => {
+  events.forEach((event) => {
     const dists = event.point_distributions ?? [];
     const overrides = loadPlacements(event.id);
 
-    teams.forEach((team, tIdx) => {
-      const override = overrides?.[team.id];
-      const place =
-        override && override > 0
-          ? override
-          : teams.length > 0
-          ? ((tIdx + eIdx) % teams.length) + 1
-          : 1;
-      const dist = dists.find((d) => d.position === place);
+    teams.forEach((team) => {
+      const place = overrides?.[team.id] ?? 0;
+      const dist = place > 0 ? dists.find((d) => d.position === place) : undefined;
       const points = dist?.points ?? 0;
       cells.push({ teamId: team.id, eventId: event.id, points, place });
       totals[team.id] += points;

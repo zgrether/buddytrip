@@ -103,7 +103,14 @@ export const PLACE_COLORS: Record<number, { bg: string; text: string }> = {
   4: { bg: "rgba(239, 68, 68, 0.20)", text: "#fca5a5" },
 };
 
+/** Neutral cell style for unscored placements (place === 0). */
+const PLACE_NEUTRAL = {
+  bg: "transparent",
+  text: "var(--color-bt-text-dim)",
+};
+
 export function placeStyle(place: number) {
+  if (place <= 0) return PLACE_NEUTRAL;
   return PLACE_COLORS[place] ?? PLACE_COLORS[4];
 }
 

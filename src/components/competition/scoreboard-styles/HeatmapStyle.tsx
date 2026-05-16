@@ -71,7 +71,7 @@ export function HeatmapStyle({ data }: StyleProps) {
                         color: ps.text,
                       }}
                     >
-                      {fmtPts(cell?.points ?? 0)}
+                      {cell && cell.place > 0 ? fmtPts(cell.points) : "—"}
                     </div>
                   </td>
                 );

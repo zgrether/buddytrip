@@ -17,6 +17,9 @@ export function CardsStyle({ data }: StyleProps) {
           .sort(
             (a, b) => (b.cell?.points ?? 0) - (a.cell?.points ?? 0)
           );
+        // Hide medals + skip ranking when no team has been placed yet —
+        // ordering by 0 across the board would be misleading.
+        const anyScored = rows.some((r) => (r.cell?.place ?? 0) > 0);
 
         return (
           <div
@@ -52,12 +55,21 @@ export function CardsStyle({ data }: StyleProps) {
                   className="flex items-center gap-3 px-3 py-1.5"
                 >
                   <span className="w-5 text-center text-sm">
-                    {medals[i] ?? (
+                    {anyScored ? (
+                      medals[i] ?? (
+                        <span
+                          className="text-[10px] font-bold"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          {i + 1}
+                        </span>
+                      )
+                    ) : (
                       <span
-                        className="text-[10px] font-bold"
+                        className="text-[10px]"
                         style={{ color: "var(--color-bt-text-dim)" }}
                       >
-                        {i + 1}
+                        ·
                       </span>
                     )}
                   </span>
@@ -76,12 +88,12 @@ export function CardsStyle({ data }: StyleProps) {
                     className="text-sm font-semibold tabular-nums"
                     style={{
                       color:
-                        (r.cell?.points ?? 0) > 0
+                        (r.cell?.place ?? 0) > 0
                           ? "var(--color-bt-text)"
                           : "var(--color-bt-text-dim)",
                     }}
                   >
-                    {fmtPts(r.cell?.points ?? 0)}
+                    {r.cell && r.cell.place > 0 ? fmtPts(r.cell.points) : "—"}
                   </span>
                 </div>
               ))}
