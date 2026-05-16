@@ -141,11 +141,17 @@ function ExistingCompetitionView({
         isOwner={isOwner}
         onDeleted={onCompetitionDeleted}
       />
-      <ScoreboardPanel
-        competitionId={competition.id}
-        tripId={tripId}
-        isOwner={isOwner}
-      />
+      {/* Scoreboard only renders once the competition is live — in setup
+          mode the comp tab is for building teams + events, not viewing
+          standings. The owner flips status via the GO LIVE button in
+          CompetitionHeader. */}
+      {competition.status === "active" && (
+        <ScoreboardPanel
+          competitionId={competition.id}
+          tripId={tripId}
+          isOwner={isOwner}
+        />
+      )}
       <TeamsPanel
         competitionId={competition.id}
         tripId={tripId}

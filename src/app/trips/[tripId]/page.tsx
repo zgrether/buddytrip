@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Lock, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
-import { type TabId } from "@/components/BottomNav";
+import { type TabId, TripBottomNav } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
@@ -448,8 +448,12 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* Bottom navigation intentionally hidden — will be re-enabled
-          once competition scoring is live. */}
+      {/* Bottom nav appears once the owner flips the competition to
+          "active" (Go Live button in CompetitionHeader). Stays hidden
+          during setup so we don't surface an empty leaderboard. */}
+      {competition?.status === "active" && (
+        <TripBottomNav tripId={tripId} showComp={true} />
+      )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (

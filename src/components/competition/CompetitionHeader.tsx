@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Trash2, Trophy, X } from "lucide-react";
+import { Pause, Pencil, Radio, Trash2, Trophy, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 interface Competition {
@@ -89,6 +89,41 @@ export function CompetitionHeader({
     },
   });
 
+  // ── GO LIVE / Back to Setup toggle ─────────────────────────────────────
+  // Flips competition.status between "upcoming" (setup mode) and "active"
+  // (live for the crew). When active: bottom nav appears, scoreboard panel
+  // appears on the comp tab, and the leaderboard page becomes the styled
+  // scoreboard the owner picked.
+  const setStatus = trpc.competitions.update.useMutation({
+    onMutate: async (vars) => {
+      await utils.competitions.getByTrip.cancel({ tripId });
+      const previous = utils.competitions.getByTrip.getData({ tripId });
+      if (previous && vars.status) {
+        utils.competitions.getByTrip.setData({ tripId }, {
+          ...previous,
+          status: vars.status,
+        });
+      }
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) {
+        utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
+      }
+    },
+    onSettled: () => utils.competitions.getByTrip.invalidate({ tripId }),
+  });
+
+  const handleToggleLive = () => {
+    const next: "upcoming" | "active" =
+      competition.status === "active" ? "upcoming" : "active";
+    setStatus.mutate({
+      tripId,
+      competitionId: competition.id,
+      status: next,
+    });
+  };
+
   return (
     <div data-testid="competition-header">
       {/* Title row — no outer card, sits directly on the page background */}
@@ -110,7 +145,15 @@ export function CompetitionHeader({
             >
               {competition.name}
             </p>
-            <StatusBadge status={competition.status} />
+            {isOwner && competition.status !== "completed" ? (
+              <LiveToggleButton
+                status={competition.status}
+                pending={setStatus.isPending}
+                onClick={handleToggleLive}
+              />
+            ) : (
+              <StatusBadge status={competition.status} />
+            )}
           </div>
           {competition.tagline && competition.tagline.trim() && (
             <p
@@ -467,6 +510,51 @@ function StatusBadge({ status }: { status: Competition["status"] }) {
     >
       {cfg.label}
     </span>
+  );
+}
+
+// ── LiveToggleButton (owner only) ──────────────────────────────────────────
+//
+// Replaces the SETUP / Active badge for owners with a one-tap toggle.
+// "upcoming" → tap to GO LIVE (activates bottom nav + scoreboard
+// surface for the whole crew). "active" → tap to return to setup
+// (hides nav + scoreboard until ready again).
+
+function LiveToggleButton({
+  status,
+  pending,
+  onClick,
+}: {
+  status: "upcoming" | "active";
+  pending: boolean;
+  onClick: () => void;
+}) {
+  const isLive = status === "active";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={pending}
+      aria-label={isLive ? "Switch back to setup mode" : "Go live for the crew"}
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-opacity disabled:opacity-60"
+      style={
+        isLive
+          ? {
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "1px solid var(--color-bt-border)",
+            }
+          : {
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+              border: "1px solid var(--color-bt-accent)",
+            }
+      }
+      data-testid="competition-live-toggle"
+    >
+      {isLive ? <Pause size={10} strokeWidth={3} /> : <Radio size={10} strokeWidth={3} />}
+      {isLive ? "Back to Setup" : "Go Live"}
+    </button>
   );
 }
 
