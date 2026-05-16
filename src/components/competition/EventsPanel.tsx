@@ -262,7 +262,7 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
           </span>
           <div>
             <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Event Builder
+              Event Schedule
             </p>
             <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {statusText}
@@ -372,14 +372,7 @@ function EventCard({
   onDragOver: () => void;
   onDrop: () => void;
 }) {
-  const utils = trpc.useUtils();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isGolf = event.type === "GOLF";
-
-  const remove = trpc.events.delete.useMutation({
-    onSettled: () => utils.events.list.invalidate(),
-    onSuccess: () => setConfirmingDelete(false),
-  });
 
   const statusLine = describeStatus(event);
 
@@ -553,25 +546,7 @@ function EventCard({
             >
               <Pencil size={13} />
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(true)}
-              aria-label={`Delete ${event.title}`}
-              className="flex h-7 w-7 items-center justify-center rounded-lg"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              <Trash2 size={13} />
-            </button>
           </div>
-        )}
-
-        {confirmingDelete && (
-          <DeleteEventConfirmModal
-            eventTitle={event.title}
-            isPending={remove.isPending}
-            onCancel={() => setConfirmingDelete(false)}
-            onConfirm={() => remove.mutate({ tripId, eventId: event.id })}
-          />
         )}
       </div>
     </>
@@ -734,11 +709,19 @@ export function EventSheet({
     return [{ position: 1, label: "1st Place", points: 0 }];
   });
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const showPoints = !isPractice;
 
   const create = trpc.events.create.useMutation();
   const update = trpc.events.update.useMutation();
+  const remove = trpc.events.delete.useMutation({
+    onSettled: () => utils.events.list.invalidate({ tripId, competitionId }),
+    onSuccess: () => {
+      setConfirmingDelete(false);
+      onClose();
+    },
+  });
   const setDistributions = trpc.events.setPointDistributions.useMutation();
 
   async function handleSave() {
@@ -1035,12 +1018,32 @@ export function EventSheet({
           )}
         </div>
 
-        <div className="border-t p-4" style={{ borderColor: "var(--color-bt-border)" }}>
+        <div
+          className="flex items-center gap-2 border-t p-4"
+          style={{ borderColor: "var(--color-bt-border)" }}
+        >
+          {isEdit && event && (
+            // Secondary destructive action — sits to the left of Save
+            // so it's reachable but doesn't compete with the primary CTA.
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              aria-label={`Delete ${event.title}`}
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
+              style={{
+                background: "transparent",
+                color: "var(--color-bt-danger)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSave}
             disabled={create.isPending || update.isPending}
-            className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+            className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
             style={{
               background: "var(--color-bt-accent)",
               color: "var(--color-bt-base)",
@@ -1049,6 +1052,15 @@ export function EventSheet({
             Save Event
           </button>
         </div>
+
+        {confirmingDelete && event && (
+          <DeleteEventConfirmModal
+            eventTitle={event.title}
+            isPending={remove.isPending}
+            onCancel={() => setConfirmingDelete(false)}
+            onConfirm={() => remove.mutate({ tripId, eventId: event.id })}
+          />
+        )}
       </div>
     </div>
   );

@@ -338,6 +338,7 @@ export function TeamsPanel({
           tripId={tripId}
           competitionId={competitionId}
           team={editingTeam}
+          isOwner={!!isOwner}
           existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
           onClose={() => {
             setCreating(false);
@@ -427,9 +428,7 @@ function TeamCard({
   tripId: string;
   competitionId: string;
 }) {
-  const utils = trpc.useUtils();
   const [dragOver, setDragOver] = useState(false);
-  const [confirming, setConfirming] = useState(false);
 
   const teamMemberIds = assignments
     .filter((a) => a.team_id === team.id)
@@ -437,14 +436,6 @@ function TeamCard({
   const teamMembers = members.filter((m) =>
     teamMemberIds.includes(m.user_id ?? m.memberId)
   );
-
-  const deleteTeam = trpc.teams.delete.useMutation({
-    onSettled: () => {
-      utils.teams.list.invalidate();
-      utils.teamAssignments.list.invalidate();
-    },
-    onSuccess: () => setConfirming(false),
-  });
 
   // Optimistic — the dropped chip needs to land in the target team
   // instantly, not after the server round-trip. `remove` powers the
@@ -527,17 +518,6 @@ function TeamCard({
             <Pencil size={13} />
           </button>
         )}
-        {isOwner && (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            aria-label={`Delete ${team.name}`}
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <Trash2 size={13} />
-          </button>
-        )}
       </div>
 
       {/* Members area — chips sit directly on the team card, no inner box */}
@@ -591,15 +571,6 @@ function TeamCard({
         })}
       </div>
 
-      {confirming && (
-        <DeleteTeamConfirmModal
-          teamName={team.name}
-          memberCount={teamMembers.length}
-          isPending={deleteTeam.isPending}
-          onCancel={() => setConfirming(false)}
-          onConfirm={() => deleteTeam.mutate({ tripId, teamId: team.id })}
-        />
-      )}
     </div>
   );
 }
@@ -964,12 +935,16 @@ function TeamSheet({
   tripId,
   competitionId,
   team,
+  isOwner,
   existingTeamNames,
   onClose,
 }: {
   tripId: string;
   competitionId: string;
   team: Team | null;
+  /** Only owners can delete the team — controls visibility of the
+   *  delete affordance in edit mode. */
+  isOwner: boolean;
   /** Lowercased names of teams already in this competition — used to skip
    *  collisions when rolling a name from a theme. The current team's own
    *  name is excluded by the caller in edit mode. */
@@ -989,12 +964,32 @@ function TeamSheet({
   });
   const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Snapshot member count for the confirm dialog before delete fires.
+  const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
+    { tripId, competitionId },
+    { enabled: isEdit && isOwner }
+  );
+  const memberCount = team
+    ? (assignments as Assignment[]).filter((a) => a.team_id === team.id).length
+    : 0;
 
   const create = trpc.teams.create.useMutation({
     onSettled: () => utils.teams.list.invalidate(),
   });
   const update = trpc.teams.update.useMutation({
     onSettled: () => utils.teams.list.invalidate(),
+  });
+  const deleteTeam = trpc.teams.delete.useMutation({
+    onSettled: () => {
+      utils.teams.list.invalidate();
+      utils.teamAssignments.list.invalidate();
+    },
+    onSuccess: () => {
+      setConfirmingDelete(false);
+      onClose();
+    },
   });
 
   function handleNameChange(value: string) {
@@ -1208,16 +1203,45 @@ function TeamSheet({
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={create.isPending || update.isPending}
-            className="w-full rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {isEdit ? "Save Team" : "Add Team"}
-          </button>
+          <div className="flex items-center gap-2">
+            {isEdit && isOwner && team && (
+              // Secondary destructive action — sits next to Save so it's
+              // reachable but doesn't compete with the primary CTA.
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                aria-label={`Delete ${team.name}`}
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
+                style={{
+                  background: "transparent",
+                  color: "var(--color-bt-danger)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={create.isPending || update.isPending}
+              className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              {isEdit ? "Save Team" : "Add Team"}
+            </button>
+          </div>
         </div>
+
+        {confirmingDelete && team && (
+          <DeleteTeamConfirmModal
+            teamName={team.name}
+            memberCount={memberCount}
+            isPending={deleteTeam.isPending}
+            onCancel={() => setConfirmingDelete(false)}
+            onConfirm={() => deleteTeam.mutate({ tripId, teamId: team.id })}
+          />
+        )}
       </div>
     </div>
   );
