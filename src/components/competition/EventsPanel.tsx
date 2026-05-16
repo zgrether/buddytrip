@@ -298,6 +298,20 @@ function EventCard({
 
   const statusLine = describeStatus(event);
 
+  // Per-place breakdown — small caption line under the title. Shown
+  // only for non-practice events that have at least one place defined.
+  const distSummary =
+    !event.is_practice && (event.point_distributions?.length ?? 0) > 0
+      ? event
+          .point_distributions!.slice()
+          .sort((a, b) => a.position - b.position)
+          .map(
+            (d) =>
+              `${ordinalShort(d.position)}: ${d.points}`
+          )
+          .join(" · ")
+      : null;
+
   return (
     <>
       {/* Drop insertion line */}
@@ -398,6 +412,15 @@ function EventCard({
               <statusLine.Icon size={11} />
               <span>{statusLine.text}</span>
             </div>
+          )}
+
+          {distSummary && (
+            <p
+              className="mt-0.5 text-[10px] tabular-nums"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {distSummary}
+            </p>
           )}
         </div>
 
