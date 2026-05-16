@@ -99,10 +99,30 @@ export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
         className="overflow-hidden rounded-xl"
         style={{ border: "1px solid var(--color-bt-border)" }}
       >
-        <PanelHeader
-          accent={false}
-          subtitle={`Add ${missing} to see the leaderboard`}
-        />
+        <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+          <span
+            className="flex h-10 w-10 items-center justify-center rounded-xl"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text-dim)",
+            }}
+            aria-hidden
+          >
+            <BarChart3 size={18} />
+          </span>
+          <p
+            className="text-sm font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            Scoreboard
+          </p>
+          <p
+            className="max-w-xs text-[12px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Add {missing} to see the leaderboard.
+          </p>
+        </div>
       </div>
     );
   }
