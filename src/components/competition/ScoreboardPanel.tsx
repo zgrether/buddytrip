@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { BarChart3, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import {
@@ -62,19 +62,48 @@ export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
   const teamsTyped = teams as Team[];
   const eventsTyped = (events as EventRow[]).filter((e) => !e.is_practice);
 
-  const [styleId, setStyleId] = useState<ScoreboardStyleId>(() => {
+  // useSyncExternalStore — works for both SSR and client hydration,
+  // and reacts to writes from other tabs (or the same tab via the
+  // synthetic event we dispatch in handlePick). Using a plain
+  // useState lazy initializer drops the localStorage value on hard
+  // URL loads because SSR returns the default and React keeps that
+  // state after hydration without re-running init.
+  const storageKey = STORAGE_KEY(competitionId);
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      if (typeof window === "undefined") return () => {};
+      const handler = (e: Event) => {
+        const ev = e as StorageEvent;
+        if (ev.key === null || ev.key === storageKey) cb();
+      };
+      window.addEventListener("storage", handler);
+      return () => window.removeEventListener("storage", handler);
+    },
+    [storageKey]
+  );
+  const getSnapshot = useCallback(() => {
     if (typeof window === "undefined") return DEFAULT_STYLE;
-    const stored = window.localStorage.getItem(STORAGE_KEY(competitionId));
+    const stored = window.localStorage.getItem(storageKey);
     if (stored && stored in STYLE_META) return stored as ScoreboardStyleId;
     return DEFAULT_STYLE;
-  });
+  }, [storageKey]);
+  const getServerSnapshot = useCallback(() => DEFAULT_STYLE, []);
+  const styleId = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
   const [chooserOpen, setChooserOpen] = useState(false);
 
   const handlePick = (id: ScoreboardStyleId) => {
-    setStyleId(id);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_KEY(competitionId), id);
-    }
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(storageKey, id);
+    // Same-tab writes don't trigger the storage event natively —
+    // dispatch one ourselves so useSyncExternalStore re-reads.
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: storageKey,
+        newValue: id,
+        storageArea: window.localStorage,
+      })
+    );
   };
 
   const data = useMemo(
