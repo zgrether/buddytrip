@@ -6,6 +6,7 @@ import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetup
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { EventsPanel } from "@/components/competition/EventsPanel";
+import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
 import type { EventRow } from "@/components/competition/EventsPanel";
 import type { TabProps } from "./types";
 
@@ -140,6 +141,7 @@ function ExistingCompetitionView({
         isOwner={isOwner}
         onDeleted={onCompetitionDeleted}
       />
+      <ScoreboardPanel competitionId={competition.id} tripId={tripId} />
       <TeamsPanel
         competitionId={competition.id}
         tripId={tripId}
