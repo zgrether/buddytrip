@@ -29,12 +29,25 @@ async function fetchCompetition(
         tagline: string | null;
         status: "upcoming" | "active" | "completed";
         motto: string | null;
+        scoreboard_style: ScoreboardStyle;
         trip_id: string;
         created_at: string;
         updated_at: string;
       }
     | null;
 }
+
+const SCOREBOARD_STYLES = [
+  "grid",
+  "leaderboard",
+  "heatmap",
+  "cards",
+  "bars",
+  "podium",
+  "stadium",
+  "minimal",
+] as const;
+type ScoreboardStyle = (typeof SCOREBOARD_STYLES)[number];
 
 /**
  * competitions — top-level container per trip.
@@ -209,6 +222,7 @@ export const competitionsRouter = router({
         tagline: z.string().max(500).nullable().optional(),
         motto: z.string().max(500).nullable().optional(),
         status: z.enum(["upcoming", "active", "completed"]).optional(),
+        scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
       })
     )
     .use(requireTripRole("Planner"))
@@ -218,6 +232,7 @@ export const competitionsRouter = router({
       if (input.tagline !== undefined) patch.tagline = input.tagline;
       if (input.motto !== undefined) patch.motto = input.motto;
       if (input.status !== undefined) patch.status = input.status;
+      if (input.scoreboardStyle !== undefined) patch.scoreboard_style = input.scoreboardStyle;
 
       const { data, error } = await ctx.supabase
         .from("competitions")

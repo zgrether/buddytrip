@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import { BarChart3, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import {
@@ -36,20 +36,21 @@ interface EventRow {
   point_distributions?: Array<{ position: number; points: number }>;
 }
 
-const STORAGE_KEY = (compId: string) => `bt-scoreboard-style-${compId}`;
-
 /**
  * ScoreboardPanel — at-a-glance leaderboard for the competition tab.
  *
  * Dispatches the actual rendering to one of 8 style variants chosen by
- * the owner (see `scoreboard-styles/`). The chosen style persists in
- * localStorage for now; will move to a `competitions.scoreboard_style`
- * column once the official scoreboard page ships.
+ * the owner (see `scoreboard-styles/`). The chosen style is stored on
+ * the competition row (`scoreboard_style` column added in migration
+ * 070) so it syncs across all crew members and devices — owner picks
+ * once, everyone sees the same style.
  *
  * Scoring data is mocked deterministically while the scoring backend is
  * still under construction — see `buildMockData` in `mock-score.ts`.
  */
 export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
+  const utils = trpc.useUtils();
+  const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
   const { data: teams = [] } = trpc.teams.list.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
@@ -62,48 +63,40 @@ export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
   const teamsTyped = teams as Team[];
   const eventsTyped = (events as EventRow[]).filter((e) => !e.is_practice);
 
-  // useSyncExternalStore — works for both SSR and client hydration,
-  // and reacts to writes from other tabs (or the same tab via the
-  // synthetic event we dispatch in handlePick). Using a plain
-  // useState lazy initializer drops the localStorage value on hard
-  // URL loads because SSR returns the default and React keeps that
-  // state after hydration without re-running init.
-  const storageKey = STORAGE_KEY(competitionId);
-  const subscribe = useCallback(
-    (cb: () => void) => {
-      if (typeof window === "undefined") return () => {};
-      const handler = (e: Event) => {
-        const ev = e as StorageEvent;
-        if (ev.key === null || ev.key === storageKey) cb();
-      };
-      window.addEventListener("storage", handler);
-      return () => window.removeEventListener("storage", handler);
+  // Style lives on the competition row; fall back to the default while
+  // the query is loading on first paint.
+  const compStyle = (competition as { scoreboard_style?: string } | null)
+    ?.scoreboard_style;
+  const styleId: ScoreboardStyleId =
+    compStyle && compStyle in STYLE_META
+      ? (compStyle as ScoreboardStyleId)
+      : DEFAULT_STYLE;
+
+  const updateStyle = trpc.competitions.update.useMutation({
+    onMutate: async (vars) => {
+      if (vars.scoreboardStyle === undefined) return { previous: undefined };
+      await utils.competitions.getByTrip.cancel({ tripId });
+      const previous = utils.competitions.getByTrip.getData({ tripId });
+      if (previous) {
+        utils.competitions.getByTrip.setData({ tripId }, {
+          ...previous,
+          scoreboard_style: vars.scoreboardStyle,
+        } as typeof previous);
+      }
+      return { previous };
     },
-    [storageKey]
-  );
-  const getSnapshot = useCallback(() => {
-    if (typeof window === "undefined") return DEFAULT_STYLE;
-    const stored = window.localStorage.getItem(storageKey);
-    if (stored && stored in STYLE_META) return stored as ScoreboardStyleId;
-    return DEFAULT_STYLE;
-  }, [storageKey]);
-  const getServerSnapshot = useCallback(() => DEFAULT_STYLE, []);
-  const styleId = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) {
+        utils.competitions.getByTrip.setData({ tripId }, ctx.previous);
+      }
+    },
+    onSettled: () => utils.competitions.getByTrip.invalidate({ tripId }),
+  });
 
   const [chooserOpen, setChooserOpen] = useState(false);
 
   const handlePick = (id: ScoreboardStyleId) => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(storageKey, id);
-    // Same-tab writes don't trigger the storage event natively —
-    // dispatch one ourselves so useSyncExternalStore re-reads.
-    window.dispatchEvent(
-      new StorageEvent("storage", {
-        key: storageKey,
-        newValue: id,
-        storageArea: window.localStorage,
-      })
-    );
+    updateStyle.mutate({ tripId, competitionId, scoreboardStyle: id });
   };
 
   const data = useMemo(
