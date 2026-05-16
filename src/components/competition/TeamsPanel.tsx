@@ -303,8 +303,10 @@ export function TeamsPanel({
                   </h4>
                 </div>
                 {canEdit && (
+                  // Hint refers to drag-drop, which only runs at md+; hide
+                  // on mobile where assignment happens via the dropdown.
                   <p
-                    className="mt-0.5 text-[10px] italic"
+                    className="mt-0.5 hidden text-[10px] italic md:block"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     Drop a crew member here
@@ -548,7 +550,16 @@ function TeamCard({
             className="text-[11px] italic"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            {canEdit ? "Drop a crew member here" : "No members assigned"}
+            {canEdit ? (
+              <>
+                {/* Drag affordance lives on md+ only — fall back to a
+                    neutral phrase on touch widths */}
+                <span className="hidden md:inline">Drop a crew member here</span>
+                <span className="md:hidden">No members yet</span>
+              </>
+            ) : (
+              "No members assigned"
+            )}
           </p>
         )}
         {teamMembers.map((m) => {
@@ -875,7 +886,7 @@ function CrewRoster({
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Everyone&rsquo;s on a team. Manage assignments from the team
-            cards above.
+            cards.
           </p>
         ) : (
           <div className="space-y-1.5">
