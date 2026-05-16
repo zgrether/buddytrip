@@ -113,7 +113,7 @@ export default function EventDetailPage() {
             That event doesn&rsquo;t exist or has been deleted.
           </p>
           <Link
-            href={`/trips/${tripId}`}
+            href={`/trips/${tripId}?tab=comp`}
             className="mt-4 inline-block text-sm font-semibold"
             style={{ color: "var(--color-bt-accent)" }}
           >
@@ -139,7 +139,7 @@ export default function EventDetailPage() {
 
   function handleSaveAndBack() {
     savePlacements(eventId, placements);
-    router.push(`/trips/${tripId}`);
+    router.push(`/trips/${tripId}?tab=comp`);
   }
 
   return (
@@ -370,7 +370,7 @@ function PageShell({
         }}
       >
         <Link
-          href={`/trips/${tripId}`}
+          href={`/trips/${tripId}?tab=comp`}
           aria-label="Back to trip"
           className="flex h-8 w-8 items-center justify-center rounded-lg"
           style={{ color: "var(--color-bt-text-dim)" }}

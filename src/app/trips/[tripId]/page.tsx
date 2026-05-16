@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Lock, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -29,7 +29,24 @@ import { TripInvitationModal } from "./components/TripInvitationModal";
 export default function TripDetailPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabId>("home");
+  const searchParams = useSearchParams();
+  // Initial tab respects `?tab=<id>` so sub-pages (e.g. the event
+  // detail page under /trips/[tripId]/events/[eventId]) can route the
+  // user back to the comp tab instead of dumping them on Home.
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const initial = searchParams.get("tab");
+    const validTabs: TabId[] = [
+      "home",
+      "crew",
+      "lodging",
+      "schedule",
+      "expenses",
+      "comp",
+    ];
+    return (validTabs as string[]).includes(initial ?? "")
+      ? (initial as TabId)
+      : "home";
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [showInvitationModal, setShowInvitationModal] = useState(false);
