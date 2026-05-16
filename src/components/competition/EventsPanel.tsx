@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import {
   AlertTriangle,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   Flag,
   GripVertical,
   Info,
@@ -128,6 +130,21 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
     reorder.mutate({ tripId, competitionId, orderedIds: newOrder.map((e) => e.id) });
   };
 
+  // Touch-friendly reorder used by the up/down arrows on the event card.
+  // Drag-and-drop requires mouse/pointer events so doesn't work on most
+  // tablets and phones in touch mode — these buttons cover that gap.
+  const moveEvent = (idx: number, direction: -1 | 1) => {
+    const target = idx + direction;
+    if (target < 0 || target >= eventsTyped.length) return;
+    const newOrder = [...eventsTyped];
+    [newOrder[idx], newOrder[target]] = [newOrder[target], newOrder[idx]];
+    reorder.mutate({
+      tripId,
+      competitionId,
+      orderedIds: newOrder.map((e) => e.id),
+    });
+  };
+
   const totalEvents = eventsTyped.length;
   const practiceCount = eventsTyped.filter((e) => e.is_practice).length;
   const unlinkedGolf = eventsTyped.filter((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item).length;
@@ -149,7 +166,11 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
             tripId={tripId}
             isDragging={draggingIdx === idx}
             showDropIndicator={dragOverIdx === idx && draggingIdx !== idx}
+            isFirst={idx === 0}
+            isLast={idx === eventsTyped.length - 1}
             onEdit={() => setEditing(event)}
+            onMoveUp={() => moveEvent(idx, -1)}
+            onMoveDown={() => moveEvent(idx, 1)}
             onDragStart={() => { dragState.current = { idx }; setDraggingIdx(idx); }}
             onDragOver={() => setDragOverIdx(idx)}
             onDrop={() => handleReorderDrop(idx)}
@@ -272,7 +293,11 @@ function EventCard({
   tripId,
   isDragging,
   showDropIndicator,
+  isFirst,
+  isLast,
   onEdit,
+  onMoveUp,
+  onMoveDown,
   onDragStart,
   onDragOver,
   onDrop,
@@ -282,7 +307,11 @@ function EventCard({
   tripId: string;
   isDragging: boolean;
   showDropIndicator: boolean;
+  isFirst: boolean;
+  isLast: boolean;
   onEdit: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onDragStart: () => void;
   onDragOver: () => void;
   onDrop: () => void;
@@ -349,12 +378,44 @@ function EventCard({
         data-testid={`event-card-${event.id}`}
       >
         {canEdit && (
-          <GripVertical
-            size={16}
-            className="mt-0.5 hidden flex-shrink-0 lg:block"
-            strokeWidth={2}
-            style={{ color: "var(--color-bt-text-dim)" }}
-          />
+          <>
+            <GripVertical
+              size={16}
+              className="mt-0.5 hidden flex-shrink-0 lg:block"
+              strokeWidth={2}
+              style={{ color: "var(--color-bt-text-dim)" }}
+            />
+            {/* Touch-friendly reorder arrows — shown on widths below lg
+                where drag-drop is unreliable (most tablets / phones). */}
+            <div className="flex flex-shrink-0 flex-col lg:hidden">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveUp();
+                }}
+                disabled={isFirst}
+                aria-label="Move event up"
+                className="flex h-5 w-6 items-center justify-center rounded transition-opacity disabled:opacity-25"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <ChevronUp size={14} strokeWidth={2.25} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveDown();
+                }}
+                disabled={isLast}
+                aria-label="Move event down"
+                className="flex h-5 w-6 items-center justify-center rounded transition-opacity disabled:opacity-25"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <ChevronDown size={14} strokeWidth={2.25} />
+              </button>
+            </div>
+          </>
         )}
         <div
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg"
