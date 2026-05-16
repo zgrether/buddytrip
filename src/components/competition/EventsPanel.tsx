@@ -404,6 +404,15 @@ function EventCard({
             )}
           </div>
 
+          {distSummary && (
+            <p
+              className="mt-0.5 text-[10px] tabular-nums"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {distSummary}
+            </p>
+          )}
+
           {statusLine && (
             <div
               className="mt-0.5 flex items-center gap-1 text-[11px]"
@@ -412,15 +421,6 @@ function EventCard({
               <statusLine.Icon size={11} />
               <span>{statusLine.text}</span>
             </div>
-          )}
-
-          {distSummary && (
-            <p
-              className="mt-0.5 text-[10px] tabular-nums"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              {distSummary}
-            </p>
           )}
         </div>
 

@@ -157,6 +157,7 @@ export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
             aria-label="Change scoreboard style"
           >
             <Sparkles size={12} style={{ color: "var(--color-bt-accent)" }} />
+            <span style={{ color: "var(--color-bt-text-dim)" }}>Style:</span>
             {meta.label}
           </button>
         )}
