@@ -60,6 +60,18 @@
   --color-bt-vote-no: #ef4444;
   --color-bt-vote-color: #ffffff;      /* text on colored vote bg (maybe, no) */
 
+  /* Heatmap finishing-place colors — green / blue / amber / red.
+     Tinted backgrounds + dark text in light mode; deeper tints +
+     pastel text in dark mode (see .dark block). */
+  --color-bt-place-1-bg: rgba(34, 197, 94, 0.18);
+  --color-bt-place-1-text: #15803d;  /* green-700 */
+  --color-bt-place-2-bg: rgba(59, 130, 246, 0.16);
+  --color-bt-place-2-text: #1d4ed8;  /* blue-700 */
+  --color-bt-place-3-bg: rgba(245, 158, 11, 0.20);
+  --color-bt-place-3-text: #b45309;  /* amber-700 */
+  --color-bt-place-4-bg: rgba(239, 68, 68, 0.16);
+  --color-bt-place-4-text: #b91c1c;  /* red-700 */
+
   color-scheme: light;
 }
 
@@ -95,6 +107,16 @@
   --color-bt-danger-bg: #450a0a;
   --color-bt-danger-faint: rgba(248, 113, 113, 0.12);
   --color-bt-danger-border: rgba(248, 113, 113, 0.20);
+
+  /* Heatmap place colors — slightly stronger tints + pastel text on dark */
+  --color-bt-place-1-bg: rgba(34, 197, 94, 0.22);
+  --color-bt-place-1-text: #86efac;  /* green-300 */
+  --color-bt-place-2-bg: rgba(59, 130, 246, 0.24);
+  --color-bt-place-2-text: #93c5fd;  /* blue-300 */
+  --color-bt-place-3-bg: rgba(245, 158, 11, 0.22);
+  --color-bt-place-3-text: #fcd34d;  /* amber-300 */
+  --color-bt-place-4-bg: rgba(239, 68, 68, 0.20);
+  --color-bt-place-4-text: #fca5a5;  /* red-300 */
 
   /* elevation shadows */
   --shadow-card: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);

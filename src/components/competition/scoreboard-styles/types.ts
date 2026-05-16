@@ -96,11 +96,14 @@ export const STYLE_META: Record<
 // ── Place colors — used by Heatmap and any other style that wants to
 // communicate finishing position via color. Matches the spreadsheet
 // convention (green = 1st, blue = 2nd, amber = 3rd, red = 4th+).
+// Resolves to CSS variables defined in globals.css so the actual
+// colors swap between light and dark mode (dark text on tinted bg
+// in light mode; pastel text on slightly deeper tints in dark mode).
 export const PLACE_COLORS: Record<number, { bg: string; text: string }> = {
-  1: { bg: "rgba(34, 197, 94, 0.20)", text: "#86efac" },
-  2: { bg: "rgba(59, 130, 246, 0.22)", text: "#93c5fd" },
-  3: { bg: "rgba(245, 158, 11, 0.22)", text: "#fcd34d" },
-  4: { bg: "rgba(239, 68, 68, 0.20)", text: "#fca5a5" },
+  1: { bg: "var(--color-bt-place-1-bg)", text: "var(--color-bt-place-1-text)" },
+  2: { bg: "var(--color-bt-place-2-bg)", text: "var(--color-bt-place-2-text)" },
+  3: { bg: "var(--color-bt-place-3-bg)", text: "var(--color-bt-place-3-text)" },
+  4: { bg: "var(--color-bt-place-4-bg)", text: "var(--color-bt-place-4-text)" },
 };
 
 /** Neutral cell style for unscored placements (place === 0). */
