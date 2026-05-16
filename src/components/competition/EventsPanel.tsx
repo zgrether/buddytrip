@@ -132,17 +132,13 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
   const practiceCount = eventsTyped.filter((e) => e.is_practice).length;
   const unlinkedGolf = eventsTyped.filter((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item).length;
 
-  const statusText = totalEvents === 0
-    ? "Not set up"
-    : `${totalEvents} event${totalEvents === 1 ? "" : "s"}${
-        practiceCount > 0 ? ` · ${practiceCount} practice` : ""
-      }${unlinkedGolf > 0 ? ` · ${unlinkedGolf} unlinked` : ""}`;
+  const statusText = `${totalEvents} event${totalEvents === 1 ? "" : "s"}${
+    practiceCount > 0 ? ` · ${practiceCount} practice` : ""
+  }${unlinkedGolf > 0 ? ` · ${unlinkedGolf} unlinked` : ""}`;
 
   const body = (
     <>
-      {eventsTyped.length === 0 && (
-        <EventsEmptyState canEdit={canEdit} onAdd={() => setCreating(true)} />
-      )}
+      {eventsTyped.length === 0 && <EventsEmptyState canEdit={canEdit} />}
 
       <div className="space-y-2">
         {eventsTyped.map((event, idx) => (
@@ -189,7 +185,7 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
           </span>
           <div>
             <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              Competition Builder
+              Event Builder
             </p>
             <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {statusText}
@@ -224,19 +220,18 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
 
 // ── EventsEmptyState ────────────────────────────────────────────────────────
 
-function EventsEmptyState({
-  canEdit,
-  onAdd,
-}: {
-  canEdit: boolean;
-  onAdd: () => void;
-}) {
+function EventsEmptyState({ canEdit }: { canEdit: boolean }) {
   return (
-    <div className="py-2 text-center">
-      <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-        No events yet. Add the rounds and activities you&rsquo;ll compete in.
+    <div className="px-2 py-6 text-center">
+      <p
+        className="text-xs leading-relaxed"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        No events yet.
+        {canEdit
+          ? " Tap + Event above to add the rounds and activities you'll compete in."
+          : " Check back once the organizer adds rounds and activities."}
       </p>
-      {canEdit && <AddEventButton onClick={onAdd} className="mx-auto mt-3" />}
     </div>
   );
 }
