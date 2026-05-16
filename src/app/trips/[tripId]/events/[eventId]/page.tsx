@@ -258,8 +258,10 @@ export default function EventDetailPage() {
           </p>
         </div>
 
-        {/* Placement selector */}
-        {!event.is_practice && teamsTyped.length > 0 && (
+        {/* Placement selector — owner-only. Non-owners see the event
+            header + Coming Soon empty state; their view of the scores
+            lives on the scoreboard, not here. */}
+        {isOwner && !event.is_practice && teamsTyped.length > 0 && (
           <div
             className="overflow-hidden rounded-xl"
             style={{ border: "1px solid var(--color-bt-border)" }}
@@ -275,9 +277,7 @@ export default function EventDetailPage() {
                 className="mt-0.5 text-[11px]"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                {isOwner
-                  ? "Pick a finish for each team — points come from the event's distribution."
-                  : "Only the trip owner can set placements right now."}
+                Pick a finish for each team — points come from the event&rsquo;s distribution.
               </p>
             </div>
 
@@ -316,7 +316,6 @@ export default function EventDetailPage() {
                     )}
                     <select
                       value={place ?? ""}
-                      disabled={!isOwner}
                       onChange={(e) =>
                         handleChange(
                           team.id,
@@ -343,11 +342,10 @@ export default function EventDetailPage() {
               })}
             </div>
 
-            {isOwner && (
-              <div
-                className="flex items-center justify-between gap-2 px-4 py-3"
-                style={{ borderTop: "1px solid var(--color-bt-border)" }}
-              >
+            <div
+              className="flex items-center justify-between gap-2 px-4 py-3"
+              style={{ borderTop: "1px solid var(--color-bt-border)" }}
+            >
                 {savedFlash ? (
                   <span
                     className="flex items-center gap-1.5 text-[11px] font-semibold"
@@ -393,8 +391,7 @@ export default function EventDetailPage() {
                     Save &amp; back
                   </button>
                 </div>
-              </div>
-            )}
+            </div>
           </div>
         )}
       </div>
