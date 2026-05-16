@@ -316,4 +316,52 @@ export const eventsRouter = router({
 
       return { success: true, count: rows.length };
     }),
+
+  // -----------------------------------------------------------------------
+  // setPlacements — store a { teamId: place } map on event.result
+  //
+  // Lightweight stand-in for the real scoring engine while it's under
+  // construction. The owner picks a finishing place for each team on
+  // the event detail page; this writes the whole map to events.result
+  // (JSONB column). Every client reads it via events.list and the
+  // scoreboard renders the implied point values from the event's
+  // point_distributions.
+  //
+  // Replacing the table (not patching) so the owner can clear a team
+  // by setting place === 0 and the row drops out cleanly.
+  // -----------------------------------------------------------------------
+  setPlacements: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        eventId: z.string(),
+        placements: z.record(z.string(), z.number().int().min(0).max(99)),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      // Strip 0/falsy placements so the JSON stays tight — those teams
+      // are simply "not placed yet" rather than "in place 0".
+      const trimmed: Record<string, number> = {};
+      for (const [teamId, place] of Object.entries(input.placements)) {
+        if (place > 0) trimmed[teamId] = place;
+      }
+
+      const { error } = await ctx.supabase
+        .from("events")
+        .update({
+          result: { placements: trimmed },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", input.eventId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to save placements: ${error.message}`,
+        });
+      }
+
+      return { success: true };
+    }),
 });

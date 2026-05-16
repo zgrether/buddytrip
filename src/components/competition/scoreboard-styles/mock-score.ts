@@ -7,54 +7,33 @@ import type {
 
 interface EventWithDistributions extends ScoreboardEvent {
   point_distributions?: Array<{ position: number; points: number }>;
+  /** JSONB `events.result` column — { placements: { teamId: place } }.
+   *  Lives on the event row so all crew members see the same scores
+   *  via the regular tRPC cache + realtime channel. */
+  result?: { placements?: Record<string, number> } | null;
 }
 
-/**
- * Where the owner's manual event-placement entries live until the
- * real scoring API ships. Shared between the event detail page (which
- * writes them) and `buildMockData` (which reads them).
- *
- * Shape: teamId → 1-based finishing place for this event.
- */
-export const placementsKey = (eventId: string) =>
-  `bt-event-placements-${eventId}`;
-
-export function loadPlacements(
-  eventId: string
+/** Pull placements off an event row's result JSONB. Tolerant of legacy
+ *  null/empty shapes. */
+export function readPlacements(
+  event: EventWithDistributions | null | undefined
 ): Record<string, number> | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(placementsKey(eventId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Record<string, number>;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function savePlacements(
-  eventId: string,
-  placements: Record<string, number>
-): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(
-    placementsKey(eventId),
-    JSON.stringify(placements)
-  );
+  const placements = event?.result?.placements;
+  if (!placements || typeof placements !== "object") return null;
+  return placements;
 }
 
 /**
  * Builds the scoreboard data structure from teams + events.
  *
  * Cells only carry a place/points value when the owner has saved
- * manual placements for that event via the event detail page
- * (localStorage). Events without any saved placements render as
- * blank cells — no fake demo scores — so a freshly added event
- * starts unscored, not phantom-populated.
+ * manual placements for that event via the event detail page. The
+ * placements live on `events.result.placements` (JSONB) so they sync
+ * across crew via the events.list query + realtime.
  *
- * When the real scoring API ships, replace `loadPlacements` with a
- * server query; every style consumes `ScoreboardData` unchanged.
+ * Events without any saved placements render as blank cells — no
+ * fake demo scores — so a freshly added event starts unscored, not
+ * phantom-populated.
  */
 export function buildMockData(
   tripId: string,
@@ -68,10 +47,10 @@ export function buildMockData(
 
   events.forEach((event) => {
     const dists = event.point_distributions ?? [];
-    const overrides = loadPlacements(event.id);
+    const placements = readPlacements(event);
 
     teams.forEach((team) => {
-      const place = overrides?.[team.id] ?? 0;
+      const place = placements?.[team.id] ?? 0;
       const dist = place > 0 ? dists.find((d) => d.position === place) : undefined;
       const points = dist?.points ?? 0;
       cells.push({ teamId: team.id, eventId: event.id, points, place });

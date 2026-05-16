@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -13,9 +13,8 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import {
-  loadPlacements,
-  savePlacements,
   fmtPts,
+  readPlacements,
 } from "@/components/competition/scoreboard-styles/mock-score";
 import { ordinal } from "@/components/competition/scoreboard-styles/types";
 
@@ -35,6 +34,7 @@ interface EventDetail {
   is_practice: boolean;
   points_available: number | null;
   point_distributions?: Array<{ position: number; label: string; points: number }>;
+  result?: { placements?: Record<string, number> } | null;
 }
 
 /**
@@ -42,13 +42,13 @@ interface EventDetail {
  * still under construction. Renders:
  *   1. A "Full scoring coming soon" empty state with a hard-hat icon
  *   2. A manual placement selector (owner-only) — pick a finishing
- *      place for each team and the scoreboard mock data picks up the
- *      change via localStorage.
+ *      place for each team and the scoreboard reflects it for the
+ *      whole crew via tRPC cache + realtime push.
  *
- * The placement selector is intentionally minimal: no validation
- * against duplicates (ties are fine), points auto-derived from the
- * event's point_distributions. Persists to localStorage keyed by
- * event id, read by `buildMockData` on the comp tab.
+ * Placements live on `events.result.placements` (JSONB) — owner writes
+ * via events.setPlacements, every client reads via events.list, and
+ * the events table is in the supabase_realtime publication so non-
+ * owner caches get invalidated on change.
  */
 export default function EventDetailPage() {
   const params = useParams();
@@ -57,6 +57,7 @@ export default function EventDetailPage() {
   const eventId = String(params.eventId);
 
   const { isOwner } = useTripRole(tripId);
+  const utils = trpc.useUtils();
 
   const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
   const competitionId = competition?.id;
@@ -73,33 +74,67 @@ export default function EventDetailPage() {
   const event = (events as EventDetail[]).find((e) => e.id === eventId);
   const teamsTyped = teams as Team[];
 
-  // ── Placement state — lazy-initialized from localStorage so we
-  // don't need a setState-in-effect that the React Compiler rejects.
-  // SSR/initial-hard-load returns {} (no window); client navigation
-  // hydrates with the stored value because lazy init runs at mount.
-  const [placements, setPlacements] = useState<Record<string, number>>(
-    () => loadPlacements(eventId) ?? {}
-  );
+  // Placements live on the event row (events.result.placements). Local
+  // state mirrors them while the user is editing — committed via the
+  // setPlacements mutation. Re-seeded whenever the underlying event
+  // data changes (key on event.id keeps the lazy init fresh after the
+  // first render — see the React `key` workaround below in the form).
+  const dbPlacements = readPlacements(event) ?? {};
+  const [edits, setEdits] = useState<Record<string, number> | null>(null);
+  const placements = edits ?? dbPlacements;
   const [savedFlash, setSavedFlash] = useState(false);
 
-  const dists = useMemo(
-    () => event?.point_distributions ?? [],
-    [event]
-  );
+  const setPlacements = (
+    updater: (prev: Record<string, number>) => Record<string, number>
+  ) => {
+    setEdits((prev) => updater(prev ?? dbPlacements));
+  };
+
+  const savePlacements = trpc.events.setPlacements.useMutation({
+    onMutate: async (vars) => {
+      await utils.events.list.cancel({ tripId, competitionId: competitionId ?? "" });
+      const previous = utils.events.list.getData({
+        tripId,
+        competitionId: competitionId ?? "",
+      });
+      utils.events.list.setData(
+        { tripId, competitionId: competitionId ?? "" },
+        (old) =>
+          (old as EventDetail[] | undefined)?.map((e) =>
+            e.id === vars.eventId
+              ? { ...e, result: { placements: vars.placements } }
+              : e
+          ) as never
+      );
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) {
+        utils.events.list.setData(
+          { tripId, competitionId: competitionId ?? "" },
+          ctx.previous
+        );
+      }
+    },
+    onSettled: () =>
+      utils.events.list.invalidate({
+        tripId,
+        competitionId: competitionId ?? "",
+      }),
+  });
+
+  // React Compiler auto-memoizes; manual useMemo here caused a
+  // "memoization could not be preserved" error on the build pass.
+  const dists = event?.point_distributions ?? [];
   // Number of selectable places — the larger of (team count, configured
   // distributions). Lets the owner assign 4 teams to 4 places even when
   // only 1st/2nd are point-eligible.
   const maxPlaces = Math.max(teamsTyped.length, dists.length, 1);
-
-  const placeOptions = useMemo(
-    () =>
-      Array.from({ length: maxPlaces }, (_, i) => {
-        const place = i + 1;
-        const dist = dists.find((d) => d.position === place);
-        return { place, points: dist?.points ?? 0 };
-      }),
-    [maxPlaces, dists]
-  );
+  const placeOptions = Array.from({ length: maxPlaces }, (_, i) => {
+    const place = i + 1;
+    const dist = dists.find((d) => d.position === place);
+    return { place, points: dist?.points ?? 0 };
+  });
 
   // ── Loading / not-found states ─────────────────────────────────────────
   if (!competitionId || eventsLoading) {
@@ -132,14 +167,28 @@ export default function EventDetailPage() {
   }
 
   function handleSave() {
-    savePlacements(eventId, placements);
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1800);
+    savePlacements.mutate(
+      { tripId, eventId, placements },
+      {
+        onSuccess: () => {
+          setEdits(null); // collapse back onto server truth
+          setSavedFlash(true);
+          setTimeout(() => setSavedFlash(false), 1800);
+        },
+      }
+    );
   }
 
   function handleSaveAndBack() {
-    savePlacements(eventId, placements);
-    router.push(`/trips/${tripId}?tab=comp`);
+    savePlacements.mutate(
+      { tripId, eventId, placements },
+      {
+        onSuccess: () => {
+          setEdits(null);
+          router.push(`/trips/${tripId}?tab=comp`);
+        },
+      }
+    );
   }
 
   return (
@@ -312,15 +361,17 @@ export default function EventDetailPage() {
                     className="text-[11px]"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Saved locally — scoreboard updates next time you open the
-                    competition tab.
+                    {edits === null
+                      ? "All set — scoreboard reflects these placements for the whole crew."
+                      : "Unsaved changes."}
                   </span>
                 )}
                 <div className="flex flex-shrink-0 gap-2">
                   <button
                     type="button"
                     onClick={handleSave}
-                    className="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    disabled={savePlacements.isPending || edits === null}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                     style={{
                       background: "var(--color-bt-card-raised)",
                       color: "var(--color-bt-text)",
@@ -332,7 +383,8 @@ export default function EventDetailPage() {
                   <button
                     type="button"
                     onClick={handleSaveAndBack}
-                    className="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    disabled={savePlacements.isPending}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                     style={{
                       background: "var(--color-bt-accent)",
                       color: "var(--color-bt-base)",

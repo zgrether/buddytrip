@@ -14,6 +14,7 @@ import { TopNav } from "@/components/TopNav";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
+import { useRealtimeEvents } from "@/hooks/useRealtimeEvents";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
@@ -111,6 +112,9 @@ export default function TripDetailPage() {
   // tagline) live to every crew member — without this they'd see
   // stale data for up to staleTime (60s).
   useRealtimeCompetition(tripId);
+  // Same for events (placements, edits, reorders) so the scoreboard
+  // reflects scoring updates the moment the owner makes them.
+  useRealtimeEvents(tripId, competition?.id);
 
   const { data: notifications = [] } = trpc.notifications.list.useQuery(
     { tripId, limit: 20 },

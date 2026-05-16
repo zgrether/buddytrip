@@ -34,6 +34,7 @@ interface EventRow {
   is_practice: boolean;
   points_available: number | null;
   point_distributions?: Array<{ position: number; points: number }>;
+  result?: { placements?: Record<string, number> } | null;
 }
 
 /**

@@ -6,6 +6,7 @@ import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
+import { useRealtimeEvents } from "@/hooks/useRealtimeEvents";
 import { TopNav } from "@/components/TopNav";
 import { TripBottomNav } from "@/components/BottomNav";
 import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
@@ -35,6 +36,9 @@ export default function LiveLeaderboardPage() {
   const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery({
     tripId,
   });
+
+  // Push event placement / score changes live to the leaderboard.
+  useRealtimeEvents(tripId, competition?.id);
 
   return (
     <div
