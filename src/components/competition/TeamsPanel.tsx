@@ -230,7 +230,7 @@ export function TeamsPanel({
       {/* Section header */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2.5">
-          <span style={{ color: "var(--color-bt-text-dim)" }} aria-hidden>
+          <span style={{ color: "var(--color-bt-accent)" }} aria-hidden>
             <div className="flex items-center">
               <User size={14} />
               <ArrowRight size={11} className="mx-0.5" />
@@ -292,7 +292,7 @@ export function TeamsPanel({
             <div>
               <div className="mb-2">
                 <div className="flex items-center gap-2">
-                  <span style={{ color: "var(--color-bt-text-dim)" }}>
+                  <span style={{ color: "var(--color-bt-accent)" }}>
                     <Users size={12} />
                   </span>
                   <h4
@@ -738,7 +738,7 @@ function CrewRoster({
       <section className="hidden lg:block" style={{ alignSelf: "start" }}>
         <div className="mb-2">
           <div className="flex items-center gap-2">
-            <span style={{ color: "var(--color-bt-text-dim)" }}>
+            <span style={{ color: "var(--color-bt-accent)" }}>
               <User size={12} />
             </span>
             <h4
