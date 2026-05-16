@@ -27,7 +27,9 @@ interface TripTabBarProps {
   /** Trip stage — used to disable Expenses in PLANNING and hide Competition */
   stage?: string;
   /**
-   * Tabs that have a notification dot. Dot is hidden when the tab is active.
+   * Tabs that have a notification dot. Dot stays visible even on the
+   * active tab so the user keeps seeing there's an issue with the
+   * surface they're on (not just on tabs they haven't visited).
    * "info"    → teal  (normal action item, e.g. unconfirmed items)
    * "warning" → yellow (needs attention, e.g. dates out of range)
    */
@@ -101,7 +103,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({
                 visual consistency between basic and advanced modes. */}
             <span className="relative inline-flex items-center justify-center">
               <Icon size={iconMode ? 20 : 16} strokeWidth={1.75} />
-              {badgeTier && !active && (
+              {badgeTier && (
                 <span
                   className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full"
                   style={{

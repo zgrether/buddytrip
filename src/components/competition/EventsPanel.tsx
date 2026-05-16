@@ -301,14 +301,6 @@ function EventCard({
     onSuccess: () => setConfirmingDelete(false),
   });
 
-  const distributions = event.point_distributions ?? [];
-  const distSummary = distributions.length > 0
-    ? distributions
-        .slice(0, 3)
-        .map((d) => `${ordinalShort(d.position)}: ${d.points}pt${d.points === 1 ? "" : "s"}`)
-        .join(" · ")
-    : null;
-
   const statusLine = describeStatus(event);
 
   return (
@@ -370,6 +362,14 @@ function EventCard({
             <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {event.title}
             </p>
+            {!event.is_practice && event.points_available !== null && (
+              <span
+                className="text-[11px] font-semibold tabular-nums"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                {event.points_available} pt{event.points_available === 1 ? "" : "s"}
+              </span>
+            )}
             {isGolf && event.scoring_format && (
               <span
                 className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase"
@@ -403,13 +403,6 @@ function EventCard({
               <statusLine.Icon size={11} />
               <span>{statusLine.text}</span>
             </div>
-          )}
-
-          {!event.is_practice && distSummary && (
-            <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {distSummary}
-              {event.points_available !== null && ` · ${event.points_available}pt total`}
-            </p>
           )}
         </div>
 
