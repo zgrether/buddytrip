@@ -13,6 +13,7 @@ import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
+import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
@@ -106,6 +107,10 @@ export default function TripDetailPage() {
 
   // ── Notifications ─────────────────────────────────────────────────────────
   useRealtimeNotifications([tripId]);
+  // Push competition row changes (Go Live, scoreboard style, name,
+  // tagline) live to every crew member — without this they'd see
+  // stale data for up to staleTime (60s).
+  useRealtimeCompetition(tripId);
 
   const { data: notifications = [] } = trpc.notifications.list.useQuery(
     { tripId, limit: 20 },

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
+import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { TopNav } from "@/components/TopNav";
 import { TripBottomNav } from "@/components/BottomNav";
 import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
@@ -26,6 +27,10 @@ import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
 export default function LiveLeaderboardPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const { isOwner } = useTripRole(tripId);
+
+  // Realtime subscription so the leaderboard reflects owner changes
+  // (scoreboard_style, Go Live toggle) without a refresh.
+  useRealtimeCompetition(tripId);
 
   const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery({
     tripId,
