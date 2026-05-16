@@ -73,6 +73,16 @@ export default function TripDetailPage() {
     { tripId, competitionId: competition?.id ?? "" },
     { enabled: !!competition?.id }
   );
+  // Background prefetch for teams + assignments so the comp tab renders
+  // instantly instead of flashing while the panels fire their own queries.
+  trpc.teams.list.useQuery(
+    { tripId, competitionId: competition?.id ?? "" },
+    { enabled: !!competition?.id }
+  );
+  trpc.teamAssignments.list.useQuery(
+    { tripId, competitionId: competition?.id ?? "" },
+    { enabled: !!competition?.id }
+  );
 
   const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
     || reservationsLoading || tilesLoading || competitionLoading;
