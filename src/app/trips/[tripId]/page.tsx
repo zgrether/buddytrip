@@ -35,7 +35,11 @@ export default function TripDetailPage() {
   // Initial tab respects `?tab=<id>` so sub-pages (e.g. the event
   // detail page under /trips/[tripId]/events/[eventId]) can route the
   // user back to the comp tab instead of dumping them on Home.
-  const [activeTab, setActiveTab] = useState<TabId>(() => {
+  //
+  // `activeTabRaw` is the literal user/URL intent; the effective
+  // `activeTab` (derived below) snaps back to "home" when the user
+  // doesn't have permission for the requested tab.
+  const [activeTabRaw, setActiveTab] = useState<TabId>(() => {
     const initial = searchParams.get("tab");
     const validTabs: TabId[] = [
       "home",
@@ -192,6 +196,27 @@ export default function TripDetailPage() {
 
   // Effective canEdit: forced false when read-only
   const effectiveCanEdit = tripIsReadOnly ? false : canEdit;
+
+  // Snap activeTab back to "home" if the user can't actually see the
+  // requested tab — mirrors the visibility rules in TripTabBar.
+  // Without this, a non-canEdit crew member could land on the comp
+  // tab via a stale `?tab=comp` URL (from browser-back to a previous
+  // owner-side URL state) and see CompTab render even though the tab
+  // button itself is hidden in their tab bar.
+  const canShowCompTab =
+    stage !== "planning" && effectiveCanEdit && showComp;
+  const canShowLodgingTab =
+    stage !== "idea" && effectiveCanEdit;
+  const canShowScheduleTab = effectiveCanEdit;
+  const canShowExpensesTab = stage !== "planning";
+
+  const activeTab: TabId =
+    (activeTabRaw === "comp" && !canShowCompTab) ||
+    (activeTabRaw === "lodging" && !canShowLodgingTab) ||
+    (activeTabRaw === "schedule" && !canShowScheduleTab) ||
+    (activeTabRaw === "expenses" && !canShowExpensesTab)
+      ? "home"
+      : activeTabRaw;
 
   // ── Tab badge conditions ──────────────────────────────────────────────
   // crewDot: owner sees a dot when any member hasn't joined yet (guest/placeholder)
