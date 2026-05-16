@@ -680,10 +680,12 @@ function DeleteTeamConfirmModal({
 
 // ── CrewRoster ──────────────────────────────────────────────────────────────
 //
-// Desktop column shows ONLY unassigned members as draggable cards. Mobile
-// section below the team cards shows ALL members with management UI:
-//   - unassigned → team dropdown
-//   - assigned   → team name + ✕ to unassign
+// Desktop column (md+) shows ONLY unassigned members as draggable cards.
+// Mobile section (below md) lists unassigned members with a team picker
+// dropdown; once a member gets assigned they fade + collapse out of the
+// list (managed below via the team cards). A short-lived "leaving" set
+// keeps the row mounted during the exit animation so the disappearance
+// isn't jarring.
 
 function CrewRoster({
   tripId,
@@ -722,6 +724,29 @@ function CrewRoster({
   const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
   const [dragOver, setDragOver] = useState(false);
 
+  // Mobile exit animation — when a member is assigned via the dropdown,
+  // their row needs to disappear from the unassigned list. To avoid the
+  // jarring "pop", we keep them mounted in a "leaving" state for a few
+  // hundred ms, fading + collapsing them out before the unmount.
+  const [leavingIds, setLeavingIds] = useState<Set<string>>(new Set());
+
+  function handleAssignFromMobile(memberId: string, teamId: string) {
+    setLeavingIds((prev) => {
+      const next = new Set(prev);
+      next.add(memberId);
+      return next;
+    });
+    assign.mutate({ tripId, competitionId, userId: memberId, teamId });
+    window.setTimeout(() => {
+      setLeavingIds((prev) => {
+        if (!prev.has(memberId)) return prev;
+        const next = new Set(prev);
+        next.delete(memberId);
+        return next;
+      });
+    }, 320);
+  }
+
   function handleDropToUnassign(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
@@ -731,6 +756,12 @@ function CrewRoster({
     if (!assignmentByUser.has(userId)) return;
     remove.mutate({ tripId, competitionId, userId });
   }
+
+  // Mobile list = unassigned members, plus any currently mid-animation.
+  const mobileVisible = members.filter((m) => {
+    const id = m.user_id ?? m.memberId;
+    return !assignmentByUser.has(id) || leavingIds.has(id);
+  });
 
   return (
     <>
@@ -829,106 +860,88 @@ function CrewRoster({
         </div>
       </section>
 
-      {/* ── Mobile fallback: full member list with dropdown / unassign ─ */}
+      {/* ── Mobile fallback: unassigned members only, with team picker.
+           Assigned members get managed via the team cards above. ── */}
       <div className="md:hidden">
         <p
           className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Assign Members
+          Unassigned Crew
         </p>
-        <div className="space-y-1.5">
-          {members.map((m) => {
-            const id = m.user_id ?? m.memberId;
-            const teamId = assignmentByUser.get(id);
-            const team = teamId ? teamById.get(teamId) : null;
-            return (
-              <div
-                key={id}
-                className="flex items-center gap-3 rounded-lg px-3 py-2"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-              >
-                <UserAvatar
-                  name={m.displayName}
-                  avatarUrl={m.user?.avatar_url ?? null}
-                  isGuest={m.isGuest}
-                  size="md"
-                />
-                <span
-                  className="flex-1 truncate text-sm font-medium"
-                  style={{ color: "var(--color-bt-text)" }}
+        {mobileVisible.length === 0 ? (
+          <p
+            className="text-[11px] italic"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Everyone&rsquo;s on a team. Manage assignments from the team
+            cards above.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {mobileVisible.map((m) => {
+              const id = m.user_id ?? m.memberId;
+              const leaving = leavingIds.has(id);
+              return (
+                <div
+                  key={id}
+                  className="overflow-hidden transition-all ease-out"
+                  style={{
+                    transitionDuration: "280ms",
+                    opacity: leaving ? 0 : 1,
+                    maxHeight: leaving ? 0 : 64,
+                    marginTop: leaving ? 0 : undefined,
+                    transform: leaving ? "scale(0.98)" : "scale(1)",
+                  }}
                 >
-                  {m.displayName}
-                </span>
-
-                {team ? (
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                      style={{
-                        background: "var(--color-bt-card)",
-                        color: "var(--color-bt-text)",
-                        border: "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ background: team.color }}
-                        aria-hidden
-                      />
-                      {team.name}
-                    </span>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          remove.mutate({ tripId, competitionId, userId: id })
-                        }
-                        aria-label={`Unassign ${m.displayName}`}
-                        className="flex h-6 w-6 items-center justify-center rounded-md"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        <X size={13} />
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <select
-                    value=""
-                    disabled={!canEdit}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (!value) return;
-                      assign.mutate({
-                        tripId,
-                        competitionId,
-                        userId: id,
-                        teamId: value,
-                      });
-                    }}
-                    className="rounded-md px-2 py-1 text-xs"
+                  <div
+                    className="flex items-center gap-3 rounded-lg px-3 py-2"
                     style={{
-                      background: "var(--color-bt-card)",
-                      color: "var(--color-bt-text-dim)",
+                      background: "var(--color-bt-card-raised)",
                       border: "1px solid var(--color-bt-border)",
                     }}
-                    aria-label={`Team for ${m.displayName}`}
                   >
-                    <option value="">Pick a team…</option>
-                    {teams.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                    <UserAvatar
+                      name={m.displayName}
+                      avatarUrl={m.user?.avatar_url ?? null}
+                      isGuest={m.isGuest}
+                      size="md"
+                    />
+                    <span
+                      className="flex-1 truncate text-sm font-medium"
+                      style={{ color: "var(--color-bt-text)" }}
+                    >
+                      {m.displayName}
+                    </span>
+                    <select
+                      value=""
+                      disabled={!canEdit || leaving}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (!value) return;
+                        handleAssignFromMobile(id, value);
+                      }}
+                      className="rounded-md px-2 py-1 text-xs"
+                      style={{
+                        background: "var(--color-bt-card)",
+                        color: "var(--color-bt-text-dim)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                      aria-label={`Team for ${m.displayName}`}
+                    >
+                      <option value="">Pick a team…</option>
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </>
   );
