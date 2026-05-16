@@ -133,15 +133,71 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
   // Touch-friendly reorder used by the up/down arrows on the event card.
   // Drag-and-drop requires mouse/pointer events so doesn't work on most
   // tablets and phones in touch mode — these buttons cover that gap.
+  //
+  // The move runs through a FLIP animation (First Last Invert Play) so
+  // both swapped cards slide into their new positions over 280ms — same
+  // duration as the crew-assignment fade so the motion vocabulary is
+  // consistent across the competition surface.
+  const listRef = useRef<HTMLDivElement>(null);
+
   const moveEvent = (idx: number, direction: -1 | 1) => {
     const target = idx + direction;
     if (target < 0 || target >= eventsTyped.length) return;
+
+    // 1. Snapshot current positions of every card BEFORE the mutation.
+    const container = listRef.current;
+    const before = new Map<string, number>();
+    if (container) {
+      container
+        .querySelectorAll<HTMLElement>("[data-event-card]")
+        .forEach((el) => {
+          const id = el.dataset.eventCard;
+          if (id) before.set(id, el.getBoundingClientRect().top);
+        });
+    }
+
+    // 2. Fire the optimistic reorder — the cache updates and React
+    //    re-renders with the new order, repainting cards in place.
     const newOrder = [...eventsTyped];
     [newOrder[idx], newOrder[target]] = [newOrder[target], newOrder[idx]];
     reorder.mutate({
       tripId,
       competitionId,
       orderedIds: newOrder.map((e) => e.id),
+    });
+
+    if (!container) return;
+
+    // 3. After React commits the new order (two rAFs to be safe),
+    //    measure new positions, jump each moved card back to its OLD
+    //    spot via translateY, then transition that transform to 0.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        container
+          .querySelectorAll<HTMLElement>("[data-event-card]")
+          .forEach((el) => {
+            const id = el.dataset.eventCard;
+            if (!id) return;
+            const oldTop = before.get(id);
+            if (oldTop == null) return;
+            const newTop = el.getBoundingClientRect().top;
+            const delta = oldTop - newTop;
+            if (delta === 0) return;
+
+            // Invert: place the card at its previous position visually
+            el.style.transition = "none";
+            el.style.transform = `translateY(${delta}px)`;
+            // Force layout flush so the next transition is observable
+            void el.offsetHeight;
+            // Play: animate back to the natural position
+            el.style.transition = "transform 280ms ease-out";
+            el.style.transform = "";
+            // Cleanup once the animation finishes
+            window.setTimeout(() => {
+              el.style.transition = "";
+            }, 300);
+          });
+      });
     });
   };
 
@@ -157,7 +213,7 @@ export function EventsPanel({ competitionId, tripId, canEdit }: Props) {
     <>
       {eventsTyped.length === 0 && <EventsEmptyState canEdit={canEdit} />}
 
-      <div className="space-y-2">
+      <div ref={listRef} className="space-y-2">
         {eventsTyped.map((event, idx) => (
           <EventCard
             key={event.id}
@@ -376,6 +432,7 @@ function EventCard({
           opacity: isDragging ? 0.4 : event.is_practice ? 0.85 : 1,
         }}
         data-testid={`event-card-${event.id}`}
+        data-event-card={event.id}
       >
         {canEdit && (
           <>
