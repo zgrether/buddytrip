@@ -157,11 +157,10 @@ export function CrewSearchInput({
     });
   }
 
-  async function handleCopyInvite() {
+  function handleCopyInvite() {
     const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-    } catch {
+
+    const fallback = () => {
       const textarea = document.createElement("textarea");
       textarea.value = inviteUrl;
       textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none";
@@ -170,9 +169,31 @@ export function CrewSearchInput({
       textarea.select();
       try { document.execCommand("copy"); } catch { /* best effort */ }
       document.body.removeChild(textarea);
+    };
+
+    const markCopied = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    // `.then().catch()` rather than try/await so the rejection is
+    // attached to the promise chain and never surfaces as an
+    // "unhandled" rejection in the Next.js dev overlay. Some browsers
+    // (and any non-secure context) reject writeText with NotAllowedError
+    // even from a real user gesture — fall through to the textarea
+    // fallback in that case.
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(inviteUrl)
+        .then(markCopied)
+        .catch(() => {
+          fallback();
+          markCopied();
+        });
+    } else {
+      fallback();
+      markCopied();
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   const displayName = (u: { name: string | null; nickname: string | null; email: string }) =>
