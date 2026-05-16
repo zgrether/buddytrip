@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { fmtPts, getCell } from "./mock-score";
 import type { StyleProps } from "./types";
 
@@ -26,8 +27,9 @@ export function CardsStyle({ data }: StyleProps) {
               border: "1px solid var(--color-bt-border)",
             }}
           >
-            <div
-              className="flex items-baseline justify-between px-3 py-2"
+            <Link
+              href={`/trips/${data.tripId}/events/${event.id}`}
+              className="flex items-baseline justify-between px-3 py-2 underline-offset-2 hover:underline"
               style={{ borderBottom: "1px solid var(--color-bt-border)" }}
             >
               <p
@@ -37,12 +39,12 @@ export function CardsStyle({ data }: StyleProps) {
                 {event.title}
               </p>
               <p
-                className="text-[11px]"
+                className="text-[11px] no-underline"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
                 {fmtPts(event.points_available ?? 0)} pts
               </p>
-            </div>
+            </Link>
             <div className="divide-y" style={{ borderColor: "var(--color-bt-border)" }}>
               {rows.map((r, i) => (
                 <div

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { fmtPts, getCell } from "./mock-score";
 import { placeStyle, type StyleProps } from "./types";
 
@@ -38,20 +39,21 @@ export function HeatmapStyle({ data }: StyleProps) {
             <tr key={event.id}>
               <td
                 className="px-3 py-1.5"
-                style={{
-                  borderTop: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
+                style={{ borderTop: "1px solid var(--color-bt-border)" }}
               >
-                <div className="flex items-center gap-2">
+                <Link
+                  href={`/trips/${data.tripId}/events/${event.id}`}
+                  className="flex items-center gap-2 underline-offset-2 hover:underline"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
                   <span>{event.title}</span>
                   <span
-                    className="text-[10px]"
+                    className="text-[10px] no-underline"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     · {event.points_available ?? 0}
                   </span>
-                </div>
+                </Link>
               </td>
               {data.teams.map((team) => {
                 const cell = getCell(data, team.id, event.id);

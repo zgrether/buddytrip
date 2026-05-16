@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { fmtPts, getCell } from "./mock-score";
 import type { StyleProps } from "./types";
 
@@ -44,11 +45,14 @@ export function GridStyle({ data }: StyleProps) {
               key={event.id}
               style={{ borderTop: "1px solid var(--color-bt-border)" }}
             >
-              <td
-                className="px-3 py-2"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                {event.title}
+              <td className="px-3 py-2">
+                <Link
+                  href={`/trips/${data.tripId}/events/${event.id}`}
+                  className="underline-offset-2 hover:underline"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {event.title}
+                </Link>
               </td>
               <td
                 className="px-2 py-2 text-right"

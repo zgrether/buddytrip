@@ -39,6 +39,9 @@ export interface ScoreboardCell {
 }
 
 export interface ScoreboardData {
+  /** Carried through so event-listing styles can link cells to the
+   *  event detail page at `/trips/{tripId}/events/{eventId}`. */
+  tripId: string;
   teams: ScoreboardTeam[];
   events: ScoreboardEvent[];
   cells: ScoreboardCell[];

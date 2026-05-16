@@ -78,8 +78,8 @@ export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
   };
 
   const data = useMemo(
-    () => buildMockData(teamsTyped, eventsTyped),
-    [teamsTyped, eventsTyped]
+    () => buildMockData(tripId, teamsTyped, eventsTyped),
+    [tripId, teamsTyped, eventsTyped]
   );
 
   const hasTeams = teamsTyped.length > 0;
