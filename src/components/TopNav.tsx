@@ -121,7 +121,12 @@ export const TopNav: FC<TopNavProps> = ({
       <button
         onClick={() => router.push("/")}
         className="flex items-center gap-[7px] text-[18px] font-semibold transition-opacity hover:opacity-80"
-        style={{ color: "var(--color-bt-text)", letterSpacing: "0.06em" }}
+        style={{
+          color: "var(--color-bt-text)",
+          letterSpacing: "0.06em",
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        }}
         aria-label="Go to dashboard"
       >
         <svg width="18" height="18" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>

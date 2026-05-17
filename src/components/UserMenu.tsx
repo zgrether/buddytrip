@@ -29,7 +29,8 @@ export function UserMenu() {
     setSigningOut(true);
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/login");
+    router.push("/");
+    router.refresh();
   };
 
   return (
