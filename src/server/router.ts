@@ -6,7 +6,6 @@ import { ghostCrewRouter } from "./routers/ghostCrew";
 import { ideasRouter } from "./routers/ideas";
 import { ideaCommentsRouter } from "./routers/ideaComments";
 import { datePollRouter } from "./routers/datePoll";
-import { reservationsRouter } from "./routers/reservations";
 import { expensesRouter } from "./routers/expenses";
 import { messagesRouter } from "./routers/messages";
 import { notificationsRouter } from "./routers/notifications";
@@ -36,7 +35,6 @@ export const appRouter = router({
   ideas: ideasRouter,
   ideaComments: ideaCommentsRouter,
   datePoll: datePollRouter,
-  reservations: reservationsRouter,
   expenses: expensesRouter,
   messages: messagesRouter,
   notifications: notificationsRouter,
