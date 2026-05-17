@@ -520,14 +520,14 @@ const MARKETING_CSS = `
 .bt-mkt-map-link {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px;
-  color: #60a5fa;
+  color: #2dd4bf;
   text-decoration: none;
   padding: 3px 6px;
   border-radius: 6px;
-  background: rgba(96, 165, 250, 0.08);
+  background: rgba(45, 212, 191, 0.08);
   transition: background 0.15s;
 }
-.bt-mkt-map-link:hover { background: rgba(96, 165, 250, 0.16); }
+.bt-mkt-map-link:hover { background: rgba(45, 212, 191, 0.16); }
 
 /* ───────────── About section ───────────── */
 .bt-mkt-about {

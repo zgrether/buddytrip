@@ -370,16 +370,14 @@ function FeatureVisualStayOnTrack() {
             <Home size={11} strokeWidth={1.75} />
             VRBO door code
           </div>
-          <div className="bt-mkt-quickinfo-value" style={{ letterSpacing: "0.03em" }}>4821#</div>
-          <div className="bt-mkt-quickinfo-sub">Front door · resets daily</div>
+          <div className="bt-mkt-quickinfo-value" style={{ letterSpacing: "0.03em", color: "#f1f5f9" }}>4821#</div>
         </div>
         <div className="bt-mkt-quickinfo-tile">
           <div className="bt-mkt-quickinfo-label">
             <Wifi size={11} strokeWidth={1.75} />
             WiFi password
           </div>
-          <div className="bt-mkt-quickinfo-value" style={{ fontSize: 13 }}>PinehurstGolf26</div>
-          <div className="bt-mkt-quickinfo-sub">Network: VRBO_Guest</div>
+          <div className="bt-mkt-quickinfo-value" style={{ fontSize: 13, color: "#f1f5f9" }}>PinehurstGolf26</div>
         </div>
       </div>
 
