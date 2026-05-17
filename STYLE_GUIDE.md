@@ -22,7 +22,7 @@ these tokens.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-base` | `--color-bt-base` |
-| Value | `#d8e0e8` (cool grey — noticeably grey on any display) | `#0f172a` (slate-900) |
+| Value | `#d8e0e8` (cool grey — noticeably grey on any display) | `#0a1628` |
 
 **Use:** outermost page/layout background. Applied to `body`.
 **Examples:** trip page, dashboard, login page.
@@ -32,7 +32,7 @@ these tokens.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card` | `--color-bt-card` |
-| Value | `#ffffff` (white) | `#1e293b` (slate-800) |
+| Value | `#ffffff` (white) | `#111f36` |
 
 **Use:** collapsible panels, card containers, modals, bottom sheets —
 anything that floats above the page.
@@ -44,7 +44,7 @@ TripCard, AddDateSheet, LockConfirmDialog, TripSettingsModal.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card-raised` | `--color-bt-card-raised` |
-| Value | `#f4f7fa` | `#243044` |
+| Value | `#f4f7fa` | `#1a2d4a` |
 
 **Use:** elements sitting ON a card/panel — inactive buttons, zebra
 table rows, input backgrounds, inactive compact chips.
@@ -56,7 +56,7 @@ in the dates response grid, inactive filter chips.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card-float` | `--color-bt-card-float` |
-| Value | `#e8edf5` | `#2a3652` |
+| Value | `#e8edf5` | `#243656` |
 
 **Use:** deeply nested elevated elements, tooltips, popovers.
 **Examples:** reserved for future nesting needs.
@@ -71,7 +71,7 @@ content panels. They frame the app — they don't contain content.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card` | `--color-bt-card` |
-| Value | `#ffffff` (white) | `#1e293b` (slate-800) |
+| Value | `#ffffff` (white) | `#111f36` |
 
 **Separation:** border only, no shadow. Content panels use `--shadow-raised`
 for elevation; chrome uses `1px solid var(--color-bt-border)` for definition.
@@ -89,7 +89,7 @@ for elevation; chrome uses `1px solid var(--color-bt-border)` for definition.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-border` | `--color-bt-border` |
-| Value | `#c8d0da` | `#334155` (slate-700) |
+| Value | `#c8d0da` | `#1e3a5f` |
 
 **Use:** panel outlines, dividers, card edges. Every bordered surface component
 uses this token for its `border-color`.
