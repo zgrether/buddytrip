@@ -228,7 +228,6 @@ function AddPlannerRow({ tripId }: { tripId: string }) {
             allowInvite
             showSearchIcon
             placeholder="Search by email..."
-            frequentTripmates={[]}
           />
         </div>
         <button

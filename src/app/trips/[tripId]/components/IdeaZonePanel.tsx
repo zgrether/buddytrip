@@ -1711,7 +1711,6 @@ export function CoPlannerPanel({
             allowInvite
             showSearchIcon
             placeholder="Search by email..."
-            frequentTripmates={[]}
           />
         </div>
       )}
@@ -1823,7 +1822,6 @@ function MobileCoPlannerSheet({
                 allowInvite
                 showSearchIcon
                 placeholder="Search by email..."
-                frequentTripmates={[]}
               />
             </div>
           )}
