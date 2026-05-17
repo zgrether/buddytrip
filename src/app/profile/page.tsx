@@ -89,10 +89,17 @@ export default function ProfilePage() {
     null
   );
 
-  // ── Picker scroll-to ref for the avatar edit badge ────────────────────
+  // ── Picker scroll-to + highlight for the avatar edit badge ──────────
+  // The pencil on the avatar circle should always produce visible
+  // feedback: scroll the picker into view AND briefly highlight it,
+  // so even when the picker is already on-screen (common on desktop)
+  // the click registers.
   const pickerRef = useRef<HTMLDivElement>(null);
+  const [pickerHighlight, setPickerHighlight] = useState(false);
   const scrollToPicker = () => {
     pickerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setPickerHighlight(true);
+    setTimeout(() => setPickerHighlight(false), 1800);
   };
 
   // ── OAuth detection ───────────────────────────────────────────────────
@@ -156,7 +163,16 @@ export default function ProfilePage() {
                 />
 
                 <Section label="Avatar icon" mobileOnlyLabel>
-                  <div ref={pickerRef}>
+                  <div
+                    ref={pickerRef}
+                    className="rounded-xl transition-shadow"
+                    style={{
+                      boxShadow: pickerHighlight
+                        ? "0 0 0 2px var(--color-bt-accent), 0 0 0 6px rgba(45, 212, 191, 0.18)"
+                        : "0 0 0 0 transparent",
+                      transitionDuration: pickerHighlight ? "180ms" : "600ms",
+                    }}
+                  >
                     <AvatarIconPicker
                       value={me.avatar_icon ?? null}
                       onChange={(iconId) => updateAvatar.mutate({ avatarIcon: iconId })}
