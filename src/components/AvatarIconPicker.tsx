@@ -101,7 +101,7 @@ export function AvatarIconPicker({ value, onChange, showSaved }: AvatarIconPicke
                     }
               }
             >
-              {IconComponent ? <IconComponent size={20} stroke={1.75} /> : null}
+              {IconComponent ? <IconComponent size={26} stroke={1.75} /> : null}
             </button>
           );
         })}
