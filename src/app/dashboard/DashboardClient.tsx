@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ChevronDown, ChevronRight, Plane } from "lucide-react";
+import { ChevronDown, ChevronRight, Plane } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { TopNav } from "@/components/TopNav";
@@ -180,7 +180,6 @@ export default function DashboardClient() {
             className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
-            <Plus size={16} />
             New trip
           </button>
         </div>
@@ -212,8 +211,7 @@ export default function DashboardClient() {
               className="mt-2 flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
-              <Plus size={18} />
-              Create a Trip
+              New trip
             </button>
           </div>
         ) : (
