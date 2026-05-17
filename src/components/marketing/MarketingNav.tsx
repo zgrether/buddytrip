@@ -29,7 +29,7 @@ export function MarketingNav() {
         <a href="#how-it-works" className="bt-mkt-nav-link">How it works</a>
         <a href="#about" className="bt-mkt-nav-link">About</a>
         <Link href="/login" className="bt-mkt-nav-link">Sign in</Link>
-        <Link href="/login" className="bt-mkt-nav-cta">Get started free</Link>
+        <Link href="/login?mode=signup" className="bt-mkt-nav-cta">Get started free</Link>
       </div>
     </nav>
   );
