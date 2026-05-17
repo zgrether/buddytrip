@@ -50,7 +50,7 @@ export default function ResetPasswordPage() {
         <div className="space-y-5">
           <div className="text-center">
             <h1
-              className="flex items-center justify-center gap-2 font-display text-2xl font-semibold tracking-wider"
+              className="flex items-center justify-center gap-2 text-2xl font-semibold tracking-wider"
               style={{ color: "var(--color-bt-text)" }}
             >
               <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>

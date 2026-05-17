@@ -16,7 +16,7 @@ export function CtaSection() {
         your next trip planned by the end of the day.
       </p>
       <div className="bt-mkt-cta-row">
-        <Link href="/login" className="bt-mkt-btn-primary">Plan your trip free</Link>
+        <Link href="/login?mode=signup" className="bt-mkt-btn-primary">Plan your trip free</Link>
         <a href="#how-it-works" className="bt-mkt-btn-ghost">See how it works</a>
       </div>
     </section>

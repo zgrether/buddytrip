@@ -110,16 +110,21 @@ export const TopNav: FC<TopNavProps> = ({
 
   return (
     <header
-      className="sticky top-0 z-40 flex h-14 items-center justify-between px-4"
-      style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
+      className="sticky top-0 z-40 flex h-14 items-center justify-between px-6"
+      style={{
+        background: "var(--color-bt-nav-bg)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        borderBottom: "1px solid var(--color-bt-subtle-border)",
+      }}
     >
       <button
         onClick={() => router.push("/")}
-        className="flex items-center gap-2 font-display font-semibold text-lg tracking-wider transition-opacity hover:opacity-80"
-        style={{ color: "var(--color-bt-text)" }}
+        className="flex items-center gap-[7px] text-[18px] font-semibold transition-opacity hover:opacity-80"
+        style={{ color: "var(--color-bt-text)", letterSpacing: "0.06em" }}
         aria-label="Go to dashboard"
       >
-        <svg width="20" height="20" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
+        <svg width="18" height="18" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
           <path d="M 28 8 L 38 8 L 76 26 L 38 44 L 38 75 L 33 92 L 28 75 Z" fill="currentColor"/>
         </svg>
         {title}

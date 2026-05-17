@@ -22,7 +22,7 @@ these tokens.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-base` | `--color-bt-base` |
-| Value | `#d8e0e8` (cool grey — noticeably grey on any display) | `#0a1628` |
+| Value | `#d8e0e8` (cool grey — noticeably grey on any display) | `#0a0e1a` |
 
 **Use:** outermost page/layout background. Applied to `body`.
 **Examples:** trip page, dashboard, login page.
@@ -32,7 +32,7 @@ these tokens.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card` | `--color-bt-card` |
-| Value | `#ffffff` (white) | `#111f36` |
+| Value | `#ffffff` (white) | `#111827` |
 
 **Use:** collapsible panels, card containers, modals, bottom sheets —
 anything that floats above the page.
@@ -44,7 +44,7 @@ TripCard, AddDateSheet, LockConfirmDialog, TripSettingsModal.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card-raised` | `--color-bt-card-raised` |
-| Value | `#f4f7fa` | `#1a2d4a` |
+| Value | `#f4f7fa` | `#1a2130` |
 
 **Use:** elements sitting ON a card/panel — inactive buttons, zebra
 table rows, input backgrounds, inactive compact chips.
@@ -56,7 +56,7 @@ in the dates response grid, inactive filter chips.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card-float` | `--color-bt-card-float` |
-| Value | `#e8edf5` | `#243656` |
+| Value | `#e8edf5` | `#222b3d` |
 
 **Use:** deeply nested elevated elements, tooltips, popovers.
 **Examples:** reserved for future nesting needs.
@@ -71,7 +71,7 @@ content panels. They frame the app — they don't contain content.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card` | `--color-bt-card` |
-| Value | `#ffffff` (white) | `#111f36` |
+| Value | `#ffffff` (white) | `#111827` |
 
 **Separation:** border only, no shadow. Content panels use `--shadow-raised`
 for elevation; chrome uses `1px solid var(--color-bt-border)` for definition.
@@ -89,12 +89,12 @@ for elevation; chrome uses `1px solid var(--color-bt-border)` for definition.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-border` | `--color-bt-border` |
-| Value | `#c8d0da` | `#1e3a5f` |
+| Value | `#c8d0da` | `rgba(148, 163, 184, 0.15)` |
 
 **Use:** panel outlines, dividers, card edges. Every bordered surface component
 uses this token for its `border-color`.
 
-> **Note:** `--color-bt-subtle-border` (`#e2e8f0` light / `#1e293b` dark) is a
+> **Note:** `--color-bt-subtle-border` (`#e2e8f0` light / `rgba(148,163,184,0.08)` dark) is a
 > separate token that intentionally diverges from `--color-bt-border`. It is used
 > as a **background fill** in scoring-format components (zebra stripes, inactive
 > chips), not as a CSS border. Do not replace it with `--color-bt-border`.
@@ -488,12 +488,13 @@ dark image-overlay contexts where tokens don't apply. No migration needed.
 |-------|-------|------|-----|
 | `--color-bt-hover` | `rgba(0,0,0,0.04)` | `rgba(255,255,255,0.06)` | Hover highlight |
 | `--color-bt-overlay` | `rgba(0,0,0,0.5)` | `rgba(0,0,0,0.7)` | Modal backdrop |
-| `--color-bt-subtle-border` | `#e2e8f0` | `#1e293b` | Secondary borders |
+| `--color-bt-subtle-border` | `#e2e8f0` | `rgba(148,163,184,0.08)` | Secondary borders |
 | `--color-bt-dim-faint` | `rgba(100,116,139,0.12)` | `rgba(148,163,184,0.12)` | Disabled/inactive fill |
 | `--color-bt-state-fill` | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.13)` | State silhouette watermark fill (LocationHero) |
 | `--color-bt-state-stroke` | `rgba(0,0,0,0.15)` | `rgba(255,255,255,0.20)` | Toggle/state border |
 | `--color-bt-tile-bg` | `transparent` | `transparent` | Schedule tile bg |
-| `--color-bt-past-bg` | `#f8fafc` | `#1e293b` | Past schedule bg |
+| `--color-bt-past-bg` | `#f8fafc` | `#161c2b` | Past schedule bg |
+| `--color-bt-nav-bg` | `rgba(244,247,250,0.85)` | `rgba(10,14,26,0.85)` | Sticky top nav bg (use with `backdrop-filter: blur(14px)`) |
 | `--shadow-card` | light shadow | heavier shadow | Card elevation |
 | `--shadow-raised` | medium shadow | heavier shadow | Expanded panels |
 | `--shadow-floating` | strong shadow | heavier shadow | Tooltips, popovers |

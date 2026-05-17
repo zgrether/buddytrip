@@ -18,7 +18,7 @@ export function AuthenticatedEmptyState() {
       <div className="w-full max-w-[320px] text-center">
         {/* BuddyTrip mark — matches TopNav exactly */}
         <div
-          className="mb-6 flex items-center justify-center gap-[7px] font-display text-lg font-semibold tracking-wider"
+          className="mb-6 flex items-center justify-center gap-[7px] text-lg font-semibold tracking-wider"
           style={{ color: "var(--color-bt-text)" }}
         >
           <svg

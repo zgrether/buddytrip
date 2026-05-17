@@ -84,12 +84,20 @@ function Input({
 }
 
 // ── Main component ─────────────────────────────────────────────────────
-export default function LoginClient() {
-  const [mode, setMode] = useState<Mode>("signin");
+export default function LoginClient({
+  initialMode = "signin",
+}: {
+  initialMode?: "signin" | "signup";
+}) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  // Tracks which primary panel (signin | signup) opened the magic-link flow
+  // so the back button returns to the right place.
+  const [magicLinkReturn, setMagicLinkReturn] = useState<"signin" | "signup">(
+    initialMode === "signup" ? "signup" : "signin"
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [nickname, setNickname] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -101,6 +109,11 @@ export default function LoginClient() {
     setMode(m);
     setError("");
     setResetSent(false);
+  }
+
+  function enterMagicLink(from: "signin" | "signup") {
+    setMagicLinkReturn(from);
+    switchMode("magic-link");
   }
 
   // ── Google OAuth ─────────────────────────────────────────────────────
@@ -138,7 +151,7 @@ export default function LoginClient() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name, nickname } },
+        options: { data: { name } },
       });
       if (signUpError) throw signUpError;
 
@@ -227,7 +240,7 @@ export default function LoginClient() {
           <div className="space-y-5">
             <div className="text-center">
               <h1
-                className="flex items-center justify-center gap-2 font-display text-2xl font-semibold tracking-wider"
+                className="flex items-center justify-center gap-2 text-2xl font-semibold tracking-wider"
                 style={{ color: "var(--color-bt-text)" }}
               >
                 <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
@@ -261,7 +274,7 @@ export default function LoginClient() {
             {/* Magic link */}
             <button
               type="button"
-              onClick={() => switchMode("magic-link")}
+              onClick={() => enterMagicLink("signin")}
               className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-opacity hover:opacity-90"
               style={{
                 background: "transparent",
@@ -319,7 +332,7 @@ export default function LoginClient() {
           <div className="space-y-5">
             <div className="text-center">
               <h1
-                className="flex items-center justify-center gap-2 font-display text-2xl font-semibold tracking-wider"
+                className="flex items-center justify-center gap-2 text-2xl font-semibold tracking-wider"
                 style={{ color: "var(--color-bt-text)" }}
               >
                 <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
@@ -350,10 +363,26 @@ export default function LoginClient() {
 
             <Divider text="or" />
 
+            {/* Magic link */}
+            <button
+              type="button"
+              onClick={() => enterMagicLink("signup")}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-opacity hover:opacity-90"
+              style={{
+                background: "transparent",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              <Mail size={16} />
+              Continue with a magic link
+            </button>
+
+            <Divider text="or" />
+
             {/* Signup form */}
             <form onSubmit={handleSignUp} className="space-y-4">
-              <Input id="signup-name" label="Full Name" value={name} onChange={setName} placeholder="Zach Grether" />
-              <Input id="signup-nickname" label="Nickname" value={nickname} onChange={setNickname} placeholder="What your crew calls you" required={false} />
+              <Input id="signup-name" label="Full Name" value={name} onChange={setName} placeholder="John Smith" />
               <Input id="signup-email" label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
               <Input id="signup-password" label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" minLength={6} />
 
@@ -385,7 +414,7 @@ export default function LoginClient() {
           <div className="space-y-5">
             <button
               type="button"
-              onClick={() => switchMode("signin")}
+              onClick={() => switchMode(magicLinkReturn)}
               className="flex items-center gap-1 text-sm hover:opacity-80"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
@@ -458,7 +487,7 @@ export default function LoginClient() {
               </button>
               <button
                 type="button"
-                onClick={() => switchMode("signin")}
+                onClick={() => switchMode(magicLinkReturn)}
                 className="w-full text-sm hover:underline"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
