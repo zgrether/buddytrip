@@ -32,8 +32,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getSession();
   const user = session?.user ?? null;
 
-  // Redirect unauthenticated users to /login (except for public routes)
+  // Redirect unauthenticated users to /login (except for public routes).
+  // The root route `/` serves the marketing page for unauthenticated visitors
+  // and bounces authenticated users to their most relevant trip via the
+  // client-side wrapper at src/app/page.tsx.
   const isPublicRoute =
+    request.nextUrl.pathname === "/" ||
     request.nextUrl.pathname === "/login" ||
     request.nextUrl.pathname.startsWith("/auth/") ||
     request.nextUrl.pathname.startsWith("/scoreboard/") ||

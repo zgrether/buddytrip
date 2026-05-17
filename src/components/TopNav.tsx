@@ -114,7 +114,7 @@ export const TopNav: FC<TopNavProps> = ({
       style={{ background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-border)" }}
     >
       <button
-        onClick={() => router.push("/dashboard")}
+        onClick={() => router.push("/")}
         className="flex items-center gap-2 font-display font-semibold text-lg tracking-wider transition-opacity hover:opacity-80"
         style={{ color: "var(--color-bt-text)" }}
         aria-label="Go to dashboard"

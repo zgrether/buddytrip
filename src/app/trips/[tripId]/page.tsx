@@ -125,6 +125,14 @@ export default function TripDetailPage() {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  // Remember the most recently visited trip so root-route redirect
+  // (src/app/page.tsx) can drop the user back here on return visits.
+  useEffect(() => {
+    if (tripId && typeof window !== "undefined") {
+      window.localStorage.setItem("bt-last-trip-id", tripId);
+    }
+  }, [tripId]);
+
   // All hooks must be called before any early returns
   const utils = trpc.useUtils();
 
