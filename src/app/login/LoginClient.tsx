@@ -226,7 +226,13 @@ export default function LoginClient() {
         {mode === "signin" && (
           <div className="space-y-5">
             <div className="text-center">
-              <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-accent)" }}>
+              <h1
+                className="flex items-center justify-center gap-2 font-display text-2xl font-semibold tracking-wider"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
+                  <path d="M 28 8 L 38 8 L 76 26 L 38 44 L 38 75 L 33 92 L 28 75 Z" fill="currentColor"/>
+                </svg>
                 BuddyTrip
               </h1>
               <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
@@ -312,7 +318,13 @@ export default function LoginClient() {
         {mode === "signup" && (
           <div className="space-y-5">
             <div className="text-center">
-              <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-accent)" }}>
+              <h1
+                className="flex items-center justify-center gap-2 font-display text-2xl font-semibold tracking-wider"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
+                  <path d="M 28 8 L 38 8 L 76 26 L 38 44 L 38 75 L 33 92 L 28 75 Z" fill="currentColor"/>
+                </svg>
                 BuddyTrip
               </h1>
               <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text)" }}>
