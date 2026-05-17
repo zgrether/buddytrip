@@ -232,8 +232,8 @@ export default function LoginClient({
       <div
         className="w-full max-w-[400px] rounded-xl border px-6 py-8"
         style={{
-          background: "var(--color-bt-card)",
-          borderColor: "var(--color-bt-border)",
+          background: "#111827",
+          borderColor: "rgba(148, 163, 184, 0.1)",
         }}
       >
         {/* ── signin mode ─────────────────────────────────────────── */}
@@ -241,7 +241,7 @@ export default function LoginClient({
           <div className="space-y-5">
             <div className="text-center">
               <h1
-                className="flex items-center justify-center gap-2 font-display text-2xl font-semibold tracking-wider"
+                className="flex items-center justify-center gap-2 text-2xl font-semibold tracking-wider"
                 style={{ color: "var(--color-bt-text)" }}
               >
                 <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
@@ -333,7 +333,7 @@ export default function LoginClient({
           <div className="space-y-5">
             <div className="text-center">
               <h1
-                className="flex items-center justify-center gap-2 font-display text-2xl font-semibold tracking-wider"
+                className="flex items-center justify-center gap-2 text-2xl font-semibold tracking-wider"
                 style={{ color: "var(--color-bt-text)" }}
               >
                 <svg width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}>
