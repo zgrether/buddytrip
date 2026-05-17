@@ -181,7 +181,7 @@ export default function DashboardClient() {
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             <Plus size={16} />
-            New Trip
+            New trip
           </button>
         </div>
 

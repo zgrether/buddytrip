@@ -86,7 +86,7 @@ export function AuthenticatedEmptyState() {
               color: "var(--color-bt-base)",
             }}
           >
-            + Create a trip
+            New trip
           </Link>
 
           {/* Ghost link — smooth-scrolls down to the FeaturesSection
