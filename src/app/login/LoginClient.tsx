@@ -84,8 +84,17 @@ function Input({
 }
 
 // ── Main component ─────────────────────────────────────────────────────
-export default function LoginClient() {
-  const [mode, setMode] = useState<Mode>("signin");
+export default function LoginClient({
+  initialMode = "signin",
+}: {
+  initialMode?: "signin" | "signup";
+}) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  // Tracks which primary panel (signin | signup) opened the magic-link flow
+  // so the back button returns to the right place.
+  const [magicLinkReturn, setMagicLinkReturn] = useState<"signin" | "signup">(
+    initialMode === "signup" ? "signup" : "signin"
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -101,6 +110,11 @@ export default function LoginClient() {
     setMode(m);
     setError("");
     setResetSent(false);
+  }
+
+  function enterMagicLink(from: "signin" | "signup") {
+    setMagicLinkReturn(from);
+    switchMode("magic-link");
   }
 
   // ── Google OAuth ─────────────────────────────────────────────────────
@@ -261,7 +275,7 @@ export default function LoginClient() {
             {/* Magic link */}
             <button
               type="button"
-              onClick={() => switchMode("magic-link")}
+              onClick={() => enterMagicLink("signin")}
               className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-opacity hover:opacity-90"
               style={{
                 background: "transparent",
@@ -350,6 +364,23 @@ export default function LoginClient() {
 
             <Divider text="or" />
 
+            {/* Magic link */}
+            <button
+              type="button"
+              onClick={() => enterMagicLink("signup")}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm transition-opacity hover:opacity-90"
+              style={{
+                background: "transparent",
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              <Mail size={16} />
+              Continue with a magic link
+            </button>
+
+            <Divider text="or" />
+
             {/* Signup form */}
             <form onSubmit={handleSignUp} className="space-y-4">
               <Input id="signup-name" label="Full Name" value={name} onChange={setName} placeholder="Zach Grether" />
@@ -385,7 +416,7 @@ export default function LoginClient() {
           <div className="space-y-5">
             <button
               type="button"
-              onClick={() => switchMode("signin")}
+              onClick={() => switchMode(magicLinkReturn)}
               className="flex items-center gap-1 text-sm hover:opacity-80"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
@@ -458,7 +489,7 @@ export default function LoginClient() {
               </button>
               <button
                 type="button"
-                onClick={() => switchMode("signin")}
+                onClick={() => switchMode(magicLinkReturn)}
                 className="w-full text-sm hover:underline"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
