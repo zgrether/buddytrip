@@ -22,7 +22,7 @@ these tokens.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-base` | `--color-bt-base` |
-| Value | `#d8e0e8` (cool grey — noticeably grey on any display) | `#0a1628` |
+| Value | `#d8e0e8` (cool grey — noticeably grey on any display) | `#0a0e1a` |
 
 **Use:** outermost page/layout background. Applied to `body`.
 **Examples:** trip page, dashboard, login page.

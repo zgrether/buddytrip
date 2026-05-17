@@ -77,8 +77,8 @@
 
 /* ── Dark mode ────────────────────────────────────────────────────────── */
 .dark {
-  --color-bt-base: #0a1628;          /* navy base — richer than slate-900 */
-  --color-bt-base-alt: #0a1628;
+  --color-bt-base: #0a0e1a;          /* deep navy — matches marketing page */
+  --color-bt-base-alt: #0a0e1a;
   --color-bt-card: #111f36;          /* navy card — noticeably different from base */
   --color-bt-border: #1e3a5f;        /* navy border */
   --color-bt-text: #f1f5f9;          /* slate-100 */
