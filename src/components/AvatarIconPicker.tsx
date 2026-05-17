@@ -107,28 +107,39 @@ export function AvatarIconPicker({ value, onChange, showSaved }: AvatarIconPicke
         })}
       </div>
 
-      {/* ── Footer bar ────────────────────────────────────────── */}
+      {/* ── Footer bar ────────────────────────────────────────────
+           Left always shows the current avatar label (no swapping).
+           Right side hosts "Clear" (when an icon is selected); a brief
+           "Saved ✓" flash temporarily replaces Clear after a successful
+           mutation, then Clear returns. */}
       <div
         className="flex items-center justify-between px-3 py-2.5"
         style={{ borderTop: "0.5px solid var(--color-bt-border)" }}
       >
         <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          {showSaved
-            ? "Saved"
-            : value
-            ? `Avatar: ${currentLabel ?? value}`
-            : "Avatar: Initials"}
+          {value ? `Avatar: ${currentLabel ?? value}` : "Avatar: Initials"}
         </span>
-        {value ? (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="text-[11px] font-medium hover:underline"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            Clear
-          </button>
-        ) : null}
+        <span className="flex items-center gap-2 text-[11px]">
+          {showSaved && (
+            <span
+              className="inline-flex items-center gap-1 font-medium transition-opacity"
+              style={{ color: "var(--color-bt-accent)" }}
+              aria-live="polite"
+            >
+              ✓ Saved
+            </span>
+          )}
+          {value && !showSaved ? (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="font-medium hover:underline"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </span>
       </div>
     </div>
   );
