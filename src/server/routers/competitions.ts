@@ -55,7 +55,6 @@ export const competitionsRouter = router({
         tripId: z.string(),
         name: z.string().min(2).max(200),
         tagline: z.string().max(500).optional(),
-        motto: z.string().max(500).optional(),
       })
     )
     .use(requireTripRole("Planner"))
@@ -83,7 +82,6 @@ export const competitionsRouter = router({
           trip_id: ctx.tripId,
           name: input.name,
           tagline: input.tagline ?? null,
-          motto: input.motto ?? null,
         })
         .select("id")
         .single();
@@ -121,7 +119,6 @@ export const competitionsRouter = router({
         competitionId: z.string(),
         name: z.string().min(2).max(200).optional(),
         tagline: z.string().max(500).nullable().optional(),
-        motto: z.string().max(500).nullable().optional(),
         status: z.enum(["upcoming", "active", "completed"]).optional(),
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
       })
@@ -131,7 +128,6 @@ export const competitionsRouter = router({
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.name !== undefined) patch.name = input.name;
       if (input.tagline !== undefined) patch.tagline = input.tagline;
-      if (input.motto !== undefined) patch.motto = input.motto;
       if (input.status !== undefined) patch.status = input.status;
       if (input.scoreboardStyle !== undefined) patch.scoreboard_style = input.scoreboardStyle;
 

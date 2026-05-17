@@ -64,10 +64,10 @@ describe("competitions router", () => {
     const updated = await plannerCaller.competitions.update({
       tripId,
       competitionId: existing!.id,
-      motto: "If you're not first, you're last",
+      tagline: "If you're not first, you're last",
       status: "active",
     });
-    expect(updated.motto).toBe("If you're not first, you're last");
+    expect(updated.tagline).toBe("If you're not first, you're last");
     expect(updated.status).toBe("active");
   });
 
