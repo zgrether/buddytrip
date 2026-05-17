@@ -19,6 +19,8 @@ import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
 import { TopNav } from "@/components/TopNav";
 import { Avatar } from "@/components/Avatar";
 import { AvatarIconPicker } from "@/components/AvatarIconPicker";
+import { NotificationsPanel } from "@/components/profile/NotificationsPanel";
+import { ArchivedIdeasPanel } from "@/components/profile/ArchivedIdeasPanel";
 import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -139,12 +141,13 @@ export default function ProfilePage() {
         {/* ── Main scroll container ───────────────────────────────────── */}
         <main className="w-full md:flex-1">
           <div className="mx-auto max-w-2xl pb-24 md:pt-8">
-            {/* Mobile shows everything. Desktop only shows the section that
-                matches the active sidebar tab; everything else is hidden. */}
+            {/* Mobile shows everything stacked. Desktop renders only the
+                section matching the active sidebar tab. */}
 
-            {/* AVATAR HERO + PICKER + COMPETITION PREVIEW + PROFILE */}
-            {(activeTab === "profile" || true) /* always on mobile */ && (
-              <div className={activeTab === "profile" ? "block" : "hidden md:block"}>
+            {/* AVATAR HERO + PICKER + COMPETITION PREVIEW + PROFILE
+                Mobile: always visible. Desktop: visible only when the
+                Profile tab is active (otherwise hidden at md+). */}
+            <div className={activeTab === "profile" ? "block" : "md:hidden"}>
                 <AvatarHero
                   name={displayName}
                   email={me.email}
@@ -235,15 +238,20 @@ export default function ProfilePage() {
                   </div>
                 </Section>
               </div>
-            )}
 
-            {/* PREFERENCES (Notifications + Idea archive) — desktop tab handles split */}
-            {(activeTab === "notifications" || activeTab === "ideas") && (
-              <div className="hidden md:block">
-                <PreferencesPanel
-                  onOpenNotifications={() => router.push("/profile/notifications")}
-                  onOpenArchive={() => router.push("/profile/archived-ideas")}
-                />
+            {/* Desktop-only inline panels — render the actual page content
+                inside the main area when its sidebar tab is active.
+                Mobile path still navigates to dedicated /profile/notifications
+                and /profile/archived-ideas routes via the Preferences card
+                below. */}
+            {activeTab === "notifications" && (
+              <div className="hidden px-4 md:block">
+                <NotificationsPanel />
+              </div>
+            )}
+            {activeTab === "ideas" && (
+              <div className="hidden px-4 md:block">
+                <ArchivedIdeasPanel />
               </div>
             )}
 
@@ -661,41 +669,10 @@ function SidebarItem({
   );
 }
 
-// ── Desktop preferences panel ─────────────────────────────────────────────
-
-function PreferencesPanel({
-  onOpenNotifications,
-  onOpenArchive,
-}: {
-  onOpenNotifications: () => void;
-  onOpenArchive: () => void;
-}) {
-  return (
-    <Section label="Preferences">
-      <div
-        className="overflow-hidden rounded-xl"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <SettingsRow
-          icon={<IconBell size={16} stroke={1.75} />}
-          label="Notifications"
-          sub="Manage what alerts you receive"
-          onClick={onOpenNotifications}
-        />
-        <SettingsRow
-          icon={<IconArchive size={16} stroke={1.75} />}
-          label="Idea archive"
-          sub="Saved destinations for future trips"
-          onClick={onOpenArchive}
-          lastRow
-        />
-      </div>
-    </Section>
-  );
-}
+// (PreferencesPanel removed — desktop now renders the full
+// NotificationsPanel / ArchivedIdeasPanel inline in the main area when
+// their sidebar tab is active. Mobile still uses the Preferences card
+// with rows that navigate to the dedicated pages.)
 
 // ── Sheets ────────────────────────────────────────────────────────────────
 
