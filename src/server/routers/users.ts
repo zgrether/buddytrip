@@ -9,7 +9,7 @@ export const usersRouter = router({
   getMe: authedProcedure.query(async ({ ctx }) => {
     const { data, error } = await ctx.supabase
       .from("users")
-      .select("id, name, nickname, email, avatar_url")
+      .select("id, name, nickname, email, avatar_url, avatar_icon")
       .eq("id", ctx.user.id)
       .single();
 
@@ -51,13 +51,42 @@ export const usersRouter = router({
         .from("users")
         .update(update)
         .eq("id", ctx.user.id)
-        .select("id, name, nickname, email, avatar_url")
+        .select("id, name, nickname, email, avatar_url, avatar_icon")
         .single();
 
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update profile",
+        });
+      }
+
+      return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // updateAvatar — set or clear the current user's Tabler avatar icon
+  //   Pass a string (e.g. "flag-2") to set; pass null to revert to initials.
+  //   Returns the updated row so the client can refresh its `getMe` cache.
+  // -----------------------------------------------------------------------
+  updateAvatar: authedProcedure
+    .input(
+      z.object({
+        avatarIcon: z.string().max(50).nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("users")
+        .update({ avatar_icon: input.avatarIcon })
+        .eq("id", ctx.user.id)
+        .select("id, name, nickname, email, avatar_url, avatar_icon")
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update avatar",
         });
       }
 
