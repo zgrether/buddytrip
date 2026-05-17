@@ -15,8 +15,10 @@ import {
   FileText,
   MessageCircle,
 } from "lucide-react";
-import { ThemeToggle } from "./ThemeToggle";
+import { IconLayoutGrid } from "@tabler/icons-react";
 import { UserMenu } from "./UserMenu";
+import { TripSwitcher } from "./TripSwitcher";
+import { trpc } from "@/lib/trpc-client";
 import { getNotificationText, relativeTime } from "@/lib/notificationText";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 
@@ -69,7 +71,15 @@ export const TopNav: FC<TopNavProps> = ({
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Hide the trip switcher entirely when the user has no trips — the
+  // empty-state hero already exposes "New trip" as the primary CTA, so
+  // an extra switcher button just opens an empty panel. TanStack Query
+  // dedupes against the same query the page may already be running.
+  const { data: tripsForSwitcher } = trpc.trips.list.useQuery();
+  const showSwitcher = (tripsForSwitcher?.length ?? 0) > 0;
 
   // Close on outside click
   useEffect(() => {
@@ -130,7 +140,40 @@ export const TopNav: FC<TopNavProps> = ({
         {title}
       </button>
 
-      <div className="flex items-center gap-2">
+      <div className="relative flex items-center gap-2">
+        {/* Trip switcher trigger + panel — rendered only when the user
+            has at least one trip. With no trips the panel would just
+            show "New trip" / "View all trips" links which are already
+            exposed elsewhere (the empty-state hero CTA + Dashboard). */}
+        {showSwitcher && (
+          <>
+            <button
+              type="button"
+              aria-label="My trips"
+              aria-haspopup="dialog"
+              aria-expanded={switcherOpen}
+              data-testid="trip-switcher-trigger"
+              data-trip-switcher-trigger="true"
+              onClick={() => setSwitcherOpen((p) => !p)}
+              className="flex h-7 w-7 items-center justify-center rounded-md transition-colors md:h-8 md:w-8 md:rounded-lg"
+              style={
+                switcherOpen
+                  ? {
+                      background: "rgba(45, 212, 191, 0.12)",
+                      color: "var(--color-bt-accent)",
+                    }
+                  : {
+                      background: "transparent",
+                      color: "var(--color-bt-text-dim)",
+                    }
+              }
+            >
+              <IconLayoutGrid size={18} stroke={1.75} />
+            </button>
+            <TripSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
+          </>
+        )}
+
         {tripId && onOpenChat && (
           <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
         )}
@@ -277,7 +320,6 @@ export const TopNav: FC<TopNavProps> = ({
           )}
         </div>
 
-        <ThemeToggle />
         <UserMenu />
       </div>
     </header>

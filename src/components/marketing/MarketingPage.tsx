@@ -32,7 +32,7 @@ export function MarketingPage() {
   );
 }
 
-const MARKETING_CSS = `
+export const MARKETING_CSS = `
 /* ───────────── Root + page shell ───────────── */
 .bt-mkt-root {
   background: #0a0e1a;

@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ChevronDown, ChevronRight, Plane } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { TopNav } from "@/components/TopNav";
 import { TripCard } from "@/components/TripCard";
+import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
 import { getTripStatus, type TripStatus } from "@/components/StatusBadge";
 import type { TripRole } from "@/server/middleware";
 
@@ -164,57 +165,39 @@ export default function DashboardClient() {
         onMarkAllRead={handleMarkAllRead}
       />
 
-      <main className="mx-auto max-w-[896px] px-4 pb-24 pt-4">
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="mb-6 flex items-end justify-between">
-          <div>
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Welcome back{me?.name ? `, ${me.name.split(" ")[0]}` : ""}
-            </p>
-            <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-              My Trips
-            </h1>
-          </div>
-          <button
-            onClick={() => router.push("/trips/new")}
-            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            <Plus size={16} />
-            New Trip
-          </button>
-        </div>
-
-        {!hasAnyTrips ? (
-          /* ── Empty state ─────────────────────────────────────────────────── */
-          <div
-            data-testid="empty-state"
-            className="mt-16 flex flex-col items-center gap-4 text-center"
-          >
-            <div
-              className="flex h-20 w-20 items-center justify-center rounded-full"
-              style={{ background: "var(--color-bt-card)" }}
-            >
-              <Plane size={36} style={{ color: "var(--color-bt-accent)" }} />
+      <main
+        className={`mx-auto max-w-[896px] px-4 pb-24 ${hasAnyTrips ? "pt-4" : ""}`}
+      >
+        {/* ── Header — hidden when the user has no trips. The empty
+            state has its own centered "New trip" CTA, so the welcome
+            line + header button would just be redundant chrome. */}
+        {hasAnyTrips && (
+          <div className="mb-6 flex items-end justify-between">
+            <div>
+              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                Welcome back{me?.name ? `, ${me.name.split(" ")[0]}` : ""}
+              </p>
+              <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+                My Trips
+              </h1>
             </div>
-            <h2
-              className="text-xl font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              No trips yet
-            </h2>
-            <p className="max-w-xs text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Create your first group trip and start planning together.
-            </p>
             <button
-              data-testid="create-first-trip"
               onClick={() => router.push("/trips/new")}
-              className="mt-2 flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
-              <Plus size={18} />
-              Create a Trip
+              New trip
             </button>
+          </div>
+        )}
+
+        {!hasAnyTrips ? (
+          /* ── Empty state ─────────────────────────────────────────────────
+             Single source of truth — root `/` redirects here when authed
+             with no trips, and a direct `/dashboard` visit shows the
+             same body. */
+          <div data-testid="empty-state">
+            <AuthenticatedEmptyState />
           </div>
         ) : (
           /* ── Trip sections ───────────────────────────────────────────────── */
@@ -242,14 +225,6 @@ export default function DashboardClient() {
               <TripSection
                 label="Ideas"
                 trips={sections.idea}
-                unreadByTrip={unreadByTrip}
-              />
-            )}
-
-            {sections.saved.length > 0 && (
-              <TripSection
-                label="Saved"
-                trips={sections.saved}
                 unreadByTrip={unreadByTrip}
               />
             )}

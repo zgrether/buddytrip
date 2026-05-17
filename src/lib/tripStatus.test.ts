@@ -2,10 +2,13 @@ import { describe, it, expect } from "vitest";
 import { getEffectiveStatus, countdownLabel } from "./tripStatus";
 
 describe("getEffectiveStatus", () => {
-  it("returns 'saved' when trip_status_override is 'saved'", () => {
+  // The 'saved' status override has been retired (see tripStatus.ts).
+  // Pre-existing rows with trip_status_override='saved' now fall through
+  // to their natural stage/date-derived status — verify that here.
+  it("ignores legacy trip_status_override='saved' and uses stage instead", () => {
     expect(
       getEffectiveStatus({ trip_status_override: "saved", stage: "going" })
-    ).toBe("saved");
+    ).toBe("going");
   });
 
   it("returns 'past' when end_date + 3 days is in the past", () => {

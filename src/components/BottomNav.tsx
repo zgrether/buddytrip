@@ -32,7 +32,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
 
   const items: NavItem[] = [
     { id: "home", label: "Home", Icon: Home, href: "/dashboard" },
-    { id: "new", label: "New Trip", Icon: Plus, href: "/trips/new" },
+    { id: "new", label: "New trip", Icon: Plus, href: "/trips/new" },
     {
       id: "live",
       label: "Live",

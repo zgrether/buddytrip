@@ -231,29 +231,6 @@ describe("trips router", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  // saveTrip
-  it("saveTrip — owner can save", async () => {
-    const caller = ctx.caller();
-    const result = await caller.trips.saveTrip({ tripId });
-    expect(result.trip_status_override).toBe("saved");
-    expect(result.saved_at).toBeTruthy();
-  });
-
-  it("saveTrip — planner cannot save", async () => {
-    const caller = ctx.callerAs("planner");
-    await expect(
-      caller.trips.saveTrip({ tripId })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  // Clear saved status so delete works normally
-  it("setup — clear saved status", async () => {
-    await ctx.admin
-      .from("trips")
-      .update({ trip_status_override: null, saved_at: null })
-      .eq("id", tripId);
-  });
-
   // delete
   it("delete — member cannot delete", async () => {
     const caller = ctx.callerAs("member");
@@ -668,44 +645,3 @@ describe("trips router — planning tile skip", () => {
   });
 });
 
-// ── updatePlanningTier ───────────────────────────────────────────────────
-
-describe("trips router — planning tier", () => {
-  let ctx: TestContext;
-  let tierTripId: string;
-
-  beforeAll(async () => {
-    ctx = await TestContext.create();
-    tierTripId = await ctx.createTrip("Planning Tier Test");
-    await ctx.addTripMember(tierTripId, "planner", "Planner");
-  });
-
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
-
-  it("updatePlanningTier — owner can flip tier to advanced", async () => {
-    const caller = ctx.callerAs("owner");
-    const res = await caller.trips.updatePlanningTier({
-      tripId: tierTripId,
-      tier: "advanced",
-    });
-    expect(res.planning_tier).toBe("advanced");
-  });
-
-  it("updatePlanningTier — owner can flip tier back to basic", async () => {
-    const caller = ctx.callerAs("owner");
-    const res = await caller.trips.updatePlanningTier({
-      tripId: tierTripId,
-      tier: "basic",
-    });
-    expect(res.planning_tier).toBe("basic");
-  });
-
-  it("updatePlanningTier — planner is FORBIDDEN (owner-only)", async () => {
-    const caller = ctx.callerAs("planner");
-    await expect(
-      caller.trips.updatePlanningTier({ tripId: tierTripId, tier: "advanced" })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-});

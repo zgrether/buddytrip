@@ -68,7 +68,10 @@ function nextSunday(date: Date): Date {
  * 6. 'idea' — default
  */
 export function getEffectiveStatus(trip: TripStatusFields): TripDisplayStatus {
-  if (trip.trip_status_override === "saved") return "saved";
+  // The 'saved' status override has been retired (the user-facing "save
+  // trip" feature was removed). Any pre-existing rows with
+  // trip_status_override='saved' now fall through to their natural
+  // stage/date-derived status instead.
 
   const now = new Date();
   now.setHours(0, 0, 0, 0);

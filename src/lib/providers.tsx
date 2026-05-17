@@ -40,7 +40,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+    // App is locked to dark mode for now. The next-themes provider stays
+    // in place (and forcedTheme overrides every other source — storage,
+    // system preference, any stray setTheme call) so we can add the
+    // competition outdoor-mode toggle later without rewiring providers.
+    <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark">
       <AuthProvider queryClient={queryClient}>
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

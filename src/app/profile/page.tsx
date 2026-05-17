@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import {
@@ -11,7 +11,6 @@ import {
   IconArchive,
   IconLogout,
   IconTrash,
-  IconPencil,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
@@ -89,11 +88,6 @@ export default function ProfilePage() {
     null
   );
 
-  // ── Picker scroll-to ref for the avatar edit badge ────────────────────
-  const pickerRef = useRef<HTMLDivElement>(null);
-  const scrollToPicker = () => {
-    pickerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
 
   // ── OAuth detection ───────────────────────────────────────────────────
   const isGoogleUser = authUser?.app_metadata?.provider === "google";
@@ -152,17 +146,14 @@ export default function ProfilePage() {
                   name={displayName}
                   email={me.email}
                   avatarIcon={me.avatar_icon}
-                  onEdit={scrollToPicker}
                 />
 
                 <Section label="Avatar icon" mobileOnlyLabel>
-                  <div ref={pickerRef}>
-                    <AvatarIconPicker
-                      value={me.avatar_icon ?? null}
-                      onChange={(iconId) => updateAvatar.mutate({ avatarIcon: iconId })}
-                      showSaved={savedFlash}
-                    />
-                  </div>
+                  <AvatarIconPicker
+                    value={me.avatar_icon ?? null}
+                    onChange={(iconId) => updateAvatar.mutate({ avatarIcon: iconId })}
+                    showSaved={savedFlash}
+                  />
                 </Section>
 
                 <Section label="Competition preview">
@@ -482,31 +473,16 @@ function AvatarHero({
   name,
   email,
   avatarIcon,
-  onEdit,
 }: {
   name: string;
   email: string | null;
   avatarIcon: string | null;
-  onEdit: () => void;
 }) {
   return (
     <>
       {/* Mobile: centered column */}
       <div className="flex flex-col items-center px-4 pb-4 pt-6 md:hidden">
-        <div className="relative">
-          <button type="button" onClick={onEdit} aria-label="Edit avatar icon">
-            <Avatar name={name} avatarIcon={avatarIcon} size="lg" />
-          </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label="Edit avatar icon"
-            className="absolute -bottom-0.5 -right-0.5 flex h-[22px] w-[22px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
-            style={{ background: "var(--color-bt-accent)", color: "#0d1f1a" }}
-          >
-            <IconPencil size={12} stroke={2} />
-          </button>
-        </div>
+        <Avatar name={name} avatarIcon={avatarIcon} size="lg" />
         <p
           className="mt-3 text-[18px] font-medium"
           style={{ color: "var(--color-bt-text)" }}
@@ -525,20 +501,7 @@ function AvatarHero({
 
       {/* Desktop: flex row */}
       <div className="hidden items-center gap-4 px-4 pb-5 md:flex">
-        <div className="relative">
-          <button type="button" onClick={onEdit} aria-label="Edit avatar icon">
-            <Avatar name={name} avatarIcon={avatarIcon} size="lg" />
-          </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label="Edit avatar icon"
-            className="absolute -bottom-0.5 -right-0.5 flex h-[22px] w-[22px] items-center justify-center rounded-full transition-opacity hover:opacity-90"
-            style={{ background: "var(--color-bt-accent)", color: "#0d1f1a" }}
-          >
-            <IconPencil size={12} stroke={2} />
-          </button>
-        </div>
+        <Avatar name={name} avatarIcon={avatarIcon} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-medium" style={{ color: "var(--color-bt-text)" }}>
             {name}
@@ -585,7 +548,17 @@ function DesktopSidebar({
         background: "var(--color-bt-card)",
         borderRight: "0.5px solid var(--color-bt-border)",
         padding: "20px 0",
-        minHeight: "calc(100vh - 56px)",
+        // Stick to the viewport (below the 56px TopNav) and cap at one
+        // viewport height so the bottom block (Sign out / Delete) stays
+        // pinned to the bottom of the screen as the main panel scrolls.
+        // Without this, default flex `align-items: stretch` stretches
+        // the sidebar to match main content height, leaving the bottom
+        // items way down the page.
+        position: "sticky",
+        top: 56,
+        height: "calc(100vh - 56px)",
+        overflowY: "auto",
+        alignSelf: "flex-start",
       }}
     >
       <SidebarGroup label="Account">
