@@ -159,6 +159,7 @@
 
 html {
   background: var(--color-bt-base);
+  scroll-behavior: smooth;
 }
 
 body {
