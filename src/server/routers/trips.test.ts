@@ -231,29 +231,6 @@ describe("trips router", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  // saveTrip
-  it("saveTrip — owner can save", async () => {
-    const caller = ctx.caller();
-    const result = await caller.trips.saveTrip({ tripId });
-    expect(result.trip_status_override).toBe("saved");
-    expect(result.saved_at).toBeTruthy();
-  });
-
-  it("saveTrip — planner cannot save", async () => {
-    const caller = ctx.callerAs("planner");
-    await expect(
-      caller.trips.saveTrip({ tripId })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  // Clear saved status so delete works normally
-  it("setup — clear saved status", async () => {
-    await ctx.admin
-      .from("trips")
-      .update({ trip_status_override: null, saved_at: null })
-      .eq("id", tripId);
-  });
-
   // delete
   it("delete — member cannot delete", async () => {
     const caller = ctx.callerAs("member");

@@ -6,7 +6,6 @@ import { UserAvatar } from "@/components/UserAvatar";
 import {
   X,
   UserCheck,
-  Bookmark,
   Trash2,
   ChevronRight,
   Lock,
@@ -168,17 +167,6 @@ export function TripSettingsModal({
     (m) => m.user_id === selectedNewOwner
   )?.displayName;
 
-  // ── Save trip state ──────────────────────────────────────────────────
-  const [saveConfirming, setSaveConfirming] = useState(false);
-
-  const saveTripMutation = trpc.trips.saveTrip.useMutation({
-    onSuccess: () => {
-      utils.trips.list.invalidate();
-      utils.trips.getById.invalidate({ tripId });
-      onClose();
-    },
-  });
-
   // ── Delete trip state ────────────────────────────────────────────────
   const [deleteConfirming, setDeleteConfirming] = useState(false);
 
@@ -285,7 +273,6 @@ export function TripSettingsModal({
                       setDestExpanded(!destExpanded);
                       setDatesExpanded(false);
                       setTransferExpanded(false);
-                      setSaveConfirming(false);
                       setDestDraft(trip?.locked_destination_location ?? trip?.locked_destination_title ?? "");
                     }}
                     className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
@@ -385,7 +372,6 @@ export function TripSettingsModal({
                       setDatesExpanded(!datesExpanded);
                       setDestExpanded(false);
                       setTransferExpanded(false);
-                      setSaveConfirming(false);
                       setStartDraft(trip?.start_date ?? "");
                       setEndDraft(trip?.end_date ?? "");
                     }}
@@ -552,7 +538,6 @@ export function TripSettingsModal({
                 data-testid="settings-transfer-btn"
                 onClick={() => {
                   setTransferExpanded(!transferExpanded);
-                  setSaveConfirming(false);
                 }}
                 className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
                 style={{
@@ -675,97 +660,6 @@ export function TripSettingsModal({
               </div>
               <p className="text-sm" style={{ color: "var(--color-bt-text-dim)", opacity: 0.45 }}>
                 Transfer ownership
-              </p>
-            </div>
-          )}
-
-          {/* ── Save trip ──────────────────────────────────────────── */}
-          {isOwner ? (
-            <div>
-              <button
-                data-testid="settings-save-trip-btn"
-                onClick={() => {
-                  setSaveConfirming(!saveConfirming);
-                  setTransferExpanded(false);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  borderColor: "var(--color-bt-border)",
-                }}
-              >
-                <div
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: "rgba(96,165,250,0.12)" }}
-                >
-                  <Bookmark size={16} style={{ color: "#60a5fa" }} />
-                </div>
-                <div className="min-w-0 flex-1 text-left">
-                  <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                    Save trip
-                  </p>
-                  <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    Preserve this trip indefinitely
-                  </p>
-                </div>
-                <ChevronRight
-                  size={16}
-                  style={{
-                    color: "var(--color-bt-text-dim)",
-                    transform: saveConfirming ? "rotate(90deg)" : undefined,
-                    transition: "transform 150ms",
-                  }}
-                />
-              </button>
-
-              {saveConfirming && (
-                <div className="mt-2 space-y-2 rounded-xl border p-3" style={{ borderColor: "var(--color-bt-border)" }}>
-                  <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                    This trip will move to your Saved section and stay there permanently.
-                  </p>
-                  <button
-                    data-testid="settings-confirm-save-btn"
-                    disabled={saveTripMutation.isPending}
-                    onClick={() => saveTripMutation.mutate({ tripId })}
-                    className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-                    style={{
-                      background: "var(--color-bt-accent)",
-                      color: "var(--color-bt-base)",
-                    }}
-                  >
-                    {saveTripMutation.isPending ? "Saving…" : "Save trip"}
-                  </button>
-                  <button
-                    onClick={() => setSaveConfirming(false)}
-                    className="w-full rounded-xl border py-2 text-sm"
-                    style={{
-                      borderColor: "var(--color-bt-border)",
-                      color: "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Locked save row (planner) */
-            <div
-              className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                borderColor: "var(--color-bt-border)",
-                opacity: 0.5,
-              }}
-            >
-              <div
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "var(--color-bt-border)" }}
-              >
-                <Lock size={16} style={{ color: "var(--color-bt-text-dim)" }} />
-              </div>
-              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)", opacity: 0.45 }}>
-                Save trip
               </p>
             </div>
           )}

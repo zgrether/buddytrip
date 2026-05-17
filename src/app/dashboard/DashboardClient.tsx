@@ -229,14 +229,6 @@ export default function DashboardClient() {
               />
             )}
 
-            {sections.saved.length > 0 && (
-              <TripSection
-                label="Saved"
-                trips={sections.saved}
-                unreadByTrip={unreadByTrip}
-              />
-            )}
-
             {/* Past — collapsible */}
             {sections.past.length > 0 && (
               <div>

@@ -423,33 +423,6 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // saveTrip — Owner only, moves trip to Saved section
-  // -----------------------------------------------------------------------
-  saveTrip: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx }) => {
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({
-          trip_status_override: "saved",
-          saved_at: new Date().toISOString(),
-        })
-        .eq("id", ctx.tripId)
-        .select()
-        .single();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to save trip",
-        });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
   // lockDates — Owner or Planner can set dates directly (no poll)
   // -----------------------------------------------------------------------
   lockDates: authedProcedure
