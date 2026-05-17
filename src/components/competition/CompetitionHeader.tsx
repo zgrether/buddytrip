@@ -9,7 +9,6 @@ interface Competition {
   name: string;
   tagline: string | null;
   status: "upcoming" | "active" | "completed";
-  // motto column still exists in the DB but the UI no longer reads it.
 }
 
 const STATUS_CHIP: Record<

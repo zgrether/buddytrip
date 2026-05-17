@@ -29,9 +29,6 @@ interface Props {
  * tagline. Team count is no longer set here; teams are added directly
  * via TeamsPanel (which auto-expands after creation). competition_type
  * (RYDER_CUP vs NORMAL) is derived at render time from teams.length === 2.
- *
- * The DB still has a `motto` column but the UI no longer reads or
- * writes it; left in place so old rows aren't lost.
  */
 export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel }: Props) {
   const isEdit = !!competition;

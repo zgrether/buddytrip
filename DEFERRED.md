@@ -142,21 +142,6 @@ tappable to open a hole-by-hole view with non-editable cells.
 
 ---
 
-### RSVP blast email (Task B — separate spec)
-
-When owner advances to GOING, send RSVP email to all crew members.
-Email includes trip details (destination, dates, RSVP message) and
-a link to the trip. Currently stubbed with console.log.
-
-**Also includes:**
-- In/Maybe/Out RSVP tracking on crew tab
-- RSVP panel on Home tab with selectors
-- Headcount summary chip in crew tab header (GOING/NOW stage)
-
-**Depends on:** stage model (done), Resend email integration (done).
-
----
-
 ## v2 / Post-Launch
 
 Lower priority items. Build after core planning flows are stable and
@@ -177,14 +162,6 @@ and UI dismiss button on each notification row.
 Current schedule is a flat drag-and-drop list with optional date fields.
 A proper calendar/day view would group items by trip day and show a
 timeline. Requires locked start/end dates and day derivation logic.
-
----
-
-### Logistics — confirmed/tentative toggle
-
-Logistics items currently have no confirmed state. Add is_confirmed
-boolean matching schedule items pattern, with READY stage alert for
-unconfirmed logistics.
 
 ---
 
@@ -253,17 +230,6 @@ deleted — no save/archive mechanism exists.
 
 ---
 
-### Remove ideaComments tRPC router (dead code)
-
-The `ideaComments` router (`src/server/routers/ideaComments.ts`) and `idea_comments`
-table are dead code after the idea zone integration removed per-idea chat threads
-in favour of the trip-level crew chat. The router, its test file, and the table can
-be deleted once confirmed no other feature depends on them.
-
-**When:** next cleanup pass.
-
----
-
 ### Quick Score (no-auth scorecard)
 
 Standalone scorecard for any game, no account required. Homepage CTA:
@@ -322,6 +288,11 @@ current user's trips. Show as avatar chips on the Crew tab for quick-add.
 **Spec:** was in TRIP_PLANNING_SPECS.md Spec 3. Hook design and UI
 layout are fully specified there.
 
+**Status:** the previous implementation (`useFrequentTripmates` hook
+and `users.frequentTripmates` tRPC procedure) was deleted in the
+pre-launch cleanup pass — neither was wired to any UI. If this feature
+is revived, both will need to be rebuilt from scratch.
+
 ---
 
 ### Claude API destination suggestions
@@ -331,6 +302,11 @@ TripNew's "Let's put it to a vote" path was designed to call Claude for
 entry only.
 
 **Effort:** low — API call spec was fully written. Nice-to-have.
+
+**Status:** the stub route (`/api/ai/suggest-destinations`) and
+`lib/ai/suggestDestinations.ts` (which called the Anthropic SDK) were
+deleted in the pre-launch cleanup pass — they had no UI caller. Rebuild
+from the spec when ready.
 
 ---
 

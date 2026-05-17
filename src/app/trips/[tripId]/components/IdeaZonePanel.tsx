@@ -23,7 +23,7 @@ import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { temporalGradient } from "@/lib/temporalGradient";
-import { CatalogBrowser } from "../compare/CatalogBrowser";
+import { CatalogBrowser } from "./CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
@@ -1711,7 +1711,6 @@ export function CoPlannerPanel({
             allowInvite
             showSearchIcon
             placeholder="Search by email..."
-            frequentTripmates={[]}
           />
         </div>
       )}
@@ -1823,7 +1822,6 @@ function MobileCoPlannerSheet({
                 allowInvite
                 showSearchIcon
                 placeholder="Search by email..."
-                frequentTripmates={[]}
               />
             </div>
           )}

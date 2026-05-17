@@ -71,20 +71,6 @@ describe("trips router", () => {
     await expect(caller.trips.getById({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // update
-  it("update — planner can edit trip", async () => {
-    const caller = ctx.callerAs("planner");
-    const updated = await caller.trips.update({ tripId, title: "Updated Title" });
-    expect(updated.title).toBe("Updated Title");
-  });
-
-  it("update — member cannot edit trip", async () => {
-    const caller = ctx.callerAs("member");
-    await expect(
-      caller.trips.update({ tripId, title: "Hacked" })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
   // lockDestination / unlockDestination
   it("lockDestination — owner can lock", async () => {
     const caller = ctx.caller();
@@ -601,50 +587,6 @@ describe("datePoll router — setPollMode", () => {
       .eq("id", clearTripId)
       .single();
     expect(tripRow?.poll_mode).toBe(false);
-  });
-});
-
-// ── setOwnerAlert ──────────────────────────────────────────────────────
-
-describe("trips router — setOwnerAlert", () => {
-  let ctx: TestContext;
-  let alertTripId: string;
-
-  beforeAll(async () => {
-    ctx = await TestContext.create();
-    alertTripId = await ctx.createTrip("Alert Test");
-    await ctx.addTripMember(alertTripId, "planner", "Planner");
-  });
-
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
-
-  it("setOwnerAlert — owner can set alert", async () => {
-    const caller = ctx.caller();
-    const result = await caller.trips.setOwnerAlert({
-      tripId: alertTripId,
-      alert: "Flight delayed — meet at bar instead",
-    });
-    expect(result.owner_alert).toBe("Flight delayed — meet at bar instead");
-    expect(result.owner_alert_set_at).toBeTruthy();
-  });
-
-  it("setOwnerAlert — owner can clear alert", async () => {
-    const caller = ctx.caller();
-    const result = await caller.trips.setOwnerAlert({
-      tripId: alertTripId,
-      alert: null,
-    });
-    expect(result.owner_alert).toBeNull();
-    expect(result.owner_alert_set_at).toBeNull();
-  });
-
-  it("setOwnerAlert — planner cannot set alert", async () => {
-    const caller = ctx.callerAs("planner");
-    await expect(
-      caller.trips.setOwnerAlert({ tripId: alertTripId, alert: "Nope" })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
 

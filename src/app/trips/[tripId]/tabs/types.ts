@@ -32,9 +32,6 @@ export interface TripData {
   travel_plans_crew_visible?: boolean | null;
   /** Set true when owner Xs out the Quick Info empty state on the home tab. */
   quick_info_dismissed?: boolean | null;
-  owner_alert?: string | null;
-  owner_alert_set_at?: string | null;
-  owner_alert_set_by?: string | null;
   trip_status_override?: string | null;
   series_id?: string | null;
   created_at?: string | null;

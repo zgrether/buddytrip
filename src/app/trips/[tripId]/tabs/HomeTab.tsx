@@ -27,7 +27,6 @@ export function HomeTab({
   actionCenterTitleAction,
 }: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
   trpc.ideas.list.useQuery({ tripId: trip.id });
-  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId: trip.id });
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId: trip.id });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
 
@@ -36,10 +35,10 @@ export function HomeTab({
 
   // hasItineraryContent — drives the locked vs invitation state on
   // ItineraryPanel. True when ANY of dates / lodging / schedule / shared
-  // travel exists.
+  // travel exists. (Previously also ORed in reservations.length > 0;
+  // the reservations table is dead, that term was always false.)
   const hasItineraryContent =
     !!trip.start_date ||
-    reservations.length > 0 ||
     scheduleItems.length > 0 ||
     (members as Array<{ travel_mode?: string | null }>).some((m) => !!m.travel_mode);
 

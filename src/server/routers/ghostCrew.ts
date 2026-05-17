@@ -1,57 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripRole } from "../middleware";
 
 export const ghostCrewRouter = router({
-  // -----------------------------------------------------------------------
-  // list — all guest users for a trip (any member can view)
-  // -----------------------------------------------------------------------
-  list: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripMember)
-    .query(async ({ ctx }) => {
-      const { data: memberRows, error: mErr } = await ctx.supabase
-        .from("trip_members")
-        .select("user_id, role")
-        .eq("trip_id", ctx.tripId);
-
-      if (mErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch members",
-        });
-      }
-
-      const userIds = (memberRows ?? []).map((m) => m.user_id).filter(Boolean) as string[];
-      if (userIds.length === 0) return [];
-
-      const { data: users, error: uErr } = await ctx.supabase
-        .from("users")
-        .select("id, name, nickname, email, is_guest, created_at")
-        .in("id", userIds)
-        .eq("is_guest", true);
-
-      if (uErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch guest users",
-        });
-      }
-
-      const roleMap = new Map((memberRows ?? []).map((m) => [m.user_id, m.role]));
-
-      return (users ?? []).map((u) => ({
-        id: u.id,
-        name: u.name,
-        nickname: u.nickname,
-        email: u.email,
-        role: roleMap.get(u.id) ?? "Member",
-        is_guest: u.is_guest,
-        created_at: u.created_at,
-      }));
-    }),
-
   // -----------------------------------------------------------------------
   // create — add a guest user and add them to the trip (Planner+)
   //

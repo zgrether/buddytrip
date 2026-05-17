@@ -19,12 +19,6 @@ export interface CrewSearchInputProps {
   /** Show search icon in the input */
   showSearchIcon?: boolean;
   onAdded?: () => void;
-  frequentTripmates?: Array<{
-    id: string;
-    name: string | null;
-    nickname: string | null;
-    email: string;
-  }>;
 }
 
 type SearchState =
@@ -43,7 +37,6 @@ export function CrewSearchInput({
   showSearchIcon = false,
   placeholder = "email@example.com",
   onAdded,
-  frequentTripmates = [],
 }: CrewSearchInputProps) {
   const [email, setEmail] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -114,10 +107,6 @@ export function CrewSearchInput({
   }
 
   function handleAddFound(userId: string) {
-    addMember.mutate({ tripId, userId, role: defaultRole, status: defaultStatus });
-  }
-
-  function handleFrequentAdd(userId: string) {
     addMember.mutate({ tripId, userId, role: defaultRole, status: defaultStatus });
   }
 
@@ -203,29 +192,6 @@ export function CrewSearchInput({
 
   return (
     <div className="space-y-2">
-      {/* Frequent tripmates chips */}
-      {frequentTripmates.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {frequentTripmates.map((user) => (
-            <button
-              key={user.id}
-              onClick={() => handleFrequentAdd(user.id)}
-              disabled={addMember.isPending}
-              className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
-              style={{
-                background: "var(--color-bt-tag-bg)",
-                color: "var(--color-bt-accent)",
-                border: "1px solid color-mix(in srgb, var(--color-bt-accent) 30%, transparent)",
-              }}
-            >
-              <UserAvatar name={displayName(user)} avatarUrl={null} sizePx={16} />
-              {user.nickname ?? user.name?.split(" ")[0]}
-              <Plus size={10} />
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Email input + Find button */}
       <div className="flex gap-1.5">
         <div className="relative flex-1">

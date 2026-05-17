@@ -182,69 +182,6 @@ describe("datePoll router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("voteOnBehalf — planner can vote for ghost member", async () => {
-    // Create a ghost user
-    const ghostId = genId("ghost");
-    await ctx.admin.from("users").insert({
-      id: ghostId,
-      name: "Ghost Mike",
-      is_guest: true,
-      created_by: ctx.user.id,
-    });
-    await ctx.admin.from("trip_members").insert({
-      trip_id: tripId,
-      user_id: ghostId,
-      role: "Member",
-      status: "in",
-    });
-
-    const caller = ctx.caller();
-    const result = await caller.datePoll.voteOnBehalf({
-      tripId,
-      userId: ghostId,
-      votes: [
-        { windowId, answer: "yes" },
-        { windowId: window2Id, answer: "maybe" },
-      ],
-    });
-    expect(result.success).toBe(true);
-
-    // Verify votes are recorded
-    const poll = await caller.datePoll.get({ tripId });
-    const win1 = poll.windows.find((w) => w.id === windowId);
-    const win2 = poll.windows.find((w) => w.id === window2Id);
-    expect(win1?.votes.find((v) => v.user_id === ghostId)?.answer).toBe("yes");
-    expect(win2?.votes.find((v) => v.user_id === ghostId)?.answer).toBe("maybe");
-
-    // Clean up ghost
-    await ctx.admin.from("trip_members").delete().eq("user_id", ghostId).eq("trip_id", tripId);
-    await ctx.admin.from("date_poll_votes").delete().eq("user_id", ghostId);
-    await ctx.admin.from("users").delete().eq("id", ghostId);
-  });
-
-  it("voteOnBehalf — cannot vote for non-ghost member", async () => {
-    const caller = ctx.caller();
-    const memberUser = ctx.getUser("member");
-    await expect(
-      caller.datePoll.voteOnBehalf({
-        tripId,
-        userId: memberUser.id,
-        votes: [{ windowId, answer: "yes" }],
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it("voteOnBehalf — member cannot use this procedure", async () => {
-    const caller = ctx.callerAs("member");
-    await expect(
-      caller.datePoll.voteOnBehalf({
-        tripId,
-        userId: "some-ghost",
-        votes: [{ windowId, answer: "yes" }],
-      })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
   // ── removeWindow ────────────────────────────────────────────────────────
 
   it("removeWindow — owner can remove a window (votes cascade)", async () => {
@@ -277,9 +214,9 @@ describe("datePoll router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // ── resetVotes ──────────────────────────────────────────────────────────
+  // ── resetPoll ───────────────────────────────────────────────────────────
 
-  it("resetVotes — owner can clear all votes including other members' votes", async () => {
+  it("resetPoll — owner can clear all votes including other members' votes", async () => {
     const ownerCaller = ctx.caller();
     const memberCaller = ctx.callerAs("member");
     const memberUser = ctx.getUser("member");
@@ -304,7 +241,7 @@ describe("datePoll router", () => {
     expect(winAfter?.votes.length).toBe(0);
   });
 
-  it("resetVotes — member cannot reset", async () => {
+  it("resetPoll — member cannot reset", async () => {
     const caller = ctx.callerAs("member");
     await expect(
       caller.datePoll.resetPoll({ tripId })

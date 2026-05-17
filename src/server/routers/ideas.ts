@@ -24,17 +24,14 @@ export const ideasRouter = router({
         });
       }
 
-      // Fetch votes and comment counts for all ideas in this trip in parallel
-      const [{ data: votes }, { data: comments }] = await Promise.all([
-        ctx.supabase
-          .from("idea_votes")
-          .select("idea_id, user_id, created_at")
-          .eq("trip_id", ctx.tripId),
-        ctx.supabase
-          .from("idea_comments")
-          .select("idea_id")
-          .eq("trip_id", ctx.tripId),
-      ]);
+      // Fetch votes for all ideas in this trip.
+      // (Previously also fetched idea_comments for a commentCount badge —
+      //  removed in pre-launch cleanup; the comments router + table were
+      //  dead, the badge was unused in the UI.)
+      const { data: votes } = await ctx.supabase
+        .from("idea_votes")
+        .select("idea_id, user_id, created_at")
+        .eq("trip_id", ctx.tripId);
 
       const votesByIdea = new Map<string, typeof votes>();
       for (const v of votes ?? []) {
@@ -43,15 +40,9 @@ export const ideasRouter = router({
         votesByIdea.set(v.idea_id, arr);
       }
 
-      const commentCountByIdea = new Map<string, number>();
-      for (const c of comments ?? []) {
-        commentCountByIdea.set(c.idea_id, (commentCountByIdea.get(c.idea_id) ?? 0) + 1);
-      }
-
       return (ideas ?? []).map((idea) => ({
         ...idea,
         votes: votesByIdea.get(idea.id) ?? [],
-        commentCount: commentCountByIdea.get(idea.id) ?? 0,
       }));
     }),
 
@@ -383,63 +374,4 @@ export const ideasRouter = router({
       return data ?? [];
     }),
 
-  // -----------------------------------------------------------------------
-  // fork — copy an idea from one trip to another (future use)
-  // -----------------------------------------------------------------------
-  fork: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        sourceIdeaId: z.string(),
-        newId: z.string().min(1),
-      })
-    )
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      // Fetch the source idea
-      const { data: source, error: fetchErr } = await ctx.supabase
-        .from("ideas")
-        .select("*")
-        .eq("id", input.sourceIdeaId)
-        .single();
-
-      if (fetchErr || !source) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Source idea not found",
-        });
-      }
-
-      const { data, error } = await ctx.supabase
-        .from("ideas")
-        .insert({
-          id: input.newId,
-          trip_id: ctx.tripId,
-          title: source.title,
-          location: source.location,
-          description: source.description,
-          golf_courses: source.golf_courses,
-          activities: source.activities,
-          cost_tier: source.cost_tier,
-          pros: source.pros,
-          cons: source.cons,
-          image_url: source.image_url,
-          accommodation: source.accommodation,
-          notes: source.notes,
-          proposed_dates: source.proposed_dates,
-          source: "forked",
-          source_idea_id: input.sourceIdeaId,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fork idea: ${error.message}`,
-        });
-      }
-
-      return data;
-    }),
 });

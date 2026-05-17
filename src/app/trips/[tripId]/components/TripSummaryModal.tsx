@@ -46,7 +46,7 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: logistics = [] } = trpc.logistics.list.useQuery({ tripId });
-  const { data: reservations = [] } = trpc.reservations.list.useQuery({ tripId });
+  const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const hasLockedDate = !!poll?.lockedWindowId;
 
   const advance = trpc.trips.advanceToGoing.useMutation({
@@ -80,11 +80,13 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
   ).length;
   const lodgingUnconfirmed = lodgingItems.length - lodgingConfirmed;
 
-  // Schedule — reservations. "Confirmed" = has a confirmation_number.
-  const scheduleConfirmed = reservations.filter(
-    (r) => ((r as { confirmation_number?: string }).confirmation_number ?? "").trim().length > 0
+  // Schedule — agenda items (schedule_items), split by is_confirmed.
+  // Previously read from the legacy `reservations` table which is always
+  // empty in production — the count silently showed 0/0 every time.
+  const scheduleConfirmed = scheduleItems.filter(
+    (s) => (s as { is_confirmed?: boolean }).is_confirmed
   ).length;
-  const scheduleUnconfirmed = reservations.length - scheduleConfirmed;
+  const scheduleUnconfirmed = scheduleItems.length - scheduleConfirmed;
 
   const handleSend = () => {
     advance.mutate({ tripId });
