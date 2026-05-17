@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconCheck, IconPlus, IconX } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import {
   getEffectiveStatus,
@@ -272,16 +272,33 @@ function TripSwitcherBody({
         </div>
       )}
 
-      {/* New trip row */}
+      {/* New trip row — dashed-plus icon container restored to keep
+          parity with the trip rows' 34px icon slot and signal "create"
+          vs the avatar/state-silhouette icons in the rows above. */}
       <button
         type="button"
         onClick={onNewTrip}
         className="flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]"
         style={{
+          gap: 10,
           padding: "11px 16px",
           borderTop: "0.5px solid var(--color-bt-border)",
         }}
       >
+        <span
+          className="flex flex-shrink-0 items-center justify-center"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 9,
+            background: "transparent",
+            border: "1.5px dashed rgba(45, 212, 191, 0.4)",
+            color: "var(--color-bt-accent)",
+          }}
+          aria-hidden="true"
+        >
+          <IconPlus size={16} stroke={2} />
+        </span>
         <span
           className="text-[13px] font-medium"
           style={{ color: "var(--color-bt-accent)" }}
