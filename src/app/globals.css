@@ -156,6 +156,10 @@
   --font-display: Georgia, "Times New Roman", serif;
 }
 
+html {
+  background: var(--color-bt-base);
+}
+
 body {
   background: var(--color-bt-base);
   color: var(--color-bt-text);
