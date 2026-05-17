@@ -548,7 +548,17 @@ function DesktopSidebar({
         background: "var(--color-bt-card)",
         borderRight: "0.5px solid var(--color-bt-border)",
         padding: "20px 0",
-        minHeight: "calc(100vh - 56px)",
+        // Stick to the viewport (below the 56px TopNav) and cap at one
+        // viewport height so the bottom block (Sign out / Delete) stays
+        // pinned to the bottom of the screen as the main panel scrolls.
+        // Without this, default flex `align-items: stretch` stretches
+        // the sidebar to match main content height, leaving the bottom
+        // items way down the page.
+        position: "sticky",
+        top: 56,
+        height: "calc(100vh - 56px)",
+        overflowY: "auto",
+        alignSelf: "flex-start",
       }}
     >
       <SidebarGroup label="Account">
