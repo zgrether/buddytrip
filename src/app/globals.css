@@ -52,6 +52,7 @@
   --color-bt-tile-bg: transparent;
   --color-bt-past-bg: #f8fafc;
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.6);
+  --color-bt-nav-bg: rgba(244, 247, 250, 0.85); /* translucent base for sticky chrome */
 
   /* Vote answer colors — semantic, mode-independent (same in light & dark) */
   --color-bt-vote-yes: #00d4aa;
@@ -134,6 +135,7 @@
   --color-bt-tile-bg: transparent;
   --color-bt-past-bg: #161c2b;
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.03);
+  --color-bt-nav-bg: rgba(10, 14, 26, 0.85); /* matches marketing page nav */
   color-scheme: dark;
 }
 

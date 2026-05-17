@@ -494,6 +494,7 @@ dark image-overlay contexts where tokens don't apply. No migration needed.
 | `--color-bt-state-stroke` | `rgba(0,0,0,0.15)` | `rgba(255,255,255,0.20)` | Toggle/state border |
 | `--color-bt-tile-bg` | `transparent` | `transparent` | Schedule tile bg |
 | `--color-bt-past-bg` | `#f8fafc` | `#161c2b` | Past schedule bg |
+| `--color-bt-nav-bg` | `rgba(244,247,250,0.85)` | `rgba(10,14,26,0.85)` | Sticky top nav bg (use with `backdrop-filter: blur(14px)`) |
 | `--shadow-card` | light shadow | heavier shadow | Card elevation |
 | `--shadow-raised` | medium shadow | heavier shadow | Expanded panels |
 | `--shadow-floating` | strong shadow | heavier shadow | Tooltips, popovers |
