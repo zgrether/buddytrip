@@ -165,7 +165,7 @@ export default function ProfilePage() {
                   </div>
                 </Section>
 
-                <Section label="Competition preview" mobileOnly>
+                <Section label="Competition preview">
                   <div
                     className="rounded-xl px-4 py-4"
                     style={{
@@ -173,24 +173,50 @@ export default function ProfilePage() {
                       border: "1px solid var(--color-bt-border)",
                     }}
                   >
-                    <div className="flex items-center justify-center gap-3">
-                      <Avatar name={displayName} avatarIcon={me.avatar_icon} size="md" />
-                      {TEAM_COLORS.map((t) => (
-                        <Avatar
-                          key={t.color}
-                          name={displayName}
-                          avatarIcon={me.avatar_icon}
-                          teamColor={t.color}
-                          size="md"
-                        />
-                      ))}
-                    </div>
+                    {/* Explainer subtitle sits inside the panel so it
+                        always travels with the visual it's explaining,
+                        regardless of viewport. */}
                     <p
-                      className="mt-2 text-center text-[10px]"
+                      className="mb-4 text-center text-[10px] font-medium uppercase tracking-wider"
                       style={{ color: "var(--color-bt-text-dim)" }}
                     >
-                      Icon stays · background becomes team color
+                      Your icon stays · background becomes your team color
                     </p>
+
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <Avatar name={displayName} avatarIcon={me.avatar_icon} size="md" />
+                        <span
+                          className="text-[10px]"
+                          style={{ color: "var(--color-bt-text-dim)" }}
+                        >
+                          Default
+                        </span>
+                      </div>
+                      <span
+                        aria-hidden="true"
+                        className="text-sm"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        →
+                      </span>
+                      {TEAM_COLORS.map((t) => (
+                        <div key={t.color} className="flex flex-col items-center gap-1.5">
+                          <Avatar
+                            name={displayName}
+                            avatarIcon={me.avatar_icon}
+                            teamColor={t.color}
+                            size="md"
+                          />
+                          <span
+                            className="text-[10px]"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          >
+                            {t.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </Section>
 
@@ -522,12 +548,9 @@ function AvatarHero({
               {email}
             </p>
           )}
-          <p
-            className="mt-1.5 text-[11px] leading-[1.5]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Your icon appears across the app — background takes your team color during competitions
-          </p>
+          {/* The "icon stays / background becomes team color" explainer
+              lives inside the Competition preview panel below, so it's
+              omitted here to avoid duplication. */}
         </div>
       </div>
     </>
