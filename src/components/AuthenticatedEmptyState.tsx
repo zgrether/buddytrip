@@ -25,10 +25,14 @@ import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 export function AuthenticatedEmptyState() {
   return (
     <>
-      {/* Centered hero block — sits above the fold within the dashboard
-          main container. Vertical padding gives breathing room without
-          forcing a full viewport. */}
-      <div className="flex flex-col items-center px-4 py-16 text-center">
+      {/* Centered hero block — fills the visible area below the TopNav
+          (h-14 = 56px) so the FeaturesSection below naturally sits
+          past the fold. The user has to scroll (or click the ghost
+          link, which smooth-scrolls) to see how-it-works. */}
+      <div
+        className="flex flex-col items-center justify-center px-4 text-center"
+        style={{ minHeight: "calc(100vh - 56px)" }}
+      >
         <div className="w-full max-w-[360px]">
           {/* Big icon */}
           <div

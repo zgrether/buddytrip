@@ -165,31 +165,37 @@ export default function DashboardClient() {
         onMarkAllRead={handleMarkAllRead}
       />
 
-      <main className="mx-auto max-w-[896px] px-4 pb-24 pt-4">
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="mb-6 flex items-end justify-between">
-          <div>
-            <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Welcome back{me?.name ? `, ${me.name.split(" ")[0]}` : ""}
-            </p>
-            <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
-              My Trips
-            </h1>
+      <main
+        className={`mx-auto max-w-[896px] px-4 pb-24 ${hasAnyTrips ? "pt-4" : ""}`}
+      >
+        {/* ── Header — hidden when the user has no trips. The empty
+            state has its own centered "New trip" CTA, so the welcome
+            line + header button would just be redundant chrome. */}
+        {hasAnyTrips && (
+          <div className="mb-6 flex items-end justify-between">
+            <div>
+              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+                Welcome back{me?.name ? `, ${me.name.split(" ")[0]}` : ""}
+              </p>
+              <h1 className="text-2xl font-bold" style={{ color: "var(--color-bt-text)" }}>
+                My Trips
+              </h1>
+            </div>
+            <button
+              onClick={() => router.push("/trips/new")}
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              New trip
+            </button>
           </div>
-          <button
-            onClick={() => router.push("/trips/new")}
-            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            New trip
-          </button>
-        </div>
+        )}
 
         {!hasAnyTrips ? (
           /* ── Empty state ─────────────────────────────────────────────────
-             Now delegated to the shared AuthenticatedEmptyState component
-             so the no-trips redirect from `/` and a direct visit to
-             `/dashboard` show the same body. */
+             Single source of truth — root `/` redirects here when authed
+             with no trips, and a direct `/dashboard` visit shows the
+             same body. */
           <div data-testid="empty-state">
             <AuthenticatedEmptyState />
           </div>
