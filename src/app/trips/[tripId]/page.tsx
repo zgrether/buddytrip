@@ -76,7 +76,6 @@ export default function TripDetailPage() {
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: poll, isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
-  const { isLoading: reservationsLoading } = trpc.reservations.list.useQuery({ tripId });
   const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
@@ -108,7 +107,7 @@ export default function TripDetailPage() {
   );
 
   const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
-    || reservationsLoading || tilesLoading || competitionLoading;
+    || tilesLoading || competitionLoading;
 
   // ── Notifications ─────────────────────────────────────────────────────────
   useRealtimeNotifications([tripId]);
