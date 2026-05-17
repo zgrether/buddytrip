@@ -29,11 +29,29 @@ interface AvatarProps {
   className?: string;
 }
 
+/**
+ * Fixed-size presets (numeric). md and lg use these directly; sm is
+ * responsive (30px mobile / 34px desktop) so it's handled with Tailwind
+ * classes below instead of these numbers.
+ */
 const SIZE_MAP = {
-  sm: { circle: 24, icon: 12, initials: 10 },
+  sm: { circle: 30, icon: 14, initials: 11 }, // mobile values (used only as a hint for the Tabler `size` prop ceiling)
   md: { circle: 36, icon: 18, initials: 13 },
   lg: { circle: 72, icon: 28, initials: 24 },
 } as const;
+
+/**
+ * Responsive Tailwind classes for `size="sm"` only. Spec calls for
+ *   container: 30px mobile / 34px desktop
+ *   icon:      14px mobile / 16px desktop
+ *   initials:  11px mobile / 12px desktop
+ * The icon-size class targets the SVG that Tabler renders inside the
+ * circle (Tailwind v4 arbitrary descendant selectors).
+ */
+const SM_RESPONSIVE_CLASSES =
+  "h-[30px] w-[30px] md:h-[34px] md:w-[34px] " +
+  "[&_svg]:h-[14px] [&_svg]:w-[14px] md:[&_svg]:h-[16px] md:[&_svg]:w-[16px] " +
+  "[&_span]:text-[11px] md:[&_span]:text-[12px]";
 
 /** "Zach Grether" → "ZG"; "Llama" → "L"; "" → "?" */
 export function initialsFor(name: string): string {
@@ -54,6 +72,7 @@ export function Avatar({
   className,
 }: AvatarProps) {
   const { circle, icon: iconSize, initials: initialsSize } = SIZE_MAP[size];
+  const isResponsive = size === "sm";
 
   // Competition context (team color set) → white foreground on team-color bg
   const competitionMode = !!teamColor;
@@ -65,12 +84,19 @@ export function Avatar({
   // old value from before we curated the list), fall back to initials.
   const IconComponent = avatarIcon ? AVATAR_ICON_COMPONENTS[avatarIcon] : null;
 
+  // sm uses responsive Tailwind classes for width/height; md & lg use the
+  // numeric SIZE_MAP values inline.
+  const sizeStyle: React.CSSProperties = isResponsive
+    ? {}
+    : { width: circle, height: circle };
+
   return (
     <div
-      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full ${className ?? ""}`}
+      className={`inline-flex flex-shrink-0 items-center justify-center rounded-full ${
+        isResponsive ? SM_RESPONSIVE_CLASSES : ""
+      } ${className ?? ""}`}
       style={{
-        width: circle,
-        height: circle,
+        ...sizeStyle,
         background,
         border,
         color: foreground,
@@ -79,9 +105,18 @@ export function Avatar({
       aria-label={avatarIcon ? `${name} avatar` : `${name} initials`}
     >
       {IconComponent ? (
-        <IconComponent size={iconSize} stroke={1.75} aria-hidden="true" />
+        // For sm we pass the larger (desktop) icon size so the rendered
+        // SVG has enough resolution; Tailwind classes scale the SVG down
+        // to 14px on mobile via the [&_svg]:h-[14px] selector above.
+        <IconComponent
+          size={isResponsive ? 16 : iconSize}
+          stroke={1.75}
+          aria-hidden="true"
+        />
       ) : (
-        <span style={{ fontSize: initialsSize, lineHeight: 1 }}>{initialsFor(name)}</span>
+        <span style={isResponsive ? { lineHeight: 1 } : { fontSize: initialsSize, lineHeight: 1 }}>
+          {initialsFor(name)}
+        </span>
       )}
     </div>
   );
