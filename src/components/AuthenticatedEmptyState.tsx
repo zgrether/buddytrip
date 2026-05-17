@@ -6,53 +6,30 @@ import { FeaturesSection } from "@/components/marketing/FeaturesSection";
 import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 
 /**
- * Rendered at the root route (`/`) when an authenticated user has no
- * trips at all. Replaces the marketing page for this audience — they
- * already know what BuddyTrip is, they just don't have anything to
- * land on.
+ * The "no trips yet" content block, rendered inside `/dashboard` when
+ * the user has no trip memberships.
  *
- * Layout:
+ * This is a content block (not a full page) — the parent owns the
+ * page chrome (TopNav, header with the "New trip" button, max-width
+ * container). The block contributes:
  *
- *   1. Hero CTA (centered, fills a full viewport on first paint)
- *   2. Marketing FeaturesSection below — anchored at #how-it-works so
- *      the "Not sure where to start?" link smooth-scrolls down to it
- *      without leaving the page.
+ *   1. A centered hero ("No trips yet" / CTA / ghost link)
+ *   2. The marketing FeaturesSection below the fold, anchored at
+ *      `#how-it-works` so the "Not sure where to start?" ghost link
+ *      smooth-scrolls down to it on the same page.
  *
- * The marketing CSS is injected inline (shared `MARKETING_CSS` const
- * from MarketingPage) and the features block is wrapped in
- * `.bt-mkt-root` so its scoped styles + font apply correctly.
+ * The BuddyTrip wordmark is intentionally absent — TopNav already
+ * shows it on every page now, so repeating it inside the body felt
+ * redundant.
  */
 export function AuthenticatedEmptyState() {
   return (
     <>
-      {/* Hero CTA — at least one full viewport so the page reads as
-          "create a trip" first; FeaturesSection sits below the fold. */}
-      <section
-        className="flex min-h-screen flex-col items-center justify-center px-4"
-        style={{ background: "var(--color-bt-base)" }}
-      >
-        <div className="w-full max-w-[320px] text-center">
-          {/* BuddyTrip mark — matches TopNav exactly */}
-          <div
-            className="mb-6 flex items-center justify-center gap-[7px] text-lg font-semibold tracking-wider"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 100 100"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-              style={{ flexShrink: 0, color: "var(--color-bt-accent)" }}
-            >
-              <path
-                d="M 28 8 L 38 8 L 76 26 L 38 44 L 38 75 L 33 92 L 28 75 Z"
-                fill="currentColor"
-              />
-            </svg>
-            BuddyTrip
-          </div>
-
+      {/* Centered hero block — sits above the fold within the dashboard
+          main container. Vertical padding gives breathing room without
+          forcing a full viewport. */}
+      <div className="flex flex-col items-center px-4 py-16 text-center">
+        <div className="w-full max-w-[360px]">
           {/* Big icon */}
           <div
             className="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-full"
@@ -74,7 +51,7 @@ export function AuthenticatedEmptyState() {
             className="mt-2 text-[14px] leading-[1.6]"
             style={{ color: "var(--color-bt-text-dim)", marginBottom: 20 }}
           >
-            Create your first trip or wait for an invite from a trip owner.
+            Start planning your next trip, or ask a trip owner to invite you.
           </p>
 
           {/* Primary */}
@@ -101,18 +78,19 @@ export function AuthenticatedEmptyState() {
             </Link>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* How-it-works content — re-uses the marketing FeaturesSection so
-          the explanation stays in one place. The marketing CSS class
-          system is global (selectors aren't scoped under .bt-mkt-root),
-          but wrapping here keeps the font + container styles applied
-          consistently. */}
+      {/* How-it-works content — re-uses the marketing FeaturesSection
+          so the explanation stays in one place. The marketing CSS
+          selectors aren't scoped to .bt-mkt-root, but wrapping keeps
+          the font + container styles consistent. The min-height:0
+          override prevents .bt-mkt-root's default 100vh from pushing
+          the rest of the page off-screen when embedded. */}
       <style>{MARKETING_CSS}</style>
       <div className="bt-mkt-root" style={{ minHeight: 0 }}>
-        <main className="bt-mkt-main">
+        <div className="bt-mkt-main">
           <FeaturesSection />
-        </main>
+        </div>
       </div>
     </>
   );

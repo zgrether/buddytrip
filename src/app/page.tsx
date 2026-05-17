@@ -6,7 +6,6 @@ import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
 import { trpc } from "@/lib/trpc-client";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { MarketingPage } from "@/components/marketing/MarketingPage";
-import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
 
 /**
  * Root route `/`.
@@ -18,7 +17,8 @@ import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
  *       a. last visited (localStorage `bt-last-trip-id`, if still a member)
  *       b. NOW stage (going + within 3 days of start)
  *       c. GOING > PLANNING > IDEA
- *       d. fallback empty state if they have no trips
+ *       d. /dashboard if they have no trips (the dashboard renders the
+ *          shared AuthenticatedEmptyState as its body)
  *
  * To avoid flashing the marketing page to a logged-in user, we render a
  * minimal full-screen loader while auth + the trips list are still
@@ -71,10 +71,21 @@ export default function HomePage() {
     if (!authLoaded || !user) return;
     if (tripsQuery.isLoading) return;
     if (redirectedRef.current) return;
-    if (!targetTripId) return;
-    redirectedRef.current = true;
-    router.replace(`/trips/${targetTripId}`);
-  }, [authLoaded, user, tripsQuery.isLoading, targetTripId, router]);
+
+    if (targetTripId) {
+      redirectedRef.current = true;
+      router.replace(`/trips/${targetTripId}`);
+      return;
+    }
+
+    // Authed but no trips → dashboard, which renders the shared
+    // AuthenticatedEmptyState as its body. Single source of truth for
+    // the no-trips experience.
+    if (tripsQuery.data && tripsQuery.data.length === 0) {
+      redirectedRef.current = true;
+      router.replace("/dashboard");
+    }
+  }, [authLoaded, user, tripsQuery.isLoading, tripsQuery.data, targetTripId, router]);
 
   // ── Render branches ─────────────────────────────────────────────────────
 
@@ -83,11 +94,9 @@ export default function HomePage() {
   if (!authLoaded) return <FullScreenLoader />;
 
   if (user) {
-    // Authed: either still fetching trips, about to redirect, or empty.
-    if (tripsQuery.isLoading) return <FullScreenLoader />;
-    const trips = tripsQuery.data ?? [];
-    if (trips.length === 0) return <AuthenticatedEmptyState />;
-    // We have trips → redirect is in flight; hold the loader.
+    // Authed: either still fetching trips or about to redirect (to a
+    // trip if they have one, otherwise to /dashboard). Either way, the
+    // loader covers the gap so the marketing page never flashes.
     return <FullScreenLoader />;
   }
 

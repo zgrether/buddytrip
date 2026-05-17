@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Plane } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { TopNav } from "@/components/TopNav";
 import { TripCard } from "@/components/TripCard";
+import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
 import { getTripStatus, type TripStatus } from "@/components/StatusBadge";
 import type { TripRole } from "@/server/middleware";
 
@@ -185,34 +186,12 @@ export default function DashboardClient() {
         </div>
 
         {!hasAnyTrips ? (
-          /* ── Empty state ─────────────────────────────────────────────────── */
-          <div
-            data-testid="empty-state"
-            className="mt-16 flex flex-col items-center gap-4 text-center"
-          >
-            <div
-              className="flex h-20 w-20 items-center justify-center rounded-full"
-              style={{ background: "var(--color-bt-card)" }}
-            >
-              <Plane size={36} style={{ color: "var(--color-bt-accent)" }} />
-            </div>
-            <h2
-              className="text-xl font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              No trips yet
-            </h2>
-            <p className="max-w-xs text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              Create your first group trip and start planning together.
-            </p>
-            <button
-              data-testid="create-first-trip"
-              onClick={() => router.push("/trips/new")}
-              className="mt-2 flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              New trip
-            </button>
+          /* ── Empty state ─────────────────────────────────────────────────
+             Now delegated to the shared AuthenticatedEmptyState component
+             so the no-trips redirect from `/` and a direct visit to
+             `/dashboard` show the same body. */
+          <div data-testid="empty-state">
+            <AuthenticatedEmptyState />
           </div>
         ) : (
           /* ── Trip sections ───────────────────────────────────────────────── */
