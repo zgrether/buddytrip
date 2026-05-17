@@ -136,7 +136,14 @@ export default function TripNewPage() {
             className="mb-1.5 block text-xl font-bold"
             style={{ color: "var(--color-bt-text)" }}
           >
-            Trip Name
+            Trip Name{" "}
+            <span
+              aria-hidden="true"
+              style={{ color: "var(--color-bt-danger)", fontWeight: 400 }}
+            >
+              *
+            </span>
+            <span className="sr-only"> (required)</span>
           </label>
           <input
             id="trip-name"
