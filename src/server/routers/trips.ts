@@ -215,69 +215,6 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — Owner or Planner can edit trip details
-  // -----------------------------------------------------------------------
-  update: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        title: z.string().min(1).max(200).optional(),
-        description: z.string().max(2000).optional(),
-        location: z.string().max(500).nullable().optional(),
-        costTier: z.enum(["$", "$$", "$$$", "$$$$"]).nullable().optional(),
-        imageUrl: z.string().nullable().optional(),
-        startDate: z.string().nullable().optional(),
-        endDate: z.string().nullable().optional(),
-        accommodation: z.string().nullable().optional(),
-        notes: z.string().nullable().optional(),
-        activities: z.array(z.string()).optional(),
-        golfCourses: z.array(z.string()).optional(),
-        comparisonMode: z.boolean().optional(),
-      })
-    )
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      const { tripId: _tripId, ...fields } = input;
-      const update: Record<string, unknown> = {};
-
-      if (fields.title !== undefined) update.title = fields.title;
-      if (fields.description !== undefined) update.description = fields.description;
-      if (fields.location !== undefined) update.location = fields.location;
-      if (fields.costTier !== undefined) update.cost_tier = fields.costTier;
-      if (fields.imageUrl !== undefined) update.image_url = fields.imageUrl;
-      if (fields.startDate !== undefined) update.start_date = fields.startDate;
-      if (fields.endDate !== undefined) update.end_date = fields.endDate;
-      if (fields.accommodation !== undefined) update.accommodation = fields.accommodation;
-      if (fields.notes !== undefined) update.notes = fields.notes;
-      if (fields.activities !== undefined) update.activities = fields.activities;
-      if (fields.golfCourses !== undefined) update.golf_courses = fields.golfCourses;
-      if (fields.comparisonMode !== undefined) update.comparison_mode = fields.comparisonMode;
-
-      if (Object.keys(update).length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No fields to update",
-        });
-      }
-
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update(update)
-        .eq("id", ctx.tripId)
-        .select()
-        .single();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update trip",
-        });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
   // lockDestination — Owner only
   // -----------------------------------------------------------------------
   lockDestination: authedProcedure
@@ -627,39 +564,6 @@ export const tripsRouter = router({
       }
 
       return { windowId, startDate: input.startDate, endDate: input.endDate };
-    }),
-
-  // -----------------------------------------------------------------------
-  // setOwnerAlert — Owner sets or clears the banner alert for the crew
-  // -----------------------------------------------------------------------
-  setOwnerAlert: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        alert: z.string().max(500).nullable(),
-      })
-    )
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx, input }) => {
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({
-          owner_alert: input.alert,
-          owner_alert_set_at: input.alert ? new Date().toISOString() : null,
-          owner_alert_set_by: input.alert ? ctx.user!.id : null,
-        })
-        .eq("id", ctx.tripId)
-        .select()
-        .single();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to update owner alert",
-        });
-      }
-
-      return data;
     }),
 
   // -----------------------------------------------------------------------

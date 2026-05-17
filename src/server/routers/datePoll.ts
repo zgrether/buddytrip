@@ -272,73 +272,6 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // voteOnBehalf — Owner or Planner can vote for a ghost member
-  // -----------------------------------------------------------------------
-  voteOnBehalf: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        userId: z.string(),
-        votes: z.array(
-          z.object({
-            windowId: z.string(),
-            answer: z.enum(["yes", "no", "maybe"]),
-          })
-        ),
-      })
-    )
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      // Verify the target user is a ghost member of this trip
-      const { data: member } = await ctx.supabase
-        .from("trip_members")
-        .select("user_id")
-        .eq("trip_id", ctx.tripId)
-        .eq("user_id", input.userId)
-        .maybeSingle();
-
-      if (!member) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "User is not a member of this trip",
-        });
-      }
-
-      const { data: user } = await ctx.supabase
-        .from("users")
-        .select("is_guest")
-        .eq("id", input.userId)
-        .single();
-
-      if (!user?.is_guest) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Can only vote on behalf of ghost members",
-        });
-      }
-
-      // Upsert all votes for this ghost user
-      const rows = input.votes.map((v) => ({
-        window_id: v.windowId,
-        user_id: input.userId,
-        answer: v.answer,
-      }));
-
-      const { error } = await ctx.supabase
-        .from("date_poll_votes")
-        .upsert(rows, { onConflict: "window_id,user_id" });
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to vote on behalf: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
   // castVoteForMember — Owner can record a vote for any crew member
   // (real or ghost). Used by the owner-only "fill in for the crew" affordance
   // in the dates poll grid. Members themselves use `vote`.
@@ -407,44 +340,6 @@ export const datePollRouter = router({
       }
 
       return data;
-    }),
-
-  // -----------------------------------------------------------------------
-  // resetVotes — Owner: clears all votes for this trip's date poll while
-  // keeping the date_windows intact so the crew has to vote again.
-  // -----------------------------------------------------------------------
-  resetVotes: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx }) => {
-      const { data: windows, error: winErr } = await ctx.supabase
-        .from("date_windows")
-        .select("id")
-        .eq("trip_id", ctx.tripId);
-
-      if (winErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to read date windows: ${winErr.message}`,
-        });
-      }
-
-      const ids = (windows ?? []).map((w) => w.id);
-      if (ids.length === 0) return { success: true };
-
-      const { error } = await ctx.supabase
-        .from("date_poll_votes")
-        .delete()
-        .in("window_id", ids);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to reset votes: ${error.message}`,
-        });
-      }
-
-      return { success: true };
     }),
 
   // -----------------------------------------------------------------------

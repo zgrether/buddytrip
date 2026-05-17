@@ -77,17 +77,12 @@ describe("ghostCrew router", () => {
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 
-  // ── list ──────────────────────────────────────────────────────────────────
+  // ── tripMembers.list returns guest members alongside real ones ───────────
+  // (kept for coverage — the dead ghostCrew.list procedure was removed in
+  //  pre-launch cleanup; tripMembers.list with isGuest filter is the
+  //  canonical way to read guest crew now.)
 
-  it("list — any member can view guest users", async () => {
-    const caller = ctx.callerAs("member");
-    const ghosts = await caller.ghostCrew.list({ tripId });
-    expect(ghosts.length).toBeGreaterThanOrEqual(1);
-    expect(ghosts[0].name).toBeTruthy();
-    expect(ghosts[0].is_guest).toBe(true);
-  });
-
-  it("list — tripMembers.list returns guest members alongside real members", async () => {
+  it("tripMembers.list — returns guest members alongside real members", async () => {
     const caller = ctx.callerAs("member");
     const members = await caller.tripMembers.list({ tripId });
     const realMembers = members.filter((m) => !m.isGuest);
@@ -112,7 +107,8 @@ describe("ghostCrew router", () => {
 
   it("update — planner can edit guest name", async () => {
     const plannerCaller = ctx.callerAs("planner");
-    const ghosts = await plannerCaller.ghostCrew.list({ tripId });
+    const members = await plannerCaller.tripMembers.list({ tripId });
+    const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     const ghost = ghosts[0];
     const updated = await plannerCaller.ghostCrew.update({
       tripId,
@@ -124,7 +120,8 @@ describe("ghostCrew router", () => {
 
   it("update — planner can add email to guest", async () => {
     const plannerCaller = ctx.callerAs("planner");
-    const ghosts = await plannerCaller.ghostCrew.list({ tripId });
+    const members = await plannerCaller.tripMembers.list({ tripId });
+    const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     const ghost = ghosts[0];
     const andrewEmail = `andrew-ghost-${RUN_ID}@example.com`;
     const updated = await plannerCaller.ghostCrew.update({
@@ -137,7 +134,8 @@ describe("ghostCrew router", () => {
 
   it("update — member cannot edit guest", async () => {
     const memberCaller = ctx.callerAs("member");
-    const ghosts = await ctx.callerAs("planner").ghostCrew.list({ tripId });
+    const members = await ctx.callerAs("planner").tripMembers.list({ tripId });
+    const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     await expect(
       memberCaller.ghostCrew.update({
         tripId,
@@ -225,13 +223,15 @@ describe("ghostCrew router", () => {
     expect(result.success).toBe(true);
 
     // Verify gone from trip member list
-    const ghosts = await plannerCaller.ghostCrew.list({ tripId });
+    const members = await plannerCaller.tripMembers.list({ tripId });
+    const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     expect(ghosts.find((g) => g.id === ghost.id)).toBeUndefined();
   });
 
   it("remove — planner cannot remove guest (Owner only)", async () => {
     const plannerCaller = ctx.callerAs("planner");
-    const ghosts = await plannerCaller.ghostCrew.list({ tripId });
+    const members = await plannerCaller.tripMembers.list({ tripId });
+    const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     await expect(
       plannerCaller.ghostCrew.remove({ tripId, guestUserId: ghosts[0].id })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });

@@ -4,7 +4,6 @@ import { tripsRouter } from "./routers/trips";
 import { tripMembersRouter } from "./routers/tripMembers";
 import { ghostCrewRouter } from "./routers/ghostCrew";
 import { ideasRouter } from "./routers/ideas";
-import { ideaCommentsRouter } from "./routers/ideaComments";
 import { datePollRouter } from "./routers/datePoll";
 import { expensesRouter } from "./routers/expenses";
 import { messagesRouter } from "./routers/messages";
@@ -14,10 +13,6 @@ import { competitionsRouter } from "./routers/competitions";
 import { eventsRouter } from "./routers/events";
 import { teamsRouter } from "./routers/teams";
 import { teamAssignmentsRouter } from "./routers/teamAssignments";
-import { playGroupsRouter } from "./routers/playGroups";
-import { groupResultsRouter } from "./routers/groupResults";
-import { seriesRouter } from "./routers/series";
-import { scoreboardSharesRouter } from "./routers/scoreboardShares";
 import { logisticsRouter } from "./routers/logistics";
 import { scheduleRouter } from "./routers/schedule";
 import { golfCoursesRouter } from "./routers/golfCourses";
@@ -33,7 +28,6 @@ export const appRouter = router({
   tripMembers: tripMembersRouter,
   ghostCrew: ghostCrewRouter,
   ideas: ideasRouter,
-  ideaComments: ideaCommentsRouter,
   datePoll: datePollRouter,
   expenses: expensesRouter,
   messages: messagesRouter,
@@ -43,10 +37,6 @@ export const appRouter = router({
   events: eventsRouter,
   teams: teamsRouter,
   teamAssignments: teamAssignmentsRouter,
-  playGroups: playGroupsRouter,
-  groupResults: groupResultsRouter,
-  series: seriesRouter,
-  scoreboardShares: scoreboardSharesRouter,
   logistics: logisticsRouter,
   schedule: scheduleRouter,
   golfCourses: golfCoursesRouter,
