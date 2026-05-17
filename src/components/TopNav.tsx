@@ -15,8 +15,9 @@ import {
   FileText,
   MessageCircle,
 } from "lucide-react";
-import { ThemeToggle } from "./ThemeToggle";
+import { IconLayoutGrid } from "@tabler/icons-react";
 import { UserMenu } from "./UserMenu";
+import { TripSwitcher } from "./TripSwitcher";
 import { getNotificationText, relativeTime } from "@/lib/notificationText";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 
@@ -69,6 +70,7 @@ export const TopNav: FC<TopNavProps> = ({
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -130,7 +132,36 @@ export const TopNav: FC<TopNavProps> = ({
         {title}
       </button>
 
-      <div className="flex items-center gap-2">
+      <div className="relative flex items-center gap-2">
+        {/* Trip switcher trigger — opens bottom sheet (mobile) or
+            dropdown (desktop). The dropdown is positioned relative to
+            this flex row (note the `relative` above), so it anchors to
+            the right edge of the icon cluster. */}
+        <button
+          type="button"
+          aria-label="My trips"
+          aria-haspopup="dialog"
+          aria-expanded={switcherOpen}
+          data-testid="trip-switcher-trigger"
+          data-trip-switcher-trigger="true"
+          onClick={() => setSwitcherOpen((p) => !p)}
+          className="flex h-7 w-7 items-center justify-center rounded-md transition-colors md:h-8 md:w-8 md:rounded-lg"
+          style={
+            switcherOpen
+              ? {
+                  background: "rgba(45, 212, 191, 0.12)",
+                  color: "var(--color-bt-accent)",
+                }
+              : {
+                  background: "transparent",
+                  color: "var(--color-bt-text-dim)",
+                }
+          }
+        >
+          <IconLayoutGrid size={18} stroke={1.75} />
+        </button>
+        <TripSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
+
         {tripId && onOpenChat && (
           <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
         )}
@@ -277,7 +308,6 @@ export const TopNav: FC<TopNavProps> = ({
           )}
         </div>
 
-        <ThemeToggle />
         <UserMenu />
       </div>
     </header>

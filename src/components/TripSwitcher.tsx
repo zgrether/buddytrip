@@ -1,0 +1,497 @@
+"use client";
+
+import { useEffect, useMemo, useRef } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { IconCheck, IconPlus, IconX } from "@tabler/icons-react";
+import { trpc } from "@/lib/trpc-client";
+import { Avatar } from "@/components/Avatar";
+import {
+  getEffectiveStatus,
+  type TripStatusFields,
+  type TripDisplayStatus,
+} from "@/lib/tripStatus";
+import { formatDateRange } from "@/lib/dates";
+
+/**
+ * Trip switcher — opens from the grid icon in TopNav.
+ *
+ * Renders both surfaces (mobile bottom-sheet + desktop dropdown) in
+ * one component, gated by CSS responsive classes. Same data feeds both
+ * — only the chrome differs.
+ *
+ * Trips are grouped Active ({idea, planning, going, now}) and Past, with
+ * a section divider only when both groups are populated. The currently
+ * visited trip (read from /trips/[tripId] params) gets a tinted icon
+ * background + checkmark next to its name.
+ */
+
+interface TripSwitcherProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+// Minimum shape we read from the trips list. The actual query returns
+// every column; we just type the fields we use here.
+type SwitcherTrip = TripStatusFields & {
+  id: string;
+  title: string;
+  start_date: string | null;
+  end_date: string | null;
+  locked_destination_title: string | null;
+  locked_destination_location: string | null;
+};
+
+const ACTIVE_STATUSES: TripDisplayStatus[] = ["idea", "planning", "going", "now"];
+
+export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
+  const router = useRouter();
+  const params = useParams<{ tripId?: string }>();
+  const currentTripId = params?.tripId ?? null;
+
+  const { data: trips = [] } = trpc.trips.list.useQuery(undefined, {
+    enabled: open, // don't fire query until user opens the switcher
+  });
+
+  // Group by effective status — active first, past last.
+  const { activeTrips, pastTrips } = useMemo(() => {
+    const active: SwitcherTrip[] = [];
+    const past: SwitcherTrip[] = [];
+    for (const t of trips as SwitcherTrip[]) {
+      const status = getEffectiveStatus(t);
+      if (status === "past") past.push(t);
+      else if (ACTIVE_STATUSES.includes(status)) active.push(t);
+      // 'saved' falls through — we treat it as past for the switcher
+      else past.push(t);
+    }
+    return { activeTrips: active, pastTrips: past };
+  }, [trips]);
+
+  // ── Dismiss handlers (Escape + outside click for desktop) ────────────
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const onClick = (e: MouseEvent) => {
+      // Outside-click only matters for the desktop dropdown — the mobile
+      // sheet has its own overlay that handles the dismiss explicitly.
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        // The trigger button lives in TopNav; its onClick toggles `open`,
+        // and the toggle fires BEFORE this handler (event bubbles). To
+        // avoid the trigger immediately re-opening the panel we let the
+        // toggle do its job and only close here for clicks that aren't
+        // the trigger. The simplest reliable signal: if the click target
+        // is inside an element with data-trip-switcher-trigger, skip.
+        const triggerEl = (e.target as Element)?.closest?.("[data-trip-switcher-trigger]");
+        if (triggerEl) return;
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [open, onClose]);
+
+  const handleNavigate = (href: string) => {
+    router.push(href);
+    onClose();
+  };
+
+  const body = (
+    <TripSwitcherBody
+      activeTrips={activeTrips}
+      pastTrips={pastTrips}
+      currentTripId={currentTripId}
+      onSelectTrip={(id) => handleNavigate(`/trips/${id}`)}
+      onNewTrip={() => handleNavigate("/trips/new")}
+      onViewAll={() => handleNavigate("/dashboard")}
+    />
+  );
+
+  return (
+    <>
+      {/* ── Mobile bottom sheet (visible < md) ──────────────────────── */}
+      <div className="md:hidden">
+        {open && (
+          <>
+            {/* Dim overlay — tap to dismiss */}
+            <div
+              className="fixed inset-0 z-40"
+              style={{ background: "var(--color-bt-overlay)" }}
+              onClick={onClose}
+              aria-hidden="true"
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="My trips"
+              className="fixed bottom-0 left-0 right-0 z-50 max-h-[80vh] overflow-hidden"
+              style={{
+                background: "var(--color-bt-card)",
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                borderTop: "0.5px solid var(--color-bt-border)",
+                paddingBottom: "env(safe-area-inset-bottom, 8px)",
+                animation: "trip-switcher-slide-up 200ms ease-out",
+              }}
+            >
+              {/* Drag handle */}
+              <div
+                className="mx-auto mt-[10px] h-1 w-9 rounded-sm"
+                style={{ background: "var(--color-bt-border)" }}
+                aria-hidden="true"
+              />
+              {/* Header */}
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
+              >
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  My trips
+                </span>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="flex h-6 w-6 items-center justify-center rounded-full"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text-dim)",
+                  }}
+                >
+                  <IconX size={12} stroke={2} />
+                </button>
+              </div>
+              {/* Body */}
+              <div className="max-h-[calc(80vh-72px)] overflow-y-auto">{body}</div>
+            </div>
+            <style>{`
+              @keyframes trip-switcher-slide-up {
+                from { transform: translateY(100%); }
+                to   { transform: translateY(0); }
+              }
+            `}</style>
+          </>
+        )}
+      </div>
+
+      {/* ── Desktop dropdown (visible ≥ md) ─────────────────────────── */}
+      <div className="hidden md:block">
+        {open && (
+          <div
+            ref={dropdownRef}
+            role="dialog"
+            aria-label="My trips"
+            className="absolute right-0 top-full z-50 mt-1 w-[280px] overflow-hidden"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "0.5px solid var(--color-bt-border)",
+              borderRadius: 14,
+              boxShadow: "var(--shadow-floating)",
+            }}
+          >
+            <div
+              className="px-4 py-3"
+              style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
+            >
+              <span
+                className="text-xs font-medium uppercase"
+                style={{
+                  color: "var(--color-bt-text-dim)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                My trips
+              </span>
+            </div>
+            <div className="max-h-[400px] overflow-y-auto">{body}</div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Body (shared between mobile sheet + desktop dropdown) ───────────────
+
+function TripSwitcherBody({
+  activeTrips,
+  pastTrips,
+  currentTripId,
+  onSelectTrip,
+  onNewTrip,
+  onViewAll,
+}: {
+  activeTrips: SwitcherTrip[];
+  pastTrips: SwitcherTrip[];
+  currentTripId: string | null;
+  onSelectTrip: (tripId: string) => void;
+  onNewTrip: () => void;
+  onViewAll: () => void;
+}) {
+  const showDividers = activeTrips.length > 0 && pastTrips.length > 0;
+  const noTrips = activeTrips.length === 0 && pastTrips.length === 0;
+
+  return (
+    <div>
+      {showDividers && <SectionDivider label="Active" />}
+      {activeTrips.map((trip, idx) => (
+        <TripSwitcherRow
+          key={trip.id}
+          trip={trip}
+          isCurrent={trip.id === currentTripId}
+          isLast={!showDividers && idx === activeTrips.length - 1 && pastTrips.length === 0}
+          onClick={() => onSelectTrip(trip.id)}
+        />
+      ))}
+
+      {showDividers && <SectionDivider label="Past" />}
+      {pastTrips.map((trip, idx) => (
+        <TripSwitcherRow
+          key={trip.id}
+          trip={trip}
+          isCurrent={trip.id === currentTripId}
+          isLast={idx === pastTrips.length - 1}
+          onClick={() => onSelectTrip(trip.id)}
+        />
+      ))}
+
+      {noTrips && (
+        <div
+          className="px-4 py-6 text-center text-xs"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          You don&apos;t have any trips yet.
+        </div>
+      )}
+
+      {/* New trip row */}
+      <button
+        type="button"
+        onClick={onNewTrip}
+        className="flex w-full items-center px-4 transition-colors hover:bg-[var(--color-bt-hover)]"
+        style={{
+          gap: 10,
+          padding: "11px 16px",
+          borderTop: "0.5px solid var(--color-bt-border)",
+        }}
+      >
+        <span
+          className="flex flex-shrink-0 items-center justify-center"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 9,
+            background: "transparent",
+            border: "1.5px dashed rgba(45, 212, 191, 0.4)",
+            color: "var(--color-bt-accent)",
+          }}
+          aria-hidden="true"
+        >
+          <IconPlus size={16} stroke={2} />
+        </span>
+        <span
+          className="text-[13px]"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          New trip
+        </span>
+      </button>
+
+      {/* View all trips */}
+      <button
+        type="button"
+        onClick={onViewAll}
+        className="block w-full text-center transition-opacity hover:opacity-80"
+        style={{
+          padding: "10px 16px",
+          fontSize: 12,
+          color: "var(--color-bt-text-dim)",
+        }}
+      >
+        View all trips →
+      </button>
+    </div>
+  );
+}
+
+// ── Section divider ───────────────────────────────────────────────────────
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        fontSize: 10,
+        fontWeight: 500,
+        letterSpacing: "0.07em",
+        color: "var(--color-bt-text-dim)",
+        textTransform: "uppercase",
+        padding: "10px 16px 4px",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+// ── Trip row ──────────────────────────────────────────────────────────────
+
+function TripSwitcherRow({
+  trip,
+  isCurrent,
+  isLast,
+  onClick,
+}: {
+  trip: SwitcherTrip;
+  isCurrent: boolean;
+  isLast: boolean;
+  onClick: () => void;
+}) {
+  const status = getEffectiveStatus(trip);
+  const stageBadge = STAGE_BADGE_STYLES[status] ?? STAGE_BADGE_STYLES.past;
+
+  const destination =
+    trip.locked_destination_location ?? trip.locked_destination_title ?? null;
+  const dateRange =
+    trip.start_date && trip.end_date
+      ? formatDateRange(trip.start_date, trip.end_date)
+      : null;
+  const sub =
+    destination && dateRange
+      ? `${destination} · ${dateRange}`
+      : destination ?? dateRange ?? "Destination TBD";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+      style={{
+        gap: 10,
+        padding: "11px 16px",
+        background: isCurrent ? "rgba(45, 212, 191, 0.05)" : undefined,
+        borderBottom: isLast ? undefined : "0.5px solid var(--color-bt-border)",
+      }}
+    >
+      {/* Icon container */}
+      <span
+        className="flex flex-shrink-0 items-center justify-center"
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 9,
+          background: isCurrent
+            ? "rgba(45, 212, 191, 0.1)"
+            : "var(--color-bt-card-raised)",
+          border: isCurrent
+            ? "0.5px solid rgba(45, 212, 191, 0.25)"
+            : "0.5px solid var(--color-bt-border)",
+          // Override Avatar's own background by wrapping it so the row
+          // backdrop reads through; the Avatar still shows its initials.
+        }}
+      >
+        <Avatar name={trip.title} size="sm" />
+      </span>
+
+      {/* Center: trip info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-[5px]">
+          <span
+            className="truncate text-[13px] font-medium"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {trip.title}
+          </span>
+          {isCurrent && (
+            <IconCheck
+              size={14}
+              stroke={2}
+              style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
+              aria-label="Current trip"
+            />
+          )}
+        </div>
+        <div
+          className="truncate"
+          style={{
+            fontSize: 11,
+            color: "var(--color-bt-text-dim)",
+            marginTop: 1,
+          }}
+        >
+          {sub}
+        </div>
+      </div>
+
+      {/* Right: stage badge */}
+      <span
+        className="flex-shrink-0"
+        style={{
+          fontSize: 10,
+          fontWeight: 500,
+          padding: "2px 7px",
+          borderRadius: 10,
+          background: stageBadge.bg,
+          color: stageBadge.fg,
+          border: `0.5px solid ${stageBadge.border}`,
+        }}
+      >
+        {STAGE_LABELS[status]}
+      </span>
+    </button>
+  );
+}
+
+// ── Stage badge palette ───────────────────────────────────────────────────
+
+const STAGE_BADGE_STYLES: Record<
+  TripDisplayStatus,
+  { bg: string; fg: string; border: string }
+> = {
+  idea: {
+    bg: "rgba(96, 165, 250, 0.1)",
+    fg: "#60a5fa",
+    border: "rgba(96, 165, 250, 0.2)",
+  },
+  planning: {
+    bg: "rgba(96, 165, 250, 0.1)",
+    fg: "#60a5fa",
+    border: "rgba(96, 165, 250, 0.2)",
+  },
+  going: {
+    bg: "rgba(45, 212, 191, 0.1)",
+    fg: "#2dd4bf",
+    border: "rgba(45, 212, 191, 0.2)",
+  },
+  now: {
+    bg: "rgba(45, 212, 191, 0.1)",
+    fg: "#2dd4bf",
+    border: "rgba(45, 212, 191, 0.2)",
+  },
+  past: {
+    bg: "var(--color-bt-card-raised)",
+    fg: "var(--color-bt-text-dim)",
+    border: "var(--color-bt-border)",
+  },
+  saved: {
+    bg: "var(--color-bt-card-raised)",
+    fg: "var(--color-bt-text-dim)",
+    border: "var(--color-bt-border)",
+  },
+};
+
+const STAGE_LABELS: Record<TripDisplayStatus, string> = {
+  idea: "Idea",
+  planning: "Planning",
+  going: "Going",
+  now: "Now",
+  past: "Past",
+  saved: "Saved",
+};
