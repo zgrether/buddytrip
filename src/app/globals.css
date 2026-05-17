@@ -79,8 +79,8 @@
 .dark {
   --color-bt-base: #0a0e1a;          /* deep navy — matches marketing page */
   --color-bt-base-alt: #0a0e1a;
-  --color-bt-card: #111f36;          /* navy card — noticeably different from base */
-  --color-bt-border: #1e3a5f;        /* navy border */
+  --color-bt-card: #111827;          /* gray-900 — matches marketing page cards */
+  --color-bt-border: rgba(148, 163, 184, 0.15); /* slate/translucent — matches marketing */
   --color-bt-text: #f1f5f9;          /* slate-100 */
   --color-bt-text-dim: #94a3b8;      /* slate-400 — warmer than current #8b949e */
 
@@ -122,17 +122,17 @@
   --shadow-card: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
   --shadow-raised: 0 4px 12px rgba(0,0,0,.4), 0 2px 4px rgba(0,0,0,.25);
   --shadow-floating: 0 8px 24px rgba(0,0,0,.5), 0 4px 8px rgba(0,0,0,.3);
-  --color-bt-card-raised: #1a2d4a;
-  --color-bt-card-float: #243656;
+  --color-bt-card-raised: #1a2130;   /* one step above card */
+  --color-bt-card-float: #222b3d;   /* two steps above card — modals, dropdowns */
 
   --color-bt-hover: rgba(255, 255, 255, 0.06);
   --color-bt-overlay: rgba(0, 0, 0, 0.7);
-  --color-bt-subtle-border: #1e293b;
+  --color-bt-subtle-border: rgba(148, 163, 184, 0.08); /* matches marketing dividers */
   --color-bt-dim-faint: rgba(148, 163, 184, 0.12);
   --color-bt-state-fill: rgba(255, 255, 255, 0.13);
   --color-bt-state-stroke: rgba(255, 255, 255, 0.20);
   --color-bt-tile-bg: transparent;
-  --color-bt-past-bg: #1e293b;
+  --color-bt-past-bg: #161c2b;
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.03);
   color-scheme: dark;
 }

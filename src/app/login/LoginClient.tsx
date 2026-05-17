@@ -232,8 +232,8 @@ export default function LoginClient({
       <div
         className="w-full max-w-[400px] rounded-xl border px-6 py-8"
         style={{
-          background: "#111827",
-          borderColor: "rgba(148, 163, 184, 0.1)",
+          background: "var(--color-bt-card)",
+          borderColor: "var(--color-bt-border)",
         }}
       >
         {/* ── signin mode ─────────────────────────────────────────── */}
