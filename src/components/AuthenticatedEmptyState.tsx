@@ -76,7 +76,7 @@ export function AuthenticatedEmptyState() {
         {/* Ghost link */}
         <div className="mt-4">
           <Link
-            href="/?tour=1"
+            href="/#how-it-works"
             className="text-[13px]"
             style={{ color: "var(--color-bt-accent)" }}
           >
