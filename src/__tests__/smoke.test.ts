@@ -58,20 +58,21 @@ describe("Phase 0 Smoke Test", () => {
 
   it("should have all core tables accessible", async () => {
     const admin = getAdminClient();
-    // Reflects the post-062 schema rebuild: rounds / side_events / players /
-    // group_result_scores / hole_results were dropped (Phase B will rebuild
-    // scoring); competitions + event_point_distributions + golf_course_details
-    // were added; events became scored activities under a competition.
+    // 27 tables remaining post-cleanup (AUDIT_FINDINGS.md). The score
+    // entry pipeline (play_groups, player_hole_scores, group_results),
+    // the legacy reservations table, idea_comments, golf_course_details,
+    // and scoreboard_shares were all dropped during pre-launch cleanup.
     const tables = [
       "users", "series", "trips",
       "competitions", "events", "event_point_distributions",
-      "teams", "team_assignments", "play_groups",
-      "group_results", "player_hole_scores",
-      "golf_courses", "golf_course_details",
-      "trip_members", "ideas", "idea_votes",
-      "idea_comments", "date_polls", "date_windows", "date_poll_votes",
-      "reservations", "expenses", "expense_splits", "messages",
+      "teams", "team_assignments",
+      "golf_courses",
+      "trip_members", "ideas", "idea_votes", "idea_lodging_options",
+      "archived_ideas", "catalog_ideas",
+      "date_polls", "date_windows", "date_poll_votes",
+      "expenses", "expense_splits", "messages",
       "notification_events", "notification_reads", "quick_info_tiles",
+      "schedule_items", "logistics_items", "invites",
     ];
 
     for (const table of tables) {
@@ -79,9 +80,4 @@ describe("Phase 0 Smoke Test", () => {
       expect(error, `Table "${table}" should be accessible`).toBeNull();
     }
   });
-
-  // The legacy `round_results` view was dropped via CASCADE alongside
-  // `rounds` and `group_result_scores` in migration 062. Phase B reintroduces
-  // an equivalent view (or computes scoring inline) once the new scoring
-  // surface is in place.
 });
