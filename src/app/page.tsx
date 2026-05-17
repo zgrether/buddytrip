@@ -105,7 +105,7 @@ function FullScreenLoader() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#0a0e1a",
+        background: "#0a1628",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

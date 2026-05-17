@@ -35,7 +35,7 @@ export function MarketingPage() {
 const MARKETING_CSS = `
 /* ───────────── Root + page shell ───────────── */
 .bt-mkt-root {
-  background: #0a0e1a;
+  background: #0a1628;
   color: #f1f5f9;
   min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
