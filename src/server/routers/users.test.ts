@@ -80,4 +80,63 @@ describe("users router", () => {
     const results = await caller.users.search({ query: ctx.user.email });
     expect(results).toEqual([]);
   });
+
+  // ── updateAvatar ──────────────────────────────────────────────────────
+  // Sets / clears the per-user Tabler avatar icon. Always self-scoped.
+  describe("updateAvatar", () => {
+    afterAll(async () => {
+      // Reset to null so we don't leave stray state for sibling test files
+      // that assume the shared owner has no icon set.
+      await ctx.caller().users.updateAvatar({ avatarIcon: null });
+      await ctx.callerAs("member").users.updateAvatar({ avatarIcon: null });
+    });
+
+    it("sets a Tabler icon id on the current user", async () => {
+      const caller = ctx.caller();
+      const updated = await caller.users.updateAvatar({ avatarIcon: "trophy" });
+      expect(updated.avatar_icon).toBe("trophy");
+
+      const me = await caller.users.getMe();
+      expect(me.avatar_icon).toBe("trophy");
+    });
+
+    it("overwrites an existing icon", async () => {
+      const caller = ctx.caller();
+      await caller.users.updateAvatar({ avatarIcon: "trophy" });
+      const updated = await caller.users.updateAvatar({ avatarIcon: "flag-2" });
+      expect(updated.avatar_icon).toBe("flag-2");
+    });
+
+    it("clears the icon when passed null", async () => {
+      const caller = ctx.caller();
+      await caller.users.updateAvatar({ avatarIcon: "trophy" });
+      const cleared = await caller.users.updateAvatar({ avatarIcon: null });
+      expect(cleared.avatar_icon).toBeNull();
+    });
+
+    it("rejects strings longer than 50 chars (zod max)", async () => {
+      const caller = ctx.caller();
+      await expect(
+        caller.users.updateAvatar({ avatarIcon: "x".repeat(51) })
+      ).rejects.toThrow();
+    });
+
+    it("throws UNAUTHORIZED for anonymous callers", async () => {
+      const caller = createAnonCaller();
+      await expect(
+        caller.users.updateAvatar({ avatarIcon: "trophy" })
+      ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    });
+
+    it("each user only updates their own row", async () => {
+      // Owner sets trophy, member sets star — must not collide.
+      await ctx.caller().users.updateAvatar({ avatarIcon: "trophy" });
+      await ctx.callerAs("member").users.updateAvatar({ avatarIcon: "star" });
+
+      const ownerMe = await ctx.caller().users.getMe();
+      const memberMe = await ctx.callerAs("member").users.getMe();
+      expect(ownerMe.avatar_icon).toBe("trophy");
+      expect(memberMe.avatar_icon).toBe("star");
+    });
+  });
 });

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, User } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 
 export function UserMenu() {
   const router = useRouter();
@@ -41,10 +41,10 @@ export function UserMenu() {
         onClick={() => setOpen((prev) => !prev)}
         className="transition-opacity hover:opacity-80"
       >
-        <UserAvatar
-          name={me?.name ?? me?.email ?? null}
-          avatarUrl={me?.avatar_url ?? null}
-          sizePx={36}
+        <Avatar
+          name={me?.name ?? me?.email ?? "?"}
+          avatarIcon={me?.avatar_icon ?? null}
+          size="sm"
         />
       </button>
 
