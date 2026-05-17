@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
-import { Avatar } from "@/components/Avatar";
 import {
   getEffectiveStatus,
   type TripStatusFields,
   type TripDisplayStatus,
 } from "@/lib/tripStatus";
 import { formatDateRange } from "@/lib/dates";
+import { getLocationInfo } from "@/lib/locationUtils";
 
 /**
  * Trip switcher — opens from the grid icon in TopNav.
@@ -365,25 +365,15 @@ function TripSwitcherRow({
         borderBottom: isLast ? undefined : "0.5px solid var(--color-bt-border)",
       }}
     >
-      {/* Icon container */}
-      <span
-        className="flex flex-shrink-0 items-center justify-center"
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 9,
-          background: isCurrent
-            ? "rgba(45, 212, 191, 0.1)"
-            : "var(--color-bt-card-raised)",
-          border: isCurrent
-            ? "0.5px solid rgba(45, 212, 191, 0.25)"
-            : "0.5px solid var(--color-bt-border)",
-          // Override Avatar's own background by wrapping it so the row
-          // backdrop reads through; the Avatar still shows its initials.
-        }}
-      >
-        <Avatar name={trip.title} size="sm" />
-      </span>
+      {/* Icon container — single border (no nesting), renders the
+          destination's state silhouette when we recognize it, falls
+          back to the BuddyTrip flag mark otherwise. */}
+      <TripIcon
+        location={
+          trip.locked_destination_location ?? trip.locked_destination_title ?? null
+        }
+        isCurrent={isCurrent}
+      />
 
       {/* Center: trip info */}
       <div className="min-w-0 flex-1">
@@ -431,6 +421,72 @@ function TripSwitcherRow({
         {STAGE_LABELS[status]}
       </span>
     </button>
+  );
+}
+
+// ── Trip icon (state silhouette + flag fallback) ─────────────────────────
+
+/**
+ * 34px square icon container that renders either:
+ *   - the destination's US-state silhouette (when the location parses
+ *     to a recognized state via getLocationInfo), or
+ *   - the BuddyTrip flag mark (same SVG as the TopNav logo) as a
+ *     neutral, location-agnostic fallback for international /
+ *     unrecognized / TBD destinations.
+ *
+ * Single border, no nested borders.
+ */
+function TripIcon({
+  location,
+  isCurrent,
+}: {
+  location: string | null;
+  isCurrent: boolean;
+}) {
+  const info = location ? getLocationInfo(location) : null;
+  const outline = info?.outline ?? null;
+
+  return (
+    <span
+      className="flex flex-shrink-0 items-center justify-center overflow-hidden"
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: 9,
+        background: isCurrent
+          ? "rgba(45, 212, 191, 0.1)"
+          : "var(--color-bt-card-raised)",
+        border: isCurrent
+          ? "0.5px solid rgba(45, 212, 191, 0.25)"
+          : "0.5px solid var(--color-bt-border)",
+        color: "var(--color-bt-accent)",
+      }}
+      aria-hidden="true"
+    >
+      {outline ? (
+        <svg
+          viewBox={outline.viewBox}
+          width={22}
+          height={22}
+          preserveAspectRatio="xMidYMid meet"
+          style={
+            info?.rotation
+              ? { transform: `rotate(${info.rotation}deg)` }
+              : undefined
+          }
+        >
+          <path d={outline.path} fill="currentColor" stroke="none" />
+        </svg>
+      ) : (
+        // Fallback: BuddyTrip flag (same path as the TopNav logo)
+        <svg width={16} height={16} viewBox="0 0 100 100">
+          <path
+            d="M 28 8 L 38 8 L 76 26 L 38 44 L 38 75 L 33 92 L 28 75 Z"
+            fill="currentColor"
+          />
+        </svg>
+      )}
+    </span>
   );
 }
 
