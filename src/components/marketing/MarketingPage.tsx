@@ -38,7 +38,7 @@ const MARKETING_CSS = `
   background: #0a0e1a;
   color: #f1f5f9;
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   scroll-behavior: smooth;
 }
