@@ -98,7 +98,6 @@ export default function LoginClient({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [nickname, setNickname] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -152,7 +151,7 @@ export default function LoginClient({
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name, nickname } },
+        options: { data: { name } },
       });
       if (signUpError) throw signUpError;
 
@@ -383,8 +382,7 @@ export default function LoginClient({
 
             {/* Signup form */}
             <form onSubmit={handleSignUp} className="space-y-4">
-              <Input id="signup-name" label="Full Name" value={name} onChange={setName} placeholder="Zach Grether" />
-              <Input id="signup-nickname" label="Nickname" value={nickname} onChange={setNickname} placeholder="What your crew calls you" required={false} />
+              <Input id="signup-name" label="Full Name" value={name} onChange={setName} placeholder="John Smith" />
               <Input id="signup-email" label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
               <Input id="signup-password" label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" minLength={6} />
 
