@@ -49,15 +49,17 @@ export const TripTabBar: FC<TripTabBarProps> = ({
 
   const tabs = ALL_TABS.filter((t) => {
     if (t.id === "comp") {
+      // Comp tab stays hidden during PLANNING — the home-tab Competition
+      // invitation card is the surface for that stage. It graduates to a
+      // dedicated tab once the trip flips to GOING.
       if (stage === "planning") return false;
       return canEdit && showComp;
     }
-    // Hide Expenses in PLANNING stage
-    if (t.id === "expenses" && stage === "planning") return false;
-    // Lodging is only meaningful once a destination is locked in —
-    // keep it out of the IDEA stage where the IdeaZonePanel owns the
-    // surface and there's nothing to book against yet.
-    if (t.id === "lodging" && stage === "idea") return false;
+    // Lodging and Expenses are only meaningful once a destination is locked in —
+    // keep them out of the IDEA stage. PLANNING and GOING both show all five
+    // primary tabs (Home, Crew, Lodging, Agenda, Receipts) — they share the
+    // same full tabbed interface.
+    if ((t.id === "lodging" || t.id === "expenses") && stage === "idea") return false;
     // Lodging and Schedule are owner/planner authoring surfaces; the
     // confirmed content surfaces for members on the Home itinerary
     // anyway, so showing dedicated tabs would just duplicate the view.

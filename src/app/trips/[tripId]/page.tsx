@@ -215,7 +215,9 @@ export default function TripDetailPage() {
   const canShowLodgingTab =
     stage !== "idea" && effectiveCanEdit;
   const canShowScheduleTab = effectiveCanEdit;
-  const canShowExpensesTab = stage !== "planning";
+  // Receipts is now visible in PLANNING too — unified with GOING. Hidden
+  // only in IDEA where there's nothing to receipt against yet.
+  const canShowExpensesTab = stage !== "idea";
 
   const activeTab: TabId =
     (activeTabRaw === "comp" && !canShowCompTab) ||
@@ -340,7 +342,6 @@ export default function TripDetailPage() {
               myRole={role}
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
-              planningTier={trip.planning_tier}
               onSettingsClick={onSettingsClick}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
@@ -390,7 +391,6 @@ export default function TripDetailPage() {
               myRole={role}
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
-              planningTier={trip.planning_tier}
               onSettingsClick={onSettingsClick}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
@@ -411,16 +411,14 @@ export default function TripDetailPage() {
                    The persistent leaderboard summary returns in Phase B
                    once scoring is wired through to the new events model. */}
 
-              {stage !== "planning" && (
-                <TripTabBar
-                  activeTab={activeTab}
-                  onTabChange={(tab) => setActiveTab(tab)}
-                  showComp={showComp}
-                  canEdit={canEdit}
-                  stage={stage}
-                  badges={tabBadges}
-                />
-              )}
+              <TripTabBar
+                activeTab={activeTab}
+                onTabChange={(tab) => setActiveTab(tab)}
+                showComp={showComp}
+                canEdit={canEdit}
+                stage={stage}
+                badges={tabBadges}
+              />
               <div className="pt-4 pb-24">
                 {tripIsReadOnly && activeTab === "home" && (
                   <div

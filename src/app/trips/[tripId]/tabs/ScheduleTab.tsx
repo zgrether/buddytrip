@@ -475,7 +475,9 @@ export function ScheduleTab({
   trip,
   canEdit,
   embedded,
-  onNavigateToDates,
+  // onNavigateToDates is deprecated — kept on the type for back-compat with
+  // call sites that still pass it. The basic-planning grid that used it is gone.
+  onNavigateToDates: _onNavigateToDates,
 }: TabProps & { embedded?: boolean; onNavigateToDates?: () => void }) {
   const tripId = trip.id;
   const stage = trip.stage ?? "idea";
@@ -849,32 +851,25 @@ export function ScheduleTab({
               </p>
             </div>
           </div>
-          {trip.planning_tier === "basic" ? (
+          <>
             <button
-              onClick={onNavigateToDates}
+              onClick={() => setDatesModalOpen(true)}
               className="flex-shrink-0 text-xs font-semibold"
               style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
             >
               Set dates &rarr;
             </button>
-          ) : (
-            <>
-              <button
-                onClick={() => setDatesModalOpen(true)}
-                className="flex-shrink-0 text-xs font-semibold"
-                style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
-              >
-                Set dates &rarr;
-              </button>
-              <DatesModal
-                isOpen={datesModalOpen}
-                onClose={() => setDatesModalOpen(false)}
-                tripId={tripId}
-                initialStartDate={null}
-                initialEndDate={null}
-              />
-            </>
-          )}
+            <DatesModal
+              isOpen={datesModalOpen}
+              onClose={() => setDatesModalOpen(false)}
+              tripId={tripId}
+              initialStartDate={null}
+              initialEndDate={null}
+            />
+          </>
+          {/* onNavigateToDates is deprecated — the basic-planning grid that used
+              it as the "Set dates →" target is gone. Kept on the prop type for
+              now to avoid touching every call site. */}
         </div>
       )}
 

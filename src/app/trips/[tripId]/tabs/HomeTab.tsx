@@ -4,7 +4,6 @@ import { trpc } from "@/lib/trpc-client";
 import { getTripStatus } from "@/components/StatusBadge";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ItineraryPanel as LegacyItineraryPanel } from "../components/ItineraryPanel";
-import { PlanningGrid } from "./components/PlanningGrid";
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
 import { GettingTherePanel } from "./components/panels/GettingTherePanel";
 import { QuickInfoPanel } from "./components/panels/QuickInfoPanel";
@@ -13,6 +12,16 @@ import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps } from "./types";
 
 // ── HomeTab ──────────────────────────────────────────────────────────────
+//
+// PLANNING and GOING stages now share the same panel surface (Quick Info,
+// Travel Plans, Itinerary, Competition CTA). Previously PLANNING showed a
+// four-tile basic-planning grid (PlanningGrid) with a "View Itinerary →"
+// upgrade modal; that scaffolding has been removed and trips go directly
+// from IDEA → full panel surface when the destination is locked.
+//
+// IDEA   → IdeaZonePanel
+// PLANNING / GOING(going|now) → full panel layout
+// PAST / SAVED → LegacyItineraryPanel (read-only bucketed view)
 
 export function HomeTab({
   trip,
@@ -22,9 +31,6 @@ export function HomeTab({
   onEnableComp,
   compActivated,
   onOpenChat,
-  onWriteInvitation,
-  onAdvanceToGoing,
-  actionCenterTitleAction,
 }: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
   trpc.ideas.list.useQuery({ tripId: trip.id });
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId: trip.id });
@@ -35,8 +41,7 @@ export function HomeTab({
 
   // hasItineraryContent — drives the locked vs invitation state on
   // ItineraryPanel. True when ANY of dates / lodging / schedule / shared
-  // travel exists. (Previously also ORed in reservations.length > 0;
-  // the reservations table is dead, that term was always false.)
+  // travel exists.
   const hasItineraryContent =
     !!trip.start_date ||
     scheduleItems.length > 0 ||
@@ -55,41 +60,14 @@ export function HomeTab({
     );
   }
 
+  // PLANNING + GOING(going|now) share the same panel surface.
+  const showFullPanels =
+    stage === "planning" ||
+    (stage === "going" && (status === "going" || status === "now"));
+
   return (
     <div className="space-y-4 px-4">
-      {/* ── PLANNING stage: planning_tier picks the surface.
-              - basic    → four-tile PlanningGrid (current default)
-              - advanced → full tab view (PAYWALL SEAM — not yet implemented;
-                renders PlanningGrid as a fallback so the tier is end-to-end
-                exercisable from the dev toggle until the upgrade flow exists).
-              Replaces the old ActionCenter / PlanningSection treatment.      */}
-      {stage === "planning" && (trip.planning_tier ?? "basic") === "basic" && (
-        <PlanningGrid
-          trip={trip}
-          canEdit={canEditProp}
-          isOwner={!!isOwner}
-          onTabChange={onTabChange}
-          onAdvanceToGoing={onAdvanceToGoing}
-        />
-      )}
-      {stage === "planning" && trip.planning_tier === "advanced" && (
-        // PAYWALL SEAM: planning_tier === 'advanced' unlocks full tab view.
-        // Until that view is built, fall through to the basic grid so the
-        // dev toggle has visible effect once the advanced surface lands.
-        <PlanningGrid
-          trip={trip}
-          canEdit={canEditProp}
-          isOwner={!!isOwner}
-          onTabChange={onTabChange}
-          onAdvanceToGoing={onAdvanceToGoing}
-        />
-      )}
-
-      {/* ── GOING / NOW stage: panel system.
-              Each panel handles its own locked/invitation/live state.
-              The owner-nudge for unlinked crew has moved into the Crew
-              tab (with a dot on the tab bar) — do not surface it here. */}
-      {stage === "going" && (status === "going" || status === "now") && (
+      {showFullPanels && (
         <>
           {/* Quick Info — most-glanced surface (door codes, addresses) */}
           <QuickInfoPanel
@@ -116,7 +94,6 @@ export function HomeTab({
                     isOwner={!!isOwner}
                     isActivated={!!trip.getting_there_enabled}
                     hasDates={!!trip.start_date}
-                    onOpenDatesModal={() => onTabChange?.("schedule")}
                   />
                 </div>
                 <div>
@@ -152,7 +129,7 @@ export function HomeTab({
               and its bucketed layout is still useful after the trip.
               Comp invitation still surfaces here so the owner can spin
               up a retroactive scoreboard for past trips. */}
-      {stage !== "idea" && stage !== "planning" && status !== "going" && status !== "now" && (
+      {!showFullPanels && stage !== "idea" && (
         <>
           <LegacyItineraryPanel
             tripId={trip.id}

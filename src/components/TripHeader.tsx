@@ -34,8 +34,6 @@ interface TripHeaderProps {
   myRole?: TripRole | null;
   /** Owner-only — when provided, renders the gear button top-right (not in idea stage). */
   onSettingsClick?: () => void;
-  /** Planning tier — "advanced" shows "Set dates →" link when dates are missing. */
-  planningTier?: string | null;
 }
 
 // ── Settings gear button (absolute top-right) ────────────────────────────
@@ -144,10 +142,11 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
   onSettingsClick,
   countdown,
   tripStartDate,
-  planningTier,
 }) => {
   const [datesModalOpen, setDatesModalOpen] = useState(false);
-  const showSetDatesLink = !tripStartDate && planningTier === "advanced" && !!tripId;
+  // The dates link surfaces on planning + later stages (not idea — that header
+  // variant strips destination/dates entirely). canEdit gating happens here.
+  const showSetDatesLink = !tripStartDate && !!tripId;
 
   return (
     <div
@@ -248,7 +247,6 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
   myRole,
   onSettingsClick,
   countdown,
-  planningTier,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -258,7 +256,9 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
   const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
   const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
 
-  const showSetDatesLink = !tripStartDate && planningTier === "advanced" && !!tripId;
+  // The dates link surfaces on planning + later stages (not idea — that header
+  // variant strips destination/dates entirely). canEdit gating happens here.
+  const showSetDatesLink = !tripStartDate && !!tripId;
 
   // Prefer location (locked_destination_location from parent) over lockedTitle
   // (locked_destination_title). Both now hold the same value after the
