@@ -73,26 +73,39 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    const onClick = (e: MouseEvent) => {
-      // Outside-click only matters for the desktop dropdown — the mobile
-      // sheet has its own overlay that handles the dismiss explicitly.
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        // The trigger button lives in TopNav; its onClick toggles `open`,
-        // and the toggle fires BEFORE this handler (event bubbles). To
-        // avoid the trigger immediately re-opening the panel we let the
-        // toggle do its job and only close here for clicks that aren't
-        // the trigger. The simplest reliable signal: if the click target
-        // is inside an element with data-trip-switcher-trigger, skip.
-        const triggerEl = (e.target as Element)?.closest?.("[data-trip-switcher-trigger]");
-        if (triggerEl) return;
-        onClose();
-      }
-    };
+    // Outside-click dismiss is only needed for the desktop dropdown.
+    // On mobile the sheet renders a full-screen overlay with onClick={onClose}
+    // that already handles tap-to-dismiss. Registering a mousedown listener
+    // on mobile is actively harmful: touch events synthesise a mousedown
+    // ~300 ms after the tap, which fires AFTER the listener is registered and
+    // immediately closes the sheet that was just opened.
+    //
+    // We detect "desktop" by checking md breakpoint (≥768 px). The delay
+    // (100 ms) provides an extra safety margin so any lingering synthetic
+    // pointer events from the opening tap are flushed before we start
+    // listening.
+    const isDesktop = () => window.matchMedia("(min-width: 768px)").matches;
+    let mousedownCleanup: (() => void) | null = null;
+    const timer = setTimeout(() => {
+      if (!isDesktop()) return; // mobile: overlay handles dismiss
+      const onClick = (e: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+          // The trigger button lives in TopNav; its onClick toggles `open`.
+          // Skip the close if the click is on the trigger so it can toggle.
+          const triggerEl = (e.target as Element)?.closest?.("[data-trip-switcher-trigger]");
+          if (triggerEl) return;
+          onClose();
+        }
+      };
+      document.addEventListener("mousedown", onClick);
+      mousedownCleanup = () => document.removeEventListener("mousedown", onClick);
+    }, 100);
+
     document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onClick);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onClick);
+      mousedownCleanup?.();
     };
   }, [open, onClose]);
 
