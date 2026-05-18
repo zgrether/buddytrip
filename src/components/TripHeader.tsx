@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FC } from "react";
+import { type FC } from "react";
 import { useTheme } from "next-themes";
 import { MapPin, Calendar, Settings } from "lucide-react";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -8,7 +8,6 @@ import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
 import type { TripRole } from "@/server/middleware";
 import { getTripCountdown, type CountdownResult } from "@/lib/tripCountdown";
-import { DatesModal } from "@/app/trips/[tripId]/tabs/components/DatesModal";
 
 interface TripHeaderProps {
   tripId?: string;
@@ -34,6 +33,18 @@ interface TripHeaderProps {
   myRole?: TripRole | null;
   /** Owner-only — when provided, renders the gear button top-right (not in idea stage). */
   onSettingsClick?: () => void;
+  /**
+   * When true the trip has an active date poll (`poll_mode === true`) and the
+   * dates affordance shifts to a warning-coloured "Polling crew →" link.
+   */
+  pollActive?: boolean;
+  /**
+   * Called when the user taps the dates affordance (set / polling / locked
+   * range). Only wired up for canEdit users — members see the dates as
+   * read-only text. Page-level state owns the DatesSheet so it can pass the
+   * full trip object to the embedded DatePollCard.
+   */
+  onOpenDatesSheet?: () => void;
 }
 
 // ── Settings gear button (absolute top-right) ────────────────────────────
@@ -102,6 +113,119 @@ function CountdownBar({ countdown }: { countdown: LabelledCountdown }) {
 // Re-export so other surfaces (dashboard cards) can use the same bar.
 export { CountdownBar };
 
+// ── Shared dates row — handles all three states ──────────────────────────
+//
+//   1. No dates, no poll:           "Set dates →"      (accent / teal)
+//   2. No dates, poll active:       "Polling crew →"   (warning / amber)
+//   3. Dates locked:                "May 20 – May 25" (dim, clickable when canEdit)
+//
+// `colorOverride` lets the hero variant tint the locked-range text to fit
+// the photo background. canEdit gates the click affordance; members see the
+// locked range as static text.
+
+interface DatesRowProps {
+  tripStartDate: string | null | undefined;
+  dateRange?: string;
+  canEdit: boolean;
+  pollActive: boolean;
+  onOpenDatesSheet?: () => void;
+  /** Locked-range text color (defaults to bt-text-dim). */
+  lockedColor?: string;
+  /** Margin-top class for the row container. */
+  marginTopClass?: string;
+}
+
+function DatesRow({
+  tripStartDate,
+  dateRange,
+  canEdit,
+  pollActive,
+  onOpenDatesSheet,
+  lockedColor = "var(--color-bt-text-dim)",
+  marginTopClass = "mt-1",
+}: DatesRowProps) {
+  const hasDates = !!tripStartDate;
+  const clickable = canEdit && !!onOpenDatesSheet;
+
+  // ── Locked range ──────────────────────────────────────────────────────
+  if (hasDates && dateRange && dateRange !== "Dates TBD") {
+    const content = (
+      <>
+        <Calendar size={11} className="shrink-0" />
+        <span>{dateRange}</span>
+      </>
+    );
+    if (clickable) {
+      return (
+        <button
+          type="button"
+          onClick={onOpenDatesSheet}
+          className={`${marginTopClass} flex items-center gap-1 text-xs transition-opacity hover:opacity-80`}
+          style={{
+            color: lockedColor,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          {content}
+        </button>
+      );
+    }
+    return (
+      <div
+        className={`${marginTopClass} flex items-center gap-1 text-xs`}
+        style={{ color: lockedColor }}
+      >
+        {content}
+      </div>
+    );
+  }
+
+  // ── No dates yet ──────────────────────────────────────────────────────
+  // Only canEdit users get a tap affordance. Members see nothing here.
+  if (!clickable) return null;
+
+  if (pollActive) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenDatesSheet}
+        className={`${marginTopClass} flex items-center gap-1.5 text-xs`}
+        style={{
+          color: "var(--color-bt-warning)",
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+        }}
+      >
+        <Calendar size={12} />
+        Polling crew &rarr;
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenDatesSheet}
+      className={`${marginTopClass} flex items-center gap-1.5 text-xs`}
+      style={{
+        color: "var(--color-bt-accent)",
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        padding: 0,
+      }}
+    >
+      <Calendar size={12} />
+      Set dates &rarr;
+    </button>
+  );
+}
+
 // ── Idea-stage minimal header (no destination, dates, silhouette, gear) ──
 
 const IdeaHeader: FC<{ tripName: string; myRole?: TripRole | null }> = ({
@@ -133,7 +257,6 @@ const IdeaHeader: FC<{ tripName: string; myRole?: TripRole | null }> = ({
 // ── Plain card (no locked destination, non-idea stage) ───────────────────
 
 const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCountdown | null }> = ({
-  tripId,
   tripName,
   status,
   location,
@@ -142,12 +265,10 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
   onSettingsClick,
   countdown,
   tripStartDate,
+  canEdit,
+  pollActive,
+  onOpenDatesSheet,
 }) => {
-  const [datesModalOpen, setDatesModalOpen] = useState(false);
-  // The dates link surfaces on planning + later stages (not idea — that header
-  // variant strips destination/dates entirely). canEdit gating happens here.
-  const showSetDatesLink = !tripStartDate && !!tripId;
-
   return (
     <div
       className="relative overflow-hidden rounded-2xl border"
@@ -189,42 +310,13 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
           </div>
         )}
 
-        {dateRange && dateRange !== "Dates TBD" && (
-          <div
-            className="mt-1 flex items-center gap-1 text-xs"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <Calendar size={11} />
-            <span>{dateRange}</span>
-          </div>
-        )}
-
-        {/* Advanced mode: "Set dates →" link when dates are missing */}
-        {showSetDatesLink && (
-          <>
-            <button
-              onClick={() => setDatesModalOpen(true)}
-              className="mt-1 flex items-center gap-1.5 text-xs"
-              style={{
-                color: "var(--color-bt-accent)",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              <Calendar size={12} />
-              Set dates &rarr;
-            </button>
-            <DatesModal
-              isOpen={datesModalOpen}
-              onClose={() => setDatesModalOpen(false)}
-              tripId={tripId!}
-              initialStartDate={null}
-              initialEndDate={null}
-            />
-          </>
-        )}
+        <DatesRow
+          tripStartDate={tripStartDate}
+          dateRange={dateRange}
+          canEdit={!!canEdit}
+          pollActive={!!pollActive}
+          onOpenDatesSheet={onOpenDatesSheet}
+        />
       </div>
       {countdown && <CountdownBar countdown={countdown} />}
     </div>
@@ -234,31 +326,27 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
 // ── Hero card (locked destination) ───────────────────────────────────────
 
 const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCountdown | null }> = ({
-  tripId,
   tripName,
   status,
   location,
   lockedTitle,
   dateRange,
-  canEdit: _canEdit,
+  canEdit,
   onDestinationChange: _onDestinationChange,
   onDatesTap: _onDatesTap,
   tripStartDate,
   myRole,
   onSettingsClick,
   countdown,
+  pollActive,
+  onOpenDatesSheet,
 }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
-  const [datesModalOpen, setDatesModalOpen] = useState(false);
 
   const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
   const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
   const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
-
-  // The dates link surfaces on planning + later stages (not idea — that header
-  // variant strips destination/dates entirely). canEdit gating happens here.
-  const showSetDatesLink = !tripStartDate && !!tripId;
 
   // Prefer location (locked_destination_location from parent) over lockedTitle
   // (locked_destination_title). Both now hold the same value after the
@@ -293,40 +381,14 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
             </div>
           )}
 
-          {/* Dates — only show when set */}
-          {dateRange && dateRange !== "Dates TBD" && (
-            <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: metaColor }}>
-              <Calendar size={11} className="shrink-0" />
-              <span>{dateRange}</span>
-            </div>
-          )}
-
-          {/* Advanced mode: "Set dates →" link when dates are missing */}
-          {showSetDatesLink && (
-            <>
-              <button
-                onClick={() => setDatesModalOpen(true)}
-                className="mt-1 flex items-center gap-1.5 text-xs"
-                style={{
-                  color: "var(--color-bt-accent)",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                <Calendar size={12} />
-                Set dates &rarr;
-              </button>
-              <DatesModal
-                isOpen={datesModalOpen}
-                onClose={() => setDatesModalOpen(false)}
-                tripId={tripId!}
-                initialStartDate={null}
-                initialEndDate={null}
-              />
-            </>
-          )}
+          <DatesRow
+            tripStartDate={tripStartDate}
+            dateRange={dateRange}
+            canEdit={!!canEdit}
+            pollActive={!!pollActive}
+            onOpenDatesSheet={onOpenDatesSheet}
+            lockedColor={metaColor}
+          />
         </>
       }
     >

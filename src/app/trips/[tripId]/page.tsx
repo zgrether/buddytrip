@@ -25,6 +25,7 @@ import { formatDateRange } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
+import { DatesSheet } from "./components/DatesSheet";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ export default function TripDetailPage() {
   const [showWriteInvitationModal, setShowWriteInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [datesSheetOpen, setDatesSheetOpen] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const {
@@ -343,6 +345,8 @@ export default function TripDetailPage() {
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
               onSettingsClick={onSettingsClick}
+              pollActive={!!trip.poll_mode}
+              onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
                   tripId: trip.id,
@@ -392,6 +396,8 @@ export default function TripDetailPage() {
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
               onSettingsClick={onSettingsClick}
+              pollActive={!!trip.poll_mode}
+              onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
                   tripId: trip.id,
@@ -521,6 +527,20 @@ export default function TripDetailPage() {
           tripId={tripId}
           trip={trip}
           onClose={() => setShowWriteInvitationModal(false)}
+        />
+      )}
+
+      {/* ── Trip dates sheet (set / poll / clear) ───────────────────────── */}
+      {/* Wired to the dates affordance in TripHeader. Owns the full trip
+          object so the embedded DatePollCard has everything it needs. */}
+      {trip && (
+        <DatesSheet
+          isOpen={datesSheetOpen}
+          onClose={() => setDatesSheetOpen(false)}
+          tripId={tripId}
+          trip={trip}
+          isOwner={isOwner}
+          onTabChange={(tab) => setActiveTab(tab as TabId)}
         />
       )}
 
