@@ -66,46 +66,47 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     return { activeTrips: active, pastTrips: past };
   }, [trips]);
 
-  // ── Dismiss handlers (Escape + outside click for desktop) ────────────
+  // ── Dismiss handlers ─────────────────────────────────────────────────
+  // We use `pointerdown` (not `mousedown` or `click`) as the outside-tap
+  // detector for both mobile and desktop. This is critical on mobile:
+  //
+  //   Touch → click (React handler) → setSwitcherOpen(true) → overlay renders
+  //   → browser fires synthetic mousedown/mouseup/click at the touch position
+  //   → those synthetic events land on the overlay → onClick={onClose} fires
+  //   → sheet closes immediately ("ghost click" / "tap-through" bug).
+  //
+  // Browsers do NOT generate synthetic `pointerdown` events from touch-derived
+  // mouse events, so switching to `pointerdown` breaks the ghost-click cycle.
+  //
+  // We also block for 150 ms after open to absorb any remaining edge cases
+  // (e.g. slow devices where the synthetic events arrive late).
+  //
+  // The overlay div is kept as a visual dim backdrop ONLY — no onClick.
+  // All dismiss logic lives in this single document listener.
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileSheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    // Outside-click dismiss is only needed for the desktop dropdown.
-    // On mobile the sheet renders a full-screen overlay with onClick={onClose}
-    // that already handles tap-to-dismiss. Registering a mousedown listener
-    // on mobile is actively harmful: touch events synthesise a mousedown
-    // ~300 ms after the tap, which fires AFTER the listener is registered and
-    // immediately closes the sheet that was just opened.
-    //
-    // We detect "desktop" by checking md breakpoint (≥768 px). The delay
-    // (100 ms) provides an extra safety margin so any lingering synthetic
-    // pointer events from the opening tap are flushed before we start
-    // listening.
-    const isDesktop = () => window.matchMedia("(min-width: 768px)").matches;
-    let mousedownCleanup: (() => void) | null = null;
-    const timer = setTimeout(() => {
-      if (!isDesktop()) return; // mobile: overlay handles dismiss
-      const onClick = (e: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-          // The trigger button lives in TopNav; its onClick toggles `open`.
-          // Skip the close if the click is on the trigger so it can toggle.
-          const triggerEl = (e.target as Element)?.closest?.("[data-trip-switcher-trigger]");
-          if (triggerEl) return;
-          onClose();
-        }
-      };
-      document.addEventListener("mousedown", onClick);
-      mousedownCleanup = () => document.removeEventListener("mousedown", onClick);
-    }, 100);
-
+    let blocked = true;
+    const unblock = setTimeout(() => { blocked = false; }, 150);
+    const onPointerDown = (e: PointerEvent) => {
+      if (blocked) return;
+      // Clicks inside either panel surface belong to the panel.
+      if (dropdownRef.current?.contains(e.target as Node)) return;
+      if (mobileSheetRef.current?.contains(e.target as Node)) return;
+      // Let the trigger button's own onClick handle the toggle.
+      if ((e.target as Element)?.closest?.("[data-trip-switcher-trigger]")) return;
+      onClose();
+    };
     document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointerDown);
     return () => {
-      clearTimeout(timer);
+      clearTimeout(unblock);
       document.removeEventListener("keydown", onKey);
-      mousedownCleanup?.();
+      document.removeEventListener("pointerdown", onPointerDown);
     };
   }, [open, onClose]);
 
@@ -131,14 +132,16 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
       <div className="md:hidden">
         {open && (
           <>
-            {/* Dim overlay — tap to dismiss */}
+            {/* Dim overlay — visual backdrop only. Dismiss is handled by
+                the document pointerdown listener above so ghost clicks
+                (synthetic mouse events from touch) can't close the sheet. */}
             <div
               className="fixed inset-0 z-40"
               style={{ background: "var(--color-bt-overlay)" }}
-              onClick={onClose}
               aria-hidden="true"
             />
             <div
+              ref={mobileSheetRef}
               role="dialog"
               aria-modal="true"
               aria-label="My trips"
