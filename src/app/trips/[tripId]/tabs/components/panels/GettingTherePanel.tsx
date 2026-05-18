@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Lock, Plane } from "lucide-react";
+import { ArrowRight, Plane } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GettingThereSection } from "../GettingThereSection";
 import { GettingThereIntroModal } from "../modals/GettingThereIntroModal";
@@ -14,9 +14,13 @@ interface GettingTherePanelProps {
   trip: TripData;
   isOwner: boolean;
   isActivated: boolean;
-  hasDates: boolean;
-  /** Caller-supplied opener for the dates modal — used by the locked state's "Set dates →" link. */
-  onOpenDatesModal?: () => void;
+  /**
+   * @deprecated — no longer affects rendering. The previous "Set your trip
+   * dates first…" locked card has been retired now that dates live in the
+   * header; the invitation card is the entry point regardless of dates.
+   * Kept on the prop type for back-compat with existing call sites.
+   */
+  hasDates?: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -25,18 +29,14 @@ interface GettingTherePanelProps {
  * GettingTherePanel — home tab panel for travel coordination.
  *
  * State machine:
- *   1. No dates set            → dim locked card; owner sees "Set dates →"
- *   2. Member, not activated   → dim placeholder, no CTA
- *   3. Owner, dates set,
- *      not activated           → invitation card → opens GettingThereIntroModal
- *   4. Activated               → live GettingThereSection in CardShell
+ *   1. Member, not activated   → dim placeholder, no CTA
+ *   2. Owner, not activated    → invitation card → opens GettingThereIntroModal
+ *   3. Activated               → live GettingThereSection in CardShell
  */
 export function GettingTherePanel({
   tripId,
   isOwner,
   isActivated,
-  hasDates,
-  onOpenDatesModal,
 }: GettingTherePanelProps) {
   const [introOpen, setIntroOpen] = useState(false);
   const utils = trpc.useUtils();
@@ -89,18 +89,7 @@ export function GettingTherePanel({
     );
   }
 
-  // ── State 1: no dates set ────────────────────────────────────────────
-  if (!hasDates) {
-    return (
-      <DimLockedCard
-        text="Set your trip dates first to coordinate travel arrivals."
-        actionLabel={isOwner ? "Set dates →" : undefined}
-        onAction={onOpenDatesModal}
-      />
-    );
-  }
-
-  // ── State 2: member, not activated ───────────────────────────────────
+  // ── State 1: member, not activated ───────────────────────────────────
   if (!isOwner) {
     return (
       <DimLockedCard
@@ -109,7 +98,7 @@ export function GettingTherePanel({
     );
   }
 
-  // ── State 3: owner, dates set, invitation ────────────────────────────
+  // ── State 2: owner, not activated, invitation ────────────────────────
   return (
     <>
       <InvitationCard
@@ -133,46 +122,22 @@ export function GettingTherePanel({
 
 // ── DimLockedCard ────────────────────────────────────────────────────────
 
-function DimLockedCard({
-  text,
-  actionLabel,
-  onAction,
-}: {
-  text: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
+function DimLockedCard({ text }: { text: string }) {
   return (
     <div
-      className="flex items-center gap-3 rounded-xl px-4 py-3.5"
+      className="rounded-xl px-4 py-3.5"
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
-        opacity: actionLabel ? 0.85 : 0.6,
+        opacity: 0.6,
       }}
     >
-      <Lock size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
       <p
-        className="flex-1 text-[13px] leading-snug"
+        className="text-[13px] leading-snug"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         {text}
       </p>
-      {actionLabel && (
-        <button
-          type="button"
-          onClick={onAction}
-          className="flex-shrink-0 text-xs font-semibold"
-          style={{
-            color: "var(--color-bt-accent)",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          {actionLabel}
-        </button>
-      )}
     </div>
   );
 }

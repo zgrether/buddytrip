@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Calendar, Lock } from "lucide-react";
+import { ArrowRight, Calendar } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ItineraryView } from "../ItineraryView";
 import { ItineraryIntroModal } from "../modals/ItineraryIntroModal";
@@ -26,7 +26,8 @@ interface ItineraryPanelProps {
  *
  * State machine:
  *   1. Member, not activated  → dim placeholder, no CTA
- *   2. Owner, no content      → dim "locked" card with lock icon, no CTA
+ *   2. Owner, no content      → inline nudge text (no panel chrome) directing
+ *                               the user to set dates from the trip header.
  *   3. Owner, has content,
  *      not activated          → invitation card, opens ItineraryIntroModal
  *   4. Activated              → ItineraryView renders directly (no panel
@@ -100,13 +101,21 @@ export function ItineraryPanel({
     );
   }
 
-  // ── State 2: owner, no content (locked) ──────────────────────────────
+  // ── State 2: owner, no content ───────────────────────────────────────
+  // Replaced the previous heavy "locked" card with a simple inline nudge —
+  // the header dates link is now the canonical entry point for trip dates.
   if (!hasContent) {
     return (
-      <DimPlaceholder
-        showLock
-        text="Add dates, lodging, schedule items, or travel info to unlock your day-by-day view."
-      />
+      <p
+        className="text-[13px] leading-snug"
+        style={{
+          color: "var(--color-bt-text-dim)",
+          textAlign: "center",
+          padding: "20px 16px",
+        }}
+      >
+        Set trip dates in the header to unlock the day-by-day view.
+      </p>
     );
   }
 
@@ -134,7 +143,7 @@ export function ItineraryPanel({
 
 // ── DimPlaceholder ───────────────────────────────────────────────────────
 
-function DimPlaceholder({ text, showLock }: { text: string; showLock?: boolean }) {
+function DimPlaceholder({ text }: { text: string }) {
   return (
     <div
       className="flex items-center gap-3 rounded-xl px-4 py-3.5"
@@ -144,9 +153,6 @@ function DimPlaceholder({ text, showLock }: { text: string; showLock?: boolean }
         opacity: 0.6,
       }}
     >
-      {showLock && (
-        <Lock size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-      )}
       <p
         className="text-[13px] leading-snug"
         style={{ color: "var(--color-bt-text-dim)" }}
