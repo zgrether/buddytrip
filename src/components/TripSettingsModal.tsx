@@ -61,10 +61,11 @@ export function TripSettingsModal({
 
   const nameChanged = newName.trim() !== tripName && newName.trim().length > 0;
 
-  // ── Destination / Dates edit state (planning stage only) ─────────────
+  // ── Destination / Dates edit state ────────────────────────────────────
   const stage = trip?.stage ?? "idea";
-  // Show "Trip plan" section for any role-eligible user who is past the planning stage.
-  // During planning, dates and destination are managed via the PlanningGrid instead.
+  // Show the "Trip plan" section for any role-eligible user. Destination edits
+  // live here in settings; dates are managed primarily from the header
+  // DatesSheet but can also be cleared from this surface.
   const canEditPlan = viewerRole === "Owner" || viewerRole === "Planner";
   const destinationLocked = !!trip?.locked_destination_title;
   const datesLocked = !!(trip?.start_date && trip?.end_date);
@@ -253,8 +254,11 @@ export function TripSettingsModal({
           </>
         )}
 
-        {/* ── Section: Trip plan (hidden during planning — use PlanningGrid instead) ── */}
-        {canEditPlan && stage !== "planning" && (destinationLocked || datesLocked) && (
+        {/* ── Section: Trip plan ──────────────────────────────────────── */}
+        {/* Surfaces here once dates or destination are locked, regardless of
+            stage — the header DatesSheet is the primary entry point for dates,
+            this is the back-stop "clear / return to poll" surface. */}
+        {canEditPlan && (destinationLocked || datesLocked) && (
           <>
             <p
               className="mb-3 text-[11px] font-medium uppercase tracking-wider"

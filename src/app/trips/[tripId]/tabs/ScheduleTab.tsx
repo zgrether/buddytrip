@@ -19,7 +19,6 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { DatesModal } from "./components/DatesModal";
 import { EmptyState } from "@/components/EmptyState";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
@@ -475,15 +474,20 @@ export function ScheduleTab({
   trip,
   canEdit,
   embedded,
+  onOpenDatesSheet,
   // onNavigateToDates is deprecated — kept on the type for back-compat with
   // call sites that still pass it. The basic-planning grid that used it is gone.
   onNavigateToDates: _onNavigateToDates,
-}: TabProps & { embedded?: boolean; onNavigateToDates?: () => void }) {
+}: TabProps & {
+  embedded?: boolean;
+  onNavigateToDates?: () => void;
+  /** Opens the shared trip-dates sheet — wired through from page.tsx. */
+  onOpenDatesSheet?: () => void;
+}) {
   const tripId = trip.id;
   const stage = trip.stage ?? "idea";
   const utils = trpc.useUtils();
   const [addMode, setAddMode] = useState<AddMode>(null);
-  const [datesModalOpen, setDatesModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
   const [dayPickerItem, setDayPickerItem] = useState<ScheduleItem | null>(null);
@@ -851,25 +855,18 @@ export function ScheduleTab({
               </p>
             </div>
           </div>
-          <>
-            <button
-              onClick={() => setDatesModalOpen(true)}
-              className="flex-shrink-0 text-xs font-semibold"
-              style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none", cursor: "pointer" }}
-            >
-              Set dates &rarr;
-            </button>
-            <DatesModal
-              isOpen={datesModalOpen}
-              onClose={() => setDatesModalOpen(false)}
-              tripId={tripId}
-              initialStartDate={null}
-              initialEndDate={null}
-            />
-          </>
-          {/* onNavigateToDates is deprecated — the basic-planning grid that used
-              it as the "Set dates →" target is gone. Kept on the prop type for
-              now to avoid touching every call site. */}
+          <button
+            onClick={onOpenDatesSheet}
+            className="flex-shrink-0 text-xs font-semibold"
+            style={{
+              color: "var(--color-bt-accent)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            Set dates &rarr;
+          </button>
         </div>
       )}
 

@@ -459,7 +459,7 @@ export default function TripDetailPage() {
                     role={role}
                     canEdit={effectiveCanEdit}
                     isOwner={tripIsReadOnly ? false : isOwner}
-                    onNavigateToDates={() => setActiveTab("home")}
+                    onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
                 )}
                 {activeTab === "crew" && (

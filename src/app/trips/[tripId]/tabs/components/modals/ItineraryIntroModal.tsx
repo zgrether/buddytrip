@@ -21,8 +21,7 @@ interface ItineraryIntroModalProps {
  *
  * Visual language: dark gradient hero with teal/blue blob accents. Hex
  * values inside the gradient art are intentional (token system covers
- * structural surfaces, not gradient art — same precedent as
- * UnlockAdvancedModal).
+ * structural surfaces, not gradient art).
  */
 export function ItineraryIntroModal({
   isOpen,
