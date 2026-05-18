@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { IconCheck, IconPlus, IconX } from "@tabler/icons-react";
+import { IconCheck, IconPlus } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import {
   getEffectiveStatus,
@@ -67,54 +66,30 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     return { activeTrips: active, pastTrips: past };
   }, [trips]);
 
-  // ── Dismiss handlers ─────────────────────────────────────────────────
-  // We use `pointerdown` (not `mousedown` or `click`) as the outside-tap
-  // detector for both mobile and desktop. This is critical on mobile:
-  //
-  //   Touch → click (React handler) → setSwitcherOpen(true) → overlay renders
-  //   → browser fires synthetic mousedown/mouseup/click at the touch position
-  //   → those synthetic events land on the overlay → onClick={onClose} fires
-  //   → sheet closes immediately ("ghost click" / "tap-through" bug).
-  //
-  // Browsers do NOT generate synthetic `pointerdown` events from touch-derived
-  // mouse events, so switching to `pointerdown` breaks the ghost-click cycle.
-  //
-  // We also block for 150 ms after open to absorb any remaining edge cases
-  // (e.g. slow devices where the synthetic events arrive late).
-  //
-  // The overlay div is kept as a visual dim backdrop ONLY — no onClick.
-  // All dismiss logic lives in this single document listener.
+  // ── Dismiss handlers — mirrors the notifications bell panel in TopNav ──
+  // Outside-click uses mousedown (same as the bell). The listener is only
+  // registered when open=true, which means it is added AFTER the click event
+  // that opened the panel — so the synthesised mousedown from the opening tap
+  // has already fired and won't spuriously trigger a close.
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const mobileSheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    let blocked = true;
-    const unblock = setTimeout(() => { blocked = false; }, 150);
-    const onPointerDown = (e: PointerEvent) => {
-      if (blocked) return;
-      // Clicks inside either panel surface belong to the panel.
-      if (dropdownRef.current?.contains(e.target as Node)) return;
-      if (mobileSheetRef.current?.contains(e.target as Node)) return;
-      // Let the trigger button's own onClick handle the toggle.
-      if ((e.target as Element)?.closest?.("[data-trip-switcher-trigger]")) return;
-      onClose();
+    const onMouseDown = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        if ((e.target as Element)?.closest?.("[data-trip-switcher-trigger]")) return;
+        onClose();
+      }
     };
     document.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("mousedown", onMouseDown);
     return () => {
-      clearTimeout(unblock);
       document.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("mousedown", onMouseDown);
     };
   }, [open, onClose]);
-
-  // Track client mount so the portal (document.body) is only accessed
-  // after hydration — createPortal is a no-op on the server.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
 
   const handleNavigate = (href: string) => {
     router.push(href);
@@ -132,115 +107,50 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     />
   );
 
-  // ── Mobile bottom sheet ─────────────────────────────────────────────
-  // MUST render via a portal into document.body.
-  //
-  // The TopNav header has `backdropFilter: blur(14px)`. Per the CSS spec,
-  // backdrop-filter makes an element the containing block for any
-  // `position: fixed` descendants. Without a portal the sheet's
-  // `fixed bottom-0` is anchored to the header's bottom edge (y≈56px)
-  // rather than the viewport bottom, so the sheet slides up to nearly
-  // off-screen and only ~56px of it remains visible.
-  //
-  // createPortal moves the DOM node to document.body, outside the
-  // header's containing block, restoring normal fixed positioning.
-  const mobileSheet = open ? (
-    <>
-      {/* Dim overlay — visual backdrop only. Dismiss handled by the
-          document pointerdown listener (ghost-click safe). */}
-      <div
-        className="fixed inset-0 z-40 md:hidden"
-        style={{ background: "var(--color-bt-overlay)" }}
-        aria-hidden="true"
-      />
-      <div
-        ref={mobileSheetRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="My trips"
-        className="fixed bottom-0 left-0 right-0 z-50 max-h-[80dvh] overflow-hidden md:hidden"
-        style={{
-          background: "var(--color-bt-card)",
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          borderTop: "0.5px solid var(--color-bt-border)",
-          paddingBottom: "env(safe-area-inset-bottom, 8px)",
-          animation: "trip-switcher-slide-up 200ms ease-out",
-        }}
-      >
-        {/* Drag handle */}
-        <div
-          className="mx-auto mt-[10px] h-1 w-9 rounded-sm"
-          style={{ background: "var(--color-bt-border)" }}
-          aria-hidden="true"
-        />
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-4 py-3"
-          style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
-        >
-          <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            My trips
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-6 w-6 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-          >
-            <IconX size={12} stroke={2} />
-          </button>
-        </div>
-        {/* Body */}
-        <div className="max-h-[calc(80dvh-72px)] overflow-y-auto">{body}</div>
-      </div>
-      <style>{`
-        @keyframes trip-switcher-slide-up {
-          from { transform: translateY(100%); }
-          to   { transform: translateY(0); }
-        }
-      `}</style>
-    </>
-  ) : null;
+  if (!open) return null;
 
   return (
     <>
-      {/* Mobile sheet — portalled to document.body so position:fixed uses
-          the viewport as its containing block, not the backdrop-filter header. */}
-      {mounted && createPortal(mobileSheet, document.body)}
+      {/* Mobile dim backdrop — sm:hidden so it disappears once the panel
+          switches to absolute positioning on larger screens. Mirrors the
+          same pattern as the notifications bell panel. */}
+      <div
+        className="fixed inset-0 z-40 sm:hidden"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
-      {/* ── Desktop dropdown (visible ≥ md) ─────────────────────────── */}
-      {/* position:absolute is unaffected by backdrop-filter, so this can
-          stay inside the header's DOM tree for correct relative positioning. */}
-      <div className="hidden md:block">
-        {open && (
-          <div
-            ref={dropdownRef}
-            role="dialog"
-            aria-label="My trips"
-            className="absolute right-0 top-full z-50 mt-1 w-[280px] overflow-hidden"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "0.5px solid var(--color-bt-border)",
-              borderRadius: 14,
-              boxShadow: "var(--shadow-floating)",
-            }}
+      {/* Panel — fixed on mobile (drops below nav), absolute on desktop.
+          fixed top-14 = 56px from the header's own top edge (backdrop-filter
+          makes the header the containing block for fixed children), which
+          places the panel flush below the nav bar. Same trick as the bell
+          notification dropdown. */}
+      <div
+        ref={dropdownRef}
+        role="dialog"
+        aria-label="My trips"
+        className="fixed right-4 top-14 z-50 w-[calc(100vw-32px)] max-w-[320px] overflow-hidden rounded-xl shadow-2xl sm:absolute sm:right-0 sm:top-full sm:mt-1 sm:w-[280px] sm:rounded-[14px] sm:shadow-none"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "0.5px solid var(--color-bt-border)",
+          boxShadow: "var(--shadow-floating)",
+        }}
+      >
+        <div
+          className="px-4 py-3"
+          style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
+        >
+          <span
+            className="text-sm font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
           >
-            <div
-              className="px-4 py-3"
-              style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
-            >
-              <span
-                className="text-xs font-medium uppercase"
-                style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.04em" }}
-              >
-                My trips
-              </span>
-            </div>
-            <div className="max-h-[400px] overflow-y-auto">{body}</div>
-          </div>
-        )}
+            My trips
+          </span>
+        </div>
+        <div style={{ maxHeight: "min(480px, calc(100vh - 80px))", overflowY: "auto" }}>
+          {body}
+        </div>
       </div>
     </>
   );
