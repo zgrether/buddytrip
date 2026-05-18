@@ -129,7 +129,7 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
               role="dialog"
               aria-modal="true"
               aria-label="My trips"
-              className="fixed bottom-0 left-0 right-0 z-50 max-h-[80vh] overflow-hidden"
+              className="fixed bottom-0 left-0 right-0 z-50 max-h-[80dvh] overflow-hidden"
               style={{
                 background: "var(--color-bt-card)",
                 borderTopLeftRadius: 16,
@@ -170,7 +170,7 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
                 </button>
               </div>
               {/* Body */}
-              <div className="max-h-[calc(80vh-72px)] overflow-y-auto">{body}</div>
+              <div className="max-h-[calc(80dvh-72px)] overflow-y-auto">{body}</div>
             </div>
             <style>{`
               @keyframes trip-switcher-slide-up {
