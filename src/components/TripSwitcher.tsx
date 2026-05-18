@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useParams } from "next/navigation";
 import { IconCheck, IconPlus, IconX } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
@@ -110,6 +111,11 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     };
   }, [open, onClose]);
 
+  // Track client mount so the portal (document.body) is only accessed
+  // after hydration — createPortal is a no-op on the server.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const handleNavigate = (href: string) => {
     router.push(href);
     onClose();
@@ -126,79 +132,87 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     />
   );
 
+  // ── Mobile bottom sheet ─────────────────────────────────────────────
+  // MUST render via a portal into document.body.
+  //
+  // The TopNav header has `backdropFilter: blur(14px)`. Per the CSS spec,
+  // backdrop-filter makes an element the containing block for any
+  // `position: fixed` descendants. Without a portal the sheet's
+  // `fixed bottom-0` is anchored to the header's bottom edge (y≈56px)
+  // rather than the viewport bottom, so the sheet slides up to nearly
+  // off-screen and only ~56px of it remains visible.
+  //
+  // createPortal moves the DOM node to document.body, outside the
+  // header's containing block, restoring normal fixed positioning.
+  const mobileSheet = open ? (
+    <>
+      {/* Dim overlay — visual backdrop only. Dismiss handled by the
+          document pointerdown listener (ghost-click safe). */}
+      <div
+        className="fixed inset-0 z-40 md:hidden"
+        style={{ background: "var(--color-bt-overlay)" }}
+        aria-hidden="true"
+      />
+      <div
+        ref={mobileSheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="My trips"
+        className="fixed bottom-0 left-0 right-0 z-50 max-h-[80dvh] overflow-hidden md:hidden"
+        style={{
+          background: "var(--color-bt-card)",
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          borderTop: "0.5px solid var(--color-bt-border)",
+          paddingBottom: "env(safe-area-inset-bottom, 8px)",
+          animation: "trip-switcher-slide-up 200ms ease-out",
+        }}
+      >
+        {/* Drag handle */}
+        <div
+          className="mx-auto mt-[10px] h-1 w-9 rounded-sm"
+          style={{ background: "var(--color-bt-border)" }}
+          aria-hidden="true"
+        />
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
+        >
+          <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+            My trips
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-6 w-6 items-center justify-center rounded-full"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+          >
+            <IconX size={12} stroke={2} />
+          </button>
+        </div>
+        {/* Body */}
+        <div className="max-h-[calc(80dvh-72px)] overflow-y-auto">{body}</div>
+      </div>
+      <style>{`
+        @keyframes trip-switcher-slide-up {
+          from { transform: translateY(100%); }
+          to   { transform: translateY(0); }
+        }
+      `}</style>
+    </>
+  ) : null;
+
   return (
     <>
-      {/* ── Mobile bottom sheet (visible < md) ──────────────────────── */}
-      <div className="md:hidden">
-        {open && (
-          <>
-            {/* Dim overlay — visual backdrop only. Dismiss is handled by
-                the document pointerdown listener above so ghost clicks
-                (synthetic mouse events from touch) can't close the sheet. */}
-            <div
-              className="fixed inset-0 z-40"
-              style={{ background: "var(--color-bt-overlay)" }}
-              aria-hidden="true"
-            />
-            <div
-              ref={mobileSheetRef}
-              role="dialog"
-              aria-modal="true"
-              aria-label="My trips"
-              className="fixed bottom-0 left-0 right-0 z-50 max-h-[80dvh] overflow-hidden"
-              style={{
-                background: "var(--color-bt-card)",
-                borderTopLeftRadius: 16,
-                borderTopRightRadius: 16,
-                borderTop: "0.5px solid var(--color-bt-border)",
-                paddingBottom: "env(safe-area-inset-bottom, 8px)",
-                animation: "trip-switcher-slide-up 200ms ease-out",
-              }}
-            >
-              {/* Drag handle */}
-              <div
-                className="mx-auto mt-[10px] h-1 w-9 rounded-sm"
-                style={{ background: "var(--color-bt-border)" }}
-                aria-hidden="true"
-              />
-              {/* Header */}
-              <div
-                className="flex items-center justify-between px-4 py-3"
-                style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
-              >
-                <span
-                  className="text-sm font-medium"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  My trips
-                </span>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close"
-                  className="flex h-6 w-6 items-center justify-center rounded-full"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text-dim)",
-                  }}
-                >
-                  <IconX size={12} stroke={2} />
-                </button>
-              </div>
-              {/* Body */}
-              <div className="max-h-[calc(80dvh-72px)] overflow-y-auto">{body}</div>
-            </div>
-            <style>{`
-              @keyframes trip-switcher-slide-up {
-                from { transform: translateY(100%); }
-                to   { transform: translateY(0); }
-              }
-            `}</style>
-          </>
-        )}
-      </div>
+      {/* Mobile sheet — portalled to document.body so position:fixed uses
+          the viewport as its containing block, not the backdrop-filter header. */}
+      {mounted && createPortal(mobileSheet, document.body)}
 
       {/* ── Desktop dropdown (visible ≥ md) ─────────────────────────── */}
+      {/* position:absolute is unaffected by backdrop-filter, so this can
+          stay inside the header's DOM tree for correct relative positioning. */}
       <div className="hidden md:block">
         {open && (
           <div
@@ -219,10 +233,7 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
             >
               <span
                 className="text-xs font-medium uppercase"
-                style={{
-                  color: "var(--color-bt-text-dim)",
-                  letterSpacing: "0.04em",
-                }}
+                style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.04em" }}
               >
                 My trips
               </span>
