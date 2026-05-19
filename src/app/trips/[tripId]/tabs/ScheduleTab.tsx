@@ -20,6 +20,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { TabHeader } from "@/components/TabHeader";
+import { TabFab } from "@/components/TabFab";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
@@ -829,6 +831,33 @@ export function ScheduleTab({
 
   return (
     <div className={embedded ? undefined : "px-4"}>
+      {/* Shared entry-tab header — eyebrow + headline + body. The "Add to
+          agenda" affordance lives in the desktopAction slot, and the mobile
+          TabFab at the bottom mirrors it. Nudges (set dates / unconfirmed
+          rounds / out-of-range) sit between the header and the grid. */}
+      <TabHeader
+        eyebrow="Agenda"
+        headline="What you're actually doing"
+        body="Tee times, dinners, side games, anything else on the calendar. Treat it like a rough draft — once an item is ready for the crew, confirm it and it'll appear on their itinerary."
+        desktopAction={
+          canEdit ? (
+            <button
+              type="button"
+              onClick={() => setAddMode("general")}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Plus size={11} />
+              Add to agenda
+            </button>
+          ) : undefined
+        }
+      />
+
       {/* ── Nudges — full-width alerts above the two-column layout ──── */}
 
       {canEdit && !trip.start_date && allItems.length > 0 && (
@@ -921,14 +950,6 @@ export function ScheduleTab({
       )}
 
       <section>
-        {/* Guidance text — stage-aware */}
-        <p
-          className="mb-3 text-[13px] leading-relaxed"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          This is where you add things like dinner reservations, golf tee times, or ideas for things to do on your trip — snorkeling, hiking, whiskey tasting, whatever. Treat it like a rough draft of your itinerary. Once an item feels ready for the rest of the crew, confirm it and it&apos;ll appear on their trip itinerary.
-        </p>
-
         {allItems.length === 0 ? (
           <EmptyState
             icon={<CalendarDays className="h-10 w-10" />}
@@ -1559,6 +1580,16 @@ export function ScheduleTab({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Mobile-only FAB — mirrors the header's "Add to agenda". canEdit-only
+          since members can't author schedule items. */}
+      {canEdit && (
+        <TabFab
+          onClick={() => setAddMode("general")}
+          label="Add to agenda"
+          testId="add-schedule-item-fab"
+        />
       )}
     </div>
   );

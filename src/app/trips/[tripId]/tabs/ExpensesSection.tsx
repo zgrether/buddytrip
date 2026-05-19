@@ -114,11 +114,18 @@ export function ExpensesSection({
   members,
   canEdit,
   isOwner = false,
+  // "Add receipt" modal state is lifted to the parent (ExpensesTab) so
+  // the TabHeader desktop button and the mobile TabFab can both trigger
+  // it. The section itself no longer renders an inline add button.
+  addOpen,
+  onAddOpenChange,
 }: {
   tripId: string;
   members: ExpenseMember[];
   canEdit: boolean;
   isOwner?: boolean;
+  addOpen: boolean;
+  onAddOpenChange: (open: boolean) => void;
 }) {
   const currentUser = useCurrentUser();
   const { resolvedTheme } = useTheme();
@@ -126,7 +133,6 @@ export function ExpensesSection({
   const utils = trpc.useUtils();
 
   // ── Modal state ──
-  const [showAdd, setShowAdd] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
 
   // ── Queries ──
@@ -205,25 +211,9 @@ export function ExpensesSection({
           minmax(0,…) prevents min-content from pushing column widths. */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
 
-        {/* ── Left: add button + receipt list ─────────────────────────── */}
+        {/* ── Left: receipt list (add affordance lives in the parent
+            TabHeader / TabFab, not inline here) ─────────────────────── */}
         <div className="space-y-3">
-          {/* Add receipt button — any trip member can log a receipt (server
-              enforces requireTripMember). canEdit gates only the split-edit
-              and delete actions below. */}
-          <button
-            data-testid="show-add-expense-btn"
-            onClick={() => setShowAdd(true)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <Receipt size={15} />
-            <Plus size={12} /> Receipt
-          </button>
-
           {!hasExpenses ? (
             <EmptyState
               icon={<Receipt className="h-10 w-10" />}
@@ -390,11 +380,11 @@ export function ExpensesSection({
       </div>
 
       {/* ── Add Expense Modal ─────────────────────────────────────────── */}
-      {showAdd && (
+      {addOpen && (
         <AddExpenseModal
           tripId={tripId}
           members={members}
-          onClose={() => setShowAdd(false)}
+          onClose={() => onAddOpenChange(false)}
         />
       )}
 

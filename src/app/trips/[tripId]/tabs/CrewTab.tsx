@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Ghost, GripVertical, Mail, X, Crown, ChevronDown, Plus, Trash2, Users } from "lucide-react";
+import { Ghost, GripVertical, Mail, X, Crown, ChevronDown, Plus, Trash2, UserPlus } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { TabHeader } from "@/components/TabHeader";
+import { TabFab } from "@/components/TabFab";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
 
@@ -411,12 +413,90 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         </div>
       )}
 
-      <h2
-        className="mb-2 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Crew
-      </h2>
+      {/* Shared entry-tab header — eyebrow + headline + body, with the
+          add affordances on the right at sm+. Headline + body show to
+          both members and owners; member view just doesn't get the
+          primary "Add crew member" or secondary "Email the Crew" actions
+          (they're owner-only). The mobile FAB at the bottom mirrors the
+          primary action for canEdit users. */}
+      <TabHeader
+        eyebrow="Crew"
+        headline="Roles for everyone on the trip"
+        body="Owners and planners help manage the trip. Promote any crew member with a BuddyTrip account and they get edit access right away."
+        desktopAction={
+          isOwner ? (
+            <>
+              <button
+                type="button"
+                onClick={() => { setShowAddMember((v) => !v); setAddMemberName(""); }}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                <Plus size={11} />
+                Add crew member
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEmailModal(true)}
+                aria-label="Email the crew"
+                title="Email the crew"
+                className="flex h-7 w-7 items-center justify-center rounded-lg transition-opacity hover:opacity-85"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-base)",
+                }}
+              >
+                <Mail size={13} />
+              </button>
+            </>
+          ) : undefined
+        }
+      />
+
+      {/* Inline add-member form — shown when the owner taps "Add crew
+          member" from the header (desktop) or the FAB (mobile). */}
+      {isOwner && showAddMember && (
+        <div
+          className="mb-4 flex gap-2 rounded-xl px-3 py-2.5"
+          style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
+        >
+          <input
+            value={addMemberName}
+            onChange={(e) => setAddMemberName(e.target.value)}
+            placeholder="Name"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && addMemberName.trim()) {
+                createGuest.mutate({ tripId, name: addMemberName.trim(), role: "Member" });
+              }
+              if (e.key === "Escape") { setShowAddMember(false); setAddMemberName(""); }
+            }}
+            className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+            style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+          />
+          <button
+            onClick={() => {
+              if (addMemberName.trim()) createGuest.mutate({ tripId, name: addMemberName.trim(), role: "Member" });
+            }}
+            disabled={!addMemberName.trim() || createGuest.isPending}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            {createGuest.isPending ? "..." : "Add"}
+          </button>
+          <button
+            onClick={() => { setShowAddMember(false); setAddMemberName(""); }}
+            className="rounded-lg border px-3 py-1.5 text-xs"
+            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Member view — single cohesive list, no Planners/Rest split,
           no Planner badges. Owner badge + ghost-guest legend stay. */}
@@ -465,85 +545,6 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
 
       {canEdit && (
         <div className="space-y-4">
-          {/* ── Owner blurb + action buttons ── */}
-          {isOwner && (
-            <div className="space-y-2.5">
-              <p className="text-[13px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-                Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away.
-              </p>
-
-              {/* Half+half action row. px-3 keeps the icon + label off the
-                  rounded edges on narrow mobile widths where the buttons
-                  shrink to their flex-1 half. */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setShowAddMember((v) => !v); setAddMemberName(""); }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text)",
-                    border: "1px solid var(--color-bt-border)",
-                  }}
-                >
-                  <Users size={13} />
-                  <Plus size={10} />
-                  Add crew member
-                </button>
-                <button
-                  onClick={() => setShowEmailModal(true)}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity hover:opacity-85"
-                  style={{
-                    background: "var(--color-bt-accent)",
-                    color: "var(--color-bt-base)",
-                  }}
-                >
-                  <Mail size={13} />
-                  Email the Crew
-                </button>
-              </div>
-
-              {/* Inline add-member form */}
-              {showAddMember && (
-                <div
-                  className="flex gap-2 rounded-xl px-3 py-2.5"
-                  style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
-                >
-                  <input
-                    value={addMemberName}
-                    onChange={(e) => setAddMemberName(e.target.value)}
-                    placeholder="Name"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && addMemberName.trim()) {
-                        createGuest.mutate({ tripId, name: addMemberName.trim(), role: "Member" });
-                      }
-                      if (e.key === "Escape") { setShowAddMember(false); setAddMemberName(""); }
-                    }}
-                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-                    style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
-                  />
-                  <button
-                    onClick={() => {
-                      if (addMemberName.trim()) createGuest.mutate({ tripId, name: addMemberName.trim(), role: "Member" });
-                    }}
-                    disabled={!addMemberName.trim() || createGuest.isPending}
-                    className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                  >
-                    {createGuest.isPending ? "..." : "Add"}
-                  </button>
-                  <button
-                    onClick={() => { setShowAddMember(false); setAddMemberName(""); }}
-                    className="rounded-lg border px-3 py-1.5 text-xs"
-                    style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* ── Two-column layout: Planners | Crew ── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
@@ -820,6 +821,17 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
             </div>
           </div>
         </div>
+      )}
+
+      {/* Mobile-only FAB — mirrors the header's primary "Add crew member"
+          action. Owner-only; planners + members don't get an add path. */}
+      {isOwner && (
+        <TabFab
+          onClick={() => { setShowAddMember(true); setAddMemberName(""); }}
+          label="Add crew member"
+          icon={<UserPlus size={20} strokeWidth={2.25} />}
+          testId="add-crew-member-fab"
+        />
       )}
     </div>
   );

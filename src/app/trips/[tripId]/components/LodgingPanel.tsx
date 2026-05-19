@@ -217,16 +217,24 @@ interface LodgingPanelProps {
   isOpen: boolean;
   onToggle: () => void;
   /**
-   * When true, renders as a flat Schedule-tab-style section — own
-   * `LODGING` header, explanatory blurb, `+ Add property` button at the
-   * top, no collapsible PlanningRow wrapper. Used during the planning
-   * stage in HomeTab so lodging reads as a primary section rather than
-   * a nested accordion. Non-inline mode (default) keeps the original
-   * PlanningRow behaviour for going/now/past.
+   * When true, renders as a flat section without the collapsible
+   * PlanningRow wrapper. The owner of this mode (LodgingTab) provides
+   * the TabHeader + TabFab; this component just renders the optional
+   * out-of-range nudge and the property list.
    */
   inline?: boolean;
-  /** Suppress the inline section header — used when an outer panel already provides the title. */
+  /**
+   * @deprecated — kept for back-compat. The inline-mode header is no
+   * longer rendered here regardless (LodgingTab owns the header now).
+   */
   hideHeader?: boolean;
+  /**
+   * Inline-mode only: controlled "Add property" sheet state. LodgingTab
+   * lifts this so both the desktop header pill and mobile FAB can open
+   * the same sheet.
+   */
+  addOpen?: boolean;
+  onAddOpenChange?: (open: boolean) => void;
 }
 
 export function LodgingPanel({
@@ -235,7 +243,9 @@ export function LodgingPanel({
   isOpen,
   onToggle,
   inline = false,
-  hideHeader = false,
+  hideHeader: _hideHeader = false,
+  addOpen,
+  onAddOpenChange,
 }: LodgingPanelProps) {
   const utils = trpc.useUtils();
 
@@ -245,7 +255,14 @@ export function LodgingPanel({
   // trip date range.
   const { data: trip } = trpc.trips.getById.useQuery({ tripId });
 
-  const [showAddLodging, setShowAddLodging] = useState(false);
+  // Local fallback for the legacy (non-inline) branch — inline mode is
+  // controlled by the parent via addOpen/onAddOpenChange.
+  const [localShowAddLodging, setLocalShowAddLodging] = useState(false);
+  const showAddLodging = inline && addOpen !== undefined ? addOpen : localShowAddLodging;
+  const setShowAddLodging = (open: boolean) => {
+    if (inline && onAddOpenChange) onAddOpenChange(open);
+    else setLocalShowAddLodging(open);
+  };
   const [editingItem, setEditingItem] = useState<LodgingItemFull | null>(null);
 
   const createItem = trpc.logistics.create.useMutation({
@@ -405,41 +422,10 @@ export function LodgingPanel({
           </div>
         )}
 
+        {/* Inline header + blurb + add affordance live in the parent
+            LodgingTab via TabHeader + TabFab — this branch just renders
+            the property list and an empty state. */}
         <section>
-          {!hideHeader && (
-            <h2
-              className="mb-2 text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Lodging
-            </h2>
-          )}
-
-          <p
-            className="mb-3 text-[13px] leading-relaxed"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Drop in the places you&apos;re considering so the crew can
-            compare — links, prices, sleep counts, anything helpful.
-            Confirm the winner once it&apos;s booked and it&apos;ll lock
-            onto the official trip details.
-          </p>
-
-          {canEdit && (
-            <button
-              onClick={() => setShowAddLodging(true)}
-              className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <Hotel size={15} />
-              <Plus size={12} /> Property
-            </button>
-          )}
-
           {lodgingItems.length === 0 ? (
             <EmptyState
               icon={<Hotel className="h-10 w-10" />}
