@@ -63,41 +63,63 @@ export function HomeTab({
           {/* Quick Info — most-glanced surface (door codes, addresses) */}
           <QuickInfoPanel tripId={trip.id} isOwner={!!isOwner} />
 
-          {/* Two-column layout: Travel Plans (1/3) + Itinerary (2/3).
-              Stacks single-column on mobile — Travel Plans appears first.
-              When the owner has hidden Travel Plans from crew the left column
-              is omitted entirely so Itinerary expands to full width.
-              minmax(0,…) stops filter-pill min-content from widening columns. */}
+          {/* Travel Plans + Itinerary layout.
+              - When BOTH are activated → side-by-side grid (Travel 1/3, Itin 2/3).
+                The asymmetric split fits the real shapes: a compact travel
+                widget on the left, a tall day-by-day timeline on the right.
+              - When either is still in its invitation-card state → stack
+                vertically full-width. Mismatched widths (a small dashed CTA
+                pinned next to a populated panel) looked awkward, and the
+                invitation card is designed for the full content width anyway.
+              - When the owner has hidden Travel Plans from crew →
+                Itinerary-only, full width.
+              minmax(0,…) stops filter-pill min-content from widening cols. */}
           {(() => {
             const showTravelColumn =
               !!isOwner ||
               (trip as { travel_plans_crew_visible?: boolean | null }).travel_plans_crew_visible !== false;
-            return showTravelColumn ? (
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                <div style={{ alignSelf: "start" }}>
-                  <GettingTherePanel
-                    tripId={trip.id}
-                    trip={trip}
-                    isOwner={!!isOwner}
-                    isActivated={!!trip.getting_there_enabled}
-                  />
-                </div>
-                <div>
-                  <ItineraryPanel
-                    tripId={trip.id}
-                    trip={trip}
-                    isOwner={!!isOwner}
-                    isActivated={!!trip.itinerary_enabled}
-                  />
-                </div>
-              </div>
-            ) : (
+
+            if (!showTravelColumn) {
+              return (
+                <ItineraryPanel
+                  tripId={trip.id}
+                  trip={trip}
+                  isOwner={!!isOwner}
+                  isActivated={!!trip.itinerary_enabled}
+                />
+              );
+            }
+
+            const bothExpanded =
+              !!trip.getting_there_enabled && !!trip.itinerary_enabled;
+
+            const gettingThere = (
+              <GettingTherePanel
+                tripId={trip.id}
+                trip={trip}
+                isOwner={!!isOwner}
+                isActivated={!!trip.getting_there_enabled}
+              />
+            );
+            const itinerary = (
               <ItineraryPanel
                 tripId={trip.id}
                 trip={trip}
                 isOwner={!!isOwner}
                 isActivated={!!trip.itinerary_enabled}
               />
+            );
+
+            return bothExpanded ? (
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                <div style={{ alignSelf: "start" }}>{gettingThere}</div>
+                <div>{itinerary}</div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {gettingThere}
+                {itinerary}
+              </div>
             );
           })()}
 
