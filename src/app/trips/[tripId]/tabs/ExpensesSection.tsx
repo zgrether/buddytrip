@@ -206,10 +206,19 @@ export function ExpensesSection({
 
   return (
     <>
-      {/* ── Two-column layout: receipts (2/3) | balances (1/3) ──────────
-          Stacks single-column on mobile — receipts first, balances below.
-          minmax(0,…) prevents min-content from pushing column widths. */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      {/* Two-column layout (receipts 2/3 | balances 1/3) only when there
+          are expenses to balance. With no receipts yet the balances panel
+          has nothing useful to show, so we hide it entirely and let the
+          empty-state receipts column take the full width. minmax(0,…)
+          prevents min-content from pushing column widths once the grid
+          is active. */}
+      <div
+        className={
+          hasExpenses
+            ? "grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
+            : ""
+        }
+      >
 
         {/* ── Left: receipt list (add affordance lives in the parent
             TabHeader / TabFab, not inline here) ─────────────────────── */}
@@ -322,60 +331,59 @@ export function ExpensesSection({
         </div>
 
         {/* ── Right: balances ──────────────────────────────────────────── */}
-        {/* alignSelf start keeps the panel pinned at the top of the row
-            while the left column grows with more receipts. Hidden on
-            mobile when empty to avoid dead whitespace. */}
-        <div style={{ alignSelf: "start" }}>
-          <h2
-            className="mb-2 text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Balances
-          </h2>
-          {balanceRows.length > 0 ? (
-            <div
-              className="rounded-xl overflow-hidden"
-              style={{ border: "1px solid var(--color-bt-border)" }}
+        {/* Only render when there's at least one receipt to balance —
+            otherwise the column is just a "Balances appear once receipts
+            are added" placeholder, which is noise. alignSelf start keeps
+            the panel pinned at the top while the left column grows. */}
+        {hasExpenses && (
+          <div style={{ alignSelf: "start" }}>
+            <h2
+              className="mb-2 text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
             >
-              {balanceRows.map((m, i) => {
-                const bal = balances.get(m.user_id) ?? 0;
-                const isCurrentUser = m.user_id === currentUser?.id;
-                return (
-                  <div
-                    key={m.user_id}
-                    className="flex items-center justify-between px-3 py-2.5"
-                    style={{
-                      background: i % 2 === 0
-                        ? "var(--color-bt-card)"
-                        : isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.018)",
-                      borderBottom: i < balanceRows.length - 1
-                        ? "1px solid var(--color-bt-border)"
-                        : undefined,
-                    }}
-                  >
-                    <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                      {memberName(members, m.user_id)}
-                      {isCurrentUser && (
-                        <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
-                      )}
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
-                      {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : hasExpenses ? (
-            <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              All settled up 🎉
-            </p>
-          ) : (
-            <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              Balances appear once receipts are added.
-            </p>
-          )}
-        </div>
+              Balances
+            </h2>
+            {balanceRows.length > 0 ? (
+              <div
+                className="rounded-xl overflow-hidden"
+                style={{ border: "1px solid var(--color-bt-border)" }}
+              >
+                {balanceRows.map((m, i) => {
+                  const bal = balances.get(m.user_id) ?? 0;
+                  const isCurrentUser = m.user_id === currentUser?.id;
+                  return (
+                    <div
+                      key={m.user_id}
+                      className="flex items-center justify-between px-3 py-2.5"
+                      style={{
+                        background: i % 2 === 0
+                          ? "var(--color-bt-card)"
+                          : isDark ? "rgba(255,255,255,0.025)" : "rgba(0,0,0,0.018)",
+                        borderBottom: i < balanceRows.length - 1
+                          ? "1px solid var(--color-bt-border)"
+                          : undefined,
+                      }}
+                    >
+                      <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                        {memberName(members, m.user_id)}
+                        {isCurrentUser && (
+                          <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
+                        )}
+                      </span>
+                      <span className="text-sm font-semibold tabular-nums" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
+                        {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                All settled up 🎉
+              </p>
+            )}
+          </div>
+        )}
 
       </div>
 
