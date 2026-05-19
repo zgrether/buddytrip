@@ -472,11 +472,13 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                 Planners can help manage the trip alongside you — promote any crew member with a BuddyTrip account and they get access right away.
               </p>
 
-              {/* Half+half action row */}
+              {/* Half+half action row. px-3 keeps the icon + label off the
+                  rounded edges on narrow mobile widths where the buttons
+                  shrink to their flex-1 half. */}
               <div className="flex gap-2">
                 <button
                   onClick={() => { setShowAddMember((v) => !v); setAddMemberName(""); }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all"
                   style={{
                     background: "var(--color-bt-card-raised)",
                     color: "var(--color-bt-text)",
@@ -489,7 +491,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                 </button>
                 <button
                   onClick={() => setShowEmailModal(true)}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold transition-opacity hover:opacity-85"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-opacity hover:opacity-85"
                   style={{
                     background: "var(--color-bt-accent)",
                     color: "var(--color-bt-base)",
