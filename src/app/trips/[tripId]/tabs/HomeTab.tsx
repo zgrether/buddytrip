@@ -61,7 +61,11 @@ export function HomeTab({
       {showFullPanels && (
         <>
           {/* Quick Info — most-glanced surface (door codes, addresses) */}
-          <QuickInfoPanel tripId={trip.id} isOwner={!!isOwner} />
+          <QuickInfoPanel
+            tripId={trip.id}
+            isOwner={!!isOwner}
+            isActivated={!!trip.quick_info_enabled}
+          />
 
           {/* Travel Plans + Itinerary layout.
               - When BOTH are activated → side-by-side grid (Travel 1/3, Itin 2/3).

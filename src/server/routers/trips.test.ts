@@ -420,35 +420,35 @@ describe("trips router — stage model", () => {
     expect(data?.getting_there_enabled).toBe(false);
   });
 
-  it("dismissQuickInfo — owner flips quick_info_dismissed to true", async () => {
+  it("enableQuickInfoTiles — owner flips quick_info_enabled to true", async () => {
     const caller = ctx.caller();
-    const res = await caller.trips.dismissQuickInfo({ tripId: stageTrip });
+    const res = await caller.trips.enableQuickInfoTiles({ tripId: stageTrip });
     expect(res.success).toBe(true);
     const { data } = await ctx.admin
       .from("trips")
-      .select("quick_info_dismissed")
+      .select("quick_info_enabled")
       .eq("id", stageTrip)
       .single();
-    expect(data?.quick_info_dismissed).toBe(true);
+    expect(data?.quick_info_enabled).toBe(true);
   });
 
-  it("dismissQuickInfo — member is FORBIDDEN", async () => {
+  it("enableQuickInfoTiles — member is FORBIDDEN", async () => {
     const memberCaller = ctx.callerAs("member");
     await expect(
-      memberCaller.trips.dismissQuickInfo({ tripId: stageTrip })
+      memberCaller.trips.enableQuickInfoTiles({ tripId: stageTrip })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("restoreQuickInfo — owner flips quick_info_dismissed back to false", async () => {
+  it("disableQuickInfoTiles — owner flips quick_info_enabled back to false", async () => {
     const caller = ctx.caller();
-    const res = await caller.trips.restoreQuickInfo({ tripId: stageTrip });
+    const res = await caller.trips.disableQuickInfoTiles({ tripId: stageTrip });
     expect(res.success).toBe(true);
     const { data } = await ctx.admin
       .from("trips")
-      .select("quick_info_dismissed")
+      .select("quick_info_enabled")
       .eq("id", stageTrip)
       .single();
-    expect(data?.quick_info_dismissed).toBe(false);
+    expect(data?.quick_info_enabled).toBe(false);
   });
 });
 

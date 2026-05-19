@@ -728,22 +728,24 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // dismissQuickInfo — owner taps the X on the Quick Info empty state.
-  // Flag stays set until restored. Idempotent.
+  // enableQuickInfoTiles — Owner or Planner activates the Quick Info panel
+  // via QuickInfoIntroModal. Flipping this flag surfaces the rich skeleton
+  // mock-up on the home tab; the standard InvitationCard hides.
+  // Idempotent: re-calling on an already-enabled trip is a no-op.
   // -----------------------------------------------------------------------
-  dismissQuickInfo: authedProcedure
+  enableQuickInfoTiles: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx }) => {
       const { error } = await ctx.supabase
         .from("trips")
-        .update({ quick_info_dismissed: true })
+        .update({ quick_info_enabled: true })
         .eq("id", ctx.tripId);
 
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to dismiss quick info: ${error.message}`,
+          message: `Failed to enable quick info tiles: ${error.message}`,
         });
       }
 
@@ -751,22 +753,23 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // restoreQuickInfo — inverse of dismissQuickInfo. Flips the flag back
-  // to false so the empty-state invitation reappears on the home tab.
+  // disableQuickInfoTiles — inverse of enableQuickInfoTiles. Used if/when
+  // the owner backs out of the activated empty state (parallel with
+  // disableItinerary / disableGettingThere).
   // -----------------------------------------------------------------------
-  restoreQuickInfo: authedProcedure
+  disableQuickInfoTiles: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx }) => {
       const { error } = await ctx.supabase
         .from("trips")
-        .update({ quick_info_dismissed: false })
+        .update({ quick_info_enabled: false })
         .eq("id", ctx.tripId);
 
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to restore quick info: ${error.message}`,
+          message: `Failed to disable quick info tiles: ${error.message}`,
         });
       }
 
