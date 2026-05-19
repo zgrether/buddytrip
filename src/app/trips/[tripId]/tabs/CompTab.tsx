@@ -4,6 +4,7 @@ import { AlertTriangle, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
+import { CompetitionInvitationCard } from "@/components/competition/CompetitionInvitationCard";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { EventsPanel } from "@/components/competition/EventsPanel";
 import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
@@ -18,16 +19,35 @@ interface CompTabProps extends TabProps {
    * crew).
    */
   onCompetitionDeleted?: () => void;
+  /**
+   * Page-level "owner has tapped the invitation card and is committed to
+   * setting up" flag. Persists for the session. Drives whether the
+   * pre-competition surface shows the InvitationCard or jumps straight
+   * to the CompetitionSetupPanel.
+   */
+  compUnlocked?: boolean;
+  /** Flips compUnlocked to true. Called from the InvitationCard's intro modal. */
+  onEnable?: () => void;
 }
 
 /**
  * CompTab — competition hub for a trip.
  *
- * Four states:
- *   1. Loading        → null (instant — data is pre-warmed by page.tsx)
- *   2. None + canEdit → full-width CompetitionSetupPanel in create mode
- *   3. None + member  → read-only "not set up yet" empty state
- *   4. Exists         → CompetitionHeader + Teams + Events stack
+ * State machine for the pre-competition phase (no `competition` row yet):
+ *   1. Loading                         → null (instant — data is pre-warmed)
+ *   2. canEdit + !compUnlocked         → CompetitionInvitationCard (CTA).
+ *                                        Tap → CompetitionIntroModal → onEnable
+ *                                        flips compUnlocked = true.
+ *   3. canEdit + compUnlocked          → CompetitionSetupPanel (create form)
+ *   4. !canEdit                        → "not set up yet" empty state
+ *
+ * Once a competition exists, ExistingCompetitionView takes over regardless
+ * of compUnlocked / canEdit.
+ *
+ * Previously the InvitationCard lived on the home tab and tapping it both
+ * flipped compUnlocked and navigated here. The tab itself is now the
+ * discovery surface (default-visible for editors), so the card lives
+ * inline and the navigation step is gone.
  *
  * `competitions.getByTrip` is already called in page.tsx and cached in
  * TanStack Query before this tab ever mounts, so `isLoading` is always
@@ -40,6 +60,8 @@ export function CompTab({
   canEdit,
   isOwner,
   onCompetitionDeleted,
+  compUnlocked,
+  onEnable,
 }: CompTabProps) {
   const tripId = trip.id;
 
@@ -52,6 +74,20 @@ export function CompTab({
   if (isLoading) return null;
 
   if (!competition && canEdit) {
+    if (!compUnlocked) {
+      // Pre-enablement: surface the invitation card. The card opens
+      // CompetitionIntroModal; modal confirm fires onEnable which flips
+      // compUnlocked, re-rendering into the setup panel below.
+      return (
+        <div className="px-4">
+          <CompetitionInvitationCard
+            canEdit={canEdit}
+            isActivated={false}
+            onEnable={onEnable}
+          />
+        </div>
+      );
+    }
     return (
       <div className="px-4">
         <CompetitionSetupPanel tripId={tripId} />

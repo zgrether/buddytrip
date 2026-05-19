@@ -49,11 +49,13 @@ export const TripTabBar: FC<TripTabBarProps> = ({
 
   const tabs = ALL_TABS.filter((t) => {
     if (t.id === "comp") {
-      // Comp tab stays hidden during PLANNING — the home-tab Competition
-      // invitation card is the surface for that stage. It graduates to a
-      // dedicated tab once the trip flips to GOING.
-      if (stage === "planning") return false;
-      return canEdit && showComp;
+      // Comp tab is now an editor surface by default — owners/planners see
+      // the tab from PLANNING onwards and the invitation-card lives inside
+      // the tab itself. Members continue to access competition via the
+      // bottom nav once the comp is active (showComp is still consulted
+      // for the member-facing path, but it doesn't gate the editor tab).
+      if (canEdit) return true;
+      return showComp;
     }
     // Lodging and Expenses are only meaningful once a destination is locked in —
     // keep them out of the IDEA stage. PLANNING and GOING both show all five

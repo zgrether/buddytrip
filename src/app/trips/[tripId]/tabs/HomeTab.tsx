@@ -7,17 +7,20 @@ import { ItineraryPanel as LegacyItineraryPanel } from "../components/ItineraryP
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
 import { GettingTherePanel } from "./components/panels/GettingTherePanel";
 import { QuickInfoPanel } from "./components/panels/QuickInfoPanel";
-import { CompetitionInvitationCard } from "@/components/competition/CompetitionInvitationCard";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps } from "./types";
 
 // ── HomeTab ──────────────────────────────────────────────────────────────
 //
-// PLANNING and GOING stages now share the same panel surface (Quick Info,
-// Travel Plans, Itinerary, Competition CTA). Previously PLANNING showed a
-// four-tile basic-planning grid (PlanningGrid) with a "View Itinerary →"
-// upgrade modal; that scaffolding has been removed and trips go directly
-// from IDEA → full panel surface when the destination is locked.
+// PLANNING and GOING stages share the same panel surface (Quick Info,
+// Travel Plans, Itinerary). Previously PLANNING showed a four-tile basic-
+// planning grid (PlanningGrid) with a "View Itinerary →" upgrade modal;
+// that scaffolding has been removed and trips go directly from IDEA → full
+// panel surface when the destination is locked.
+//
+// The Competition invitation no longer lives here either — the Comp tab is
+// visible by default to canEdit users and owns the enable flow itself, so
+// surfacing the CTA twice on the home tab was just clutter.
 //
 // IDEA   → IdeaZonePanel
 // PLANNING / GOING(going|now) → full panel layout
@@ -28,8 +31,6 @@ export function HomeTab({
   canEdit: canEditProp,
   isOwner,
   onTabChange,
-  onEnableComp,
-  compActivated,
   onOpenChat,
 }: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
   // Prefetch ideas so IdeaZonePanel renders instantly when stage === "idea".
@@ -131,34 +132,21 @@ export function HomeTab({
               </div>
             );
           })()}
-
-          <CompetitionInvitationCard
-            canEdit={canEditProp}
-            isActivated={!!compActivated}
-            onEnable={onEnableComp}
-          />
         </>
       )}
 
       {/* ── PAST / SAVED: keep the legacy ItineraryPanel; it's read-only
               and its bucketed layout is still useful after the trip.
-              Comp invitation still surfaces here so the owner can spin
-              up a retroactive scoreboard for past trips. */}
+              The Competition invitation no longer surfaces here — owners can
+              spin up a retroactive scoreboard from the Comp tab directly. */}
       {!showFullPanels && stage !== "idea" && (
-        <>
-          <LegacyItineraryPanel
-            tripId={trip.id}
-            tripStartDate={trip.start_date}
-            stage={stage}
-            status={status}
-            onTabChange={onTabChange}
-          />
-          <CompetitionInvitationCard
-            canEdit={canEditProp}
-            isActivated={!!compActivated}
-            onEnable={onEnableComp}
-          />
-        </>
+        <LegacyItineraryPanel
+          tripId={trip.id}
+          tripStartDate={trip.start_date}
+          stage={stage}
+          status={status}
+          onTabChange={onTabChange}
+        />
       )}
     </div>
   );

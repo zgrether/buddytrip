@@ -212,8 +212,10 @@ export default function TripDetailPage() {
   // tab via a stale `?tab=comp` URL (from browser-back to a previous
   // owner-side URL state) and see CompTab render even though the tab
   // button itself is hidden in their tab bar.
-  const canShowCompTab =
-    stage !== "planning" && effectiveCanEdit && showComp;
+  // Comp tab is default-visible for editors (matches TripTabBar). The
+  // invitation card has moved inside the tab, so showing the tab itself
+  // is what gives the owner an entry point. Members still gate on showComp.
+  const canShowCompTab = effectiveCanEdit || showComp;
   const canShowLodgingTab =
     stage !== "idea" && effectiveCanEdit;
   const canShowScheduleTab = effectiveCanEdit;
@@ -445,8 +447,6 @@ export default function TripDetailPage() {
                     isOwner={isOwner}
                     displayStatus={status}
                     onTabChange={(tab) => setActiveTab(tab as TabId)}
-                    onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
-                compActivated={showComp}
                     onOpenChat={() => setChatOpen(true)}
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
                     onAdvanceToGoing={isOwner ? () => setShowInvitationModal(true) : undefined}
@@ -477,6 +477,8 @@ export default function TripDetailPage() {
                     role={role}
                     canEdit={effectiveCanEdit}
                     isOwner={tripIsReadOnly ? false : isOwner}
+                    compUnlocked={compUnlocked}
+                    onEnable={effectiveCanEdit ? () => setCompUnlocked(true) : undefined}
                     onCompetitionDeleted={() => {
                       // Owner just wiped the competition. Drop the
                       // session-local "I unlocked the tab" flag and
