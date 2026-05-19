@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Calendar } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ItineraryView } from "../ItineraryView";
 import { ItineraryIntroModal } from "../modals/ItineraryIntroModal";
+import { InvitationCard } from "@/components/InvitationCard";
 import type { TripData } from "../../types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -15,8 +16,6 @@ interface ItineraryPanelProps {
   isOwner: boolean;
   /** True once the owner has tapped "Add Itinerary" on the invitation card. */
   isActivated: boolean;
-  /** True if the trip has any itinerary-relevant content (dates / lodging / schedule / shared travel). */
-  hasContent: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -26,20 +25,21 @@ interface ItineraryPanelProps {
  *
  * State machine:
  *   1. Member, not activated  → dim placeholder, no CTA
- *   2. Owner, no content      → inline nudge text (no panel chrome) directing
- *                               the user to set dates from the trip header.
- *   3. Owner, has content,
- *      not activated          → invitation card, opens ItineraryIntroModal
- *   4. Activated              → ItineraryView renders directly (no panel
+ *   2. Owner, not activated   → standard InvitationCard, opens
+ *                               ItineraryIntroModal
+ *   3. Activated              → ItineraryView renders directly (no panel
  *                               container). When activated-but-empty, the
  *                               empty state gets an X button to back out.
+ *
+ * The previous "no content" branch (a bare nudge to set dates from the
+ * header) has been folded into the standard invitation card so all four
+ * home-tab panels share the same opt-in affordance.
  */
 export function ItineraryPanel({
   tripId,
   trip,
   isOwner,
   isActivated,
-  hasContent,
 }: ItineraryPanelProps) {
   const [introOpen, setIntroOpen] = useState(false);
   const utils = trpc.useUtils();
@@ -101,25 +101,7 @@ export function ItineraryPanel({
     );
   }
 
-  // ── State 2: owner, no content ───────────────────────────────────────
-  // Replaced the previous heavy "locked" card with a simple inline nudge —
-  // the header dates link is now the canonical entry point for trip dates.
-  if (!hasContent) {
-    return (
-      <p
-        className="text-[13px] leading-snug"
-        style={{
-          color: "var(--color-bt-text-dim)",
-          textAlign: "center",
-          padding: "20px 16px",
-        }}
-      >
-        Set trip dates in the header to unlock the day-by-day view.
-      </p>
-    );
-  }
-
-  // ── State 3: owner, has content, invitation ──────────────────────────
+  // ── State 2: owner, not activated — standard invitation card ─────────
   return (
     <>
       <InvitationCard
@@ -163,74 +145,3 @@ function DimPlaceholder({ text }: { text: string }) {
   );
 }
 
-// ── InvitationCard ───────────────────────────────────────────────────────
-
-function InvitationCard({
-  Icon,
-  title,
-  body,
-  onClick,
-  testId,
-}: {
-  Icon: typeof Calendar;
-  title: string;
-  body: string;
-  onClick: () => void;
-  testId?: string;
-}) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      data-testid={testId}
-      className="w-full rounded-xl px-4 py-5 text-left transition-colors"
-      style={{
-        background: hover
-          ? "var(--color-bt-accent-faint)"
-          : "var(--color-bt-surface-invitation)",
-        border: `1.5px dashed ${
-          hover ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"
-        }`,
-        cursor: "pointer",
-      }}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-          }}
-        >
-          <Icon size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p
-            className="text-sm font-bold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {title}
-          </p>
-          <p
-            className="mt-1 text-xs leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {body}
-          </p>
-        </div>
-        <ArrowRight
-          size={16}
-          style={{
-            color: "var(--color-bt-accent)",
-            flexShrink: 0,
-            opacity: hover ? 1 : 0,
-            transition: "opacity 150ms",
-          }}
-        />
-      </div>
-    </button>
-  );
-}

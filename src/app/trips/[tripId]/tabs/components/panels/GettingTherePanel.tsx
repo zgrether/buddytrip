@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Plane } from "lucide-react";
+import { Plane } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GettingThereSection } from "../GettingThereSection";
 import { GettingThereIntroModal } from "../modals/GettingThereIntroModal";
+import { InvitationCard } from "@/components/InvitationCard";
 import type { TripData } from "../../types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -141,73 +142,3 @@ function DimLockedCard({ text }: { text: string }) {
     </div>
   );
 }
-
-// ── InvitationCard ───────────────────────────────────────────────────────
-
-function InvitationCard({
-  Icon,
-  title,
-  body,
-  onClick,
-  testId,
-}: {
-  Icon: typeof Plane;
-  title: string;
-  body: string;
-  onClick: () => void;
-  testId?: string;
-}) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      data-testid={testId}
-      className="w-full rounded-xl px-4 py-5 text-left transition-colors"
-      style={{
-        background: hover
-          ? "var(--color-bt-accent-faint)"
-          : "var(--color-bt-surface-invitation)",
-        border: `1.5px dashed ${
-          hover ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"
-        }`,
-        cursor: "pointer",
-      }}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            color: "var(--color-bt-accent)",
-          }}
-        >
-          <Icon size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold" style={{ color: "var(--color-bt-text)" }}>
-            {title}
-          </p>
-          <p
-            className="mt-1 text-xs leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {body}
-          </p>
-        </div>
-        <ArrowRight
-          size={16}
-          style={{
-            color: "var(--color-bt-accent)",
-            flexShrink: 0,
-            opacity: hover ? 1 : 0,
-            transition: "opacity 150ms",
-          }}
-        />
-      </div>
-    </button>
-  );
-}
-
