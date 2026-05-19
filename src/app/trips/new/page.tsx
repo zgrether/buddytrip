@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { TopNav } from "@/components/TopNav";
 import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
@@ -17,7 +17,9 @@ export default function TripNewPage() {
   const [tripName, setTripName] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [destinationMode, setDestinationMode] = useState<DestinationMode>("known");
+  // Start with neither path pre-selected so the user actually reads the
+  // two options ("I Know Where" vs "Explore Options") before picking.
+  const [destinationMode, setDestinationMode] = useState<DestinationMode>(null);
   const [destinationText, setDestinationText] = useState("");
 
   const hasName = tripName.trim().length > 0;
@@ -121,14 +123,6 @@ export default function TripNewPage() {
       )}
 
       <main className="mx-auto max-w-4xl space-y-10 px-6 py-8">
-        <button
-          onClick={() => router.back()}
-          className="-mt-2 inline-flex items-center gap-1.5 text-sm transition-opacity hover:opacity-70"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          <ArrowLeft size={14} /> Back
-        </button>
-
         {/* Trip name — narrow form column, left-aligned with main */}
         <div className="max-w-2xl">
           <label

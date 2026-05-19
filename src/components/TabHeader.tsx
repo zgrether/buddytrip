@@ -5,16 +5,20 @@ import type { ReactNode } from "react";
 // ── Types ────────────────────────────────────────────────────────────────
 
 interface TabHeaderProps {
-  /** Small uppercase accent label — e.g. "RECEIPTS". */
-  eyebrow: string;
-  /** Bold display headline that lives below the eyebrow. */
+  /**
+   * Small uppercase accent label — e.g. "RECEIPTS". Optional: leave it
+   * off when a tab doesn't need a label above the headline (Home tab uses
+   * this — the trip header above already makes context obvious).
+   */
+  eyebrow?: string;
+  /** Bold display headline. */
   headline: string;
   /** Short paragraph of dim body copy below the headline. */
   body: string;
   /**
-   * Optional action(s) to render on the right of the eyebrow row. Hidden
-   * on mobile (`< sm`) so the marketing-style header gets the full width;
-   * the per-tab TabFab takes over the add affordance on small screens.
+   * Optional action(s) rendered on the right of the eyebrow row at sm+.
+   * Hidden on mobile (per-tab TabFab takes over the add affordance there).
+   * Requires `eyebrow` to be present — without it there's no row anchor.
    */
   desktopAction?: ReactNode;
   /** data-testid for E2E targeting. */
@@ -50,23 +54,28 @@ export function TabHeader({
 }: TabHeaderProps) {
   return (
     <div className="mb-6" data-testid={testId}>
-      {/* Eyebrow row — eyebrow on the left, action (desktop only) on the right */}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span
-          className="text-[11px] font-semibold uppercase"
-          style={{
-            color: "var(--color-bt-accent)",
-            letterSpacing: "0.1em",
-          }}
-        >
-          {eyebrow}
-        </span>
-        {desktopAction && (
-          <div className="hidden flex-shrink-0 sm:flex sm:items-center sm:gap-2">
-            {desktopAction}
-          </div>
-        )}
-      </div>
+      {/* Eyebrow row — only renders when an eyebrow is supplied. The
+          desktopAction also lives on this row, so an unsupplied eyebrow
+          will skip the action too (the Home tab is the only consumer
+          without an eyebrow and doesn't need an action). */}
+      {eyebrow && (
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span
+            className="text-[11px] font-semibold uppercase"
+            style={{
+              color: "var(--color-bt-accent)",
+              letterSpacing: "0.1em",
+            }}
+          >
+            {eyebrow}
+          </span>
+          {desktopAction && (
+            <div className="hidden flex-shrink-0 sm:flex sm:items-center sm:gap-2">
+              {desktopAction}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Headline — bold display H2 */}
       <h2

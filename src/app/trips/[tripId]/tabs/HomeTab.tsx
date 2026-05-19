@@ -7,6 +7,7 @@ import { ItineraryPanel as LegacyItineraryPanel } from "../components/ItineraryP
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
 import { GettingTherePanel } from "./components/panels/GettingTherePanel";
 import { QuickInfoPanel } from "./components/panels/QuickInfoPanel";
+import { TabHeader } from "@/components/TabHeader";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps } from "./types";
 
@@ -61,6 +62,19 @@ export function HomeTab({
     <div className="space-y-4 px-4">
       {showFullPanels && (
         <>
+          {/* Owner intro — same marketing-style typography as the other tabs'
+              TabHeader, but without an eyebrow (the trip header above already
+              announces context). Reinforces what the owner controls and the
+              fact that the crew sees only what's published. Members and
+              planners don't see this — it's owner-coaching copy. */}
+          {isOwner && (
+            <TabHeader
+              headline="You're driving this trip"
+              body="Lock in dates and destination, invite the crew, and add logistics as they firm up. You decide what the crew sees — from travel plans to a live competition leaderboard — and everyone stays in sync in real time."
+              testId="home-owner-intro"
+            />
+          )}
+
           {/* Quick Info — most-glanced surface (door codes, addresses) */}
           <QuickInfoPanel
             tripId={trip.id}
