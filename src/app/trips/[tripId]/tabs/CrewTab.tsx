@@ -581,9 +581,19 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                 );
               })}
 
-              {/* Planner rows — this card is the drop zone */}
+              {/* Planner rows — this card is the drop zone.
+                  Only render the bordered drop container when there's a
+                  reason for it to exist: either we already have planner
+                  rows to show, OR there's a draggable crew member that
+                  could be promoted into it (owner-only). Otherwise we'd
+                  surface an empty "Drag X here…" hint that's actionable
+                  for nobody — the case the screenshot caught. */}
               {(() => {
                 const plannerRows = plannersSorted.filter((m) => m.role === "Planner");
+                const promotableCrewExists =
+                  isOwner && crewSorted.some((m) => !m.isGuest && !!m.user_id);
+                const showDropZone = plannerRows.length > 0 || promotableCrewExists;
+                if (!showDropZone) return null;
                 return (
                   <div
                     className="overflow-hidden rounded-xl transition-colors"
@@ -666,59 +676,82 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                   </div>
                 )}
               </div>
-              <div
-                className="overflow-hidden rounded-xl transition-colors"
-                style={{
-                  background: "var(--color-bt-card)",
-                  border: crewDragOver
-                    ? "1.5px dashed var(--color-bt-accent)"
-                    : "1px solid var(--color-bt-border)",
-                }}
-                onDragOver={(e) => { e.preventDefault(); setCrewDragOver(true); }}
-                onDragLeave={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                    setCrewDragOver(false);
-                  }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setCrewDragOver(false);
-                  const userId = e.dataTransfer.getData(DND_CREW_KEY);
-                  if (userId && dragSource.current?.role === "Planner") {
-                    handleUpdateRole(userId, "Member");
-                  }
-                  dragSource.current = null;
-                }}
-              >
-                {crewSorted.map((m) => {
-                  const isMe = m.user_id === currentUser?.id;
-                  // Real BT accounts (non-guests with a user_id) can be dragged to the Planners column
-                  const isDraggable = isOwner && !m.isGuest && !!m.user_id;
+              {/* Render the bordered drop container only when there's a
+                  reason for it: existing crew rows, OR a draggable planner
+                  (owner-only) that could be demoted into it. When neither
+                  is true we surface a plain "No crew members yet." line
+                  instead of an empty drop card with an actionless hint. */}
+              {(() => {
+                const demotablePlannerExists =
+                  isOwner && plannersSorted.some((m) => m.role === "Planner");
+                const showDropZone =
+                  crewSorted.length > 0 || demotablePlannerExists;
+                if (!showDropZone) {
                   return (
-                    <CrewMemberRow
-                      key={m.memberId}
-                      member={m}
-                      tripId={tripId}
-                      isOwnerView={isOwner}
-                      isMe={isMe}
-                      isExpanded={expandedId === m.user_id}
-                      draggable={isDraggable}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData(DND_CREW_KEY, m.user_id ?? "");
-                        dragSource.current = { userId: m.user_id ?? "", role: m.role };
-                      }}
-                      onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
-                      onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
-                      onUpdateRole={handleUpdateRole}
-                    />
+                    <p
+                      className="py-6 text-center text-sm italic"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      No crew members yet.
+                    </p>
                   );
-                })}
-                {crewSorted.length === 0 && (
-                  <p className="py-6 text-center text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {isOwner ? "Drag a planner here to move them to crew." : "No crew members yet."}
-                  </p>
-                )}
-              </div>
+                }
+                return (
+                  <div
+                    className="overflow-hidden rounded-xl transition-colors"
+                    style={{
+                      background: "var(--color-bt-card)",
+                      border: crewDragOver
+                        ? "1.5px dashed var(--color-bt-accent)"
+                        : "1px solid var(--color-bt-border)",
+                    }}
+                    onDragOver={(e) => { e.preventDefault(); setCrewDragOver(true); }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setCrewDragOver(false);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setCrewDragOver(false);
+                      const userId = e.dataTransfer.getData(DND_CREW_KEY);
+                      if (userId && dragSource.current?.role === "Planner") {
+                        handleUpdateRole(userId, "Member");
+                      }
+                      dragSource.current = null;
+                    }}
+                  >
+                    {crewSorted.map((m) => {
+                      const isMe = m.user_id === currentUser?.id;
+                      // Real BT accounts (non-guests with a user_id) can be dragged to the Planners column
+                      const isDraggable = isOwner && !m.isGuest && !!m.user_id;
+                      return (
+                        <CrewMemberRow
+                          key={m.memberId}
+                          member={m}
+                          tripId={tripId}
+                          isOwnerView={isOwner}
+                          isMe={isMe}
+                          isExpanded={expandedId === m.user_id}
+                          draggable={isDraggable}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(DND_CREW_KEY, m.user_id ?? "");
+                            dragSource.current = { userId: m.user_id ?? "", role: m.role };
+                          }}
+                          onToggle={() => setExpandedId(expandedId === m.user_id ? null : m.user_id)}
+                          onUpdated={() => utils.tripMembers.list.invalidate({ tripId })}
+                          onUpdateRole={handleUpdateRole}
+                        />
+                      );
+                    })}
+                    {crewSorted.length === 0 && (
+                      <p className="py-6 text-center text-sm italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                        Drag a planner here to move them to crew.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </section>
 
           </div>
