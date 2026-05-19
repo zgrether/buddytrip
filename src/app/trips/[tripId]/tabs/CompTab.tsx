@@ -4,7 +4,7 @@ import { AlertTriangle, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
-import { CompetitionInvitationCard } from "@/components/competition/CompetitionInvitationCard";
+import { CompetitionIntroPanel } from "@/components/competition/CompetitionIntroPanel";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
 import { EventsPanel } from "@/components/competition/EventsPanel";
 import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
@@ -35,8 +35,9 @@ interface CompTabProps extends TabProps {
  *
  * State machine for the pre-competition phase (no `competition` row yet):
  *   1. Loading                         → null (instant — data is pre-warmed)
- *   2. canEdit + !compUnlocked         → CompetitionInvitationCard (CTA).
- *                                        Tap → CompetitionIntroModal → onEnable
+ *   2. canEdit + !compUnlocked         → CompetitionIntroPanel (trophy hero
+ *                                        + feature list + "Enable
+ *                                        Competition Mode" CTA). Tap Enable
  *                                        flips compUnlocked = true.
  *   3. canEdit + compUnlocked          → CompetitionSetupPanel (create form)
  *   4. !canEdit                        → "not set up yet" empty state
@@ -44,10 +45,11 @@ interface CompTabProps extends TabProps {
  * Once a competition exists, ExistingCompetitionView takes over regardless
  * of compUnlocked / canEdit.
  *
- * Previously the InvitationCard lived on the home tab and tapping it both
- * flipped compUnlocked and navigated here. The tab itself is now the
- * discovery surface (default-visible for editors), so the card lives
- * inline and the navigation step is gone.
+ * Previously a smaller InvitationCard lived on the home tab and tapping it
+ * opened a CompetitionIntroModal with the same trophy/features content.
+ * The tab itself is now the discovery surface (default-visible for
+ * editors), and the modal content has been inlined as the intro panel —
+ * no more "Maybe later" / X dismiss since users back out by switching tabs.
  *
  * `competitions.getByTrip` is already called in page.tsx and cached in
  * TanStack Query before this tab ever mounts, so `isLoading` is always
@@ -75,16 +77,12 @@ export function CompTab({
 
   if (!competition && canEdit) {
     if (!compUnlocked) {
-      // Pre-enablement: surface the invitation card. The card opens
-      // CompetitionIntroModal; modal confirm fires onEnable which flips
-      // compUnlocked, re-rendering into the setup panel below.
+      // Pre-enablement: full intro panel with trophy hero, feature list,
+      // and "Enable Competition Mode" CTA. Tapping Enable flips
+      // compUnlocked which re-renders into the setup panel below.
       return (
         <div className="px-4">
-          <CompetitionInvitationCard
-            canEdit={canEdit}
-            isActivated={false}
-            onEnable={onEnable}
-          />
+          <CompetitionIntroPanel onEnable={onEnable ?? (() => {})} />
         </div>
       );
     }
