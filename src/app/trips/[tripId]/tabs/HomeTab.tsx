@@ -115,9 +115,14 @@ export function HomeTab({
             );
 
             return bothExpanded ? (
+              // items-stretch (CSS grid default) + h-full on the cell wrappers
+              // chains the row height through the panel structure so the
+              // dashed empty-state boxes match heights. Empty space lands
+              // INSIDE the shorter box (below its mock tiles), not as
+              // whitespace between cards.
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                <div style={{ alignSelf: "start" }}>{gettingThere}</div>
-                <div>{itinerary}</div>
+                <div className="h-full">{gettingThere}</div>
+                <div className="h-full">{itinerary}</div>
               </div>
             ) : (
               <div className="space-y-4">

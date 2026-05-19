@@ -168,7 +168,11 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
   // Header only appears once there's content — when the panel is showing
   // its empty-state mock-up, the dashed card stands on its own.
   return (
-    <div className="space-y-3">
+    // flex+h-full chain lets the empty-state mock-up grow to match the
+    // height of the Travel Plans panel when both are rendered in the home-
+    // tab 2-column grid. h-full collapses harmlessly to auto in single-
+    // column contexts where the parent has no defined height.
+    <div className="flex h-full flex-col space-y-3">
       {!isEmpty && (
         <h2
           className="text-xs font-semibold uppercase tracking-wider"
@@ -248,8 +252,12 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
 
 function EmptyItineraryState({ onCancel }: { onCancel?: () => void }) {
   return (
+    // flex-1 = grow to fill the section's h-full container so this dashed
+    // box matches the height of the Travel Plans panel's empty state when
+    // they're side-by-side. Extra height shows up as empty space BELOW
+    // the mock content, inside the dashed border.
     <div
-      className="relative rounded-xl p-4"
+      className="relative flex flex-1 flex-col rounded-xl p-4"
       style={{
         background: "var(--color-bt-base)",
         border: "1px dashed var(--color-bt-border)",

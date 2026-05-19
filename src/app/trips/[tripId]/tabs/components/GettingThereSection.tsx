@@ -193,7 +193,11 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
   // text. Header hides only when the empty-state mock-up is showing —
   // the dashed mock-up carries its own identity.
   return (
-    <div className="space-y-3" data-testid="getting-there-section">
+    // flex+h-full chain lets the empty-state mock-up stretch to match the
+    // height of the Itinerary panel when both are rendered in the home-tab
+    // 2-column grid. h-full collapses harmlessly to auto in single-column
+    // contexts where the parent has no defined height.
+    <div className="flex h-full flex-col space-y-3" data-testid="getting-there-section">
       {!showEmptyState && (
         <div className="flex items-center justify-between">
           <h2
@@ -534,8 +538,12 @@ function OtherMemberTravelRow({
 
 function EmptyArrivalsState({ onCancel }: { onCancel?: () => void }) {
   return (
+    // flex-1 = grow to fill the section's h-full container so the dashed
+    // box matches the height of the Itinerary panel's empty state when
+    // they're side-by-side. Extra height shows up as empty space BELOW
+    // the mock content, inside the dashed border.
     <div
-      className="relative rounded-xl p-4"
+      className="relative flex flex-1 flex-col rounded-xl p-4"
       style={{
         background: "var(--color-bt-base)",
         border: "1px dashed var(--color-bt-border)",
