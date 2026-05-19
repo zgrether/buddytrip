@@ -56,9 +56,15 @@ export default function ProfilePage() {
     enabled: authLoaded && !!authUser,
   });
 
-  // Auth gate — bounce to /login if not authenticated.
+  // Auth gate — bounce to the marketing homepage if not authenticated.
+  // We can't send users to /login here: the sign-out button below clears
+  // the auth state and then router.push("/"); but the moment authUser
+  // becomes null React re-renders this page and the gate would race ahead
+  // with router.replace("/login"), landing the user on /login instead of
+  // the homepage. Pointing the gate at "/" matches the sign-out intent
+  // and the homepage already shows the marketing site for unauthed visits.
   useEffect(() => {
-    if (authLoaded && !authUser) router.replace("/login");
+    if (authLoaded && !authUser) router.replace("/");
   }, [authLoaded, authUser, router]);
 
   // ── Avatar icon save (debounced, optimistic) ──────────────────────────
