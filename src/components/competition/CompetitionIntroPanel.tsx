@@ -22,11 +22,17 @@ interface Props {
  */
 export function CompetitionIntroPanel({ onEnable }: Props) {
   return (
+    // Matches the standard panel treatment used across the app and the
+    // marketing-page card visuals: --color-bt-card background, 1px border
+    // in --color-bt-border, rounded-2xl, raised shadow. (The previous
+    // card-float background + no shadow was inherited from the modal we
+    // forked this content from and read as a floating chip on the tab.)
     <div
-      className="overflow-hidden rounded-2xl"
+      className="overflow-hidden rounded-2xl border"
       style={{
-        background: "var(--color-bt-card-float)",
-        border: "1px solid var(--color-bt-border)",
+        background: "var(--color-bt-card)",
+        borderColor: "var(--color-bt-border)",
+        boxShadow: "var(--shadow-raised)",
       }}
       data-testid="competition-intro-panel"
     >
