@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FilePlus, Plus, Receipt } from "lucide-react";
+import { Plus, Receipt } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ExpensesSection, type ExpenseMember } from "./ExpensesSection";
 import { TabHeader } from "@/components/TabHeader";
@@ -65,7 +65,19 @@ export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
       <TabFab
         onClick={openAdd}
         label="Add receipt"
-        icon={<FilePlus size={20} strokeWidth={2.25} />}
+        // Lucide doesn't ship a ReceiptPlus combo, so we stack a Receipt
+        // glyph with a small Plus tucked at the top-right — same visual
+        // grammar as UserPlus / CalendarPlus / HousePlus elsewhere.
+        icon={
+          <span className="relative inline-flex items-center justify-center">
+            <Receipt size={20} strokeWidth={2.25} />
+            <Plus
+              size={11}
+              strokeWidth={3.5}
+              className="absolute -right-1.5 -top-1"
+            />
+          </span>
+        }
         testId="show-add-expense-fab"
       />
     </div>
