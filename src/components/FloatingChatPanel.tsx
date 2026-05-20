@@ -75,7 +75,20 @@ function FloatingChatPanelInner({
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
-  const [visibility, setVisibility] = useState<Visibility>("crew");
+  const [visibilityRaw, setVisibility] = useState<Visibility>("crew");
+  // Clamp the user's tab preference against the current canEdit state at
+  // read time. Avoids a "sync local state to a prop in an effect" pattern
+  // (banned by the new react-hooks/set-state-in-effect lint rule). The
+  // failure mode this protects against: a user is canEdit when they tap
+  // the Organizers tab (visibilityRaw = 'planning'), then loses canEdit
+  // mid-session — the Organizers tab disappears but the stale visibility
+  // state would still drive a 'planning' messages.list query that the
+  // router would FORBIDDEN. Clamping here means the query, optimistic
+  // tagging, and last-read marker all snap back to 'crew' the moment
+  // canEdit flips off, no state mutation required.
+  const visibility: Visibility = !canEdit && visibilityRaw === "planning"
+    ? "crew"
+    : visibilityRaw;
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
   const isDragging = useRef(false);
@@ -236,12 +249,6 @@ function FloatingChatPanelInner({
     };
   }, []);
 
-  // If the user switches visibility and then loses canEdit (unlikely, but
-  // possible mid-session if their role changes), fall back to Crew so we
-  // don't strand them on a tab that's about to disappear.
-  useEffect(() => {
-    if (!canEdit && visibility === "planning") setVisibility("crew");
-  }, [canEdit, visibility]);
 
   const sendMessage = trpc.messages.send.useMutation({
     onSuccess: async () => {
