@@ -139,13 +139,30 @@
 
 ### Messages
 
+The trip chat ("Crew") and the private Organizers chat live in the same
+`messages` table, distinguished by the `visibility` column:
+`'crew'` (default) vs `'planning'` (Organizers-only).
+
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
-| View trip chat | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
-| Send trip chat message | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
+| View Crew chat | ✓ | ✓ | ✓ | None | TripDetail, FloatingChatPanel |
+| Send Crew chat message | ✓ | ✓ | ✓ | None | TripDetail, FloatingChatPanel |
+| View Organizers chat | ✓ | ✓ | — | `canEdit` | TripDetail, FloatingChatPanel |
+| Send Organizers chat message | ✓ | ✓ | — | `canEdit` | TripDetail, FloatingChatPanel |
 | View own team chat | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
 | Send team chat message | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
 | View other team's chat | — | — | — | Blocked by RLS + team filtering | TripMessages |
+
+**Visibility floors:** newly-added members get `chat_visible_from = NOW()`
+so they don't see prior Crew chat history. Newly-promoted organizers get
+`planning_visible_from = NOW()` so they don't see prior Organizers chatter.
+Both columns live on `trip_members`; enforcement is in the messages.list
+query (RLS handles the role gate).
+
+**System messages:** member lifecycle events (added, removed, promoted,
+demoted, invite sent) post `message_type = 'system'` messages via a
+service-role helper. RLS blocks message_type='system' INSERTs from user-
+scoped clients — those are server-only.
 
 ---
 
