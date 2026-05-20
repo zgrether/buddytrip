@@ -216,7 +216,7 @@ function CrewMemberRow({
               className="lg:hidden rounded-lg px-2 py-1 text-xs disabled:opacity-40"
               style={{ color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
             >
-              Make planner
+              Make organizer
             </button>
           )}
 

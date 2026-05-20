@@ -68,6 +68,7 @@ These patterns have been established through prior work. Follow them exactly —
 4. **RLS INSERT RETURNING split** — separate INSERT and SELECT to avoid RLS race condition
 5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
 6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
+7. **Organizer display label** — The `planner` role is displayed as **"Organizer"** everywhere in the UI (CrewTab, chat, Idea Zone, HomeTab planners panel, role badges). DB column values (`role = 'planner'`), tRPC procedures, `TripRole` type, and permission checks (`canEdit`, `isOwner`) continue to use `planner`/`Planner`. Never use "Planner" as a visible label anywhere in the app.
 
 ## What "Done" Means for Any Task
 
