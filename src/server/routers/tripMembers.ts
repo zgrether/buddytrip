@@ -3,6 +3,29 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { postSystemMessage } from "./messages";
+
+/**
+ * Look up a user's display name. Used by member-mutation paths to format
+ * lifecycle system messages ("[Name] was added to the trip"). Falls back
+ * to a generic label if the user row is missing or has neither field.
+ */
+async function getDisplayName(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from("users")
+    .select("name, nickname, email")
+    .eq("id", userId)
+    .maybeSingle();
+  return (
+    data?.nickname ??
+    data?.name ??
+    (data?.email ? data.email.split("@")[0] : null) ??
+    "A crew member"
+  );
+}
 
 /** Shared between tripMembers.list and competitions.hydrate. */
 export async function listMembers(
@@ -100,6 +123,7 @@ export const tripMembersRouter = router({
         });
       }
 
+      const now = new Date().toISOString();
       const { data, error } = await ctx.supabase
         .from("trip_members")
         .insert({
@@ -108,6 +132,11 @@ export const tripMembersRouter = router({
           user_id: input.userId,
           role: input.role,
           status: input.status,
+          // Visibility floor — new joiners don't see prior Crew chat.
+          chat_visible_from: now,
+          // Newly-added Planners also get a planning floor so they don't
+          // see prior Organizers chat.
+          ...(input.role === "Planner" ? { planning_visible_from: now } : {}),
         })
         .select()
         .single();
@@ -116,6 +145,21 @@ export const tripMembersRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to add member: ${error.message}`,
+        });
+      }
+
+      // Lifecycle system message to Crew (and Organizers if Planner).
+      const displayName = await getDisplayName(ctx.supabase, input.userId);
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "crew",
+        text: `${displayName} was added to the trip`,
+      });
+      if (input.role === "Planner") {
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "planning",
+          text: `${displayName} was made an organizer`,
         });
       }
 
@@ -142,7 +186,9 @@ export const tripMembersRouter = router({
         });
       }
 
-      // When promoting to Planner, also mark as invited if still in draft
+      // When promoting to Planner, also mark as invited if still in draft.
+      // Set planning_visible_from = NOW() so the newly-minted organizer
+      // doesn't see prior owner/planner-only chatter.
       const update: Record<string, string> = { role: input.role };
       if (input.role === "Planner") {
         const { data: current } = await ctx.supabase
@@ -154,6 +200,7 @@ export const tripMembersRouter = router({
         if (current?.status === "draft") {
           update.status = "invited";
         }
+        update.planning_visible_from = new Date().toISOString();
       }
 
       const { data, error } = await ctx.supabase
@@ -170,6 +217,18 @@ export const tripMembersRouter = router({
           message: "Failed to update role",
         });
       }
+
+      // Lifecycle system message to Organizers chat — role decisions are
+      // internal to organizers, so Crew chat doesn't see this.
+      const displayName = await getDisplayName(ctx.supabase, input.userId);
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "planning",
+        text:
+          input.role === "Planner"
+            ? `${displayName} was made an organizer`
+            : `${displayName} is no longer an organizer`,
+      });
 
       return data;
     }),
@@ -194,6 +253,12 @@ export const tripMembersRouter = router({
         });
       }
 
+      // Capture display name BEFORE the delete so we can format the
+      // system message — once the trip_member row is gone, the user row
+      // might still exist but we want the rendering pinned to "who was
+      // on this trip when they were removed".
+      const displayName = await getDisplayName(ctx.supabase, input.userId);
+
       const { error } = await ctx.supabase
         .from("trip_members")
         .delete()
@@ -206,6 +271,12 @@ export const tripMembersRouter = router({
           message: "Failed to remove member",
         });
       }
+
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "crew",
+        text: `${displayName} was removed from the trip`,
+      });
 
       return { success: true };
     }),
@@ -257,13 +328,35 @@ export const tripMembersRouter = router({
           return { status: "already_member" as const, displayName };
         }
 
-        // Add to trip with status 'in'
+        // Add to trip with status 'in'. Visibility floor pins them at
+        // NOW so they don't see prior Crew chat history (and prior
+        // Organizers chat if they're added as a Planner).
+        const now = new Date().toISOString();
         await ctx.supabase.from("trip_members").insert({
           trip_id: ctx.tripId,
           user_id: existing.id,
           role: input.role,
           status: "in",
+          chat_visible_from: now,
+          ...(input.role === "Planner" ? { planning_visible_from: now } : {}),
         });
+
+        // Lifecycle system message to Crew. If they came in as a Planner
+        // we also post a corresponding "made an organizer" to Organizers.
+        const memberDisplayName =
+          existing.nickname ?? existing.name ?? email.split("@")[0];
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${memberDisplayName} was added to the trip`,
+        });
+        if (input.role === "Planner") {
+          await postSystemMessage({
+            tripId: ctx.tripId,
+            visibility: "planning",
+            text: `${memberDisplayName} was made an organizer`,
+          });
+        }
 
         // Send notification email (best effort — don't fail on email error)
         try {
@@ -382,12 +475,28 @@ export const tripMembersRouter = router({
         });
       }
 
-      // Add to trip_members with status 'invited'
+      // Add to trip_members with status 'invited'. Visibility floor
+      // pins them at NOW for the same reason as Path A.
+      const inviteNow = new Date().toISOString();
       await ctx.supabase.from("trip_members").insert({
         trip_id: ctx.tripId,
         user_id: guestUserId,
         role: input.role,
         status: "invited",
+        chat_visible_from: inviteNow,
+        ...(input.role === "Planner"
+          ? { planning_visible_from: inviteNow }
+          : {}),
+      });
+
+      // Lifecycle system message — "invite sent" rather than "added"
+      // because the invitee hasn't accepted yet.
+      const inviteeName =
+        existing?.nickname ?? existing?.name ?? email.split("@")[0];
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "crew",
+        text: `An invite was sent to ${inviteeName}`,
       });
 
       // Send invite email (best effort)
