@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Receipt } from "lucide-react";
+import { FilePlus, Plus, Receipt } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ExpensesSection, type ExpenseMember } from "./ExpensesSection";
 import { TabHeader } from "@/components/TabHeader";
@@ -65,6 +65,7 @@ export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
       <TabFab
         onClick={openAdd}
         label="Add receipt"
+        icon={<FilePlus size={20} strokeWidth={2.25} />}
         testId="show-add-expense-fab"
       />
     </div>

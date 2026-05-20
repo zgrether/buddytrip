@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   Calendar,
   CalendarDays,
+  CalendarPlus,
   ClipboardList,
   Clock,
   Flag,
@@ -1588,6 +1589,7 @@ export function ScheduleTab({
         <TabFab
           onClick={() => setAddMode("general")}
           label="Add to agenda"
+          icon={<CalendarPlus size={20} strokeWidth={2.25} />}
           testId="add-schedule-item-fab"
         />
       )}

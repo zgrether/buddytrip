@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Hotel, Plus } from "lucide-react";
+import { Hotel, HousePlus, Plus } from "lucide-react";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
@@ -60,6 +60,7 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
         <TabFab
           onClick={openAdd}
           label="Add property"
+          icon={<HousePlus size={20} strokeWidth={2.25} />}
           testId="add-property-fab"
         />
       )}
