@@ -24,13 +24,10 @@
 -- requester's trip_members row.
 
 -- ── messages: new columns ──────────────────────────────────────────────────
-
--- System messages (member added, promoted, etc.) have no author. The original
--- schema declared user_id NOT NULL with ON DELETE SET NULL, which is self-
--- contradictory and blocks system inserts. Relax to nullable here so the
--- ON DELETE SET NULL cascade can fire AND system messages can omit user_id.
-ALTER TABLE messages
-  ALTER COLUMN user_id DROP NOT NULL;
+--
+-- The messages.user_id NOT NULL → NULL change ships as its own follow-on
+-- migration `005_messages_user_id_nullable` so the live DB's
+-- supabase_migrations.schema_migrations table matches local file-by-file.
 
 ALTER TABLE messages
   ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'crew',
