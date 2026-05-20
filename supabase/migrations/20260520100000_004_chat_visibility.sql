@@ -25,6 +25,13 @@
 
 -- ── messages: new columns ──────────────────────────────────────────────────
 
+-- System messages (member added, promoted, etc.) have no author. The original
+-- schema declared user_id NOT NULL with ON DELETE SET NULL, which is self-
+-- contradictory and blocks system inserts. Relax to nullable here so the
+-- ON DELETE SET NULL cascade can fire AND system messages can omit user_id.
+ALTER TABLE messages
+  ALTER COLUMN user_id DROP NOT NULL;
+
 ALTER TABLE messages
   ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'crew',
   ADD COLUMN IF NOT EXISTS message_type text NOT NULL DEFAULT 'user';
