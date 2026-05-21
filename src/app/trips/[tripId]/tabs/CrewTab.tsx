@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   Crown,
@@ -98,7 +98,13 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   const unlinkedCount = (members as Member[]).filter((m) => m.isGuest && m.status === "in").length;
 
   return (
+    // max-w-[640px] left-aligned constraint (CC_MODAL_AUDIT.md Part 4):
+    // wide viewports were stretching crew rows edge-to-edge so the name
+    // sat on the far left while the badge floated on the far right. The
+    // 640px cap keeps the row dense enough to read as a unit. Mobile is
+    // unaffected — narrow viewports already fit comfortably under 640px.
     <div className={embedded ? "@container" : "@container px-4"}>
+      <div className="max-w-[640px]">
       {/* ── Unlinked-crew nudge — surfaces at the very top of the tab so
           it reads as a tab-level alert (Style Guide § Nudge banner). ── */}
       {isOwner && unlinkedCount > 0 && (
@@ -290,7 +296,11 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         </div>
       )}
 
-      {/* ── Mobile FAB — primary "Add crew member" action ────────────── */}
+      </div>{/* /max-w-[640px] container */}
+
+      {/* ── Mobile FAB — primary "Add crew member" action ──────────────
+          Rendered outside the max-w wrapper because the FAB is fixed-
+          positioned and its DOM ancestor doesn't influence layout. */}
       {isOwner && (
         <TabFab
           onClick={() => setShowAddModal(true)}
@@ -694,18 +704,37 @@ function ExpandedBody({
   isMe: boolean;
   onClose: () => void;
 }) {
-  // Non-owners (and the user's own row) get a read-only detail view —
-  // never actionable. Owners get the state-specific action set.
+  // Non-owners get a read-only detail view (no remove/role-change
+  // actions). Anyone can edit their own display name; canEdit users can
+  // edit other members' display names (gated server-side too).
   const showActions = isOwnerView && !isMe;
+  const canEditDisplayName = isMe || canEdit;
+
+  // Display Name field is the FIRST thing in every expanded row
+  // regardless of state (CC_MODAL_AUDIT.md Part 1.4).
+  const displayNameField = (
+    <DisplayNameField
+      tripId={tripId}
+      userId={m.user_id ?? ""}
+      currentDisplayName={m.displayName}
+      canEdit={canEditDisplayName}
+    />
+  );
 
   if (rowState === "owner") {
-    // Owner row — read-only email display regardless of who's viewing.
-    return <EmailReadOnly email={m.user?.email ?? null} />;
+    // Owner row — Display Name (editable for self) + email read-only.
+    return (
+      <>
+        {displayNameField}
+        <EmailReadOnly email={m.user?.email ?? null} />
+      </>
+    );
   }
 
   if (rowState === "organizer") {
     return (
       <>
+        {displayNameField}
         <EmailReadOnly email={m.user?.email ?? null} />
         {showActions && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -731,6 +760,7 @@ function ExpandedBody({
   if (rowState === "joined") {
     return (
       <>
+        {displayNameField}
         <EmailReadOnly email={m.user?.email ?? null} />
         {showActions && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -756,6 +786,7 @@ function ExpandedBody({
   if (rowState === "invited") {
     return (
       <>
+        {displayNameField}
         <EmailReadOnly email={m.user?.email ?? null} />
         <div className="mt-2 flex flex-wrap gap-2">
           {canEdit && (
@@ -786,16 +817,161 @@ function ExpandedBody({
     );
   }
 
-  // just-name — name only on the row, expanded body lets the user (canEdit)
-  // attach an email + send invite, or the owner remove the placeholder.
+  // just-name — Display Name editor first, then the email+invite flow
+  // and remove affordance.
   return (
-    <JustNameExpanded
-      member={m}
-      tripId={tripId}
-      isOwnerView={isOwnerView}
-      canEdit={canEdit}
-      onClose={onClose}
-    />
+    <>
+      {displayNameField}
+      <JustNameExpanded
+        member={m}
+        tripId={tripId}
+        isOwnerView={isOwnerView}
+        canEdit={canEdit}
+        onClose={onClose}
+      />
+    </>
+  );
+}
+
+// ── DisplayNameField ────────────────────────────────────────────────────
+// Inline-edit field that sits at the top of every expanded crew row.
+// Save fires on blur OR on Enter; a brief checkmark confirms success.
+// When the user lacks edit permission (member viewing someone else),
+// renders as a read-only display of the current value.
+
+function DisplayNameField({
+  tripId,
+  userId,
+  currentDisplayName,
+  canEdit,
+}: {
+  tripId: string;
+  userId: string;
+  currentDisplayName: string;
+  canEdit: boolean;
+}) {
+  const utils = trpc.useUtils();
+  const [value, setValue] = useState(currentDisplayName);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  // Re-sync from props when the underlying displayName changes (e.g. another
+  // tab updated it via realtime invalidation). Skip when the user is in
+  // the middle of typing — don't blow away their unsaved input.
+  useEffect(() => {
+    setValue(currentDisplayName);
+  }, [currentDisplayName]);
+
+  const setDisplayName = trpc.tripMembers.setDisplayName.useMutation({
+    onMutate: async (vars) => {
+      // Optimistic update on the list cache so the row + downstream
+      // surfaces (schedule, scoring, expenses) reflect the change
+      // instantly. Rollback on error.
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      utils.tripMembers.list.setData({ tripId }, (old) =>
+        (old ?? []).map((m) =>
+          m.user_id === vars.userId
+            ? { ...m, displayName: vars.displayName?.trim() || m.displayName }
+            : m
+        )
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
+    },
+    onSuccess: () => {
+      setSavedAt(Date.now());
+      setTimeout(() => setSavedAt(null), 1500);
+    },
+    onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
+
+  const commit = () => {
+    const trimmed = value.trim();
+    // No-op if the user reset back to the original value (or just
+    // toggled focus without typing).
+    if (trimmed === currentDisplayName.trim()) return;
+    // Empty input clears the override; the server re-derives from the
+    // global fallback chain (users.nickname → users.name → email-stem).
+    setDisplayName.mutate({
+      tripId,
+      userId,
+      displayName: trimmed.length > 0 ? trimmed : null,
+    });
+  };
+
+  return (
+    <div className="mb-2">
+      <p
+        className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Display Name
+      </p>
+      {canEdit ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.currentTarget as HTMLInputElement).blur();
+              } else if (e.key === "Escape") {
+                setValue(currentDisplayName);
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            }}
+            maxLength={100}
+            className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+            style={{
+              background: "var(--color-bt-base)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+            data-testid="display-name-input"
+          />
+          {/* Save confirmation — brief checkmark that fades after 1.5s.
+              Reserves a fixed slot so the input doesn't reflow when it
+              appears/disappears. */}
+          <span
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center transition-opacity"
+            style={{
+              color: "var(--color-bt-accent)",
+              opacity: savedAt ? 1 : 0,
+            }}
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width={14}
+              height={14}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 8.5L6.5 12L13 5" />
+            </svg>
+          </span>
+        </div>
+      ) : (
+        <div
+          className="rounded-lg px-3 py-2 text-sm"
+          style={{
+            background: "var(--color-bt-base)",
+            border: "1px solid var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        >
+          {currentDisplayName}
+        </div>
+      )}
+    </div>
   );
 }
 
