@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -248,7 +247,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         }
 
         return (
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {leftColumn}
             <SectionGroup
               label="Just Names"
@@ -511,7 +510,13 @@ function CrewRow({
           className="flex flex-shrink-0 items-center justify-end"
           style={{ width: BADGE_SLOT_WIDTH }}
         >
-          <RowBadge state={rowState} />
+          <RowBadge
+            state={rowState}
+            pendingInvite={
+              (rowState === "owner" || rowState === "organizer") &&
+              m.status === "invited"
+            }
+          />
         </div>
 
         {/* Chevron slot — fixed width */}
@@ -570,9 +575,12 @@ function CrewRow({
 // ── RowAvatar ───────────────────────────────────────────────────────────
 // Resolution chain (per CC_MODAL_AUDIT.md follow-up):
 //   1. just-name (ghost with no email)  → Ghost icon in dashed circle
-//   2. user.avatar_url present           → uploaded photo
-//   3. user.avatar_icon present          → Tabler icon on state-tinted bg
-//   4. otherwise                         → initials on state-tinted bg
+//   2. user.avatar_icon present          → Tabler icon on state-tinted bg
+//   3. otherwise                         → initials on state-tinted bg
+//
+// avatar_url (Google OAuth photo) is intentionally NOT in this chain —
+// the profile's chosen avatar_icon wins. "Use my Google photo" will be
+// an explicit option in the profile avatar chooser.
 //
 // State coloring (owner=teal, organizer/joined=blue, invited=amber) is
 // applied as the background tint when we're rendering an icon or
@@ -615,22 +623,11 @@ function RowAvatar({
     );
   }
 
-  // 2. Uploaded photo → render directly, no state tint underneath
-  //    (a state-tint border would compete with the photo).
-  if (m.user?.avatar_url) {
-    return (
-      <Image
-        src={m.user.avatar_url}
-        alt={`${m.displayName} avatar`}
-        width={SIZE}
-        height={SIZE}
-        className="flex-shrink-0 rounded-full object-cover"
-        unoptimized
-      />
-    );
-  }
-
-  // 3 / 4 — resolve state tint, then render icon or initials on top.
+  // 2 / 3 — resolve state tint, then render icon or initials on top.
+  // NOTE: avatar_url (e.g. Google OAuth photo) is intentionally NOT used as
+  // an automatic fallback here. The profile's chosen avatar_icon is the
+  // source of truth; "use my Google photo" will become an explicit option
+  // inside the profile avatar chooser.
   const stateTint: { bg: string; fg: string; border: string } =
     state === "owner"
       ? {
@@ -651,7 +648,7 @@ function RowAvatar({
             border: "var(--color-bt-planning-border)",
           };
 
-  // 3. avatar_icon set → render the Tabler glyph on the tinted circle.
+  // 2. avatar_icon set → render the Tabler glyph on the tinted circle.
   const IconComponent = m.user?.avatar_icon
     ? AVATAR_ICON_COMPONENTS[m.user.avatar_icon]
     : null;
@@ -673,7 +670,7 @@ function RowAvatar({
     );
   }
 
-  // 4. Initials fallback.
+  // 3. Initials fallback.
   return (
     <span
       className={`${baseClasses} text-[11px] font-semibold`}
@@ -694,7 +691,17 @@ function RowAvatar({
 // Five badge variants. Pill style + icon + label for the four labelled
 // states; Just Names returns null so the slot is empty (but width-fixed).
 
-function RowBadge({ state }: { state: RowState }) {
+function RowBadge({
+  state,
+  pendingInvite = false,
+}: {
+  state: RowState;
+  /** Owner/Organizer rows whose invite hasn't been accepted yet — we
+   *  elevate roles before sign-up to skip a step, so the Organizer pill
+   *  alone would hide that they haven't joined. Stacks an Invited pill
+   *  underneath the role pill. */
+  pendingInvite?: boolean;
+}) {
   const pillBase: React.CSSProperties = {
     fontSize: 10,
     borderRadius: 9999,
@@ -707,8 +714,21 @@ function RowBadge({ state }: { state: RowState }) {
     whiteSpace: "nowrap",
   };
 
+  const invitedPill = (
+    <span
+      style={{
+        ...pillBase,
+        background: "var(--color-bt-warning-faint)",
+        color: "var(--color-bt-warning)",
+        border: "1px solid var(--color-bt-warning-border)",
+      }}
+    >
+      Invited
+    </span>
+  );
+
   if (state === "owner") {
-    return (
+    const ownerPill = (
       <span
         style={{
           ...pillBase,
@@ -721,9 +741,18 @@ function RowBadge({ state }: { state: RowState }) {
         Owner
       </span>
     );
+    if (pendingInvite) {
+      return (
+        <span className="flex flex-col items-end gap-1">
+          {ownerPill}
+          {invitedPill}
+        </span>
+      );
+    }
+    return ownerPill;
   }
   if (state === "organizer") {
-    return (
+    const organizerPill = (
       <span
         style={{
           ...pillBase,
@@ -736,6 +765,15 @@ function RowBadge({ state }: { state: RowState }) {
         Organizer
       </span>
     );
+    if (pendingInvite) {
+      return (
+        <span className="flex flex-col items-end gap-1">
+          {organizerPill}
+          {invitedPill}
+        </span>
+      );
+    }
+    return organizerPill;
   }
   if (state === "invited") {
     return (
