@@ -69,8 +69,12 @@ export const ghostCrewRouter = router({
             });
           }
 
-          // Reuse the existing ghost user — just add them to this trip
+          // Reuse the existing ghost user — just add them to this trip.
+          // display_name override pins the typed/passed name to this
+          // trip so re-adding the same ghost elsewhere doesn't drag the
+          // first trip's display value back.
           const now = new Date().toISOString();
+          const displayLabel = input.nickname?.trim() ?? input.name.trim();
           const { error: memberError } = await ctx.supabase
             .from("trip_members")
             .insert({
@@ -83,6 +87,7 @@ export const ghostCrewRouter = router({
               ...(input.role === "Planner"
                 ? { planning_visible_from: now }
                 : {}),
+              ...(displayLabel ? { display_name: displayLabel } : {}),
             });
 
           if (memberError) {
@@ -92,11 +97,14 @@ export const ghostCrewRouter = router({
             });
           }
 
-          // Lifecycle system message — same wording as other "added"
-          // paths (tripMembers.add, inviteByEmail Path A).
+          // Lifecycle system message — Organizer chat only. Ghost crew
+          // (no real account yet) don't have access to the crew chat,
+          // so adding them isn't crew-visible. If/when they later link
+          // to a real BuddyTrip account the link path posts the
+          // "joined the trip" message.
           await postSystemMessage({
             tripId: ctx.tripId,
-            visibility: "crew",
+            visibility: "planning",
             text: `${input.nickname ?? input.name} was added to the trip`,
           });
 
@@ -128,8 +136,11 @@ export const ghostCrewRouter = router({
 
       // Insert trip_members row (guests are always "in"). Visibility
       // floor pins them at NOW so a later real-account link doesn't drag
-      // pre-existing chat history into their view.
+      // pre-existing chat history into their view. display_name override
+      // mirrors the new guest's chosen name so the row is editable
+      // per-trip via the expanded-row inline edit affordance.
       const ghostNow = new Date().toISOString();
+      const displayLabel = input.nickname?.trim() ?? input.name.trim();
       const { error: memberError } = await ctx.supabase
         .from("trip_members")
         .insert({
@@ -142,6 +153,7 @@ export const ghostCrewRouter = router({
           ...(input.role === "Planner"
             ? { planning_visible_from: ghostNow }
             : {}),
+          ...(displayLabel ? { display_name: displayLabel } : {}),
         });
 
       if (memberError) {
@@ -153,12 +165,13 @@ export const ghostCrewRouter = router({
         });
       }
 
-      // Lifecycle system message. "Just Names" (no email) are still real
-      // members of the trip and show in the roster, so we post the same
-      // "added to the trip" wording as other paths.
+      // Lifecycle system message — Organizer chat only. Ghost crew
+      // (Just Names and unresolved emails alike) don't have crew-chat
+      // access, so the crew chat doesn't surface their add. If they
+      // later link to a real account, the link path posts "joined".
       await postSystemMessage({
         tripId: ctx.tripId,
-        visibility: "crew",
+        visibility: "planning",
         text: `${input.nickname ?? input.name} was added to the trip`,
       });
 
@@ -243,6 +256,18 @@ export const ghostCrewRouter = router({
             });
           }
 
+          // Lifecycle: the ghost just resolved to a real account, which
+          // is the moment they "join" — post to Crew chat. Organizer
+          // chat already saw the original "added" event when the ghost
+          // was created.
+          const linkedDisplayName =
+            existingUser.nickname ?? existingUser.name ?? input.email;
+          await postSystemMessage({
+            tripId: ctx.tripId,
+            visibility: "crew",
+            text: `${linkedDisplayName} joined the trip`,
+          });
+
           return { ...existingUser, linked: true as const };
         }
       }
@@ -316,9 +341,13 @@ export const ghostCrewRouter = router({
         });
       }
 
+      // Ghosts don't have crew-chat access, so removing one is an
+      // organizer-only event. (A removed ghost who had previously
+      // resolved to a real account would have been handled by
+      // tripMembers.remove instead.)
       await postSystemMessage({
         tripId: ctx.tripId,
-        visibility: "crew",
+        visibility: "planning",
         text: `${displayName} was removed from the trip`,
       });
 

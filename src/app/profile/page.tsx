@@ -980,7 +980,7 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
         disabled={!canDelete}
         onClick={deleteAccount}
         className="mt-4 w-full rounded-lg py-2.5 text-sm font-semibold transition-opacity disabled:opacity-30"
-        style={{ background: "var(--color-bt-danger)", color: "#ffffff" }}
+        style={{ background: "var(--color-bt-danger)", color: "white" }}
       >
         {status === "loading" ? "Working…" : "Permanently delete"}
       </button>

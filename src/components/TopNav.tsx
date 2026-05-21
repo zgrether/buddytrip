@@ -47,6 +47,11 @@ interface TopNavProps {
   chatOpen?: boolean;
 }
 
+// Feature flag — the notifications surface is being rethought; hide the
+// bell from the TopNav for now without ripping out the wiring, so it can
+// come back once the next notifications design lands.
+const NOTIFICATIONS_ENABLED = false;
+
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
   rsvp_response: UserCheck,
   destination_locked: MapPin,
@@ -177,6 +182,7 @@ export const TopNav: FC<TopNavProps> = ({
         {tripId && onOpenChat && (
           <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
         )}
+        {NOTIFICATIONS_ENABLED && (
         <div ref={ref} className="relative">
           <button
             aria-label="Notifications"
@@ -190,7 +196,7 @@ export const TopNav: FC<TopNavProps> = ({
               <span
                 data-testid="notification-badge"
                 className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-0.5 text-[10px] font-bold"
-                style={{ background: "var(--color-bt-warning)", color: "#fff" }}
+                style={{ background: "var(--color-bt-warning)", color: "white" }}
               >
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
@@ -319,6 +325,7 @@ export const TopNav: FC<TopNavProps> = ({
             </>
           )}
         </div>
+        )}
 
         <UserMenu />
       </div>
@@ -350,7 +357,7 @@ function ChatButton({ tripId, onClick, isOpen }: { tripId: string; onClick: () =
         <span
           data-testid="chat-unread-badge"
           className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-0.5 text-[10px] font-bold"
-          style={{ background: "var(--color-bt-warning)", color: "#fff" }}
+          style={{ background: "var(--color-bt-warning)", color: "white" }}
         >
           {unread > 9 ? "9+" : unread}
         </span>

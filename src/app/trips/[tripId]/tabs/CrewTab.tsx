@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   Crown,
+  Ghost,
   Mail,
   Plus,
   Send,
@@ -15,6 +16,7 @@ import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
+import { AVATAR_ICON_COMPONENTS } from "@/lib/avatarIconComponents";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
 import { AddCrewMemberSheet } from "./components/AddCrewMemberSheet";
@@ -28,7 +30,23 @@ type Member = {
   status: string | null;
   displayName: string;
   isGuest: boolean;
-  user: { email: string | null; is_guest?: boolean } | null;
+  /**
+   * ISO timestamp of the most recent invite sent to this member, or
+   * NULL if they've never been invited. Stamped by
+   * tripMembers.inviteByEmail + tripMembers.resendInvite +
+   * sendInvitationBlast (per recipient). Surfaced on the expanded
+   * invited-row as a "Invited X ago" hint so owners can decide whether
+   * a resend is warranted.
+   */
+  last_invited_at?: string | null;
+  user: {
+    email: string | null;
+    is_guest?: boolean;
+    /** Uploaded photo URL — wins over avatar_icon and initials. */
+    avatar_url?: string | null;
+    /** Tabler icon id the user picked in their profile — wins over initials. */
+    avatar_icon?: string | null;
+  } | null;
 };
 
 /**
@@ -95,13 +113,27 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
     return { organizers: orgs, crew: cw, justNames: jn };
   }, [members]);
 
-  const unlinkedCount = (members as Member[]).filter((m) => m.isGuest && m.status === "in").length;
+  // Outstanding invites: members with status='invited' who haven't
+  // accepted yet. This replaces the previous "X people haven't joined"
+  // nudge, which incorrectly counted Just Names (placeholder names with
+  // no email — they CAN'T join, by definition) and had no actionable
+  // path. The new filter only counts members with email + invited
+  // status, which is the genuinely actionable cohort.
+  const pendingInviteCount = (members as Member[]).filter(
+    (m) => m.status === "invited" && !!m.user?.email
+  ).length;
 
   return (
+    // Nudge + TabHeader + buttons stay full-width; only the section list
+    // below is split into columns. Spec: "The 640px width should only
+    // wrap around the crew lists, not the top part of the crew tab."
     <div className={embedded ? "@container" : "@container px-4"}>
-      {/* ── Unlinked-crew nudge — surfaces at the very top of the tab so
-          it reads as a tab-level alert (Style Guide § Nudge banner). ── */}
-      {isOwner && unlinkedCount > 0 && (
+      {/* ── Pending-invites nudge — surfaces at the very top of the tab
+          so it reads as a tab-level alert (Style Guide § Nudge banner).
+          No CTA button here — the per-row "Resend invite" action lives in
+          the expanded invited-row, with the precise `last_invited_at`
+          context the owner needs to make the call. ── */}
+      {isOwner && pendingInviteCount > 0 && (
         <div
           className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
           style={{
@@ -117,10 +149,10 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           </span>
           <div>
             <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-              {unlinkedCount} {unlinkedCount === 1 ? "person hasn't" : "people haven't"} joined yet
+              {pendingInviteCount} {pendingInviteCount === 1 ? "invite" : "invites"} not accepted yet
             </p>
             <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Send them an email so they can see the plan
+              They got the email — open a row to see when it was sent or resend
             </p>
           </div>
         </div>
@@ -168,77 +200,92 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         }
       />
 
-      {/* ── Sections ─────────────────────────────────────────────────── */}
-      <div className="space-y-5">
-        <SectionGroup
-          label="Organizers"
-          count={organizers.length}
-          tone="accent"
-        >
-          {organizers.map((m) => (
-            <CrewRow
-              key={m.memberId}
-              member={m}
-              tripId={tripId}
-              isOwnerView={!!isOwner}
-              canEdit={canEdit}
-              isMe={m.user_id === currentUser?.id}
-              isExpanded={expandedId === m.memberId}
-              onToggle={() =>
-                setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
-              }
-            />
-          ))}
-        </SectionGroup>
+      {/* ── Sections — 2-column grid at lg+; stacks single-column on
+              tablet and mobile. Left column carries Organizers and Crew
+              vertically; right column is Just Names. When Just Names is
+              empty the grid collapses to a single column so Organizers +
+              Crew take the full width. ── */}
+      {(() => {
+        const renderRow = (m: Member) => (
+          <CrewRow
+            key={m.memberId}
+            member={m}
+            tripId={tripId}
+            isOwnerView={!!isOwner}
+            canEdit={canEdit}
+            isMe={m.user_id === currentUser?.id}
+            isExpanded={expandedId === m.memberId}
+            onToggle={() =>
+              setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
+            }
+          />
+        );
 
-        <SectionGroup label="Crew" count={crew.length} tone="standard">
-          {crew.length === 0 ? (
-            <EmptyHint text="No crew members yet." />
-          ) : (
-            crew.map((m) => (
-              <CrewRow
-                key={m.memberId}
-                member={m}
-                tripId={tripId}
-                isOwnerView={!!isOwner}
-                canEdit={canEdit}
-                isMe={m.user_id === currentUser?.id}
-                isExpanded={expandedId === m.memberId}
-                onToggle={() =>
-                  setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
-                }
-              />
-            ))
-          )}
-        </SectionGroup>
+        const leftColumn = (
+          <div className="space-y-5">
+            <SectionGroup
+              label="Organizers"
+              count={organizers.length}
+              tone="accent"
+            >
+              {organizers.map(renderRow)}
+            </SectionGroup>
 
-        {/* Just Names section — only render if there's at least one. The
-            spec subtext is rendered inside the SectionGroup header slot
-            so the count badge stays right-aligned. */}
-        {justNames.length > 0 && (
-          <SectionGroup
-            label="Just Names"
-            count={justNames.length}
-            tone="recessed"
-            subtext="Available for scheduling and scoring — add their email if they want to access the app."
-          >
-            {justNames.map((m) => (
-              <CrewRow
-                key={m.memberId}
-                member={m}
-                tripId={tripId}
-                isOwnerView={!!isOwner}
-                canEdit={canEdit}
-                isMe={m.user_id === currentUser?.id}
-                isExpanded={expandedId === m.memberId}
-                onToggle={() =>
-                  setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
-                }
-              />
-            ))}
-          </SectionGroup>
-        )}
-      </div>
+            <SectionGroup label="Crew" count={crew.length} tone="standard">
+              {crew.length === 0 ? (
+                <EmptyHint text="No crew members yet." />
+              ) : (
+                crew.map(renderRow)
+              )}
+            </SectionGroup>
+          </div>
+        );
+
+        if (justNames.length === 0) {
+          return leftColumn;
+        }
+
+        return (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {leftColumn}
+            {/* Just Names sits in the right column without a panel
+                wrapper — they're more of a roster jot-list than a
+                first-class crew surface, so the bare header + rows
+                reads more honestly than another card. */}
+            <section>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span
+                  className="text-[11px] font-medium tabular-nums"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  {justNames.length}
+                </span>
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text-dim)",
+                    border: "1px solid var(--color-bt-subtle-border)",
+                    padding: "3px 10px",
+                    borderRadius: 9999,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Just Names
+                </span>
+              </div>
+              <p
+                className="mb-3 text-[11px] leading-snug"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Available for scheduling and scoring — add their email if
+                they want to access the app.
+              </p>
+              <div className="space-y-1">{justNames.map(renderRow)}</div>
+            </section>
+          </div>
+        );
+      })()}
 
       {/* ── Add crew member modal/sheet ─────────────────────────────── */}
       {isOwner && (
@@ -290,7 +337,8 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         </div>
       )}
 
-      {/* ── Mobile FAB — primary "Add crew member" action ────────────── */}
+      {/* ── Mobile FAB — primary "Add crew member" action. fixed-positioned,
+          so its DOM placement doesn't affect layout. */}
       {isOwner && (
         <TabFab
           onClick={() => setShowAddModal(true)}
@@ -326,50 +374,72 @@ function SectionGroup({
   subtext?: string;
   children: React.ReactNode;
 }) {
-  // tone → container styling. Rows inherit the tone via their own props
-  // so accent-tinted Organizer rows can sit inside an accent-bordered
-  // wrapper without doubling the tint.
-  const containerStyle: React.CSSProperties =
+  // Each section is its own self-contained card panel with a category
+  // pill in the top-right corner (modeled after the marketing trip-card
+  // "PLANNING" pill). The panel surface is consistent across sections;
+  // the pill's color carries the tone instead of the panel background.
+  const pillStyle: React.CSSProperties =
     tone === "accent"
       ? {
-          background: "var(--color-bt-tag-bg)",
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
           border: "1px solid var(--color-bt-accent-border)",
         }
       : tone === "recessed"
-      ? {
-          background: "var(--color-bt-past-bg)",
-          border: "1px solid var(--color-bt-subtle-border)",
-        }
-      : {
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        };
+        ? {
+            background: "var(--color-bt-card-raised)",
+            color: "var(--color-bt-text-dim)",
+            border: "1px solid var(--color-bt-subtle-border)",
+          }
+        : {
+            background: "var(--color-bt-blue-bg)",
+            color: "var(--color-bt-planning)",
+            border: "1px solid var(--color-bt-planning-border)",
+          };
 
   return (
-    <section>
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h2
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {label}
-        </h2>
+    <section
+      className="rounded-2xl p-4"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
         <span
           className="text-[11px] font-medium tabular-nums"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {count}
         </span>
+        <span
+          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+          style={{
+            ...pillStyle,
+            padding: "3px 10px",
+            borderRadius: 9999,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {label}
+        </span>
       </div>
       {subtext && (
         <p
-          className="mb-2 text-[11px] leading-snug"
+          className="mb-3 text-[11px] leading-snug"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {subtext}
         </p>
       )}
-      <div className="overflow-hidden rounded-xl" style={containerStyle}>
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
         {children}
       </div>
     </section>
@@ -397,7 +467,11 @@ function EmptyHint({ text }: { text: string }) {
 // The badge slot is the only piece that varies in content; its width
 // stays pinned. The chevron rotates 180° when the row is expanded.
 
-const BADGE_SLOT_WIDTH = 82;
+// Status slot — holds the per-row state indicator (Invited pill, joined
+// checkmark, or nothing). Owner/Organizer role pills no longer live here;
+// they render inline next to the display name, so this slot can stay tight
+// and consistent across rows.
+const BADGE_SLOT_WIDTH = 72;
 const CHEVRON_SLOT_WIDTH = 18;
 
 function CrewRow({
@@ -432,41 +506,44 @@ function CrewRow({
   return (
     <div
       className="border-b last:border-b-0"
-      style={{
-        borderColor: rowState === "owner" || rowState === "organizer"
-          ? "var(--color-bt-accent-border)"
-          : "var(--color-bt-border)",
-      }}
+      style={{ borderColor: "var(--color-bt-border)" }}
       data-row-state={rowState}
       data-testid={`crew-row-${m.memberId}`}
     >
-      {/* Main row */}
+      {/* Main row — header. The spec calls for the section's tint
+          (organizer = teal, standard = card) to read through the header
+          regardless of expand state, so the row keeps its identity. The
+          chevron rotation + the expanded body below are the visual
+          cues that the row is open. */}
       <button
         type="button"
         onClick={expandable ? onToggle : undefined}
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors"
         style={{
-          background: isExpanded ? "var(--color-bt-card-raised)" : "transparent",
+          background: "transparent",
           cursor: expandable ? "pointer" : "default",
         }}
       >
-        <RowAvatar state={rowState} initials={initials} />
+        <RowAvatar state={rowState} initials={initials} member={m} />
 
         <div className="min-w-0 flex-1">
-          <p
-            className="truncate text-sm font-medium"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {m.displayName}
-            {isMe && (
-              <span
-                className="ml-1 text-xs font-normal"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                (you)
-              </span>
-            )}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p
+              className="truncate text-sm font-medium"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {m.displayName}
+              {isMe && (
+                <span
+                  className="ml-1 text-xs font-normal"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  (you)
+                </span>
+              )}
+            </p>
+            <InlineRolePill state={rowState} />
+          </div>
           {/* Sub-text — email for Owner/Organizer/Crew rows; nothing for
               Just Names per spec. */}
           {rowState !== "just-name" && m.user?.email && (
@@ -479,12 +556,20 @@ function CrewRow({
           )}
         </div>
 
-        {/* Badge slot — fixed width so rows align across states */}
+        {/* Status slot — fixed width so the column aligns down the panel.
+            Invited pill / joined check / nothing — the role pill itself
+            lives inline with the display name. */}
         <div
-          className="flex flex-shrink-0 items-center justify-end"
+          className="flex flex-shrink-0 items-center justify-center"
           style={{ width: BADGE_SLOT_WIDTH }}
         >
-          <RowBadge state={rowState} />
+          <StatusBadge
+            rowState={rowState}
+            pendingInvite={
+              (rowState === "owner" || rowState === "organizer") &&
+              m.status === "invited"
+            }
+          />
         </div>
 
         {/* Chevron slot — fixed width */}
@@ -505,9 +590,22 @@ function CrewRow({
         </div>
       </button>
 
-      {/* Expanded body — state-specific UI */}
+      {/* Expanded body — state-specific UI. px-4 pb-4 pt-3 matches the
+          PlanningRow body padding pattern.
+          5.4: body always uses var(--color-bt-card) regardless of which
+          section the row sits in, so input fields, labels, and buttons
+          render on a neutral surface. The 1px separator above the body
+          uses the row state's border token (accent for organizers,
+          standard otherwise) so the divide reads as a continuation of
+          the row's identity. */}
       {isExpanded && (
-        <div className="px-3 pb-3">
+        <div
+          className="px-4 pb-4 pt-3"
+          style={{
+            background: "var(--color-bt-card)",
+            borderTop: "1px solid var(--color-bt-border)",
+          }}
+        >
           <ExpandedBody
             member={m}
             rowState={rowState}
@@ -524,94 +622,148 @@ function CrewRow({
 }
 
 // ── RowAvatar ───────────────────────────────────────────────────────────
-// Five visual variants keyed by row state. Each renders as a 32×32
-// rounded-full circle so the layout doesn't shift when state changes.
+// Resolution chain (per CC_MODAL_AUDIT.md follow-up):
+//   1. just-name (ghost with no email)  → Ghost icon in dashed circle
+//   2. user.avatar_icon present          → Tabler icon on state-tinted bg
+//   3. otherwise                         → initials on state-tinted bg
+//
+// avatar_url (Google OAuth photo) is intentionally NOT in this chain —
+// the profile's chosen avatar_icon wins. "Use my Google photo" will be
+// an explicit option in the profile avatar chooser.
+//
+// State coloring (owner=teal, organizer/joined=blue, invited=amber) is
+// applied as the background tint when we're rendering an icon or
+// initials — so customized avatars (photo) display as themselves, and
+// non-customized rows still carry their state-state at a glance.
 
-function RowAvatar({ state, initials }: { state: RowState; initials: string }) {
+function RowAvatar({
+  state,
+  initials,
+  member: m,
+}: {
+  state: RowState;
+  initials: string;
+  member: Member;
+}) {
+  const SIZE = 32;
   const baseClasses =
-    "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold";
+    "flex flex-shrink-0 items-center justify-center rounded-full overflow-hidden";
 
-  if (state === "owner") {
+  // 1. Just Names → Ghost icon in dashed circle. The spec explicitly calls
+  //    for the dashed border + ghost glyph treatment; we don't fall through
+  //    to avatar_url / avatar_icon here because the "just name" identity
+  //    IS "no real person yet".
+  if (state === "just-name") {
     return (
       <span
         className={baseClasses}
         style={{
-          background: "var(--color-bt-tag-bg)",
-          color: "var(--color-bt-accent)",
-          border: "1px solid var(--color-bt-accent-border)",
+          width: SIZE,
+          height: SIZE,
+          background: "transparent",
+          color: "var(--color-bt-text-dim)",
+          border: "1.5px dashed var(--color-bt-border)",
+          opacity: 0.85,
         }}
+        aria-hidden="true"
       >
-        {initials}
+        <Ghost size={14} />
       </span>
     );
   }
-  if (state === "organizer" || state === "joined") {
+
+  // 2 / 3 — resolve state tint, then render icon or initials on top.
+  // NOTE: avatar_url (e.g. Google OAuth photo) is intentionally NOT used as
+  // an automatic fallback here. The profile's chosen avatar_icon is the
+  // source of truth; "use my Google photo" will become an explicit option
+  // inside the profile avatar chooser.
+  const stateTint: { bg: string; fg: string; border: string } =
+    state === "owner"
+      ? {
+          bg: "var(--color-bt-tag-bg)",
+          fg: "var(--color-bt-accent)",
+          border: "var(--color-bt-accent-border)",
+        }
+      : state === "invited"
+        ? {
+            bg: "var(--color-bt-warning-faint)",
+            fg: "var(--color-bt-warning)",
+            border: "var(--color-bt-warning-border)",
+          }
+        : {
+            // organizer + joined share the blue tint
+            bg: "var(--color-bt-blue-bg)",
+            fg: "var(--color-bt-planning)",
+            border: "var(--color-bt-planning-border)",
+          };
+
+  // 2. avatar_icon set → render the Tabler glyph on the tinted circle.
+  const IconComponent = m.user?.avatar_icon
+    ? AVATAR_ICON_COMPONENTS[m.user.avatar_icon]
+    : null;
+  if (IconComponent) {
     return (
       <span
         className={baseClasses}
         style={{
-          background: "var(--color-bt-blue-bg)",
-          color: "var(--color-bt-planning)",
-          border: "1px solid var(--color-bt-planning-border)",
+          width: SIZE,
+          height: SIZE,
+          background: stateTint.bg,
+          color: stateTint.fg,
+          border: `1px solid ${stateTint.border}`,
         }}
+        aria-label={`${m.displayName} avatar`}
       >
-        {initials}
+        <IconComponent size={16} stroke={1.75} aria-hidden="true" />
       </span>
     );
   }
-  if (state === "invited") {
-    return (
-      <span
-        className={baseClasses}
-        style={{
-          background: "var(--color-bt-warning-faint)",
-          color: "var(--color-bt-warning)",
-          border: "1px solid var(--color-bt-warning-border)",
-        }}
-      >
-        {initials}
-      </span>
-    );
-  }
-  // just-name → dashed border placeholder with a tiny silhouette glyph
+
+  // 3. Initials fallback.
   return (
     <span
-      className={baseClasses}
+      className={`${baseClasses} text-[11px] font-semibold`}
       style={{
-        background: "transparent",
-        color: "var(--color-bt-text-dim)",
-        border: "1.5px dashed var(--color-bt-border)",
-        opacity: 0.85,
+        width: SIZE,
+        height: SIZE,
+        background: stateTint.bg,
+        color: stateTint.fg,
+        border: `1px solid ${stateTint.border}`,
       }}
-      aria-hidden="true"
     >
       {initials}
     </span>
   );
 }
 
-// ── RowBadge ────────────────────────────────────────────────────────────
-// Five badge variants. Pill style + icon + label for the four labelled
-// states; Just Names returns null so the slot is empty (but width-fixed).
+// ── Badges ──────────────────────────────────────────────────────────────
+// The row's identity is now split across two slots:
+//   • InlineRolePill — Owner / Organizer pill rendered next to the
+//     display name, since the role is part of who they are.
+//   • StatusBadge — the "have they actually joined?" indicator, in the
+//     fixed-width column on the right: Invited / joined check / nothing.
+// Splitting them keeps the right-hand column tight and consistent,
+// instead of needing to grow to fit two side-by-side pills on the rare
+// pending-organizer row.
 
-function RowBadge({ state }: { state: RowState }) {
-  const pillBase: React.CSSProperties = {
-    fontSize: 10,
-    borderRadius: 9999,
-    padding: "2px 8px",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 3,
-    fontWeight: 600,
-    letterSpacing: "0.02em",
-    whiteSpace: "nowrap",
-  };
+const PILL_BASE: React.CSSProperties = {
+  fontSize: 10,
+  borderRadius: 9999,
+  padding: "2px 8px",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 3,
+  fontWeight: 600,
+  letterSpacing: "0.02em",
+  whiteSpace: "nowrap",
+};
 
+function InlineRolePill({ state }: { state: RowState }) {
   if (state === "owner") {
     return (
       <span
         style={{
-          ...pillBase,
+          ...PILL_BASE,
           background: "var(--color-bt-warning-faint)",
           color: "var(--color-bt-owner)",
           border: "1px solid var(--color-bt-warning-border)",
@@ -626,7 +778,7 @@ function RowBadge({ state }: { state: RowState }) {
     return (
       <span
         style={{
-          ...pillBase,
+          ...PILL_BASE,
           background: "var(--color-bt-accent-faint)",
           color: "var(--color-bt-accent)",
           border: "1px solid var(--color-bt-accent-border)",
@@ -637,11 +789,29 @@ function RowBadge({ state }: { state: RowState }) {
       </span>
     );
   }
-  if (state === "invited") {
+  return null;
+}
+
+function StatusBadge({
+  rowState,
+  pendingInvite = false,
+}: {
+  rowState: RowState;
+  /** Owner/Organizer rows whose invite hasn't been accepted yet — we
+   *  elevate roles before sign-up to skip a step, so the inline role
+   *  pill alone would hide that they haven't joined. Surface the
+   *  Invited pill in the status slot. */
+  pendingInvite?: boolean;
+}) {
+  // Owner/Organizer rows: only render anything if the invite is still
+  // pending; otherwise leave the slot empty (the role pill inline next
+  // to the name already conveys their identity).
+  if (rowState === "owner" || rowState === "organizer") {
+    if (!pendingInvite) return null;
     return (
       <span
         style={{
-          ...pillBase,
+          ...PILL_BASE,
           background: "var(--color-bt-warning-faint)",
           color: "var(--color-bt-warning)",
           border: "1px solid var(--color-bt-warning-border)",
@@ -651,7 +821,21 @@ function RowBadge({ state }: { state: RowState }) {
       </span>
     );
   }
-  if (state === "joined") {
+  if (rowState === "invited") {
+    return (
+      <span
+        style={{
+          ...PILL_BASE,
+          background: "var(--color-bt-warning-faint)",
+          color: "var(--color-bt-warning)",
+          border: "1px solid var(--color-bt-warning-border)",
+        }}
+      >
+        Invited
+      </span>
+    );
+  }
+  if (rowState === "joined") {
     return (
       <svg
         viewBox="0 0 16 16"
@@ -694,18 +878,37 @@ function ExpandedBody({
   isMe: boolean;
   onClose: () => void;
 }) {
-  // Non-owners (and the user's own row) get a read-only detail view —
-  // never actionable. Owners get the state-specific action set.
+  // Non-owners get a read-only detail view (no remove/role-change
+  // actions). Anyone can edit their own display name; canEdit users can
+  // edit other members' display names (gated server-side too).
   const showActions = isOwnerView && !isMe;
+  const canEditDisplayName = isMe || canEdit;
+
+  // Display Name field is the FIRST thing in every expanded row
+  // regardless of state (CC_MODAL_AUDIT.md Part 1.4).
+  const displayNameField = (
+    <DisplayNameField
+      tripId={tripId}
+      userId={m.user_id ?? ""}
+      currentDisplayName={m.displayName}
+      canEdit={canEditDisplayName}
+    />
+  );
 
   if (rowState === "owner") {
-    // Owner row — read-only email display regardless of who's viewing.
-    return <EmailReadOnly email={m.user?.email ?? null} />;
+    // Owner row — Display Name (editable for self) + email read-only.
+    return (
+      <>
+        {displayNameField}
+        <EmailReadOnly email={m.user?.email ?? null} />
+      </>
+    );
   }
 
   if (rowState === "organizer") {
     return (
       <>
+        {displayNameField}
         <EmailReadOnly email={m.user?.email ?? null} />
         {showActions && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -731,6 +934,7 @@ function ExpandedBody({
   if (rowState === "joined") {
     return (
       <>
+        {displayNameField}
         <EmailReadOnly email={m.user?.email ?? null} />
         {showActions && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -756,7 +960,25 @@ function ExpandedBody({
   if (rowState === "invited") {
     return (
       <>
+        {displayNameField}
         <EmailReadOnly email={m.user?.email ?? null} />
+        {m.last_invited_at && (
+          <p
+            className="mt-2 text-[11px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Invited on{" "}
+            {new Date(m.last_invited_at).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year:
+                new Date(m.last_invited_at).getFullYear() ===
+                new Date().getFullYear()
+                  ? undefined
+                  : "numeric",
+            })}
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap gap-2">
           {canEdit && (
             <ResendInviteButton
@@ -786,16 +1008,166 @@ function ExpandedBody({
     );
   }
 
-  // just-name — name only on the row, expanded body lets the user (canEdit)
-  // attach an email + send invite, or the owner remove the placeholder.
+  // just-name — Display Name editor first, then the email+invite flow
+  // and remove affordance.
   return (
-    <JustNameExpanded
-      member={m}
-      tripId={tripId}
-      isOwnerView={isOwnerView}
-      canEdit={canEdit}
-      onClose={onClose}
-    />
+    <>
+      {displayNameField}
+      <JustNameExpanded
+        member={m}
+        tripId={tripId}
+        isOwnerView={isOwnerView}
+        canEdit={canEdit}
+        onClose={onClose}
+      />
+    </>
+  );
+}
+
+// ── DisplayNameField ────────────────────────────────────────────────────
+// Inline-edit field that sits at the top of every expanded crew row.
+// Save fires on blur OR on Enter; a brief checkmark confirms success.
+// When the user lacks edit permission (member viewing someone else),
+// renders as a read-only display of the current value.
+
+function DisplayNameField({
+  tripId,
+  userId,
+  currentDisplayName,
+  canEdit,
+}: {
+  tripId: string;
+  userId: string;
+  currentDisplayName: string;
+  canEdit: boolean;
+}) {
+  const utils = trpc.useUtils();
+  const [value, setValue] = useState(currentDisplayName);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  // Re-sync from props when the underlying displayName changes (e.g. another
+  // tab updated it via realtime invalidation). Skip when the user is in
+  // the middle of typing — don't blow away their unsaved input.
+  useEffect(() => {
+    setValue(currentDisplayName);
+  }, [currentDisplayName]);
+
+  const setDisplayName = trpc.tripMembers.setDisplayName.useMutation({
+    onMutate: async (vars) => {
+      // Optimistic update on the list cache so the row + downstream
+      // surfaces (schedule, scoring, expenses) reflect the change
+      // instantly. Rollback on error.
+      await utils.tripMembers.list.cancel({ tripId });
+      const prev = utils.tripMembers.list.getData({ tripId });
+      utils.tripMembers.list.setData({ tripId }, (old) =>
+        (old ?? []).map((m) =>
+          m.user_id === vars.userId
+            ? { ...m, displayName: vars.displayName?.trim() || m.displayName }
+            : m
+        )
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
+    },
+    onSuccess: () => {
+      setSavedAt(Date.now());
+      setTimeout(() => setSavedAt(null), 1500);
+    },
+    onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
+
+  const commit = () => {
+    const trimmed = value.trim();
+    // No-op if the user reset back to the original value (or just
+    // toggled focus without typing).
+    if (trimmed === currentDisplayName.trim()) return;
+    // Empty input clears the override; the server re-derives from the
+    // global fallback chain (users.nickname → users.name → email-stem).
+    setDisplayName.mutate({
+      tripId,
+      userId,
+      displayName: trimmed.length > 0 ? trimmed : null,
+    });
+  };
+
+  return (
+    <div className="mb-2">
+      <p
+        className="mb-1 text-[10px] font-medium uppercase tracking-[0.06em]"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Display Name
+      </p>
+      {canEdit ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.currentTarget as HTMLInputElement).blur();
+              } else if (e.key === "Escape") {
+                setValue(currentDisplayName);
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            }}
+            maxLength={100}
+            className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
+            style={{
+              // 5.4: input fields inside expanded rows always use
+              // card-raised explicitly so the input is one elevation
+              // above the body card, regardless of section tint.
+              background: "var(--color-bt-card-raised)",
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+            }}
+            data-testid="display-name-input"
+          />
+          {/* Save confirmation — brief checkmark that fades after 1.5s.
+              Reserves a fixed slot so the input doesn't reflow when it
+              appears/disappears. */}
+          <span
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center transition-opacity"
+            style={{
+              color: "var(--color-bt-accent)",
+              opacity: savedAt ? 1 : 0,
+            }}
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width={14}
+              height={14}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 8.5L6.5 12L13 5" />
+            </svg>
+          </span>
+        </div>
+      ) : (
+        <div
+          className="rounded-lg px-3 py-2 text-sm"
+          style={{
+            // Mirrors the input's card-raised bg so the read-only and
+            // editable variants visually align.
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+          }}
+        >
+          {currentDisplayName}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -805,7 +1177,7 @@ function EmailReadOnly({ email }: { email: string | null }) {
   return (
     <div className="mt-1">
       <p
-        className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
+        className="mb-1 text-[10px] font-medium uppercase tracking-[0.06em]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         Email
@@ -813,7 +1185,8 @@ function EmailReadOnly({ email }: { email: string | null }) {
       <div
         className="rounded-lg px-3 py-2 text-sm"
         style={{
-          background: "var(--color-bt-base)",
+          // 5.4: matches the editable inputs' card-raised treatment.
+          background: "var(--color-bt-card-raised)",
           border: "1px solid var(--color-bt-border)",
           color: email ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
         }}
@@ -931,13 +1304,15 @@ function RemoveButton({
       </div>
     );
   }
+  // Small Danger variant per STYLE_GUIDE.md Section 5 — danger-faint bg
+  // makes the button read as a real action target, not a text link.
   return (
     <button
       type="button"
       onClick={() => setConfirm(true)}
-      className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
+      className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
       style={{
-        background: "transparent",
+        background: "var(--color-bt-danger-faint)",
         color: "var(--color-bt-danger)",
         border: "1px solid var(--color-bt-danger-border)",
       }}
@@ -1038,12 +1413,12 @@ function JustNameExpanded({
       {canEdit && (
         <>
           <p
-            className="text-[10px] font-semibold uppercase tracking-wider"
+            className="mb-1 text-[10px] font-medium uppercase tracking-[0.06em]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Add email to invite
           </p>
-          <div className="flex items-stretch gap-2">
+          <div className="flex items-center gap-2">
             <input
               type="email"
               value={email}
@@ -1051,7 +1426,7 @@ function JustNameExpanded({
               placeholder="brad@example.com"
               className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-1"
               style={{
-                background: "var(--color-bt-base)",
+                background: "var(--color-bt-card-raised)",
                 borderColor: "var(--color-bt-border)",
                 color: "var(--color-bt-text)",
               }}

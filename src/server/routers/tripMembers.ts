@@ -35,7 +35,7 @@ export async function listMembers(
   const { data, error } = await ctx.supabase
     .from("trip_members")
     .select(
-      "id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at",
+      "id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at, display_name",
     )
     .eq("trip_id", tripId)
     .order("joined_at", { ascending: true });
@@ -54,7 +54,7 @@ export async function listMembers(
     userIds.length > 0
       ? await ctx.supabase
           .from("users")
-          .select("id, name, nickname, email, is_guest, avatar_url")
+          .select("id, name, nickname, email, is_guest, avatar_url, avatar_icon")
           .in("id", userIds)
       : {
           data: [] as {
@@ -64,6 +64,7 @@ export async function listMembers(
             email: string | null;
             is_guest: boolean;
             avatar_url: string | null;
+            avatar_icon: string | null;
           }[],
         };
 
@@ -73,9 +74,18 @@ export async function listMembers(
     const user = m.user_id ? userMap.get(m.user_id) ?? null : null;
     const isGuest = user?.is_guest ?? false;
     const memberId = m.user_id as string;
-    const displayName = user
-      ? user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`
-      : `Unknown ${memberId.slice(0, 6)}`;
+    // Display name resolution order (CC_MODAL_AUDIT.md Part 1.4):
+    //   1. trip_members.display_name — trip-local override
+    //   2. users.nickname            — preferred personal name
+    //   3. users.name                — full name
+    //   4. users.email               — fallback for users with no name
+    //   5. "Unknown <id-prefix>"     — never expected, defensive
+    const trimmedOverride = m.display_name?.trim();
+    const displayName =
+      trimmedOverride ||
+      (user
+        ? user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`
+        : `Unknown ${memberId.slice(0, 6)}`);
 
     return { ...m, user, memberId, isGuest, displayName };
   });
@@ -148,13 +158,26 @@ export const tripMembersRouter = router({
         });
       }
 
-      // Lifecycle system message to Crew (and Organizers if Planner).
+      // Lifecycle system messages.
+      //   Crew chat → only when the member actually joins (status='in'),
+      //   wording is "joined the trip" (not "added"). Pending invitees
+      //   don't get a crew-chat post here — the invite-acceptance flow
+      //   posts that when they sign up.
+      //   Organizer chat → every add (regardless of status), plus a
+      //   separate "made an organizer" note when role=Planner.
       const displayName = await getDisplayName(ctx.supabase, input.userId);
       await postSystemMessage({
         tripId: ctx.tripId,
-        visibility: "crew",
+        visibility: "planning",
         text: `${displayName} was added to the trip`,
       });
+      if (input.status === "in") {
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${displayName} joined the trip`,
+        });
+      }
       if (input.role === "Planner") {
         await postSystemMessage({
           tripId: ctx.tripId,
@@ -259,6 +282,25 @@ export const tripMembersRouter = router({
       // on this trip when they were removed".
       const displayName = await getDisplayName(ctx.supabase, input.userId);
 
+      // Capture the member's pre-delete status + email-presence so we can
+      // decide whether the removal warrants a Crew-chat post. Removing a
+      // pending invitee (or a Just Name with no email) is an organizer-
+      // only concern; Crew chat only cares about people who actually had
+      // chat access.
+      const { data: outgoing } = await ctx.supabase
+        .from("trip_members")
+        .select("status")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+      const { data: outgoingUser } = await ctx.supabase
+        .from("users")
+        .select("email")
+        .eq("id", input.userId)
+        .maybeSingle();
+      const hadChatAccess =
+        outgoing?.status === "in" && !!outgoingUser?.email;
+
       const { error } = await ctx.supabase
         .from("trip_members")
         .delete()
@@ -272,12 +314,45 @@ export const tripMembersRouter = router({
         });
       }
 
+      // Organizer chat sees every removal regardless of status.
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "planning",
+        text: `${displayName} was removed from the trip`,
+      });
+      // Crew chat only sees removals of members who actually had access
+      // to the crew chat (status='in' AND had an email/account).
+      if (hadChatAccess) {
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${displayName} was removed from the trip`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // notifyInviteAccepted — fired by the invite-acceptance flow once the
+  // signed-up user has been linked into trip_members with status='in'.
+  // Posts the "X joined the trip" lifecycle message to Crew chat so the
+  // rest of the crew sees the new arrival.
+  //
+  // Self-call only: the caller must be the user whose invite was just
+  // accepted, and they must already be a member of the trip. We don't
+  // re-validate the invite token here — that lives in the invite page.
+  // -----------------------------------------------------------------------
+  notifyInviteAccepted: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .mutation(async ({ ctx }) => {
+      const displayName = await getDisplayName(ctx.supabase, ctx.user!.id);
       await postSystemMessage({
         tripId: ctx.tripId,
         visibility: "crew",
-        text: `${displayName} was removed from the trip`,
+        text: `${displayName} joined the trip`,
       });
-
       return { success: true };
     }),
 
@@ -339,7 +414,13 @@ export const tripMembersRouter = router({
         // Add to trip with status 'in'. Visibility floor pins them at
         // NOW so they don't see prior Crew chat history (and prior
         // Organizers chat if they're added as a Planner).
+        //
+        // Trip-local display_name override: write what the caller typed
+        // (if anything) so the typed value beats the linked account's
+        // global name. Spec 1.2 — display name typed by user is always
+        // preserved.
         const now = new Date().toISOString();
+        const trimmedTypedName = input.name?.trim();
         await ctx.supabase.from("trip_members").insert({
           trip_id: ctx.tripId,
           user_id: existing.id,
@@ -347,16 +428,25 @@ export const tripMembersRouter = router({
           status: "in",
           chat_visible_from: now,
           ...(input.role === "Planner" ? { planning_visible_from: now } : {}),
+          ...(trimmedTypedName ? { display_name: trimmedTypedName } : {}),
         });
 
-        // Lifecycle system message to Crew. If they came in as a Planner
-        // we also post a corresponding "made an organizer" to Organizers.
+        // Lifecycle system messages.
+        //   Crew chat → status='in' on this path (they have a real
+        //   account so they joined immediately), wording is "joined".
+        //   Organizer chat → "added" regardless, plus "made an organizer"
+        //   when role=Planner.
         const memberDisplayName =
           existing.nickname ?? existing.name ?? email.split("@")[0];
         await postSystemMessage({
           tripId: ctx.tripId,
-          visibility: "crew",
+          visibility: "planning",
           text: `${memberDisplayName} was added to the trip`,
+        });
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${memberDisplayName} joined the trip`,
         });
         if (input.role === "Planner") {
           await postSystemMessage({
@@ -488,24 +578,32 @@ export const tripMembersRouter = router({
       }
 
       // Add to trip_members with status 'invited'. Visibility floor
-      // pins them at NOW for the same reason as Path A.
+      // pins them at NOW for the same reason as Path A. Display-name
+      // override carries the typed name so the crew list shows what
+      // the inviter wrote.
       const inviteNow = new Date().toISOString();
+      const trimmedTypedNameB = input.name?.trim();
       await ctx.supabase.from("trip_members").insert({
         trip_id: ctx.tripId,
         user_id: guestUserId,
         role: input.role,
         status: "invited",
         chat_visible_from: inviteNow,
+        // Stamp the first invite send so the crew tab's expanded
+        // panel can show "Invited on Mon DD" right away — without this
+        // last_invited_at stays NULL until the organizer hits Resend.
+        last_invited_at: inviteNow,
         ...(input.role === "Planner"
           ? { planning_visible_from: inviteNow }
           : {}),
+        ...(trimmedTypedNameB ? { display_name: trimmedTypedNameB } : {}),
       });
 
-      // Lifecycle system message — "invite sent" rather than "added"
-      // because the invitee hasn't accepted yet. Caller-supplied name
-      // wins for the new-guest case so the system message matches the
-      // typed display name; otherwise fall through to existing user's
-      // name / email stem.
+      // Lifecycle system message — Organizer chat only. The invitee
+      // hasn't accepted yet so they have no access to crew chat, and
+      // crew chat shouldn't surface invite traffic. A "joined" message
+      // will land in crew chat once they accept (see
+      // tripMembers.notifyInviteAccepted).
       const inviteeName =
         input.name?.trim() ??
         existing?.nickname ??
@@ -513,8 +611,8 @@ export const tripMembersRouter = router({
         email.split("@")[0];
       await postSystemMessage({
         tripId: ctx.tripId,
-        visibility: "crew",
-        text: `An invite was sent to ${inviteeName}`,
+        visibility: "planning",
+        text: `${inviteeName} was invited to the trip`,
       });
 
       // Send invite email (best effort)
@@ -758,6 +856,56 @@ export const tripMembersRouter = router({
         .eq("id", ctx.tripId);
 
       return { sent: sentIds.length };
+    }),
+
+  // -----------------------------------------------------------------------
+  // setDisplayName — sets the trip-local display_name override on a
+  // member row. Spec: CC_MODAL_AUDIT.md Part 1.4.
+  //
+  // Permissions:
+  //   - Anyone can edit their own row (own user_id, "I want to be called
+  //     X on this trip")
+  //   - canEdit (Owner/Planner) can edit anyone else's display name
+  // -----------------------------------------------------------------------
+  setDisplayName: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        userId: z.string(),
+        /** Pass null/empty to clear the override and fall back to global. */
+        displayName: z.string().max(100).nullable(),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      const isSelf = input.userId === ctx.user!.id;
+      if (!isSelf) {
+        const role = ctx.membershipCache.get(ctx.tripId);
+        if (role !== "Owner" && role !== "Planner") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only organizers can edit another member's display name.",
+          });
+        }
+      }
+
+      const normalized = input.displayName?.trim();
+      const value = normalized && normalized.length > 0 ? normalized : null;
+
+      const { error } = await ctx.supabase
+        .from("trip_members")
+        .update({ display_name: value })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update display name: ${error.message}`,
+        });
+      }
+
+      return { success: true, displayName: value };
     }),
 
   // -----------------------------------------------------------------------

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, BedDouble, CalendarCheck, CalendarDays, MapPin, Send, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, BedDouble, CalendarCheck, CalendarDays, MapPin, Send, Sparkles, Users, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { formatDateRange } from "@/lib/dates";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -98,115 +98,154 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
       style={{ background: "var(--color-bt-overlay)" }}
       onClick={onClose}
     >
+      {/* Canonical modal structure (CC_MODAL_AUDIT.md Part 2.1) —
+          header / body / footer split with the body taking the
+          scrollable middle section. */}
       <div
-        className="w-full max-w-[560px] rounded-t-2xl p-6 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
+        className="flex w-full max-w-[560px] flex-col overflow-hidden rounded-t-2xl lg:rounded-2xl"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          boxShadow: "var(--shadow-floating)",
+          maxHeight: "min(85dvh, 720px)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-1 flex items-center gap-2">
-          <Sparkles size={16} style={{ color: "var(--color-bt-accent)" }} />
-          <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Trip Summary
-          </h2>
-        </div>
-        <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          Here&apos;s where things stand. When you&apos;re ready, we&apos;ll open up the
-          next set of planning features — no rush if your dates aren&apos;t locked
-          in yet, and nothing you&apos;ve already set up goes away.
-        </p>
-
-        {/* ── Basics panel — destination, dates, crew ─────────────────── */}
+        {/* Header */}
         <div
-          className="space-y-2 rounded-xl px-4 py-3 text-[13px]"
-          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+          className="flex flex-shrink-0 items-center justify-between gap-2 px-5 py-4"
+          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
         >
-          <SummaryRow
-            icon={<MapPin size={14} />}
-            label="Destination"
-            value={hasDestination ? destination : "Not set yet"}
-            needsAttention={!hasDestination}
-          />
-          <SummaryRow
-            icon={<CalendarDays size={14} />}
-            label="Dates"
-            value={hasLockedDate && dateRange ? dateRange : "Not locked yet"}
-            needsAttention={!hasLockedDate}
-          />
-          <SummaryRow
-            icon={<Users size={14} />}
-            label="Crew"
-            value={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
-          />
-        </div>
-
-        {/* ── Warning — wired back to the rows that need attention ────── */}
-        {!alreadyGoing && (!hasLockedDate || !hasDestination) && (
-          <div
-            className="mt-2 flex items-start gap-3 rounded-xl px-4 py-3"
-            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
-          >
-            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-warning)" }} />
-            <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
-              {!hasLockedDate && !hasDestination
-                ? "Lock a destination and a date first — your crew will want to know where and when."
-                : !hasLockedDate
-                  ? "Lock a date first — your crew will want to know when."
-                  : "Lock a destination first — your crew will want to know where."}
-            </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <Sparkles size={16} style={{ color: "var(--color-bt-accent)" }} />
+            <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Trip Summary
+            </h2>
           </div>
-        )}
-
-        {/* ── Soft nudge + Pro Tip ─────────────────────────────────────── */}
-        <p className="mt-4 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          Lodging and schedule don&apos;t have to be firm to continue — this is just
-          your starting point as the trip gets closer.
-        </p>
-        <p className="mt-2 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          <span className="block font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Pro Tip:
-          </span>
-          Designate anyone in the crew to help plan and they can lock in any of
-          these items.
-        </p>
-
-        {/* ── Lodging + Schedule panel ─────────────────────────────────── */}
-        <div
-          className="mt-3 space-y-2 rounded-xl px-4 py-3 text-[13px]"
-          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
-        >
-          <CountRow
-            icon={<BedDouble size={14} />}
-            label="Lodging"
-            confirmed={lodgingConfirmed}
-            unconfirmed={lodgingUnconfirmed}
-          />
-          <CountRow
-            icon={<CalendarCheck size={14} />}
-            label="Schedule"
-            confirmed={scheduleConfirmed}
-            unconfirmed={scheduleUnconfirmed}
-          />
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text-dim)",
+            }}
+          >
+            <X size={14} />
+          </button>
         </div>
 
-        {!alreadyGoing && (
-          <button
-            onClick={handleSend}
-            disabled={advance.isPending || !hasLockedDate}
-            data-testid="trip-summary-send-btn"
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <p className="mb-4 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+            Here&apos;s where things stand. When you&apos;re ready, we&apos;ll open up the
+            next set of planning features — no rush if your dates aren&apos;t locked
+            in yet, and nothing you&apos;ve already set up goes away.
+          </p>
+
+          {/* ── Basics panel — destination, dates, crew ─────────────────── */}
+          <div
+            className="space-y-2 rounded-xl px-4 py-3 text-[13px]"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
           >
-            <Send size={15} />
-            {advance.isPending ? "Sending..." : "View Itinerary →"}
-          </button>
-        )}
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
+            <SummaryRow
+              icon={<MapPin size={14} />}
+              label="Destination"
+              value={hasDestination ? destination : "Not set yet"}
+              needsAttention={!hasDestination}
+            />
+            <SummaryRow
+              icon={<CalendarDays size={14} />}
+              label="Dates"
+              value={hasLockedDate && dateRange ? dateRange : "Not locked yet"}
+              needsAttention={!hasLockedDate}
+            />
+            <SummaryRow
+              icon={<Users size={14} />}
+              label="Crew"
+              value={`${crewCount} ${crewCount === 1 ? "person" : "people"}`}
+            />
+          </div>
+
+          {/* ── Warning — wired back to the rows that need attention ────── */}
+          {!alreadyGoing && (!hasLockedDate || !hasDestination) && (
+            <div
+              className="mt-2 flex items-start gap-3 rounded-xl px-4 py-3"
+              style={{ background: "var(--color-bt-warning-faint)" }}
+            >
+              <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-warning)" }} />
+              <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
+                {!hasLockedDate && !hasDestination
+                  ? "Lock a destination and a date first — your crew will want to know where and when."
+                  : !hasLockedDate
+                    ? "Lock a date first — your crew will want to know when."
+                    : "Lock a destination first — your crew will want to know where."}
+              </p>
+            </div>
+          )}
+
+          {/* ── Soft nudge + Pro Tip ─────────────────────────────────────── */}
+          <p className="mt-4 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+            Lodging and schedule don&apos;t have to be firm to continue — this is just
+            your starting point as the trip gets closer.
+          </p>
+          <p className="mt-2 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+            <span className="block font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Pro Tip:
+            </span>
+            Designate anyone in the crew to help plan and they can lock in any of
+            these items.
+          </p>
+
+          {/* ── Lodging + Schedule panel ─────────────────────────────────── */}
+          <div
+            className="mt-3 space-y-2 rounded-xl px-4 py-3 text-[13px]"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+          >
+            <CountRow
+              icon={<BedDouble size={14} />}
+              label="Lodging"
+              confirmed={lodgingConfirmed}
+              unconfirmed={lodgingUnconfirmed}
+            />
+            <CountRow
+              icon={<CalendarCheck size={14} />}
+              label="Schedule"
+              confirmed={scheduleConfirmed}
+              unconfirmed={scheduleUnconfirmed}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex flex-shrink-0 items-center justify-end gap-3 px-5 py-4"
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
-          {alreadyGoing ? "Close" : "Not yet"}
-        </button>
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "0.5px solid var(--color-bt-border)",
+            }}
+          >
+            {alreadyGoing ? "Close" : "Not yet"}
+          </button>
+          {!alreadyGoing && (
+            <button
+              onClick={handleSend}
+              disabled={advance.isPending || !hasLockedDate}
+              data-testid="trip-summary-send-btn"
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            >
+              <Send size={15} />
+              {advance.isPending ? "Sending..." : "View Itinerary"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

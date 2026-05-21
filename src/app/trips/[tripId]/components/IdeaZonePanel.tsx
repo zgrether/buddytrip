@@ -311,7 +311,7 @@ function IdeaCard({
           <div className="absolute right-3 top-3">
             <span
               className="rounded-full px-2.5 py-1 text-xs font-semibold"
-              style={{ background: "rgba(0,0,0,0.5)", color: "#fff" }}
+              style={{ background: "rgba(0,0,0,0.5)", color: "white" }}
             >
               {idea.cost_tier}
             </span>
@@ -866,7 +866,7 @@ function RemoveIdeaModal({
             disabled={isPending}
             onClick={handleDelete}
             className="rounded-lg py-2.5 text-sm font-medium disabled:opacity-40"
-            style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+            style={{ background: "var(--color-bt-danger)", color: "white" }}
           >
             {removeIdea.isPending && !archiveIdea.isPending ? "Removing..." : "Delete permanently"}
           </button>

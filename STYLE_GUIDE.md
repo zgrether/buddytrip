@@ -238,6 +238,62 @@ stack — order them by priority.
 
 ---
 
+### Modal / Dialog
+
+The canonical structure for every modal and confirmation dialog in the
+app. Bottom-sheet variant rules follow the same tokens.
+
+```
+Structure:     header (title + close) / body / footer (actions)
+Background:    var(--color-bt-card)
+Border:        1px solid var(--color-bt-border)
+Border radius: rounded-xl (desktop) / rounded-t-2xl (mobile bottom sheet)
+Shadow:        var(--shadow-floating)
+Max width:     480px standard / 560px forms with multiple fields
+Backdrop:      var(--color-bt-overlay)
+
+Header:        px-5 py-4, border-bottom: 1px solid var(--color-bt-border)
+Title:         text-base font-semibold, var(--color-bt-text)
+Close button:  X icon, h-8 w-8 rounded-full,
+               var(--color-bt-card-raised) bg,
+               var(--color-bt-text-dim) icon,
+               hover:bg-[var(--color-bt-hover)]
+
+Body:          px-5 py-4, overflow-y: auto if scrollable;
+               max-height keeps the chrome anchored at 85dvh
+
+Footer:        px-5 py-4, border-top: 1px solid var(--color-bt-border),
+               buttons right-aligned with gap-3,
+               Medium size (px-4 py-2.5 text-sm)
+
+Button variants inside modals:
+  Primary confirm (Save/Add/Lock/Create)  Primary  var(--color-bt-accent) bg
+  Destructive confirm (Remove/Delete)     Danger   var(--color-bt-danger) bg, white text
+  Secondary action                        Secondary  var(--color-bt-card-raised) bg
+  Cancel / dismiss                        Ghost    transparent, var(--color-bt-border) border
+
+Destructive actions must show a confirmation dialog before executing —
+never fire directly on first tap.
+
+Bottom sheet (viewport < 640px):
+  Same tokens, plus a centred drag handle at the top:
+    width 40px, height 4px, border-radius 9999,
+    background var(--color-bt-border)
+  No close X — drag down or tap backdrop to dismiss.
+  Container uses rounded-t-2xl (top corners only).
+
+No footer variant (acceptable for single-outcome informational modals
+like the hero IntroModals):
+  Close button in the header is the only dismiss action.
+```
+
+**Token discipline inside modals:** `#fff` / `#ffffff` are not used for
+button text — write `white` instead. When a token surfaces for "text on
+filled accent" / "text on filled danger" in the future, swap the
+literal `white` calls for that token at the same time.
+
+---
+
 ### Collapsible planning panel (PlanningRow)
 
 ```

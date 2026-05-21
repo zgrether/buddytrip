@@ -127,25 +127,43 @@ export function AddExpenseModal({
         style={{ background: "var(--color-bt-overlay)" }}
         onClick={onClose}
       />
+      {/* Canonical modal structure (CC_MODAL_AUDIT.md Part 2.1):
+          header / body / footer split with border-bottom + border-top
+          dividers, max-w-[560px] for multi-field forms,
+          overflow-hidden so the borders extend edge-to-edge,
+          var(--shadow-floating) for elevation. */}
       <div
-        className="relative w-full max-w-lg rounded-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        className="relative flex w-full max-w-[560px] flex-col overflow-hidden rounded-xl"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          boxShadow: "var(--shadow-floating)",
+          maxHeight: "min(85dvh, 720px)",
+        }}
       >
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
+        <div
+          className="flex flex-shrink-0 items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+        >
           <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Add Receipt
           </h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text-dim)",
+            }}
           >
-            <X size={18} />
+            <X size={14} />
           </button>
         </div>
 
-        <div className="space-y-3">
+        {/* Body */}
+        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           {/* Side-by-side Description + Amount */}
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
@@ -258,32 +276,41 @@ export function AddExpenseModal({
             />
           )}
 
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="flex-1 rounded-lg border py-2 text-sm"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              Cancel
-            </button>
-            <button
-              data-testid="save-expense-btn"
-              disabled={
-                !title.trim() ||
-                !amount ||
-                amountNum <= 0 ||
-                !paidByUserId ||
-                (splitMode === "custom" && splitAmong.length === 0) ||
-                createExpense.isPending
-              }
-              onClick={handleCreate}
-              className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              Add Receipt
-            </button>
-          </div>
+        </div>
+
+        {/* Footer — canonical right-aligned actions with gap-3, Medium
+            button size (px-4 py-2.5 text-sm), Ghost + Primary variants. */}
+        <div
+          className="flex flex-shrink-0 items-center justify-end gap-3 px-5 py-4"
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
+        >
+          <button
+            onClick={onClose}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "0.5px solid var(--color-bt-border)",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="save-expense-btn"
+            disabled={
+              !title.trim() ||
+              !amount ||
+              amountNum <= 0 ||
+              !paidByUserId ||
+              (splitMode === "custom" && splitAmong.length === 0) ||
+              createExpense.isPending
+            }
+            onClick={handleCreate}
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-40"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          >
+            Add Receipt
+          </button>
         </div>
       </div>
     </div>
