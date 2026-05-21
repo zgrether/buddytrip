@@ -69,8 +69,12 @@ export const ghostCrewRouter = router({
             });
           }
 
-          // Reuse the existing ghost user — just add them to this trip
+          // Reuse the existing ghost user — just add them to this trip.
+          // display_name override pins the typed/passed name to this
+          // trip so re-adding the same ghost elsewhere doesn't drag the
+          // first trip's display value back.
           const now = new Date().toISOString();
+          const displayLabel = input.nickname?.trim() ?? input.name.trim();
           const { error: memberError } = await ctx.supabase
             .from("trip_members")
             .insert({
@@ -83,6 +87,7 @@ export const ghostCrewRouter = router({
               ...(input.role === "Planner"
                 ? { planning_visible_from: now }
                 : {}),
+              ...(displayLabel ? { display_name: displayLabel } : {}),
             });
 
           if (memberError) {
@@ -128,8 +133,11 @@ export const ghostCrewRouter = router({
 
       // Insert trip_members row (guests are always "in"). Visibility
       // floor pins them at NOW so a later real-account link doesn't drag
-      // pre-existing chat history into their view.
+      // pre-existing chat history into their view. display_name override
+      // mirrors the new guest's chosen name so the row is editable
+      // per-trip via the expanded-row inline edit affordance.
       const ghostNow = new Date().toISOString();
+      const displayLabel = input.nickname?.trim() ?? input.name.trim();
       const { error: memberError } = await ctx.supabase
         .from("trip_members")
         .insert({
@@ -142,6 +150,7 @@ export const ghostCrewRouter = router({
           ...(input.role === "Planner"
             ? { planning_visible_from: ghostNow }
             : {}),
+          ...(displayLabel ? { display_name: displayLabel } : {}),
         });
 
       if (memberError) {

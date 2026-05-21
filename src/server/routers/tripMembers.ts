@@ -35,7 +35,7 @@ export async function listMembers(
   const { data, error } = await ctx.supabase
     .from("trip_members")
     .select(
-      "id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at",
+      "id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at, display_name",
     )
     .eq("trip_id", tripId)
     .order("joined_at", { ascending: true });
@@ -73,9 +73,18 @@ export async function listMembers(
     const user = m.user_id ? userMap.get(m.user_id) ?? null : null;
     const isGuest = user?.is_guest ?? false;
     const memberId = m.user_id as string;
-    const displayName = user
-      ? user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`
-      : `Unknown ${memberId.slice(0, 6)}`;
+    // Display name resolution order (CC_MODAL_AUDIT.md Part 1.4):
+    //   1. trip_members.display_name — trip-local override
+    //   2. users.nickname            — preferred personal name
+    //   3. users.name                — full name
+    //   4. users.email               — fallback for users with no name
+    //   5. "Unknown <id-prefix>"     — never expected, defensive
+    const trimmedOverride = m.display_name?.trim();
+    const displayName =
+      trimmedOverride ||
+      (user
+        ? user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`
+        : `Unknown ${memberId.slice(0, 6)}`);
 
     return { ...m, user, memberId, isGuest, displayName };
   });
@@ -339,7 +348,13 @@ export const tripMembersRouter = router({
         // Add to trip with status 'in'. Visibility floor pins them at
         // NOW so they don't see prior Crew chat history (and prior
         // Organizers chat if they're added as a Planner).
+        //
+        // Trip-local display_name override: write what the caller typed
+        // (if anything) so the typed value beats the linked account's
+        // global name. Spec 1.2 — display name typed by user is always
+        // preserved.
         const now = new Date().toISOString();
+        const trimmedTypedName = input.name?.trim();
         await ctx.supabase.from("trip_members").insert({
           trip_id: ctx.tripId,
           user_id: existing.id,
@@ -347,6 +362,7 @@ export const tripMembersRouter = router({
           status: "in",
           chat_visible_from: now,
           ...(input.role === "Planner" ? { planning_visible_from: now } : {}),
+          ...(trimmedTypedName ? { display_name: trimmedTypedName } : {}),
         });
 
         // Lifecycle system message to Crew. If they came in as a Planner
@@ -488,8 +504,11 @@ export const tripMembersRouter = router({
       }
 
       // Add to trip_members with status 'invited'. Visibility floor
-      // pins them at NOW for the same reason as Path A.
+      // pins them at NOW for the same reason as Path A. Display-name
+      // override carries the typed name so the crew list shows what
+      // the inviter wrote.
       const inviteNow = new Date().toISOString();
+      const trimmedTypedNameB = input.name?.trim();
       await ctx.supabase.from("trip_members").insert({
         trip_id: ctx.tripId,
         user_id: guestUserId,
@@ -499,6 +518,7 @@ export const tripMembersRouter = router({
         ...(input.role === "Planner"
           ? { planning_visible_from: inviteNow }
           : {}),
+        ...(trimmedTypedNameB ? { display_name: trimmedTypedNameB } : {}),
       });
 
       // Lifecycle system message — "invite sent" rather than "added"
@@ -758,6 +778,56 @@ export const tripMembersRouter = router({
         .eq("id", ctx.tripId);
 
       return { sent: sentIds.length };
+    }),
+
+  // -----------------------------------------------------------------------
+  // setDisplayName — sets the trip-local display_name override on a
+  // member row. Spec: CC_MODAL_AUDIT.md Part 1.4.
+  //
+  // Permissions:
+  //   - Anyone can edit their own row (own user_id, "I want to be called
+  //     X on this trip")
+  //   - canEdit (Owner/Planner) can edit anyone else's display name
+  // -----------------------------------------------------------------------
+  setDisplayName: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        userId: z.string(),
+        /** Pass null/empty to clear the override and fall back to global. */
+        displayName: z.string().max(100).nullable(),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      const isSelf = input.userId === ctx.user!.id;
+      if (!isSelf) {
+        const role = ctx.membershipCache.get(ctx.tripId);
+        if (role !== "Owner" && role !== "Planner") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only organizers can edit another member's display name.",
+          });
+        }
+      }
+
+      const normalized = input.displayName?.trim();
+      const value = normalized && normalized.length > 0 ? normalized : null;
+
+      const { error } = await ctx.supabase
+        .from("trip_members")
+        .update({ display_name: value })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update display name: ${error.message}`,
+        });
+      }
+
+      return { success: true, displayName: value };
     }),
 
   // -----------------------------------------------------------------------
