@@ -463,13 +463,17 @@ function CrewRow({
       data-row-state={rowState}
       data-testid={`crew-row-${m.memberId}`}
     >
-      {/* Main row */}
+      {/* Main row — header. The spec calls for the section's tint
+          (organizer = teal, standard = card) to read through the header
+          regardless of expand state, so the row keeps its identity. The
+          chevron rotation + the expanded body below are the visual
+          cues that the row is open. */}
       <button
         type="button"
         onClick={expandable ? onToggle : undefined}
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors"
         style={{
-          background: isExpanded ? "var(--color-bt-card-raised)" : "transparent",
+          background: "transparent",
           cursor: expandable ? "pointer" : "default",
         }}
       >
@@ -529,10 +533,25 @@ function CrewRow({
       </button>
 
       {/* Expanded body — state-specific UI. px-4 pb-4 pt-3 matches the
-          PlanningRow body padding pattern (Style Guide § Collapsible
-          panel) so all expanded surfaces share the same inset. */}
+          PlanningRow body padding pattern.
+          5.4: body always uses var(--color-bt-card) regardless of which
+          section the row sits in, so input fields, labels, and buttons
+          render on a neutral surface. The 1px separator above the body
+          uses the row state's border token (accent for organizers,
+          standard otherwise) so the divide reads as a continuation of
+          the row's identity. */}
       {isExpanded && (
-        <div className="px-4 pb-4 pt-3">
+        <div
+          className="px-4 pb-4 pt-3"
+          style={{
+            background: "var(--color-bt-card)",
+            borderTop: `1px solid ${
+              rowState === "owner" || rowState === "organizer"
+                ? "var(--color-bt-accent-border)"
+                : "var(--color-bt-border)"
+            }`,
+          }}
+        >
           <ExpandedBody
             member={m}
             rowState={rowState}
@@ -1007,7 +1026,10 @@ function DisplayNameField({
             maxLength={100}
             className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
             style={{
-              background: "var(--color-bt-base)",
+              // 5.4: input fields inside expanded rows always use
+              // card-raised explicitly so the input is one elevation
+              // above the body card, regardless of section tint.
+              background: "var(--color-bt-card-raised)",
               borderColor: "var(--color-bt-border)",
               color: "var(--color-bt-text)",
             }}
@@ -1042,7 +1064,9 @@ function DisplayNameField({
         <div
           className="rounded-lg px-3 py-2 text-sm"
           style={{
-            background: "var(--color-bt-base)",
+            // Mirrors the input's card-raised bg so the read-only and
+            // editable variants visually align.
+            background: "var(--color-bt-card-raised)",
             border: "1px solid var(--color-bt-border)",
             color: "var(--color-bt-text)",
           }}
@@ -1068,7 +1092,8 @@ function EmailReadOnly({ email }: { email: string | null }) {
       <div
         className="rounded-lg px-3 py-2 text-sm"
         style={{
-          background: "var(--color-bt-base)",
+          // 5.4: matches the editable inputs' card-raised treatment.
+          background: "var(--color-bt-card-raised)",
           border: "1px solid var(--color-bt-border)",
           color: email ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
         }}
@@ -1308,7 +1333,7 @@ function JustNameExpanded({
               placeholder="brad@example.com"
               className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none focus:ring-1"
               style={{
-                background: "var(--color-bt-base)",
+                background: "var(--color-bt-card-raised)",
                 borderColor: "var(--color-bt-border)",
                 color: "var(--color-bt-text)",
               }}
