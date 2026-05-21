@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
+import { postSystemMessage } from "./messages";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
@@ -69,6 +70,7 @@ export const ghostCrewRouter = router({
           }
 
           // Reuse the existing ghost user — just add them to this trip
+          const now = new Date().toISOString();
           const { error: memberError } = await ctx.supabase
             .from("trip_members")
             .insert({
@@ -77,6 +79,10 @@ export const ghostCrewRouter = router({
               user_id: existingUser.id,
               role: input.role,
               status: "in",
+              chat_visible_from: now,
+              ...(input.role === "Planner"
+                ? { planning_visible_from: now }
+                : {}),
             });
 
           if (memberError) {
@@ -85,6 +91,14 @@ export const ghostCrewRouter = router({
               message: `Failed to add guest to trip: ${memberError.message}`,
             });
           }
+
+          // Lifecycle system message — same wording as other "added"
+          // paths (tripMembers.add, inviteByEmail Path A).
+          await postSystemMessage({
+            tripId: ctx.tripId,
+            visibility: "crew",
+            text: `${input.nickname ?? input.name} was added to the trip`,
+          });
 
           return { id: existingUser.id, name: input.name, nickname: input.nickname ?? null, email: input.email ?? null, is_guest: true, created_by: null, created_at: null, role: input.role };
         }
@@ -112,7 +126,10 @@ export const ghostCrewRouter = router({
         });
       }
 
-      // Insert trip_members row (guests are always "in")
+      // Insert trip_members row (guests are always "in"). Visibility
+      // floor pins them at NOW so a later real-account link doesn't drag
+      // pre-existing chat history into their view.
+      const ghostNow = new Date().toISOString();
       const { error: memberError } = await ctx.supabase
         .from("trip_members")
         .insert({
@@ -121,6 +138,10 @@ export const ghostCrewRouter = router({
           user_id: guest.id,
           role: input.role,
           status: "in",
+          chat_visible_from: ghostNow,
+          ...(input.role === "Planner"
+            ? { planning_visible_from: ghostNow }
+            : {}),
         });
 
       if (memberError) {
@@ -131,6 +152,15 @@ export const ghostCrewRouter = router({
           message: `Failed to add guest to trip members: ${memberError.message}`,
         });
       }
+
+      // Lifecycle system message. "Just Names" (no email) are still real
+      // members of the trip and show in the roster, so we post the same
+      // "added to the trip" wording as other paths.
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "crew",
+        text: `${input.nickname ?? input.name} was added to the trip`,
+      });
 
       return { ...guest, role: input.role };
     }),
@@ -260,6 +290,19 @@ export const ghostCrewRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Capture display name BEFORE the delete so the system message
+      // formats correctly even if the user row gets garbage-collected.
+      const { data: guestUser } = await ctx.supabase
+        .from("users")
+        .select("name, nickname, email")
+        .eq("id", input.guestUserId)
+        .maybeSingle();
+      const displayName =
+        guestUser?.nickname ??
+        guestUser?.name ??
+        (guestUser?.email ? guestUser.email.split("@")[0] : null) ??
+        "A crew member";
+
       const { error } = await ctx.supabase
         .from("trip_members")
         .delete()
@@ -272,6 +315,12 @@ export const ghostCrewRouter = router({
           message: "Failed to remove guest",
         });
       }
+
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "crew",
+        text: `${displayName} was removed from the trip`,
+      });
 
       return { success: true };
     }),

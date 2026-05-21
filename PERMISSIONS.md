@@ -8,11 +8,18 @@
 
 ## Roles
 
-| Role | Variable | Description |
-|------|----------|-------------|
-| **Owner** | `viewerRole === 'owner'` | Full control. Creates the trip, manages the crew, locks decisions. |
-| **Planner** | `viewerRole === 'planner'` | Planning authority. Can edit trip details, manage dates, add ideas, add crew. Cannot lock destinations or manage roles. |
-| **Member** | `viewerRole === 'member'` | Participant. Can vote, comment, chat, and view everything. Cannot edit trip configuration. |
+> **UI label vs DB value:** the `planner` role displays as **"Organizer"**
+> everywhere in the app (badges, headings, buttons, aria-labels). The DB
+> column, the `TripRole` type, the tRPC procedures, and every permission
+> check still use `planner` / `Planner`. See CLAUDE.md Enforced Pattern
+> #7. Throughout this doc, "Planner" refers to the DB role value; user-
+> facing copy reads "Organizer".
+
+| Role | Variable | UI label | Description |
+|------|----------|----------|-------------|
+| **Owner** | `viewerRole === 'owner'` | Owner | Full control. Creates the trip, manages the crew, locks decisions. |
+| **Planner** | `viewerRole === 'planner'` | **Organizer** | Planning authority. Can edit trip details, manage dates, add ideas, add crew. Cannot lock destinations or manage roles. |
+| **Member** | `viewerRole === 'member'` | Member | Participant. Can vote, comment, chat, and view everything. Cannot edit trip configuration. |
 
 **Derived flags used in code:**
 - `isOwner = viewerRole === 'owner'`
@@ -92,8 +99,8 @@
 | Add crew member | ✓ | ✓ | — | `canEdit` | TripDetail CrewTab |
 | Send invite to member | ✓ | ✓ | — | `canEdit && !isMe` | TripDetail CrewTab |
 | Change own RSVP status | ✓ | ✓ | ✓ | `isMe` | TripDetail CrewTab |
-| Promote Member → Planner | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
-| Demote Planner → Member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
+| Promote Member → Organizer | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
+| Demote Organizer → Member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
 | Remove crew member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
 
 ### Competition
@@ -132,13 +139,30 @@
 
 ### Messages
 
+The trip chat ("Crew") and the private Organizers chat live in the same
+`messages` table, distinguished by the `visibility` column:
+`'crew'` (default) vs `'planning'` (Organizers-only).
+
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
-| View trip chat | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
-| Send trip chat message | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
+| View Crew chat | ✓ | ✓ | ✓ | None | TripDetail, FloatingChatPanel |
+| Send Crew chat message | ✓ | ✓ | ✓ | None | TripDetail, FloatingChatPanel |
+| View Organizers chat | ✓ | ✓ | — | `canEdit` | TripDetail, FloatingChatPanel |
+| Send Organizers chat message | ✓ | ✓ | — | `canEdit` | TripDetail, FloatingChatPanel |
 | View own team chat | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
 | Send team chat message | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
 | View other team's chat | — | — | — | Blocked by RLS + team filtering | TripMessages |
+
+**Visibility floors:** newly-added members get `chat_visible_from = NOW()`
+so they don't see prior Crew chat history. Newly-promoted organizers get
+`planning_visible_from = NOW()` so they don't see prior Organizers chatter.
+Both columns live on `trip_members`; enforcement is in the messages.list
+query (RLS handles the role gate).
+
+**System messages:** member lifecycle events (added, removed, promoted,
+demoted, invite sent) post `message_type = 'system'` messages via a
+service-role helper. RLS blocks message_type='system' INSERTs from user-
+scoped clients — those are server-only.
 
 ---
 

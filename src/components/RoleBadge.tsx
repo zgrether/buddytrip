@@ -6,9 +6,14 @@ interface RoleBadgeProps {
   className?: string;
 }
 
+// UI label vs DB value:
+//   - The DB role column stores 'planner'. We don't rename the column.
+//   - Every visible badge / button / heading reads "Organizer". The
+//     identifier `Planner` survives only in type unions, role checks,
+//     and middleware (CLAUDE.md Enforced Pattern: "Organizer display label").
 const CONFIG: Record<TripRole, { label: string; color: string }> = {
   Owner: { label: "Owner", color: "var(--color-bt-owner)" },
-  Planner: { label: "Planner", color: "var(--color-bt-accent)" },
+  Planner: { label: "Organizer", color: "var(--color-bt-accent)" },
   Member: { label: "Member", color: "var(--color-bt-text-dim)" },
 };
 

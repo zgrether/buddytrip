@@ -1662,7 +1662,7 @@ export function CoPlannerPanel({
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Planners
+        Organizers
       </p>
 
       {/* Existing planners */}
@@ -1687,7 +1687,7 @@ export function CoPlannerPanel({
                   onClick={() => demote.mutate({ tripId, userId: m.user_id, role: "Member" })}
                   className="flex h-5 w-5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
                   style={{ color: "var(--color-bt-text-dim)" }}
-                  aria-label={`Remove ${m.displayName} as planner`}
+                  aria-label={`Remove ${m.displayName} as organizer`}
                 >
                   <X size={12} />
                 </button>
@@ -1766,7 +1766,7 @@ function MobileCoPlannerSheet({
           style={{ borderBottom: "1px solid var(--color-bt-border)" }}
         >
           <p className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Planners
+            Organizers
           </p>
           <button
             onClick={onClose}
