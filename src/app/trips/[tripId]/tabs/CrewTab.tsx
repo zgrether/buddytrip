@@ -1,9 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   Crown,
+  Ghost,
   Mail,
   Plus,
   Send,
@@ -15,6 +17,7 @@ import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
+import { AVATAR_ICON_COMPONENTS } from "@/lib/avatarIconComponents";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
 import { AddCrewMemberSheet } from "./components/AddCrewMemberSheet";
@@ -28,7 +31,14 @@ type Member = {
   status: string | null;
   displayName: string;
   isGuest: boolean;
-  user: { email: string | null; is_guest?: boolean } | null;
+  user: {
+    email: string | null;
+    is_guest?: boolean;
+    /** Uploaded photo URL — wins over avatar_icon and initials. */
+    avatar_url?: string | null;
+    /** Tabler icon id the user picked in their profile — wins over initials. */
+    avatar_icon?: string | null;
+  } | null;
 };
 
 /**
@@ -98,13 +108,11 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   const unlinkedCount = (members as Member[]).filter((m) => m.isGuest && m.status === "in").length;
 
   return (
-    // max-w-[640px] left-aligned constraint (CC_MODAL_AUDIT.md Part 4):
-    // wide viewports were stretching crew rows edge-to-edge so the name
-    // sat on the far left while the badge floated on the far right. The
-    // 640px cap keeps the row dense enough to read as a unit. Mobile is
-    // unaffected — narrow viewports already fit comfortably under 640px.
+    // Nudge + TabHeader + buttons stay full-width; only the section list
+    // below is constrained / split into columns. Spec: "The 640px width
+    // should only wrap around the crew lists, not the top part of the
+    // crew tab."
     <div className={embedded ? "@container" : "@container px-4"}>
-      <div className="max-w-[640px]">
       {/* ── Unlinked-crew nudge — surfaces at the very top of the tab so
           it reads as a tab-level alert (Style Guide § Nudge banner). ── */}
       {isOwner && unlinkedCount > 0 && (
@@ -174,77 +182,65 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         }
       />
 
-      {/* ── Sections ─────────────────────────────────────────────────── */}
-      <div className="space-y-5">
-        <SectionGroup
-          label="Organizers"
-          count={organizers.length}
-          tone="accent"
-        >
-          {organizers.map((m) => (
-            <CrewRow
-              key={m.memberId}
-              member={m}
-              tripId={tripId}
-              isOwnerView={!!isOwner}
-              canEdit={canEdit}
-              isMe={m.user_id === currentUser?.id}
-              isExpanded={expandedId === m.memberId}
-              onToggle={() =>
-                setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
-              }
-            />
-          ))}
-        </SectionGroup>
+      {/* ── Sections — 2-column grid at lg+; stacks single-column on
+              tablet and mobile. Left column carries Organizers and Crew
+              vertically; right column is Just Names. When Just Names is
+              empty the grid collapses to a single column so Organizers +
+              Crew take the full width. ── */}
+      {(() => {
+        const renderRow = (m: Member) => (
+          <CrewRow
+            key={m.memberId}
+            member={m}
+            tripId={tripId}
+            isOwnerView={!!isOwner}
+            canEdit={canEdit}
+            isMe={m.user_id === currentUser?.id}
+            isExpanded={expandedId === m.memberId}
+            onToggle={() =>
+              setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
+            }
+          />
+        );
 
-        <SectionGroup label="Crew" count={crew.length} tone="standard">
-          {crew.length === 0 ? (
-            <EmptyHint text="No crew members yet." />
-          ) : (
-            crew.map((m) => (
-              <CrewRow
-                key={m.memberId}
-                member={m}
-                tripId={tripId}
-                isOwnerView={!!isOwner}
-                canEdit={canEdit}
-                isMe={m.user_id === currentUser?.id}
-                isExpanded={expandedId === m.memberId}
-                onToggle={() =>
-                  setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
-                }
-              />
-            ))
-          )}
-        </SectionGroup>
+        const leftColumn = (
+          <div className="space-y-5">
+            <SectionGroup
+              label="Organizers"
+              count={organizers.length}
+              tone="accent"
+            >
+              {organizers.map(renderRow)}
+            </SectionGroup>
 
-        {/* Just Names section — only render if there's at least one. The
-            spec subtext is rendered inside the SectionGroup header slot
-            so the count badge stays right-aligned. */}
-        {justNames.length > 0 && (
-          <SectionGroup
-            label="Just Names"
-            count={justNames.length}
-            tone="recessed"
-            subtext="Available for scheduling and scoring — add their email if they want to access the app."
-          >
-            {justNames.map((m) => (
-              <CrewRow
-                key={m.memberId}
-                member={m}
-                tripId={tripId}
-                isOwnerView={!!isOwner}
-                canEdit={canEdit}
-                isMe={m.user_id === currentUser?.id}
-                isExpanded={expandedId === m.memberId}
-                onToggle={() =>
-                  setExpandedId((cur) => (cur === m.memberId ? null : m.memberId))
-                }
-              />
-            ))}
-          </SectionGroup>
-        )}
-      </div>
+            <SectionGroup label="Crew" count={crew.length} tone="standard">
+              {crew.length === 0 ? (
+                <EmptyHint text="No crew members yet." />
+              ) : (
+                crew.map(renderRow)
+              )}
+            </SectionGroup>
+          </div>
+        );
+
+        if (justNames.length === 0) {
+          return leftColumn;
+        }
+
+        return (
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {leftColumn}
+            <SectionGroup
+              label="Just Names"
+              count={justNames.length}
+              tone="recessed"
+              subtext="Available for scheduling and scoring — add their email if they want to access the app."
+            >
+              {justNames.map(renderRow)}
+            </SectionGroup>
+          </div>
+        );
+      })()}
 
       {/* ── Add crew member modal/sheet ─────────────────────────────── */}
       {isOwner && (
@@ -296,11 +292,8 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         </div>
       )}
 
-      </div>{/* /max-w-[640px] container */}
-
-      {/* ── Mobile FAB — primary "Add crew member" action ──────────────
-          Rendered outside the max-w wrapper because the FAB is fixed-
-          positioned and its DOM ancestor doesn't influence layout. */}
+      {/* ── Mobile FAB — primary "Add crew member" action. fixed-positioned,
+          so its DOM placement doesn't affect layout. */}
       {isOwner && (
         <TabFab
           onClick={() => setShowAddModal(true)}
@@ -460,7 +453,7 @@ function CrewRow({
           cursor: expandable ? "pointer" : "default",
         }}
       >
-        <RowAvatar state={rowState} initials={initials} />
+        <RowAvatar state={rowState} initials={initials} member={m} />
 
         <div className="min-w-0 flex-1">
           <p
@@ -534,66 +527,122 @@ function CrewRow({
 }
 
 // ── RowAvatar ───────────────────────────────────────────────────────────
-// Five visual variants keyed by row state. Each renders as a 32×32
-// rounded-full circle so the layout doesn't shift when state changes.
+// Resolution chain (per CC_MODAL_AUDIT.md follow-up):
+//   1. just-name (ghost with no email)  → Ghost icon in dashed circle
+//   2. user.avatar_url present           → uploaded photo
+//   3. user.avatar_icon present          → Tabler icon on state-tinted bg
+//   4. otherwise                         → initials on state-tinted bg
+//
+// State coloring (owner=teal, organizer/joined=blue, invited=amber) is
+// applied as the background tint when we're rendering an icon or
+// initials — so customized avatars (photo) display as themselves, and
+// non-customized rows still carry their state-state at a glance.
 
-function RowAvatar({ state, initials }: { state: RowState; initials: string }) {
+function RowAvatar({
+  state,
+  initials,
+  member: m,
+}: {
+  state: RowState;
+  initials: string;
+  member: Member;
+}) {
+  const SIZE = 32;
   const baseClasses =
-    "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold";
+    "flex flex-shrink-0 items-center justify-center rounded-full overflow-hidden";
 
-  if (state === "owner") {
+  // 1. Just Names → Ghost icon in dashed circle. The spec explicitly calls
+  //    for the dashed border + ghost glyph treatment; we don't fall through
+  //    to avatar_url / avatar_icon here because the "just name" identity
+  //    IS "no real person yet".
+  if (state === "just-name") {
     return (
       <span
         className={baseClasses}
         style={{
-          background: "var(--color-bt-tag-bg)",
-          color: "var(--color-bt-accent)",
-          border: "1px solid var(--color-bt-accent-border)",
+          width: SIZE,
+          height: SIZE,
+          background: "transparent",
+          color: "var(--color-bt-text-dim)",
+          border: "1.5px dashed var(--color-bt-border)",
+          opacity: 0.85,
         }}
+        aria-hidden="true"
       >
-        {initials}
+        <Ghost size={14} />
       </span>
     );
   }
-  if (state === "organizer" || state === "joined") {
+
+  // 2. Uploaded photo → render directly, no state tint underneath
+  //    (a state-tint border would compete with the photo).
+  if (m.user?.avatar_url) {
+    return (
+      <Image
+        src={m.user.avatar_url}
+        alt={`${m.displayName} avatar`}
+        width={SIZE}
+        height={SIZE}
+        className="flex-shrink-0 rounded-full object-cover"
+        unoptimized
+      />
+    );
+  }
+
+  // 3 / 4 — resolve state tint, then render icon or initials on top.
+  const stateTint: { bg: string; fg: string; border: string } =
+    state === "owner"
+      ? {
+          bg: "var(--color-bt-tag-bg)",
+          fg: "var(--color-bt-accent)",
+          border: "var(--color-bt-accent-border)",
+        }
+      : state === "invited"
+        ? {
+            bg: "var(--color-bt-warning-faint)",
+            fg: "var(--color-bt-warning)",
+            border: "var(--color-bt-warning-border)",
+          }
+        : {
+            // organizer + joined share the blue tint
+            bg: "var(--color-bt-blue-bg)",
+            fg: "var(--color-bt-planning)",
+            border: "var(--color-bt-planning-border)",
+          };
+
+  // 3. avatar_icon set → render the Tabler glyph on the tinted circle.
+  const IconComponent = m.user?.avatar_icon
+    ? AVATAR_ICON_COMPONENTS[m.user.avatar_icon]
+    : null;
+  if (IconComponent) {
     return (
       <span
         className={baseClasses}
         style={{
-          background: "var(--color-bt-blue-bg)",
-          color: "var(--color-bt-planning)",
-          border: "1px solid var(--color-bt-planning-border)",
+          width: SIZE,
+          height: SIZE,
+          background: stateTint.bg,
+          color: stateTint.fg,
+          border: `1px solid ${stateTint.border}`,
         }}
+        aria-label={`${m.displayName} avatar`}
       >
-        {initials}
+        <IconComponent size={16} stroke={1.75} aria-hidden="true" />
       </span>
     );
   }
-  if (state === "invited") {
-    return (
-      <span
-        className={baseClasses}
-        style={{
-          background: "var(--color-bt-warning-faint)",
-          color: "var(--color-bt-warning)",
-          border: "1px solid var(--color-bt-warning-border)",
-        }}
-      >
-        {initials}
-      </span>
-    );
-  }
-  // just-name → dashed border placeholder with a tiny silhouette glyph
+
+  // 4. Initials fallback.
   return (
     <span
-      className={baseClasses}
+      className={`${baseClasses} text-[11px] font-semibold`}
       style={{
-        background: "transparent",
-        color: "var(--color-bt-text-dim)",
-        border: "1.5px dashed var(--color-bt-border)",
-        opacity: 0.85,
+        width: SIZE,
+        height: SIZE,
+        background: stateTint.bg,
+        color: stateTint.fg,
+        border: `1px solid ${stateTint.border}`,
       }}
-      aria-hidden="true"
     >
       {initials}
     </span>

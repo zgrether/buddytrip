@@ -54,7 +54,7 @@ export async function listMembers(
     userIds.length > 0
       ? await ctx.supabase
           .from("users")
-          .select("id, name, nickname, email, is_guest, avatar_url")
+          .select("id, name, nickname, email, is_guest, avatar_url, avatar_icon")
           .in("id", userIds)
       : {
           data: [] as {
@@ -64,6 +64,7 @@ export async function listMembers(
             email: string | null;
             is_guest: boolean;
             avatar_url: string | null;
+            avatar_icon: string | null;
           }[],
         };
 
