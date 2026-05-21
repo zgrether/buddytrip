@@ -158,13 +158,26 @@ export const tripMembersRouter = router({
         });
       }
 
-      // Lifecycle system message to Crew (and Organizers if Planner).
+      // Lifecycle system messages.
+      //   Crew chat → only when the member actually joins (status='in'),
+      //   wording is "joined the trip" (not "added"). Pending invitees
+      //   don't get a crew-chat post here — the invite-acceptance flow
+      //   posts that when they sign up.
+      //   Organizer chat → every add (regardless of status), plus a
+      //   separate "made an organizer" note when role=Planner.
       const displayName = await getDisplayName(ctx.supabase, input.userId);
       await postSystemMessage({
         tripId: ctx.tripId,
-        visibility: "crew",
+        visibility: "planning",
         text: `${displayName} was added to the trip`,
       });
+      if (input.status === "in") {
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${displayName} joined the trip`,
+        });
+      }
       if (input.role === "Planner") {
         await postSystemMessage({
           tripId: ctx.tripId,
@@ -269,6 +282,25 @@ export const tripMembersRouter = router({
       // on this trip when they were removed".
       const displayName = await getDisplayName(ctx.supabase, input.userId);
 
+      // Capture the member's pre-delete status + email-presence so we can
+      // decide whether the removal warrants a Crew-chat post. Removing a
+      // pending invitee (or a Just Name with no email) is an organizer-
+      // only concern; Crew chat only cares about people who actually had
+      // chat access.
+      const { data: outgoing } = await ctx.supabase
+        .from("trip_members")
+        .select("status")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+      const { data: outgoingUser } = await ctx.supabase
+        .from("users")
+        .select("email")
+        .eq("id", input.userId)
+        .maybeSingle();
+      const hadChatAccess =
+        outgoing?.status === "in" && !!outgoingUser?.email;
+
       const { error } = await ctx.supabase
         .from("trip_members")
         .delete()
@@ -282,12 +314,45 @@ export const tripMembersRouter = router({
         });
       }
 
+      // Organizer chat sees every removal regardless of status.
+      await postSystemMessage({
+        tripId: ctx.tripId,
+        visibility: "planning",
+        text: `${displayName} was removed from the trip`,
+      });
+      // Crew chat only sees removals of members who actually had access
+      // to the crew chat (status='in' AND had an email/account).
+      if (hadChatAccess) {
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${displayName} was removed from the trip`,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // -----------------------------------------------------------------------
+  // notifyInviteAccepted — fired by the invite-acceptance flow once the
+  // signed-up user has been linked into trip_members with status='in'.
+  // Posts the "X joined the trip" lifecycle message to Crew chat so the
+  // rest of the crew sees the new arrival.
+  //
+  // Self-call only: the caller must be the user whose invite was just
+  // accepted, and they must already be a member of the trip. We don't
+  // re-validate the invite token here — that lives in the invite page.
+  // -----------------------------------------------------------------------
+  notifyInviteAccepted: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .mutation(async ({ ctx }) => {
+      const displayName = await getDisplayName(ctx.supabase, ctx.user!.id);
       await postSystemMessage({
         tripId: ctx.tripId,
         visibility: "crew",
-        text: `${displayName} was removed from the trip`,
+        text: `${displayName} joined the trip`,
       });
-
       return { success: true };
     }),
 
@@ -366,14 +431,22 @@ export const tripMembersRouter = router({
           ...(trimmedTypedName ? { display_name: trimmedTypedName } : {}),
         });
 
-        // Lifecycle system message to Crew. If they came in as a Planner
-        // we also post a corresponding "made an organizer" to Organizers.
+        // Lifecycle system messages.
+        //   Crew chat → status='in' on this path (they have a real
+        //   account so they joined immediately), wording is "joined".
+        //   Organizer chat → "added" regardless, plus "made an organizer"
+        //   when role=Planner.
         const memberDisplayName =
           existing.nickname ?? existing.name ?? email.split("@")[0];
         await postSystemMessage({
           tripId: ctx.tripId,
-          visibility: "crew",
+          visibility: "planning",
           text: `${memberDisplayName} was added to the trip`,
+        });
+        await postSystemMessage({
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${memberDisplayName} joined the trip`,
         });
         if (input.role === "Planner") {
           await postSystemMessage({
@@ -522,11 +595,11 @@ export const tripMembersRouter = router({
         ...(trimmedTypedNameB ? { display_name: trimmedTypedNameB } : {}),
       });
 
-      // Lifecycle system message — "invite sent" rather than "added"
-      // because the invitee hasn't accepted yet. Caller-supplied name
-      // wins for the new-guest case so the system message matches the
-      // typed display name; otherwise fall through to existing user's
-      // name / email stem.
+      // Lifecycle system message — Organizer chat only. The invitee
+      // hasn't accepted yet so they have no access to crew chat, and
+      // crew chat shouldn't surface invite traffic. A "joined" message
+      // will land in crew chat once they accept (see
+      // tripMembers.notifyInviteAccepted).
       const inviteeName =
         input.name?.trim() ??
         existing?.nickname ??
@@ -534,8 +607,8 @@ export const tripMembersRouter = router({
         email.split("@")[0];
       await postSystemMessage({
         tripId: ctx.tripId,
-        visibility: "crew",
-        text: `An invite was sent to ${inviteeName}`,
+        visibility: "planning",
+        text: `${inviteeName} was invited to the trip`,
       });
 
       // Send invite email (best effort)

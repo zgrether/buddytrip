@@ -419,7 +419,11 @@ function EmptyHint({ text }: { text: string }) {
 // The badge slot is the only piece that varies in content; its width
 // stays pinned. The chevron rotates 180° when the row is expanded.
 
-const BADGE_SLOT_WIDTH = 82;
+// Widened so an Organizer (or Owner) pill can sit side-by-side with a
+// pending-Invited pill in the same slot. The single-pill rows center their
+// badge in the slot so the visual column reads as a single vertical stripe
+// down the panel.
+const BADGE_SLOT_WIDTH = 168;
 const CHEVRON_SLOT_WIDTH = 18;
 
 function CrewRow({
@@ -507,7 +511,7 @@ function CrewRow({
 
         {/* Badge slot — fixed width so rows align across states */}
         <div
-          className="flex flex-shrink-0 items-center justify-end"
+          className="flex flex-shrink-0 items-center justify-center"
           style={{ width: BADGE_SLOT_WIDTH }}
         >
           <RowBadge
@@ -698,8 +702,8 @@ function RowBadge({
   state: RowState;
   /** Owner/Organizer rows whose invite hasn't been accepted yet — we
    *  elevate roles before sign-up to skip a step, so the Organizer pill
-   *  alone would hide that they haven't joined. Stacks an Invited pill
-   *  underneath the role pill. */
+   *  alone would hide that they haven't joined. Renders an Invited pill
+   *  to the right of the role pill on the same horizontal line. */
   pendingInvite?: boolean;
 }) {
   const pillBase: React.CSSProperties = {
@@ -743,7 +747,7 @@ function RowBadge({
     );
     if (pendingInvite) {
       return (
-        <span className="flex flex-col items-end gap-1">
+        <span className="flex flex-row items-center gap-1.5">
           {ownerPill}
           {invitedPill}
         </span>
@@ -767,7 +771,7 @@ function RowBadge({
     );
     if (pendingInvite) {
       return (
-        <span className="flex flex-col items-end gap-1">
+        <span className="flex flex-row items-center gap-1.5">
           {organizerPill}
           {invitedPill}
         </span>

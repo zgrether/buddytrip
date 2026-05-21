@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
+import { trpc } from "@/lib/trpc-client";
 
 type InviteState =
   | { kind: "loading" }
@@ -36,6 +37,7 @@ function InviteContent() {
   const [state, setState] = useState<InviteState>(
     token ? { kind: "loading" } : { kind: "error", message: "No invite token provided." }
   );
+  const notifyInviteAccepted = trpc.tripMembers.notifyInviteAccepted.useMutation();
 
   useEffect(() => {
     if (!token) return;
@@ -111,6 +113,23 @@ function InviteContent() {
           role: invite.role,
           status: "in",
         });
+      } else {
+        // They were pre-seeded as an invited member (the typical path —
+        // inviteByEmail Path B writes a row up front). Flip status to
+        // 'in' so they appear as joined in the crew list.
+        await supabase
+          .from("trip_members")
+          .update({ status: "in" })
+          .eq("trip_id", invite.trip_id)
+          .eq("user_id", session.user.id);
+      }
+
+      // Lifecycle: post "X joined the trip" to Crew chat. Fire-and-forget;
+      // a failure here shouldn't block the accept flow.
+      try {
+        await notifyInviteAccepted.mutateAsync({ tripId: invite.trip_id });
+      } catch {
+        // Best-effort
       }
 
       setState({ kind: "success", tripId: invite.trip_id, tripName });
