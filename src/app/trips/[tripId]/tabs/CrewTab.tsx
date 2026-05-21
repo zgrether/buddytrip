@@ -279,7 +279,10 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
             >
               <X size={14} />
             </button>
-            <div className="overflow-y-auto">
+            {/* CrewEmailPanel's outer wrapper is bare (data-testid only);
+                the parent must supply padding. pt-12 keeps the first
+                paragraph clear of the absolute-positioned X button above. */}
+            <div className="overflow-y-auto px-5 pb-5 pt-12">
               <CrewEmailPanel trip={trip} isOwner={!!isOwner} />
             </div>
           </div>
