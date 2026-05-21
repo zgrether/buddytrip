@@ -589,6 +589,10 @@ export const tripMembersRouter = router({
         role: input.role,
         status: "invited",
         chat_visible_from: inviteNow,
+        // Stamp the first invite send so the crew tab's expanded
+        // panel can show "Invited on Mon DD" right away — without this
+        // last_invited_at stays NULL until the organizer hits Resend.
+        last_invited_at: inviteNow,
         ...(input.role === "Planner"
           ? { planning_visible_from: inviteNow }
           : {}),

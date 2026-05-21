@@ -222,14 +222,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         );
 
         const leftColumn = (
-          <div
-            className="space-y-5 rounded-2xl p-4"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-              boxShadow: "var(--shadow-card)",
-            }}
-          >
+          <div className="space-y-5">
             <SectionGroup
               label="Organizers"
               count={organizers.length}
@@ -354,50 +347,72 @@ function SectionGroup({
   subtext?: string;
   children: React.ReactNode;
 }) {
-  // tone → container styling. Rows inherit the tone via their own props
-  // so accent-tinted Organizer rows can sit inside an accent-bordered
-  // wrapper without doubling the tint.
-  const containerStyle: React.CSSProperties =
+  // Each section is its own self-contained card panel with a category
+  // pill in the top-right corner (modeled after the marketing trip-card
+  // "PLANNING" pill). The panel surface is consistent across sections;
+  // the pill's color carries the tone instead of the panel background.
+  const pillStyle: React.CSSProperties =
     tone === "accent"
       ? {
-          background: "var(--color-bt-tag-bg)",
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
           border: "1px solid var(--color-bt-accent-border)",
         }
       : tone === "recessed"
-      ? {
-          background: "var(--color-bt-past-bg)",
-          border: "1px solid var(--color-bt-subtle-border)",
-        }
-      : {
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        };
+        ? {
+            background: "var(--color-bt-card-raised)",
+            color: "var(--color-bt-text-dim)",
+            border: "1px solid var(--color-bt-subtle-border)",
+          }
+        : {
+            background: "var(--color-bt-blue-bg)",
+            color: "var(--color-bt-planning)",
+            border: "1px solid var(--color-bt-planning-border)",
+          };
 
   return (
-    <section>
-      <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h2
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {label}
-        </h2>
+    <section
+      className="rounded-2xl p-4"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
         <span
           className="text-[11px] font-medium tabular-nums"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {count}
         </span>
+        <span
+          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+          style={{
+            ...pillStyle,
+            padding: "3px 10px",
+            borderRadius: 9999,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {label}
+        </span>
       </div>
       {subtext && (
         <p
-          className="mb-2 text-[11px] leading-snug"
+          className="mb-3 text-[11px] leading-snug"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           {subtext}
         </p>
       )}
-      <div className="overflow-hidden rounded-xl" style={containerStyle}>
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{
+          background: "var(--color-bt-card-raised)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
         {children}
       </div>
     </section>
@@ -464,11 +479,7 @@ function CrewRow({
   return (
     <div
       className="border-b last:border-b-0"
-      style={{
-        borderColor: rowState === "owner" || rowState === "organizer"
-          ? "var(--color-bt-accent-border)"
-          : "var(--color-bt-border)",
-      }}
+      style={{ borderColor: "var(--color-bt-border)" }}
       data-row-state={rowState}
       data-testid={`crew-row-${m.memberId}`}
     >
@@ -565,11 +576,7 @@ function CrewRow({
           className="px-4 pb-4 pt-3"
           style={{
             background: "var(--color-bt-card)",
-            borderTop: `1px solid ${
-              rowState === "owner" || rowState === "organizer"
-                ? "var(--color-bt-accent-border)"
-                : "var(--color-bt-border)"
-            }`,
+            borderTop: "1px solid var(--color-bt-border)",
           }}
         >
           <ExpandedBody
