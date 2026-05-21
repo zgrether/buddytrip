@@ -18,6 +18,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
 import { AVATAR_ICON_COMPONENTS } from "@/lib/avatarIconComponents";
+import { relativeTime } from "@/lib/notificationText";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
 import { AddCrewMemberSheet } from "./components/AddCrewMemberSheet";
@@ -31,6 +32,15 @@ type Member = {
   status: string | null;
   displayName: string;
   isGuest: boolean;
+  /**
+   * ISO timestamp of the most recent invite sent to this member, or
+   * NULL if they've never been invited. Stamped by
+   * tripMembers.inviteByEmail + tripMembers.resendInvite +
+   * sendInvitationBlast (per recipient). Surfaced on the expanded
+   * invited-row as a "Invited X ago" hint so owners can decide whether
+   * a resend is warranted.
+   */
+  last_invited_at?: string | null;
   user: {
     email: string | null;
     is_guest?: boolean;
@@ -105,17 +115,27 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
     return { organizers: orgs, crew: cw, justNames: jn };
   }, [members]);
 
-  const unlinkedCount = (members as Member[]).filter((m) => m.isGuest && m.status === "in").length;
+  // Outstanding invites: members with status='invited' who haven't
+  // accepted yet. This replaces the previous "X people haven't joined"
+  // nudge, which incorrectly counted Just Names (placeholder names with
+  // no email — they CAN'T join, by definition) and had no actionable
+  // path. The new filter only counts members with email + invited
+  // status, which is the genuinely actionable cohort.
+  const pendingInviteCount = (members as Member[]).filter(
+    (m) => m.status === "invited" && !!m.user?.email
+  ).length;
 
   return (
     // Nudge + TabHeader + buttons stay full-width; only the section list
-    // below is constrained / split into columns. Spec: "The 640px width
-    // should only wrap around the crew lists, not the top part of the
-    // crew tab."
+    // below is split into columns. Spec: "The 640px width should only
+    // wrap around the crew lists, not the top part of the crew tab."
     <div className={embedded ? "@container" : "@container px-4"}>
-      {/* ── Unlinked-crew nudge — surfaces at the very top of the tab so
-          it reads as a tab-level alert (Style Guide § Nudge banner). ── */}
-      {isOwner && unlinkedCount > 0 && (
+      {/* ── Pending-invites nudge — surfaces at the very top of the tab
+          so it reads as a tab-level alert (Style Guide § Nudge banner).
+          No CTA button here — the per-row "Resend invite" action lives in
+          the expanded invited-row, with the precise `last_invited_at`
+          context the owner needs to make the call. ── */}
+      {isOwner && pendingInviteCount > 0 && (
         <div
           className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
           style={{
@@ -131,10 +151,10 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           </span>
           <div>
             <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-              {unlinkedCount} {unlinkedCount === 1 ? "person hasn't" : "people haven't"} joined yet
+              {pendingInviteCount} {pendingInviteCount === 1 ? "invite" : "invites"} not accepted yet
             </p>
             <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Send them an email so they can see the plan
+              They got the email — open a row to see when it was sent or resend
             </p>
           </div>
         </div>
@@ -508,9 +528,11 @@ function CrewRow({
         </div>
       </button>
 
-      {/* Expanded body — state-specific UI */}
+      {/* Expanded body — state-specific UI. px-4 pb-4 pt-3 matches the
+          PlanningRow body padding pattern (Style Guide § Collapsible
+          panel) so all expanded surfaces share the same inset. */}
       {isExpanded && (
-        <div className="px-3 pb-3">
+        <div className="px-4 pb-4 pt-3">
           <ExpandedBody
             member={m}
             rowState={rowState}
@@ -837,6 +859,14 @@ function ExpandedBody({
       <>
         {displayNameField}
         <EmailReadOnly email={m.user?.email ?? null} />
+        {m.last_invited_at && (
+          <p
+            className="mt-2 text-[11px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Invited {relativeTime(m.last_invited_at)}
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap gap-2">
           {canEdit && (
             <ResendInviteButton
@@ -953,7 +983,7 @@ function DisplayNameField({
   return (
     <div className="mb-2">
       <p
-        className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
+        className="mb-1 text-[10px] font-medium uppercase tracking-[0.06em]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         Display Name
@@ -1030,7 +1060,7 @@ function EmailReadOnly({ email }: { email: string | null }) {
   return (
     <div className="mt-1">
       <p
-        className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
+        className="mb-1 text-[10px] font-medium uppercase tracking-[0.06em]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         Email
@@ -1156,13 +1186,15 @@ function RemoveButton({
       </div>
     );
   }
+  // Small Danger variant per STYLE_GUIDE.md Section 5 — danger-faint bg
+  // makes the button read as a real action target, not a text link.
   return (
     <button
       type="button"
       onClick={() => setConfirm(true)}
-      className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
+      className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
       style={{
-        background: "transparent",
+        background: "var(--color-bt-danger-faint)",
         color: "var(--color-bt-danger)",
         border: "1px solid var(--color-bt-danger-border)",
       }}
@@ -1263,12 +1295,12 @@ function JustNameExpanded({
       {canEdit && (
         <>
           <p
-            className="text-[10px] font-semibold uppercase tracking-wider"
+            className="mb-1 text-[10px] font-medium uppercase tracking-[0.06em]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Add email to invite
           </p>
-          <div className="flex items-stretch gap-2">
+          <div className="flex items-center gap-2">
             <input
               type="email"
               value={email}

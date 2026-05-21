@@ -281,10 +281,16 @@ export function AddCrewMemberSheet({
             <div>
               <label
                 htmlFor="add-crew-display-name"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
+                className="mb-1 block text-[10px] font-medium uppercase tracking-[0.06em]"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                Display Name
+                Display Name{" "}
+                <span
+                  className="font-normal normal-case"
+                  style={{ color: "var(--color-bt-text-dim)", letterSpacing: 0 }}
+                >
+                  — optional
+                </span>
               </label>
               <input
                 id="add-crew-display-name"
@@ -314,10 +320,16 @@ export function AddCrewMemberSheet({
             <div>
               <label
                 htmlFor="add-crew-email"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
+                className="mb-1 block text-[10px] font-medium uppercase tracking-[0.06em]"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
-                Email
+                Email{" "}
+                <span
+                  className="font-normal normal-case"
+                  style={{ color: "var(--color-bt-text-dim)", letterSpacing: 0 }}
+                >
+                  — optional
+                </span>
               </label>
               <input
                 id="add-crew-email"
