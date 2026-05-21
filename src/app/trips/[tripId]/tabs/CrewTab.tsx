@@ -126,12 +126,13 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         </div>
       )}
 
-      {/* Header — eyebrow + desktop actions only. CC_CREW_OVERHAUL.md
-          Part 1.1: "Remove the page heading and the description paragraph
-          below it. Go straight from the header row into the nudge banner
-          (if applicable) and then the sections." */}
+      {/* Header — eyebrow + headline + body + desktop actions. Matches
+          the cadence of the other entry tabs (Lodging, Agenda, Receipts)
+          so Crew doesn't read as the odd one out. */}
       <TabHeader
         eyebrow="Crew"
+        headline="Roles for everyone on the trip"
+        body="Owners and organizers help manage the trip. Promote any crew member with a BuddyTrip account and they get edit access right away."
         desktopAction={
           isOwner ? (
             <>
