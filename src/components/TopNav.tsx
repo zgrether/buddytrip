@@ -47,6 +47,11 @@ interface TopNavProps {
   chatOpen?: boolean;
 }
 
+// Feature flag — the notifications surface is being rethought; hide the
+// bell from the TopNav for now without ripping out the wiring, so it can
+// come back once the next notifications design lands.
+const NOTIFICATIONS_ENABLED = false;
+
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
   rsvp_response: UserCheck,
   destination_locked: MapPin,
@@ -177,6 +182,7 @@ export const TopNav: FC<TopNavProps> = ({
         {tripId && onOpenChat && (
           <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
         )}
+        {NOTIFICATIONS_ENABLED && (
         <div ref={ref} className="relative">
           <button
             aria-label="Notifications"
@@ -319,6 +325,7 @@ export const TopNav: FC<TopNavProps> = ({
             </>
           )}
         </div>
+        )}
 
         <UserMenu />
       </div>

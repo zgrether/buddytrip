@@ -223,7 +223,14 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         );
 
         const leftColumn = (
-          <div className="space-y-5">
+          <div
+            className="space-y-5 rounded-2xl p-4"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              border: "1px solid var(--color-bt-border)",
+              boxShadow: "var(--shadow-card)",
+            }}
+          >
             <SectionGroup
               label="Organizers"
               count={organizers.length}
