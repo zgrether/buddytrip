@@ -248,14 +248,41 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         return (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {leftColumn}
-            <SectionGroup
-              label="Just Names"
-              count={justNames.length}
-              tone="recessed"
-              subtext="Available for scheduling and scoring — add their email if they want to access the app."
-            >
-              {justNames.map(renderRow)}
-            </SectionGroup>
+            {/* Just Names sits in the right column without a panel
+                wrapper — they're more of a roster jot-list than a
+                first-class crew surface, so the bare header + rows
+                reads more honestly than another card. */}
+            <section>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span
+                  className="text-[11px] font-medium tabular-nums"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  {justNames.length}
+                </span>
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    color: "var(--color-bt-text-dim)",
+                    border: "1px solid var(--color-bt-subtle-border)",
+                    padding: "3px 10px",
+                    borderRadius: 9999,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Just Names
+                </span>
+              </div>
+              <p
+                className="mb-3 text-[11px] leading-snug"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Available for scheduling and scoring — add their email if
+                they want to access the app.
+              </p>
+              <div className="space-y-1">{justNames.map(renderRow)}</div>
+            </section>
           </div>
         );
       })()}
