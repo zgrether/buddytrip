@@ -292,6 +292,14 @@ export const tripMembersRouter = router({
         tripId: z.string(),
         email: z.string().email(),
         role: z.enum(["Planner", "Member"]).default("Planner"),
+        /**
+         * Optional caller-supplied display name. Used only when the
+         * invite path creates a brand-new guest user (Path B). Path A
+         * (existing-account add) ignores it — the existing user's
+         * stored name stays authoritative. Surfaced so the new Add
+         * Crew Member modal can carry the user's typed name through.
+         */
+        name: z.string().min(1).max(100).optional(),
       })
     )
     .use(requireTripRole("Planner"))
@@ -429,7 +437,11 @@ export const tripMembersRouter = router({
         const newId = crypto.randomUUID();
         const { error: userError } = await ctx.supabase.from("users").insert({
           id: newId,
-          name: email.split("@")[0],
+          // Use the caller-supplied name when present (preserves what the
+          // user typed in the Add Crew Member modal); fall back to the
+          // email-stem so existing call sites that omit `name` keep their
+          // old behaviour.
+          name: input.name?.trim() ?? email.split("@")[0],
           email,
           is_guest: true,
           created_by: ctx.user!.id,
@@ -490,9 +502,15 @@ export const tripMembersRouter = router({
       });
 
       // Lifecycle system message — "invite sent" rather than "added"
-      // because the invitee hasn't accepted yet.
+      // because the invitee hasn't accepted yet. Caller-supplied name
+      // wins for the new-guest case so the system message matches the
+      // typed display name; otherwise fall through to existing user's
+      // name / email stem.
       const inviteeName =
-        existing?.nickname ?? existing?.name ?? email.split("@")[0];
+        input.name?.trim() ??
+        existing?.nickname ??
+        existing?.name ??
+        email.split("@")[0];
       await postSystemMessage({
         tripId: ctx.tripId,
         visibility: "crew",
@@ -740,6 +758,105 @@ export const tripMembersRouter = router({
         .eq("id", ctx.tripId);
 
       return { sent: sentIds.length };
+    }),
+
+  // -----------------------------------------------------------------------
+  // resendInvite — re-emails an already-invited member (status = 'invited').
+  // Used by the Invited-row "Resend invite" action in the new CrewTab.
+  //
+  // Issues a fresh row in `invites` (new token) and emails it. Bumps
+  // `trip_members.last_invited_at` so the UI can show "Resent moments ago".
+  // -----------------------------------------------------------------------
+  resendInvite: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        userId: z.string(),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }) => {
+      // Look up the member + their email
+      const { data: member } = await ctx.supabase
+        .from("trip_members")
+        .select("status, role")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+
+      if (!member) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found." });
+      }
+      if (member.status !== "invited") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Member is not in an invited state.",
+        });
+      }
+
+      const { data: user } = await ctx.supabase
+        .from("users")
+        .select("email, name, nickname")
+        .eq("id", input.userId)
+        .maybeSingle();
+
+      if (!user?.email) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Member has no email on record.",
+        });
+      }
+
+      // Inviter + trip name for email content
+      const [inviterResult, tripResult] = await Promise.all([
+        ctx.supabase.from("users").select("name, nickname").eq("id", ctx.user!.id).single(),
+        ctx.supabase.from("trips").select("title").eq("id", ctx.tripId).single(),
+      ]);
+      const inviterName = inviterResult.data?.nickname ?? inviterResult.data?.name ?? "Someone";
+      const tripName = tripResult.data?.title ?? "a trip";
+
+      // Issue a new invite row + token (the old one is left as-is for
+      // audit; nothing prevents both being valid until they're claimed).
+      const { data: invite, error: inviteError } = await ctx.supabase
+        .from("invites")
+        .insert({
+          trip_id: ctx.tripId,
+          email: user.email,
+          role: member.role,
+          created_by: ctx.user!.id,
+        })
+        .select("token")
+        .single();
+
+      if (inviteError || !invite) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to issue invite token.",
+        });
+      }
+
+      // Send the email — best-effort; we don't want a transient SMTP
+      // hiccup to nuke the timestamp update below.
+      try {
+        const { sendInviteNewUser } = await import("@/lib/email");
+        await sendInviteNewUser({
+          toEmail: user.email,
+          inviterName,
+          tripName,
+          token: invite.token,
+        });
+      } catch {
+        // swallow — keep UX optimistic
+      }
+
+      // Stamp last_invited_at so the row can show "Resent moments ago"
+      await ctx.supabase
+        .from("trip_members")
+        .update({ last_invited_at: new Date().toISOString() })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId);
+
+      return { success: true };
     }),
 
 });

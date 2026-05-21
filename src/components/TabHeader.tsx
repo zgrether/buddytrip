@@ -11,10 +11,14 @@ interface TabHeaderProps {
    * this — the trip header above already makes context obvious).
    */
   eyebrow?: string;
-  /** Bold display headline. */
-  headline: string;
+  /**
+   * Bold display headline. Optional — CrewTab uses just the eyebrow +
+   * desktopAction row and skips the headline entirely (the three-section
+   * roster below is self-explanatory).
+   */
+  headline?: string;
   /** Short paragraph of dim body copy below the headline. */
-  body: string;
+  body?: string;
   /**
    * Optional action(s) rendered on the right of the eyebrow row at sm+.
    * Hidden on mobile (per-tab TabFab takes over the add affordance there).
@@ -77,30 +81,34 @@ export function TabHeader({
         </div>
       )}
 
-      {/* Headline — bold display H2 */}
-      <h2
-        className="mb-3 font-semibold"
-        style={{
-          color: "var(--color-bt-text)",
-          fontSize: "clamp(20px, 2.8vw, 26px)",
-          lineHeight: 1.15,
-          letterSpacing: "-0.015em",
-        }}
-      >
-        {headline}
-      </h2>
+      {/* Headline — bold display H2 (optional) */}
+      {headline && (
+        <h2
+          className="mb-3 font-semibold"
+          style={{
+            color: "var(--color-bt-text)",
+            fontSize: "clamp(20px, 2.8vw, 26px)",
+            lineHeight: 1.15,
+            letterSpacing: "-0.015em",
+          }}
+        >
+          {headline}
+        </h2>
+      )}
 
-      {/* Body — dim paragraph, capped to a comfortable measure */}
-      <p
-        className="max-w-prose"
-        style={{
-          color: "var(--color-bt-text-dim)",
-          fontSize: 15,
-          lineHeight: 1.65,
-        }}
-      >
-        {body}
-      </p>
+      {/* Body — dim paragraph, capped to a comfortable measure (optional) */}
+      {body && (
+        <p
+          className="max-w-prose"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            fontSize: 15,
+            lineHeight: 1.65,
+          }}
+        >
+          {body}
+        </p>
+      )}
     </div>
   );
 }
