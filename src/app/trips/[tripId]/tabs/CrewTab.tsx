@@ -17,7 +17,6 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
 import { AVATAR_ICON_COMPONENTS } from "@/lib/avatarIconComponents";
-import { relativeTime } from "@/lib/notificationText";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
 import { AddCrewMemberSheet } from "./components/AddCrewMemberSheet";
@@ -426,11 +425,11 @@ function EmptyHint({ text }: { text: string }) {
 // The badge slot is the only piece that varies in content; its width
 // stays pinned. The chevron rotates 180° when the row is expanded.
 
-// Widened so an Organizer (or Owner) pill can sit side-by-side with a
-// pending-Invited pill in the same slot. The single-pill rows center their
-// badge in the slot so the visual column reads as a single vertical stripe
-// down the panel.
-const BADGE_SLOT_WIDTH = 168;
+// Status slot — holds the per-row state indicator (Invited pill, joined
+// checkmark, or nothing). Owner/Organizer role pills no longer live here;
+// they render inline next to the display name, so this slot can stay tight
+// and consistent across rows.
+const BADGE_SLOT_WIDTH = 72;
 const CHEVRON_SLOT_WIDTH = 18;
 
 function CrewRow({
@@ -490,20 +489,23 @@ function CrewRow({
         <RowAvatar state={rowState} initials={initials} member={m} />
 
         <div className="min-w-0 flex-1">
-          <p
-            className="truncate text-sm font-medium"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {m.displayName}
-            {isMe && (
-              <span
-                className="ml-1 text-xs font-normal"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                (you)
-              </span>
-            )}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p
+              className="truncate text-sm font-medium"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {m.displayName}
+              {isMe && (
+                <span
+                  className="ml-1 text-xs font-normal"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  (you)
+                </span>
+              )}
+            </p>
+            <InlineRolePill state={rowState} />
+          </div>
           {/* Sub-text — email for Owner/Organizer/Crew rows; nothing for
               Just Names per spec. */}
           {rowState !== "just-name" && m.user?.email && (
@@ -516,13 +518,15 @@ function CrewRow({
           )}
         </div>
 
-        {/* Badge slot — fixed width so rows align across states */}
+        {/* Status slot — fixed width so the column aligns down the panel.
+            Invited pill / joined check / nothing — the role pill itself
+            lives inline with the display name. */}
         <div
           className="flex flex-shrink-0 items-center justify-center"
           style={{ width: BADGE_SLOT_WIDTH }}
         >
-          <RowBadge
-            state={rowState}
+          <StatusBadge
+            rowState={rowState}
             pendingInvite={
               (rowState === "owner" || rowState === "organizer") &&
               m.status === "invited"
@@ -698,51 +702,34 @@ function RowAvatar({
   );
 }
 
-// ── RowBadge ────────────────────────────────────────────────────────────
-// Five badge variants. Pill style + icon + label for the four labelled
-// states; Just Names returns null so the slot is empty (but width-fixed).
+// ── Badges ──────────────────────────────────────────────────────────────
+// The row's identity is now split across two slots:
+//   • InlineRolePill — Owner / Organizer pill rendered next to the
+//     display name, since the role is part of who they are.
+//   • StatusBadge — the "have they actually joined?" indicator, in the
+//     fixed-width column on the right: Invited / joined check / nothing.
+// Splitting them keeps the right-hand column tight and consistent,
+// instead of needing to grow to fit two side-by-side pills on the rare
+// pending-organizer row.
 
-function RowBadge({
-  state,
-  pendingInvite = false,
-}: {
-  state: RowState;
-  /** Owner/Organizer rows whose invite hasn't been accepted yet — we
-   *  elevate roles before sign-up to skip a step, so the Organizer pill
-   *  alone would hide that they haven't joined. Renders an Invited pill
-   *  to the right of the role pill on the same horizontal line. */
-  pendingInvite?: boolean;
-}) {
-  const pillBase: React.CSSProperties = {
-    fontSize: 10,
-    borderRadius: 9999,
-    padding: "2px 8px",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 3,
-    fontWeight: 600,
-    letterSpacing: "0.02em",
-    whiteSpace: "nowrap",
-  };
+const PILL_BASE: React.CSSProperties = {
+  fontSize: 10,
+  borderRadius: 9999,
+  padding: "2px 8px",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 3,
+  fontWeight: 600,
+  letterSpacing: "0.02em",
+  whiteSpace: "nowrap",
+};
 
-  const invitedPill = (
-    <span
-      style={{
-        ...pillBase,
-        background: "var(--color-bt-warning-faint)",
-        color: "var(--color-bt-warning)",
-        border: "1px solid var(--color-bt-warning-border)",
-      }}
-    >
-      Invited
-    </span>
-  );
-
+function InlineRolePill({ state }: { state: RowState }) {
   if (state === "owner") {
-    const ownerPill = (
+    return (
       <span
         style={{
-          ...pillBase,
+          ...PILL_BASE,
           background: "var(--color-bt-warning-faint)",
           color: "var(--color-bt-owner)",
           border: "1px solid var(--color-bt-warning-border)",
@@ -752,21 +739,12 @@ function RowBadge({
         Owner
       </span>
     );
-    if (pendingInvite) {
-      return (
-        <span className="flex flex-row items-center gap-1.5">
-          {ownerPill}
-          {invitedPill}
-        </span>
-      );
-    }
-    return ownerPill;
   }
   if (state === "organizer") {
-    const organizerPill = (
+    return (
       <span
         style={{
-          ...pillBase,
+          ...PILL_BASE,
           background: "var(--color-bt-accent-faint)",
           color: "var(--color-bt-accent)",
           border: "1px solid var(--color-bt-accent-border)",
@@ -776,21 +754,30 @@ function RowBadge({
         Organizer
       </span>
     );
-    if (pendingInvite) {
-      return (
-        <span className="flex flex-row items-center gap-1.5">
-          {organizerPill}
-          {invitedPill}
-        </span>
-      );
-    }
-    return organizerPill;
   }
-  if (state === "invited") {
+  return null;
+}
+
+function StatusBadge({
+  rowState,
+  pendingInvite = false,
+}: {
+  rowState: RowState;
+  /** Owner/Organizer rows whose invite hasn't been accepted yet — we
+   *  elevate roles before sign-up to skip a step, so the inline role
+   *  pill alone would hide that they haven't joined. Surface the
+   *  Invited pill in the status slot. */
+  pendingInvite?: boolean;
+}) {
+  // Owner/Organizer rows: only render anything if the invite is still
+  // pending; otherwise leave the slot empty (the role pill inline next
+  // to the name already conveys their identity).
+  if (rowState === "owner" || rowState === "organizer") {
+    if (!pendingInvite) return null;
     return (
       <span
         style={{
-          ...pillBase,
+          ...PILL_BASE,
           background: "var(--color-bt-warning-faint)",
           color: "var(--color-bt-warning)",
           border: "1px solid var(--color-bt-warning-border)",
@@ -800,7 +787,21 @@ function RowBadge({
       </span>
     );
   }
-  if (state === "joined") {
+  if (rowState === "invited") {
+    return (
+      <span
+        style={{
+          ...PILL_BASE,
+          background: "var(--color-bt-warning-faint)",
+          color: "var(--color-bt-warning)",
+          border: "1px solid var(--color-bt-warning-border)",
+        }}
+      >
+        Invited
+      </span>
+    );
+  }
+  if (rowState === "joined") {
     return (
       <svg
         viewBox="0 0 16 16"
@@ -932,7 +933,16 @@ function ExpandedBody({
             className="mt-2 text-[11px]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Invited {relativeTime(m.last_invited_at)}
+            Invited on{" "}
+            {new Date(m.last_invited_at).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year:
+                new Date(m.last_invited_at).getFullYear() ===
+                new Date().getFullYear()
+                  ? undefined
+                  : "numeric",
+            })}
           </p>
         )}
         <div className="mt-2 flex flex-wrap gap-2">
