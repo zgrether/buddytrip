@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Globe, Link, MapPin } from "lucide-react";
+import { Globe, Link, MapPin, X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
 // ── Platform detection (exported so parents can use it) ───────────────────
@@ -240,8 +240,12 @@ export function AddPropertySheet({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-[480px] overflow-y-auto rounded-t-2xl p-5 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
+        className="relative max-h-[90vh] w-full max-w-[480px] overflow-y-auto rounded-t-2xl p-5 lg:rounded-2xl"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          boxShadow: "var(--shadow-floating)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle bar (mobile) */}
@@ -250,8 +254,23 @@ export function AddPropertySheet({
           style={{ background: "var(--color-bt-border)" }}
         />
 
+        {/* Canonical close X (CC_MODAL_AUDIT.md Part 2.1) — absolute so
+            it lives in the corner without re-flowing the existing header
+            content beneath it. */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            color: "var(--color-bt-text-dim)",
+          }}
+        >
+          <X size={14} />
+        </button>
+
         {/* Header */}
-        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        <h2 className="text-lg font-semibold pr-10" style={{ color: "var(--color-bt-text)" }}>
           {isEditing ? "Edit property" : "Add a property"}
         </h2>
         {!isEditing && !manualMode && (

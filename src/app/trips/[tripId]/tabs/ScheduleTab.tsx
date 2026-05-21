@@ -1573,7 +1573,7 @@ export function ScheduleTab({
                 className="flex-1 rounded-xl py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
                 style={{
                   background: "var(--color-bt-danger)",
-                  color: "#fff",
+                  color: "white",
                 }}
               >
                 {removeItem.isPending ? "Deleting..." : "Delete"}

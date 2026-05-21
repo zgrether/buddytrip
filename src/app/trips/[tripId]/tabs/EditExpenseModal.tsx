@@ -142,24 +142,41 @@ export function EditExpenseModal({
         style={{ background: "var(--color-bt-overlay)" }}
         onClick={onClose}
       />
+      {/* Canonical modal structure (CC_MODAL_AUDIT.md Part 2.1) —
+          matches AddExpenseModal so the two surfaces feel like the
+          same control under different labels. */}
       <div
-        className="relative w-full max-w-lg rounded-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        className="relative flex w-full max-w-[560px] flex-col overflow-hidden rounded-xl"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          boxShadow: "var(--shadow-floating)",
+          maxHeight: "min(85dvh, 720px)",
+        }}
       >
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
+        <div
+          className="flex flex-shrink-0 items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+        >
           <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Edit Receipt
           </h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text-dim)",
+            }}
           >
-            <X size={18} />
+            <X size={14} />
           </button>
         </div>
 
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
         {/* Editable expense info */}
         <div className="mb-4 space-y-2">
           <div className="flex gap-3">
@@ -237,19 +254,28 @@ export function EditExpenseModal({
           }
         />
 
-        {/* Action buttons */}
-        <div className="mt-4 flex gap-2">
+        </div>{/* /Body */}
+
+        {/* Footer */}
+        <div
+          className="flex flex-shrink-0 items-center justify-end gap-3 px-5 py-4"
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
+        >
           <button
             onClick={onClose}
-            className="flex-1 rounded-lg border py-2 text-sm"
-            style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium"
+            style={{
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+              border: "0.5px solid var(--color-bt-border)",
+            }}
           >
             Cancel
           </button>
           <button
             disabled={updateSplits.isPending || includedIds.length === 0 || !title.trim() || amountNum <= 0}
             onClick={handleSave}
-            className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-40"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
             {updateSplits.isPending ? "Saving..." : "Save Changes"}

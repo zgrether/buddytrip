@@ -757,7 +757,7 @@ export function TripSettingsModal({
                     disabled={deleteMutation.isPending}
                     onClick={() => deleteMutation.mutate({ tripId })}
                     className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                    style={{ background: "var(--color-bt-danger)", color: "white" }}
                   >
                     {deleteMutation.isPending ? "Deleting…" : "Delete trip"}
                   </button>
