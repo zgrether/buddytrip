@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Crown, Loader2, Mail, Send, Trash2, X } from "lucide-react";
+import { ArrowUpCircle, Check, Crown, Loader2, Mail, Send, Trash2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
@@ -615,16 +615,21 @@ function RoleControl({
     <div className="flex flex-col gap-2">
       {canManageRoles ? (
         <>
+          {/* Solid teal CTA — distinct from the "is currently an
+              Organizer" state card, which uses a teal check inside an
+              accent-faint pill. This one's a primary action, so it
+              looks like one: bt-accent fill, on-accent text, an
+              arrow-up-circle promotion icon (not a check, which would
+              read as "already done"). */}
           <button
             onClick={onMakeOrganizer}
-            className="inline-flex items-center justify-start gap-2 rounded-lg border px-3 py-2 text-sm font-semibold"
+            className="inline-flex items-center justify-center gap-2 self-start rounded-lg px-3.5 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
             style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-accent)",
-              borderColor: "var(--color-bt-accent-border)",
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-on-accent)",
             }}
           >
-            <Check size={14} strokeWidth={2.5} />
+            <ArrowUpCircle size={14} strokeWidth={2.5} />
             Make organizer
           </button>
           <div
