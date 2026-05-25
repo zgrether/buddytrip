@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpCircle, Check, Crown, Loader2, Mail, Send, Trash2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { UserAvatar } from "@/components/UserAvatar";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -209,19 +210,67 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           className="flex items-center justify-between px-4 py-3"
           style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
-          <div className="min-w-0">
-            <div
-              className="text-[10px] font-bold uppercase tracking-[0.12em]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Edit crew member
-            </div>
-            <div className="mt-1 truncate text-[15px] font-bold" style={{ color: "var(--color-bt-text)" }}>
-              {nickname || member.displayName || "Untitled person"}
-            </div>
-            <div className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              {member.role !== "Member" && `${member.role === "Planner" ? "Organizer" : member.role} · `}
-              {statusLabel(status)}
+          <div className="flex min-w-0 items-center gap-3">
+            {/* Avatar — matches the row's variant logic. Placeholder
+                renders a neutral square with dim initials; invited
+                gets a small amber ✉ corner; active is the standard
+                team-color UserAvatar. */}
+            {status === "placeholder" ? (
+              <span
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                {(nickname || member.displayName || "?")
+                  .split(/\s+/)
+                  .map((w) => w[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </span>
+            ) : status === "invited" ? (
+              <span className="relative h-9 w-9 flex-shrink-0">
+                <UserAvatar
+                  name={nickname || member.displayName}
+                  avatarUrl={null}
+                  sizePx={36}
+                />
+                <span
+                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
+                  style={{
+                    background: "var(--color-bt-warning)",
+                    color: "var(--color-bt-on-accent)",
+                    border: "1.5px solid var(--color-bt-card-float)",
+                  }}
+                  aria-label="Invited"
+                >
+                  <Mail size={8} strokeWidth={3} />
+                </span>
+              </span>
+            ) : (
+              <UserAvatar
+                name={nickname || member.displayName}
+                avatarUrl={null}
+                sizePx={36}
+              />
+            )}
+            <div className="min-w-0">
+              <div
+                className="text-[10px] font-bold uppercase tracking-[0.12em]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Edit crew member
+              </div>
+              <div className="mt-0.5 truncate text-[15px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+                {nickname || member.displayName || "Untitled person"}
+              </div>
+              <div className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                {member.role !== "Member" && `${member.role === "Planner" ? "Organizer" : member.role} · `}
+                {statusLabel(status)}
+              </div>
             </div>
           </div>
           <button
