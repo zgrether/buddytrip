@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus, Check } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { EmptyState } from "@/components/EmptyState";
+import { SampleHeader, SampleCard, RailComposer } from "@/components/SampleSection";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
 
@@ -219,6 +220,63 @@ function LodgingCard({
             <span className="text-[11px] font-medium">→ {platform.label}</span>
           </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── PropertyExample ───────────────────────────────────────────────────────
+// Static, full-opacity sample rendered inside <SampleCard /> on the
+// empty-state Lodging page. Mirrors LodgingCard's visual grammar so
+// users learn what populated rows will look like — but it's NOT a
+// real LodgingCard so the example stays decoupled from item evolution.
+
+function PropertyExample() {
+  return (
+    <div
+      className="flex items-start gap-2 rounded-xl px-4 py-3"
+      style={{
+        background: "var(--color-bt-tag-bg)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+            Sea Ranch Cottages
+          </span>
+          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            · Sleeps 6
+          </span>
+          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            · $2,400
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+          Hot tub, big deck, walkable to the course.
+        </p>
+        <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <Clock size={10} />
+          May 20 – May 25
+        </div>
+      </div>
+      <div className="flex flex-shrink-0 flex-col items-end gap-2 self-stretch">
+        <span
+          className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+          style={{
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-on-accent)",
+          }}
+        >
+          <Check size={11} strokeWidth={3} />
+          Confirmed
+        </span>
+        <span
+          className="flex items-center gap-0.5 text-[11px] font-medium"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          <ExternalLink size={10} />→ VRBO
+        </span>
       </div>
     </div>
   );
@@ -442,15 +500,51 @@ export function LodgingPanel({
             the property list and an empty state. */}
         <section>
           {lodgingItems.length === 0 ? (
-            <EmptyState
-              icon={<Hotel className="h-10 w-10" />}
-              headline="No properties yet"
-              subtext={
-                canEdit
-                  ? "Add properties to compare places the crew is considering — confirm any once they're booked."
-                  : "The organizer hasn't added any properties yet."
-              }
-            />
+            canEdit ? (
+              <>
+                {/* Mobile fallback — desktop pattern doesn't fit a single column */}
+                <div className="lg:hidden">
+                  <EmptyState
+                    icon={<Hotel className="h-10 w-10" />}
+                    headline="No properties yet"
+                    subtext="Tap the + below to add the first property."
+                  />
+                </div>
+
+                {/* Desktop empty state — Sample callout + boosted rail composer.
+                    Replaces the old dim-ghost-row treatment with an explicitly
+                    framed EXAMPLE so users understand what they're looking at. */}
+                <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5">
+                  <div className="flex flex-col gap-3">
+                    <SampleHeader label="How a property will look" />
+                    <SampleCard>
+                      <PropertyExample />
+                    </SampleCard>
+                  </div>
+                  <aside>
+                    <RailComposer
+                      title="Add your first property"
+                      primary="Add property"
+                      onPrimary={() => setShowAddLodging(true)}
+                      boosted
+                      hint={
+                        <>
+                          Paste a link from VRBO, Airbnb, or hotels.com — we&apos;ll
+                          pull the photo, price, and sleeps count. Or enter it
+                          manually.
+                        </>
+                      }
+                    />
+                  </aside>
+                </div>
+              </>
+            ) : (
+              <EmptyState
+                icon={<Hotel className="h-10 w-10" />}
+                headline="No properties yet"
+                subtext="The organizer hasn't added any properties yet."
+              />
+            )
           ) : (
             <div className="flex flex-col gap-2">
               {lodgingItems.map((item) => (

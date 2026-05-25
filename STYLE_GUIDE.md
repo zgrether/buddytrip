@@ -152,6 +152,7 @@ These apply in **both light and dark mode** — vote colors are semantic and do 
 | `--color-bt-accent-faint` | `rgba(13,148,136,0.08)` | `rgba(45,212,191,0.12)` |
 | `--color-bt-warning-faint` | `rgba(217,119,6,0.08)` | `rgba(251,191,36,0.08)` |
 | `--color-bt-danger-faint` | `rgba(220,38,38,0.08)` | `rgba(248,113,113,0.12)` |
+| `--color-bt-planning-faint` | `rgba(37,99,235,0.08)` | `rgba(96,165,250,0.08)` |
 | `--color-bt-danger-bg` | `#fef2f2` | `#450a0a` |
 | `--color-bt-blue-bg` | `#eff6ff` | `#1e3a5f` |
 | `--color-bt-ready-bg` | `#f5f3ff` | `#2e1065` |
@@ -237,6 +238,18 @@ stack — order them by priority.
 (use a toast), or generic info that doesn't need user attention.
 
 ---
+
+### Sample callout (empty-state EXAMPLE frame)
+
+Used in tab empty states to show "what this'll look like once populated." Replaces the older dim/ghost-row treatment which read as half-broken data. Implementation lives in [`src/components/SampleSection.tsx`](src/components/SampleSection.tsx) and exports three primitives:
+
+- **`<SampleHeader label="How a property will look" />`** — planning-blue pill (`bt-planning-faint` fill, `bt-planning-border` outline, `bt-planning` text). Uppercase 10px, 0.12em tracking, with a lucide `Info` icon at 11px.
+- **`<SampleCard>...</SampleCard>`** — wraps a populated example in a dashed `bt-planning-border` frame with an absolutely-positioned `EXAMPLE` notch tag at top-left. The example inside renders at **full opacity** — do NOT dim or ghost it.
+- **`<RailComposer title primary onPrimary boosted hint />`** — the right-rail primary CTA for empty states. `boosted` adds `bt-accent-border` outline, `--shadow-raised`, and a teal eyebrow. The primary button uses `bt-accent` background on `bt-on-accent` text.
+
+**Layout (desktop only):** `lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5` — main column holds SampleHeader + SampleCard; right rail holds the RailComposer. The header pill `+Property` / `+Receipt` is **suppressed when empty** so the boosted composer is the only primary CTA.
+
+**Mobile fallback:** drop back to the original `<EmptyState>` icon + headline + subtext + the existing `TabFab`. The Sample/Rail pattern is desktop-only.
 
 ### Collapsible planning panel (PlanningRow)
 

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { EmptyState } from "@/components/EmptyState";
+import { SampleHeader, SampleCard, RailComposer } from "@/components/SampleSection";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
 import { SplitPanel } from "./SplitPanel";
@@ -103,6 +104,45 @@ export function CurrencyInput({
         className="min-w-0 flex-1 bg-transparent py-2 pl-1 pr-3 text-right text-sm outline-none"
         style={{ color: "var(--color-bt-text)" }}
       />
+    </div>
+  );
+}
+
+// ── ReceiptExample ───────────────────────────────────────────────────────
+// Full-opacity sample receipt rendered inside <SampleCard /> on the
+// empty-state Receipts page. Mirrors the real receipt row styling
+// without depending on real data so it stays decoupled from row evolution.
+
+function ReceiptExample() {
+  return (
+    <div
+      className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <DollarSign size={14} style={{ color: "var(--color-bt-accent)" }} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+            Steak dinner + open bar
+          </p>
+          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            May 22
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-x-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+          <span>Paid by Ryan</span>
+          <span>split 4 ways</span>
+        </div>
+        <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-accent)" }}>
+          Your share: $120.00
+        </p>
+      </div>
+      <span className="flex-shrink-0 font-mono text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        $480.00
+      </span>
     </div>
   );
 }
@@ -224,11 +264,45 @@ export function ExpensesSection({
             TabHeader / TabFab, not inline here) ─────────────────────── */}
         <div className="space-y-3">
           {!hasExpenses ? (
-            <EmptyState
-              icon={<Receipt className="h-10 w-10" />}
-              headline="No receipts yet"
-              subtext="Add receipts to track who paid for what so we can square everyone up at the end of the trip."
-            />
+            canEdit ? (
+              <>
+                <div className="lg:hidden">
+                  <EmptyState
+                    icon={<Receipt className="h-10 w-10" />}
+                    headline="No receipts yet"
+                    subtext="Tap the + below to log the first receipt."
+                  />
+                </div>
+                <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5">
+                  <div className="flex flex-col gap-3">
+                    <SampleHeader label="How a receipt will look" />
+                    <SampleCard>
+                      <ReceiptExample />
+                    </SampleCard>
+                  </div>
+                  <aside>
+                    <RailComposer
+                      title="Add your first receipt"
+                      primary="Add receipt"
+                      onPrimary={() => onAddOpenChange(true)}
+                      boosted
+                      hint={
+                        <>
+                          Log who paid and how to split it. By default everyone
+                          splits evenly — tap a receipt later to customize.
+                        </>
+                      }
+                    />
+                  </aside>
+                </div>
+              </>
+            ) : (
+              <EmptyState
+                icon={<Receipt className="h-10 w-10" />}
+                headline="No receipts yet"
+                subtext="The crew hasn't logged any receipts yet."
+              />
+            )
           ) : (
             <div className="space-y-2">
               {(expenses as ExpenseItem[]).map((expense) => {

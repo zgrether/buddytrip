@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Hotel, HousePlus, Plus } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
@@ -20,6 +21,13 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
   const [addOpen, setAddOpen] = useState(false);
   const openAdd = () => setAddOpen(true);
 
+  // Shares the tRPC cache with LodgingPanel — used here only to suppress
+  // the header pill on the empty desktop state, where the boosted
+  // RailComposer is the canonical primary CTA.
+  const { data: items = [] } = trpc.logistics.list.useQuery({ tripId: trip.id });
+  const lodgingCount = items.filter((i) => i.type === "lodging").length;
+  const showHeaderAction = canEdit && lodgingCount > 0;
+
   return (
     <div className={embedded ? undefined : "px-4"}>
       <TabHeader
@@ -27,7 +35,7 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
         headline="Where everyone's staying"
         body="Drop in the places you're considering so the crew can compare — links, prices, sleep counts. Confirm the one(s) you book, and they're locked in as official trip details. Multi-property and multi-leg trips are fine — confirm as many as you need."
         desktopAction={
-          canEdit ? (
+          showHeaderAction ? (
             <button
               type="button"
               onClick={openAdd}
