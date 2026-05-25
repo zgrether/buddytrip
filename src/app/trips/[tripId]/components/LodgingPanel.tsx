@@ -226,57 +226,70 @@ function LodgingCard({
 }
 
 // ── PropertyExample ───────────────────────────────────────────────────────
-// Static, full-opacity sample rendered inside <SampleCard /> on the
-// empty-state Lodging page. Mirrors LodgingCard's visual grammar so
-// users learn what populated rows will look like — but it's NOT a
-// real LodgingCard so the example stays decoupled from item evolution.
+// Tile-style sample rendered inside <SampleCard /> on the empty-state
+// Lodging page. Spec mandates a tile (not a row) so the example reads
+// like a populated property card with photo + meta + amenity pills,
+// not like a stripped-down list item.
+//
+// Layout matches `GhostCard` from explorations-empty.jsx:
+//   - 80px gradient image strip with the ✓ CONFIRMED pill at bottom-right
+//   - Name (12px / 600)
+//   - Monospace meta line "$2,400 · sleeps 6 · 3.2mi"
+//   - Three amenity pills
 
 function PropertyExample() {
+  const pills = ["Hot tub", "5 ★", "Pet OK"];
   return (
     <div
-      className="flex items-start gap-2 rounded-xl px-4 py-3"
+      className="flex flex-col gap-2 rounded-xl p-3"
       style={{
-        background: "var(--color-bt-tag-bg)",
+        background: "var(--color-bt-accent-faint)",
         border: "1px solid var(--color-bt-accent-border)",
       }}
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-          <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            Sea Ranch Cottages
-          </span>
-          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            · Sleeps 6
-          </span>
-          <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            · $2,400
-          </span>
-        </div>
-        <p className="mt-0.5 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-          Hot tub, big deck, walkable to the course.
-        </p>
-        <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-          <Clock size={10} />
-          May 20 – May 25
-        </div>
-      </div>
-      <div className="flex flex-shrink-0 flex-col items-end gap-2 self-stretch">
+      {/* Photo placeholder — fixed-height gradient strip. Hex literals
+          are spec-explicit gradient stops (HANDOFF rule 4 exception). */}
+      <div
+        className="flex items-end justify-end rounded-lg p-2"
+        style={{
+          height: 80,
+          backgroundImage: "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
+        }}
+      >
         <span
-          className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+          className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
           style={{
             background: "var(--color-bt-accent)",
             color: "var(--color-bt-on-accent)",
           }}
         >
-          <Check size={11} strokeWidth={3} />
+          <Check size={9} strokeWidth={3.5} />
           Confirmed
         </span>
-        <span
-          className="flex items-center gap-0.5 text-[11px] font-medium"
-          style={{ color: "var(--color-bt-accent)" }}
-        >
-          <ExternalLink size={10} />→ VRBO
-        </span>
+      </div>
+
+      <div className="flex flex-col gap-0.5">
+        <div className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Sea Ranch Cottages
+        </div>
+        <div className="font-mono text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          $2,400 · sleeps 6 · 3.2mi
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {pills.map((p) => (
+          <span
+            key={p}
+            className="rounded-full px-1.5 py-0.5 text-[9px]"
+            style={{
+              background: "var(--color-bt-subtle-border)",
+              color: "var(--color-bt-text-dim)",
+            }}
+          >
+            {p}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -501,43 +514,78 @@ export function LodgingPanel({
         <section>
           {lodgingItems.length === 0 ? (
             canEdit ? (
-              <>
-                {/* Mobile fallback — desktop pattern doesn't fit a single column */}
-                <div className="lg:hidden">
-                  <EmptyState
-                    icon={<Hotel className="h-10 w-10" />}
-                    headline="No properties yet"
-                    subtext="Tap the + below to add the first property."
-                  />
-                </div>
-
-                {/* Desktop empty state — Sample callout + boosted rail composer.
-                    Replaces the old dim-ghost-row treatment with an explicitly
-                    framed EXAMPLE so users understand what they're looking at. */}
-                <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5">
-                  <div className="flex flex-col gap-3">
-                    <SampleHeader label="How a property will look" />
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                {/* Main column — SampleHeader + a 2-col grid pairing the
+                    tile example with helper copy. The grid collapses to
+                    single-column at < sm so the tile + helper read top to
+                    bottom on phones. Whole column capped at 540px so the
+                    example doesn't stretch awkwardly on very wide
+                    desktops. */}
+                <div className="flex flex-col gap-3" style={{ maxWidth: 540 }}>
+                  <SampleHeader label="How a property will look" />
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <SampleCard>
                       <PropertyExample />
                     </SampleCard>
+                    <div
+                      className="hidden flex-col justify-center gap-2 sm:flex"
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        color: "var(--color-bt-text-dim)",
+                      }}
+                    >
+                      <p className="m-0">
+                        Drop a VRBO / Airbnb / hotels.com link and we&apos;ll
+                        pull the photo, price, and sleeps count.
+                      </p>
+                      <p className="m-0">
+                        The crew can compare across multiple properties. Confirm
+                        the one(s) you book to lock them in as official trip
+                        details.
+                      </p>
+                    </div>
                   </div>
-                  <aside>
-                    <RailComposer
-                      title="Add your first property"
-                      primary="Add property"
-                      onPrimary={() => setShowAddLodging(true)}
-                      boosted
-                      hint={
-                        <>
-                          Paste a link from VRBO, Airbnb, or hotels.com — we&apos;ll
-                          pull the photo, price, and sleeps count. Or enter it
-                          manually.
-                        </>
-                      }
-                    />
-                  </aside>
                 </div>
-              </>
+
+                {/* Right rail (lg+) / stacked composer (md ≤ x < lg).
+                    Hidden on phones (<md) — the TabFab is the mobile add
+                    affordance. Capped at 540px when stacked so it never
+                    stretches into a huge form on a 900px tablet. */}
+                <aside
+                  className="hidden md:block"
+                  style={{ maxWidth: 540 }}
+                >
+                  <RailComposer
+                    title="Add your first property"
+                    primary="Add property"
+                    onPrimary={() => setShowAddLodging(true)}
+                    boosted
+                    hint={
+                      <>
+                        Paste a link from VRBO, Airbnb, or hotels.com — we&apos;ll
+                        pull the photo, price, and sleeps count. Or{" "}
+                        <button
+                          type="button"
+                          onClick={() => setShowAddLodging(true)}
+                          className="underline transition-opacity hover:opacity-80"
+                          style={{
+                            color: "var(--color-bt-accent)",
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            font: "inherit",
+                            cursor: "pointer",
+                          }}
+                        >
+                          enter manually
+                        </button>
+                        .
+                      </>
+                    }
+                  />
+                </aside>
+              </div>
             ) : (
               <EmptyState
                 icon={<Hotel className="h-10 w-10" />}
