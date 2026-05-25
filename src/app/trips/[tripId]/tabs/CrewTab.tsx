@@ -313,6 +313,10 @@ function StatusLegend({ members }: { members: Member[] }) {
     { active: 0, invited: 0, placeholder: 0 } as Record<DerivedStatus, number>
   );
 
+  // Descriptions match the spec's longer-form copy
+  // (explorations-screens.jsx lines 504-506) — the legend earns the
+  // panel title "WHAT THESE MEAN" by actually explaining the
+  // implications of each state, not just naming them.
   const rows: Array<{
     key: DerivedStatus;
     label: string;
@@ -322,19 +326,21 @@ function StatusLegend({ members }: { members: Member[] }) {
     {
       key: "active",
       label: "Active",
-      body: "Has a BuddyTrip account.",
+      body:
+        "Email matches a BuddyTrip user. On the trip with full app access. Can be promoted to organizer.",
       avatar: <UserAvatar name="A" avatarUrl={null} size="md" />,
     },
     {
       key: "invited",
       label: "Invited",
-      body: "Email sent, hasn't signed up yet.",
+      body: "Email sent, no account yet. They become Active once they sign in.",
       avatar: <InvitedAvatar name="I" />,
     },
     {
       key: "placeholder",
       label: "Placeholder",
-      body: "Name only — add an email to invite.",
+      body:
+        "No email. Counted in widgets (rooms, teams, expenses) but can’t access the app.",
       avatar: <PlaceholderAvatar name="P" />,
     },
   ];
