@@ -71,6 +71,49 @@ export const tripMembersRouter = router({
     .query(({ ctx }) => listMembers(ctx, ctx.tripId!)),
 
   // -----------------------------------------------------------------------
+  // checkEmail — does this email belong to an Active BuddyTrip account?
+  //
+  // Used by the Crew tab's member-editor to give live feedback as the
+  // organizer types: "Already on BuddyTrip" vs "We'll send an invite".
+  // Trip-scoped + auth-required to keep enumeration risk low; returns
+  // only the verdict, never the matched user's identity.
+  // -----------------------------------------------------------------------
+  checkEmail: authedProcedure
+    .input(z.object({ tripId: z.string(), email: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const email = input.email.trim().toLowerCase();
+      if (!email) return { result: "empty" as const };
+
+      // RFC-5322-ish format check. Server-side gate so a malformed
+      // payload can't reach the lookup; the client also pre-validates
+      // for instant feedback.
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!ok) return { result: "invalid" as const };
+
+      const { data, error } = await ctx.supabase
+        .from("users")
+        .select("id, is_guest")
+        .ilike("email", email)
+        .maybeSingle();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to check email",
+        });
+      }
+
+      // A real BT account = users row with is_guest=false. Guest rows
+      // exist for placeholders and unaccepted invites; matching one of
+      // those shouldn't tell the organizer "already on BuddyTrip".
+      if (data && !data.is_guest) {
+        return { result: "match" as const };
+      }
+      return { result: "invite" as const };
+    }),
+
+  // -----------------------------------------------------------------------
   // add — Owner or Planner can add real-account members (canEdit)
   // To add ghost crew, use ghostCrew.create instead.
   // -----------------------------------------------------------------------

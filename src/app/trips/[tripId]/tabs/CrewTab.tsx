@@ -10,6 +10,7 @@ import { TabFab } from "@/components/TabFab";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
+import { MemberEditor } from "./components/MemberEditor";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 //
@@ -123,93 +124,37 @@ function InvitedAvatar({ name }: { name: string }) {
 }
 
 // ── CrewRow ───────────────────────────────────────────────────────────────
+//
+// Row is a single tap target. In organizer view, tapping opens the
+// MemberEditor drawer/sheet (managed by the parent CrewTab via
+// `onEdit`). All edit affordances live there — no inline expand.
 
 function CrewRow({
   member: m,
-  tripId,
   isOwnerView,
   isMe,
-  isExpanded,
-  onToggle,
+  onEdit,
 }: {
   member: Member;
-  tripId: string;
   isOwnerView: boolean;
   isMe: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
+  onEdit?: (m: Member) => void;
 }) {
-  const utils = trpc.useUtils();
   const status = deriveStatus(m);
-
-  const [editEmail, setEditEmail] = useState(m.user?.email ?? "");
-  const [confirmRemove, setConfirmRemove] = useState(false);
-
-  const removeMember = trpc.tripMembers.remove.useMutation({
-    onSuccess() {
-      utils.tripMembers.list.invalidate({ tripId });
-    },
-  });
-  const removeGuest = trpc.ghostCrew.remove.useMutation({
-    onSuccess() {
-      utils.tripMembers.list.invalidate({ tripId });
-    },
-  });
-  const updateGuest = trpc.ghostCrew.update.useMutation({
-    onSuccess() {
-      utils.tripMembers.list.invalidate({ tripId });
-    },
-  });
-  const updateRole = trpc.tripMembers.updateRole.useMutation({
-    async onMutate(vars) {
-      await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
-      utils.tripMembers.list.setData({ tripId }, (old) =>
-        (old ?? []).map((row) =>
-          row.user_id === vars.userId ? { ...row, role: vars.role } : row
-        )
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
-    },
-    onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
-  });
-
   const isOwnerRow = m.role === "Owner";
-  const expandable = isOwnerView && !isMe && !isOwnerRow;
-  const hasEmailChange = editEmail.trim() !== (m.user?.email ?? "");
-
-  const handleSave = async () => {
-    if (m.isGuest && m.user_id && hasEmailChange) {
-      await updateGuest.mutateAsync({
-        tripId,
-        guestUserId: m.user_id,
-        email: editEmail.trim() || null,
-      });
-    }
-    onToggle();
-  };
-
-  const handleRemove = () => {
-    if (!m.user_id) return;
-    if (m.isGuest) removeGuest.mutate({ tripId, guestUserId: m.user_id });
-    else removeMember.mutate({ tripId, userId: m.user_id });
-  };
-
-  const canPromote = isOwnerView && !isOwnerRow && status === "active" && m.role === "Member";
-  const canDemote = isOwnerView && !isOwnerRow && status === "active" && m.role === "Planner";
+  const editable = isOwnerView && !isOwnerRow && !!onEdit;
 
   return (
     <div
       className="border-b last:border-b-0"
       style={{ borderColor: "var(--color-bt-subtle-border)" }}
     >
-      <div
-        className="flex items-center gap-3 px-4 py-2.5"
-        style={{ cursor: expandable ? "pointer" : undefined }}
-        onClick={expandable ? onToggle : undefined}
+      <button
+        type="button"
+        disabled={!editable}
+        onClick={editable ? () => onEdit!(m) : undefined}
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors disabled:cursor-default"
+        style={{ background: "transparent" }}
       >
         {/* Avatar — three variants per derived status */}
         {status === "placeholder" ? (
@@ -254,123 +199,8 @@ function CrewRow({
         <div className="flex flex-shrink-0 items-center gap-1.5">
           <RolePill role={m.role} />
         </div>
-      </div>
+      </button>
 
-      {/* Inline editor — replaces the modal/drawer until Task 5c lands.
-          Email change for invited/placeholder, promote/demote action for
-          active rows, and a removal confirm in the danger track. */}
-      {isExpanded && expandable && (
-        <div
-          className="space-y-3 px-4 pb-3 pt-1"
-          style={{ background: "var(--color-bt-card-raised)" }}
-        >
-          {/* Email field — invited or placeholder only */}
-          {m.isGuest && (
-            <div>
-              <label
-                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Email
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder={`${m.displayName.toLowerCase()}@example.com`}
-                  type="email"
-                  className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 font-mono text-sm outline-none"
-                  style={{
-                    background: "var(--color-bt-card)",
-                    borderColor: "var(--color-bt-border)",
-                    color: "var(--color-bt-text)",
-                  }}
-                />
-                <button
-                  onClick={handleSave}
-                  disabled={!hasEmailChange || updateGuest.isPending}
-                  className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
-                  style={{
-                    background: "var(--color-bt-accent)",
-                    color: "var(--color-bt-on-accent)",
-                  }}
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Promote / Demote — Active members only */}
-          {canPromote && m.user_id && (
-            <button
-              onClick={() => updateRole.mutate({ tripId, userId: m.user_id!, role: "Planner" })}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
-              style={{
-                background: "var(--color-bt-card)",
-                color: "var(--color-bt-accent)",
-                border: "1px solid var(--color-bt-accent-border)",
-              }}
-            >
-              Make organizer
-            </button>
-          )}
-          {canDemote && m.user_id && (
-            <button
-              onClick={() => updateRole.mutate({ tripId, userId: m.user_id!, role: "Member" })}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium"
-              style={{
-                background: "transparent",
-                color: "var(--color-bt-text-dim)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              Remove organizer status
-            </button>
-          )}
-
-          {/* Remove from trip */}
-          <div>
-            {confirmRemove ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium" style={{ color: "var(--color-bt-danger)" }}>
-                  Remove {m.displayName}?
-                </span>
-                <button
-                  onClick={handleRemove}
-                  disabled={removeMember.isPending || removeGuest.isPending}
-                  className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-40"
-                  style={{ background: "var(--color-bt-danger)", color: "white" }}
-                >
-                  Yes, remove
-                </button>
-                <button
-                  onClick={() => setConfirmRemove(false)}
-                  className="rounded-lg border px-2.5 py-1 text-xs"
-                  style={{
-                    borderColor: "var(--color-bt-border)",
-                    color: "var(--color-bt-text-dim)",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmRemove(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
-                style={{
-                  color: "var(--color-bt-danger)",
-                  border: "1px solid var(--color-bt-danger-border)",
-                }}
-              >
-                <Trash2 size={12} />
-                Remove from trip
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -380,20 +210,16 @@ function CrewRow({
 function CrewSection({
   title,
   members,
-  tripId,
   isOwnerView,
-  expandedId,
-  setExpandedId,
   currentUserId,
+  onEditMember,
   emptyHint,
 }: {
   title: string;
   members: Member[];
-  tripId: string;
   isOwnerView: boolean;
-  expandedId: string | null;
-  setExpandedId: (id: string | null) => void;
   currentUserId: string | undefined;
+  onEditMember?: (m: Member) => void;
   emptyHint?: string;
 }) {
   return (
@@ -428,13 +254,9 @@ function CrewSection({
             <CrewRow
               key={m.memberId}
               member={m}
-              tripId={tripId}
               isOwnerView={isOwnerView}
               isMe={m.user_id === currentUserId}
-              isExpanded={expandedId === m.memberId}
-              onToggle={() =>
-                setExpandedId(expandedId === m.memberId ? null : m.memberId)
-              }
+              onEdit={onEditMember}
             />
           ))}
         </div>
@@ -538,7 +360,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   const tripId = trip.id;
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showMobileAdd, setShowMobileAdd] = useState(false);
 
@@ -585,11 +407,8 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                 <CrewRow
                   key={m.memberId}
                   member={m}
-                  tripId={tripId}
                   isOwnerView={false}
                   isMe={m.user_id === currentUser?.id}
-                  isExpanded={false}
-                  onToggle={() => {}}
                 />
               ))}
             </div>
@@ -634,21 +453,17 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           <CrewSection
             title="Organizers"
             members={organizers}
-            tripId={tripId}
             isOwnerView={isOwner}
-            expandedId={expandedId}
-            setExpandedId={setExpandedId}
             currentUserId={currentUser?.id}
+            onEditMember={(m) => setEditingMemberId(m.memberId)}
             emptyHint="Just you so far — add an Organizer to share planning work."
           />
           <CrewSection
             title="Crew"
             members={restCrew}
-            tripId={tripId}
             isOwnerView={isOwner}
-            expandedId={expandedId}
-            setExpandedId={setExpandedId}
             currentUserId={currentUser?.id}
+            onEditMember={(m) => setEditingMemberId(m.memberId)}
             emptyHint="Nobody on the crew yet. Use the panel on the right to add someone."
           />
         </div>
@@ -742,6 +557,22 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           </div>
         </div>
       )}
+
+      {/* Member editor — drawer on desktop, bottom sheet on mobile.
+          Renders when a row is tapped; closes via Cancel / X / backdrop. */}
+      {editingMemberId &&
+        (() => {
+          const target = members.find((m) => m.memberId === editingMemberId);
+          if (!target) return null;
+          return (
+            <MemberEditor
+              tripId={tripId}
+              member={target}
+              canManageRoles={!!isOwner}
+              onClose={() => setEditingMemberId(null)}
+            />
+          );
+        })()}
 
       {/* Mobile-only FAB — toggles the inline composer above. */}
       {isOwner && (
