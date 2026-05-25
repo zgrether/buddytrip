@@ -574,7 +574,15 @@ export function AddScheduleItemSheet({
                     type="button"
                     onClick={() => {
                       setManualMode(true);
-                      setManualName(placesSearch.query);
+                      const q = placesSearch.query.trim();
+                      setManualName(q);
+                      // Mirror the onChange path of the manual name
+                      // input so canSubmit picks up the pre-filled
+                      // query immediately. Without this, the button
+                      // stays disabled until the user re-types.
+                      if (q) {
+                        setSelectedCourse({ placeId: "", name: q, address: "" });
+                      }
                       placesSearch.clear();
                     }}
                     className="mt-1.5 text-xs transition-opacity hover:opacity-70"
