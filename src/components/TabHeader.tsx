@@ -21,8 +21,10 @@ interface TabHeaderProps {
   eyebrowTone?: "accent" | "dim";
   /** Bold display headline. */
   headline: string;
-  /** Short paragraph of dim body copy below the headline. */
-  body: string;
+  /** Short paragraph of dim body copy below the headline. Accepts a
+   *  string for plain copy, or a ReactNode when the body needs inline
+   *  formatting (e.g. a bolded defined term like **placeholder**). */
+  body: import("react").ReactNode;
   /**
    * Optional action(s) rendered on the right of the eyebrow row at sm+.
    * Hidden on mobile (per-tab TabFab takes over the add affordance there).

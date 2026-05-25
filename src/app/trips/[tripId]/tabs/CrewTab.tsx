@@ -7,7 +7,6 @@ import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
-import { CrewSearchInput } from "@/components/CrewSearchInput";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
 import { MemberEditor } from "./components/MemberEditor";
@@ -315,52 +314,24 @@ function StatusLegend() {
   );
 }
 
-// ── AddPersonComposer (right rail) ────────────────────────────────────────
+// ── AddCrewComposer ───────────────────────────────────────────────────────
+// Single two-input form per spec (`AddCrewComposer` in explorations-screens.jsx
+// for populated state, `AddCrewComposerStandalone` for empty). The
+// `boosted` flag controls chrome and copy only — the underlying
+// inputs + submission logic are identical.
+//
+//   boosted=true   → empty-state primary CTA: accent border, raised
+//                    shadow, accent eyebrow, "Add your first crew
+//                    member" title, longer hint about placeholders.
+//   boosted=false  → populated-state composer: default border, no
+//                    shadow, dim eyebrow, "Add a person" title,
+//                    one-line hint.
+//
+// Replaces the prior Find-by-email AddPersonComposer (which lived in
+// CrewSearchInput) so the populated and empty states share the same
+// affordance shape — different chrome, same flow.
 
-function AddPersonComposer({ tripId }: { tripId: string }) {
-  return (
-    <div
-      className="rounded-xl p-4"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-accent-border)",
-        boxShadow: "var(--shadow-raised)",
-      }}
-    >
-      <div
-        className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.12em]"
-        style={{ color: "var(--color-bt-accent)" }}
-      >
-        Add a person
-      </div>
-      <CrewSearchInput
-        tripId={tripId}
-        defaultRole="Member"
-        defaultStatus="draft"
-        allowGhost
-        allowInvite
-        showSearchIcon
-        placeholder="Email or name…"
-      />
-      <p
-        className="mt-2 text-[11px] leading-snug"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Email matches a BuddyTrip account → Active. No match → we send an
-        invite. Name only → Placeholder.
-      </p>
-    </div>
-  );
-}
-
-// ── AddCrewComposerStandalone ─────────────────────────────────────────────
-// Empty-state composer per HANDOFF-gaps-crew-empty.md §3. Two stacked
-// inputs (name + monospace email) and a full-width "Add to crew"
-// button. Distinct from `AddPersonComposer` (search-existing pattern)
-// because the empty state's intent is "set up your first crew row,"
-// not "search the directory."
-
-function AddCrewComposerStandalone({ tripId }: { tripId: string }) {
+function AddCrewComposer({ tripId, boosted }: { tripId: string; boosted: boolean }) {
   const utils = trpc.useUtils();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -396,15 +367,19 @@ function AddCrewComposerStandalone({ tripId }: { tripId: string }) {
       className="flex flex-col gap-2 rounded-xl p-3.5"
       style={{
         background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-accent-border)",
-        boxShadow: "var(--shadow-raised)",
+        border: boosted
+          ? "1px solid var(--color-bt-accent-border)"
+          : "1px solid var(--color-bt-border)",
+        boxShadow: boosted ? "var(--shadow-raised)" : undefined,
       }}
     >
       <div
         className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em]"
-        style={{ color: "var(--color-bt-accent)" }}
+        style={{
+          color: boosted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+        }}
       >
-        Add your first crew member
+        {boosted ? "Add your first crew member" : "Add a person"}
       </div>
 
       <input
@@ -413,7 +388,7 @@ function AddCrewComposerStandalone({ tripId }: { tripId: string }) {
         onKeyDown={(e) => {
           if (e.key === "Enter") handleSubmit();
         }}
-        placeholder="Name (e.g. Llama)"
+        placeholder={boosted ? "Name (e.g. Llama)" : "Name (optional)"}
         className="w-full rounded-lg border px-2.5 py-2 text-[13px] outline-none"
         style={inputBase}
       />
@@ -425,17 +400,15 @@ function AddCrewComposerStandalone({ tripId }: { tripId: string }) {
         onKeyDown={(e) => {
           if (e.key === "Enter") handleSubmit();
         }}
-        placeholder="jason@doherty.dev (optional)"
+        placeholder={boosted ? "jason@doherty.dev (optional)" : "email@example.com (optional)"}
         className="w-full rounded-lg border px-2.5 py-2 font-mono text-[13px] outline-none"
         style={inputBase}
       />
 
-      {/* The button stays at full saturation regardless of name-field
-          emptiness — matching the other tabs' primary buttons. Clicking
-          while name is empty is a no-op (handleSubmit early-returns) so
-          the visual state isn't lying about clickability — it just
-          doesn't need to telegraph "you must fill the name" with a heavy
-          opacity-40 dim that reads as a different shade of teal. */}
+      {/* Button stays at full saturation regardless of name emptiness —
+          clicking while name is empty is a no-op (handleSubmit
+          early-returns) so the visual state matches "this is the CTA"
+          rather than "you must fill the name first." */}
       <button
         type="button"
         onClick={handleSubmit}
@@ -453,12 +426,24 @@ function AddCrewComposerStandalone({ tripId }: { tripId: string }) {
         className="mt-1 text-[11px] leading-snug"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Either field works.{" "}
-        <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Email enables app access
-        </strong>{" "}
-        — name-only entries become placeholders you can still count for rooms,
-        teams, and receipts.
+        {boosted ? (
+          <>
+            Either field works.{" "}
+            <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Email enables app access
+            </strong>{" "}
+            — name-only entries become placeholders you can still count for rooms,
+            teams, and receipts.
+          </>
+        ) : (
+          <>
+            Either field is enough.{" "}
+            <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Email enables app access
+            </strong>{" "}
+            — name-only entries are placeholders.
+          </>
+        )}
       </p>
     </div>
   );
@@ -587,16 +572,28 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
       <TabHeader
-        // Empty state swaps the accent "CREW" eyebrow for a dim
-        // trip-context eyebrow (trip name + location). The CREW
-        // identity moves into the heading itself ("Crew · N").
-        eyebrow={isEmpty ? (tripEyebrow || "Crew") : "Crew"}
-        eyebrowTone={isEmpty ? "dim" : "accent"}
+        // Crew is the only tab where the eyebrow conveys trip context
+        // ("BBMI · Pinehurst, NC") instead of tab identity — the
+        // heading "Crew · N" already carries the tab name. Applies to
+        // both empty and populated states per round-3 C3-1.
+        eyebrow={tripEyebrow || "Crew"}
+        eyebrowTone="dim"
         headline={`Crew · ${totalCount}`}
+        // Populated copy per round-3 C3-2: surfaces the **placeholder**
+        // defined term and pins ownership/permissions correctly.
         body={
-          isEmpty
-            ? "Just you so far. Add the rest of your crew — names alone work, or include emails so they can sign in and see the trip themselves."
-            : "Add Organizers to share planning duties — they get nearly all the same powers you do. Everyone else rides along."
+          isEmpty ? (
+            "Just you so far. Add the rest of your crew — names alone work, or include emails so they can sign in and see the trip themselves."
+          ) : (
+            <>
+              Owner and organizers manage the trip. Everyone else is a member
+              — including{" "}
+              <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                placeholders
+              </strong>{" "}
+              (name-only entries that get counted but can&apos;t sign in).
+            </>
+          )
         }
         desktopAction={
           isOwner ? (
@@ -665,11 +662,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           style={{ maxWidth: 540 }}
         >
           {isOwner &&
-            (isEmpty ? (
-              <AddCrewComposerStandalone tripId={tripId} />
-            ) : (
-              <AddPersonComposer tripId={tripId} />
-            ))}
+            <AddCrewComposer tripId={tripId} boosted={isEmpty} />}
           <StatusLegend />
         </aside>
       </div>
@@ -679,11 +672,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           inline reveal. */}
       {isOwner && showMobileAdd && (
         <div className="mt-4 md:hidden">
-          {isEmpty ? (
-            <AddCrewComposerStandalone tripId={tripId} />
-          ) : (
-            <AddPersonComposer tripId={tripId} />
-          )}
+          <AddCrewComposer tripId={tripId} boosted={isEmpty} />
         </div>
       )}
 
