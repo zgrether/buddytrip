@@ -427,7 +427,7 @@ export default function TripDetailPage() {
                 stage={stage}
                 badges={tabBadges}
               />
-              <div className="pt-4 pb-24">
+              <div className="pt-4 pb-32">
                 {tripIsReadOnly && activeTab === "home" && (
                   <div
                     className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
