@@ -285,9 +285,34 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             </Field>
           )}
 
-          {/* Email — invited / placeholder rows can edit; active rows are
-              showing the BT account email and shouldn't override it here. */}
-          {(status === "invited" || status === "placeholder") && (
+          {/* Email — visible for every status per round-5 item C.
+              Editable for invited / placeholder (the organizer entered
+              the email so they can fix typos); read-only for Active
+              (the email belongs to the BT account and is owned by the
+              member themselves). */}
+          {status === "active" ? (
+            <Field
+              label="Email"
+              hint="This is the email on their BuddyTrip account — they manage it from their own account settings. To replace this person, remove them from the trip and re-add with the right email."
+            >
+              <div
+                className="flex items-center justify-between rounded-lg border px-3 py-2 font-mono text-sm"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  borderColor: "var(--color-bt-border)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                <span className="truncate">{member.user?.email ?? "—"}</span>
+                <span
+                  className="ml-3 flex-shrink-0 text-[10px] font-bold uppercase tracking-[0.08em]"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Read-only
+                </span>
+              </div>
+            </Field>
+          ) : (
             <Field
               label="Email"
               hint="Adding an email turns a Placeholder into Active (if the email matches a BuddyTrip account) or Invited."
