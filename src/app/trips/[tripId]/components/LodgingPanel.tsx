@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus, Check } from "lucide-react";
+import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus, Check, Link2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { EmptyState } from "@/components/EmptyState";
 import { SampleHeader, SampleCard, RailComposer } from "@/components/SampleSection";
@@ -350,6 +350,10 @@ export function LodgingPanel({
     else setLocalShowAddLodging(open);
   };
   const [editingItem, setEditingItem] = useState<LodgingItemFull | null>(null);
+  // Composer rail URL — typed into the empty-state rail composer so
+  // clicking "Add property" pre-fills the AddPropertySheet's URL field
+  // instead of opening it blank. Cleared on close.
+  const [composerUrl, setComposerUrl] = useState("");
 
   const createItem = trpc.logistics.create.useMutation({
     onSuccess: () => { utils.logistics.list.invalidate({ tripId }); setShowAddLodging(false); },
@@ -583,7 +587,34 @@ export function LodgingPanel({
                         .
                       </>
                     }
-                  />
+                  >
+                    {/* URL input — typed value pre-fills the AddPropertySheet's
+                        URL field when the user clicks "Add property", so the
+                        rail isn't just a button asking for action with no
+                        inline affordance. */}
+                    <div className="relative">
+                      <Link2
+                        size={13}
+                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      />
+                      <input
+                        type="url"
+                        value={composerUrl}
+                        onChange={(e) => setComposerUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") setShowAddLodging(true);
+                        }}
+                        placeholder="https://airbnb.com/rooms/…"
+                        className="w-full rounded-lg border py-2 pl-8 pr-2 font-mono text-[13px] outline-none"
+                        style={{
+                          background: "var(--color-bt-card-raised)",
+                          borderColor: "var(--color-bt-border)",
+                          color: "var(--color-bt-text-dim)",
+                        }}
+                      />
+                    </div>
+                  </RailComposer>
                 </aside>
               </div>
             ) : (
@@ -619,7 +650,11 @@ export function LodgingPanel({
             showAddressAndDates
             isPending={createItem.isPending}
             onSubmit={handleCreate}
-            onClose={() => setShowAddLodging(false)}
+            onClose={() => {
+              setShowAddLodging(false);
+              setComposerUrl("");
+            }}
+            initialValues={composerUrl ? { url: composerUrl } : undefined}
           />
         )}
 
