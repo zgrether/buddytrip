@@ -1687,7 +1687,7 @@ export function CoPlannerPanel({
                   onClick={() => demote.mutate({ tripId, userId: m.user_id, role: "Member" })}
                   className="flex h-5 w-5 items-center justify-center rounded-full transition-opacity hover:opacity-70"
                   style={{ color: "var(--color-bt-text-dim)" }}
-                  aria-label={`Remove ${m.displayName} as planner`}
+                  aria-label={`Remove ${m.displayName} as organizer`}
                 >
                   <X size={12} />
                 </button>

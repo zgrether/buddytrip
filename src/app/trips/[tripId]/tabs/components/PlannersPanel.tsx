@@ -128,7 +128,7 @@ function PlannerRow({
                 border: "1px solid var(--color-bt-accent-border)",
               }}
             >
-              Planner
+              Organizer
             </span>
           )}
 
@@ -208,7 +208,7 @@ function AddPlannerRow({ tripId }: { tripId: string }) {
       >
         <Users size={15} />
         <Plus size={12} />
-        Add planner
+        Add organizer
       </button>
     );
   }
@@ -284,7 +284,7 @@ export function PlannersPanel({
 
           {/* Label — text-sm matches expanded header */}
           <span className="text-sm font-semibold flex-shrink-0" style={{ color: "var(--color-bt-text)" }}>
-            Planners
+            Organizers
           </span>
 
           {/* Avatar strip with vote pips */}
@@ -333,7 +333,7 @@ export function PlannersPanel({
               flexShrink: 0,
             }}
             onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
-            aria-label="Expand planners"
+            aria-label="Expand organizers"
           >
             <ChevronDown size={13} />
           </button>
@@ -371,8 +371,8 @@ export function PlannersPanel({
         </div>
         <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
           {hasMultiplePlanners
-            ? `Planners · ${planners.length} ${planners.length === 1 ? "person" : "people"}`
-            : "Planners"}
+            ? `Organizers · ${planners.length} ${planners.length === 1 ? "person" : "people"}`
+            : "Organizers"}
         </span>
         <button
           onClick={onToggleCollapse}
@@ -389,7 +389,7 @@ export function PlannersPanel({
             cursor: "pointer",
             flexShrink: 0,
           }}
-          aria-label="Collapse planners"
+          aria-label="Collapse organizers"
         >
           <ChevronUp size={13} />
         </button>
