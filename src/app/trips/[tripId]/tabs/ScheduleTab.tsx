@@ -1012,25 +1012,35 @@ export function ScheduleTab({
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
             <section style={{ alignSelf: "start" }}>
-              {/* Eyebrow — text-only per HANDOFF round 2 A1. No icon
-                  prefix (calendar/trophy belong to DAY-BY-DAY and
-                  COMPETITION EVENTS specifically). */}
-              <h4
-                className="text-[11px] font-bold uppercase tracking-[0.12em]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                On Deck
-              </h4>
-              {canEdit && (
-                <p
-                  className="mt-1 text-[11px] italic leading-snug"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  {unscheduledItems.length === 0
-                    ? "Unscheduled items live here. Drag onto a day when ready."
-                    : "Drag these to a day to add it to the agenda"}
-                </p>
-              )}
+              {/* Eyebrow + caption — text-only per HANDOFF round 2 A1
+                  (no icon prefix). Wrapped with mb-3 so there's
+                  breathing room between the caption and the content
+                  beneath (round-8 item 3). The empty placeholder div
+                  on the eyebrow row gives this column the same
+                  baseline height as the DAY-BY-DAY column (which has
+                  a calendar icon), so both column headers align at
+                  the same y-coordinate. */}
+              <div className="mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 flex-shrink-0" aria-hidden />
+                  <h4
+                    className="text-[11px] font-bold uppercase tracking-[0.12em]"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    On Deck
+                  </h4>
+                </div>
+                {canEdit && (
+                  <p
+                    className="mt-1 text-[11px] italic leading-snug"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    {unscheduledItems.length === 0
+                      ? "Unscheduled items live here. Drag onto a day when ready."
+                      : "Drag these to a day to add it to the agenda"}
+                  </p>
+                )}
+              </div>
 
               {/* Round 2 A2: "Unscheduled" sub-heading deleted. Order
                   under the eyebrow is now: eyebrow → italic caption →
@@ -1232,13 +1242,17 @@ export function ScheduleTab({
 
             {/* ── Column 2: Schedule (day groups only) ─────────────── */}
             <section>
-              <div className="mb-2">
+              {/* Eyebrow + caption — mirrors the ON DECK column's
+                  wrapping/spacing so both column headers align at the
+                  same y-coordinate and get equal breathing room before
+                  content (round-8 items 2 + 3). */}
+              <div className="mb-3">
                 <div className="flex items-center gap-2">
-                  <span style={{ color: "var(--color-bt-text-dim)" }}>
+                  <span className="flex h-3 w-3 flex-shrink-0 items-center justify-center" style={{ color: "var(--color-bt-text-dim)" }}>
                     <CalendarDays size={12} />
                   </span>
                   <h4
-                    className="text-[11px] font-semibold uppercase tracking-wider"
+                    className="text-[11px] font-bold uppercase tracking-[0.12em]"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     Day-by-Day
@@ -1246,7 +1260,7 @@ export function ScheduleTab({
                 </div>
                 {canEdit && (
                   <p
-                    className="mt-0.5 text-[10px] italic"
+                    className="mt-1 text-[11px] italic leading-snug"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
                     Drop an item onto a day to schedule it
