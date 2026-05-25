@@ -213,6 +213,7 @@ function CrewSection({
   currentUserId,
   onEditMember,
   emptyHint,
+  tone = "dim",
 }: {
   title: string;
   members: Member[];
@@ -220,15 +221,30 @@ function CrewSection({
   currentUserId: string | undefined;
   onEditMember?: (m: Member) => void;
   emptyHint?: string;
+  /** Section title color. 'accent' for Organizers, 'planning' (blue)
+   *  for Crew, 'dim' for the member-view's neutral single list. */
+  tone?: "accent" | "planning" | "dim";
 }) {
+  const headerColor =
+    tone === "accent"
+      ? "var(--color-bt-accent)"
+      : tone === "planning"
+        ? "var(--color-bt-planning)"
+        : "var(--color-bt-text-dim)";
+
   return (
     <section>
       <h2
-        className="mb-2 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: "var(--color-bt-text-dim)" }}
+        className="mb-2 flex items-baseline justify-between gap-2 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: headerColor }}
       >
         <span>{title}</span>
-        <span style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>· {members.length}</span>
+        <span
+          className="font-mono"
+          style={{ color: headerColor, opacity: 0.75 }}
+        >
+          · {members.length}
+        </span>
       </h2>
       {members.length === 0 ? (
         <p
@@ -646,6 +662,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         <div className="flex flex-col gap-5">
           <CrewSection
             title="Organizers"
+            tone="accent"
             members={organizers}
             isOwnerView={isOwner}
             currentUserId={currentUser?.id}
@@ -658,11 +675,14 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           {restCrew.length === 0 && isOwner ? (
             <section>
               <h2
-                className="mb-2 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
+                className="mb-2 flex items-baseline justify-between gap-2 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-planning)" }}
               >
                 <span>Crew</span>
-                <span style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }}>
+                <span
+                  className="font-mono"
+                  style={{ color: "var(--color-bt-planning)", opacity: 0.75 }}
+                >
                   · 0
                 </span>
               </h2>
@@ -671,6 +691,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           ) : (
             <CrewSection
               title="Crew"
+              tone="planning"
               members={restCrew}
               isOwnerView={isOwner}
               currentUserId={currentUser?.id}
