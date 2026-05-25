@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus } from "lucide-react";
+import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus, Check } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { EmptyState } from "@/components/EmptyState";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
@@ -164,13 +164,28 @@ function LodgingCard({
       <div className="flex flex-shrink-0 flex-col items-end justify-between gap-2 self-stretch">
         <div className="flex items-center gap-1">
           {canEdit && (
-            <button
-              onClick={onConfirmToggle}
-              className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
-              style={{ color: confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-            >
-              {confirmed ? "Confirmed 🔒" : "Confirm"}
-            </button>
+            confirmed ? (
+              <button
+                onClick={onConfirmToggle}
+                aria-label="Mark as not confirmed"
+                className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] transition-opacity hover:opacity-80"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-on-accent)",
+                }}
+              >
+                <Check size={11} strokeWidth={3} />
+                Confirmed
+              </button>
+            ) : (
+              <button
+                onClick={onConfirmToggle}
+                className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Confirm
+              </button>
+            )
           )}
           {canEdit && (
             <>
@@ -432,7 +447,7 @@ export function LodgingPanel({
               headline="No properties yet"
               subtext={
                 canEdit
-                  ? "Add properties to compare places the crew is considering — confirm the winner once it's booked."
+                  ? "Add properties to compare places the crew is considering — confirm any once they're booked."
                   : "The organizer hasn't added any properties yet."
               }
             />

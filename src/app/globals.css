@@ -47,6 +47,7 @@
   --color-bt-overlay: rgba(0, 0, 0, 0.5);
   --color-bt-overlay-drawer: rgba(0, 0, 0, 0.30); /* desktop side drawer — less disruptive than a full modal */
   --color-bt-overlay-sheet: rgba(0, 0, 0, 0.45);  /* mobile bottom sheet — between drawer and modal */
+  --color-bt-on-accent: #0d1f1a;  /* mode-independent — dark text on teal accent fills (badges, primary buttons) */
   --color-bt-subtle-border: #e2e8f0;
   --color-bt-dim-faint: rgba(100, 116, 139, 0.12);
   --color-bt-state-fill: rgba(0, 0, 0, 0.08);
@@ -132,6 +133,7 @@
   --color-bt-overlay: rgba(0, 0, 0, 0.7);
   --color-bt-overlay-drawer: rgba(0, 0, 0, 0.40); /* desktop side drawer — less disruptive than a full modal */
   --color-bt-overlay-sheet: rgba(0, 0, 0, 0.55);  /* mobile bottom sheet — between drawer and modal */
+  --color-bt-on-accent: #0d1f1a;  /* mode-independent — dark text on teal accent fills (badges, primary buttons) */
   --color-bt-subtle-border: rgba(148, 163, 184, 0.08); /* matches marketing dividers */
   --color-bt-dim-faint: rgba(148, 163, 184, 0.12);
   --color-bt-state-fill: rgba(255, 255, 255, 0.13);

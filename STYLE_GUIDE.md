@@ -499,6 +499,7 @@ dark image-overlay contexts where tokens don't apply. No migration needed.
 | `--color-bt-overlay` | `rgba(0,0,0,0.5)` | `rgba(0,0,0,0.7)` | Modal backdrop (full screen) |
 | `--color-bt-overlay-sheet` | `rgba(0,0,0,0.45)` | `rgba(0,0,0,0.55)` | Mobile bottom sheet backdrop |
 | `--color-bt-overlay-drawer` | `rgba(0,0,0,0.30)` | `rgba(0,0,0,0.40)` | Desktop side drawer backdrop |
+| `--color-bt-on-accent` | `#0d1f1a` | `#0d1f1a` | Dark text on teal accent fills (badges, primary buttons). Mode-independent. |
 | `--color-bt-subtle-border` | `#e2e8f0` | `rgba(148,163,184,0.08)` | Secondary borders |
 | `--color-bt-dim-faint` | `rgba(100,116,139,0.12)` | `rgba(148,163,184,0.12)` | Disabled/inactive fill |
 | `--color-bt-state-fill` | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.13)` | State silhouette watermark fill (LocationHero) |

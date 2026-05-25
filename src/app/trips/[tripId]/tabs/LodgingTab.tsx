@@ -25,7 +25,7 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
       <TabHeader
         eyebrow="Lodging"
         headline="Where everyone's staying"
-        body="Drop in the places you're considering so the crew can compare — links, prices, sleep counts, anything helpful. Confirm the winner once it's booked and it locks onto the official trip details."
+        body="Drop in the places you're considering so the crew can compare — links, prices, sleep counts. Confirm the one(s) you book, and they're locked in as official trip details. Multi-property and multi-leg trips are fine — confirm as many as you need."
         desktopAction={
           canEdit ? (
             <button
