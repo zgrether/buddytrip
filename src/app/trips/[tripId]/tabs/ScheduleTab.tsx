@@ -996,13 +996,12 @@ export function ScheduleTab({
             the real scaffolding (ON DECK + day-by-day with empty slots)
             so the page teaches its layout before the first item lands.
             See HANDOFF-gaps-agenda-empty.md. */}
-        {(
-          {/* Grid spec per AgendaEmpty line 712:
-              grid-template-columns: 320px 1fr; gap: 24px.
-              minmax(0,1fr) on the right column lets long day-row
-              titles truncate inside their grid track instead of
-              fighting the 1fr and pushing the rail wider than 320px. */}
-          <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+        {/* Grid spec per AgendaEmpty line 712:
+            grid-template-columns: 320px 1fr; gap: 24px.
+            minmax(0,1fr) on the right column lets long day-row titles
+            truncate inside their grid track instead of fighting the
+            1fr and pushing the rail wider than 320px. */}
+        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
             <section style={{ alignSelf: "start" }}>
@@ -1404,7 +1403,6 @@ export function ScheduleTab({
             </section>
 
           </div>
-        )}
       </section>
 
       {addMode !== null && (
