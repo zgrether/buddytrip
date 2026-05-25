@@ -185,8 +185,9 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           "fixed z-50 flex flex-col",
           // Mobile: bottom-anchored sheet, ~82% height
           "inset-x-0 bottom-0 h-[82vh] rounded-t-2xl",
-          // Desktop (lg+): right-anchored drawer, full height, fixed width
-          "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:w-[420px] lg:rounded-none",
+          // Desktop (lg+): right-anchored drawer, full height, 440px wide
+          // per the canonical edit-drawer spec.
+          "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:w-[440px] lg:rounded-none",
         ].join(" ")}
         style={{
           background: "var(--color-bt-card-float)",

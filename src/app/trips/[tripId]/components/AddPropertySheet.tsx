@@ -241,14 +241,40 @@ export function AddPropertySheet({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
+    <>
+      {/* Backdrops — separate elements so each can carry the right
+          overlay token for its breakpoint (sheet alpha on mobile,
+          drawer alpha on desktop), matching the MemberEditor pattern. */}
       <div
-        className="max-h-[90vh] w-full max-w-[480px] overflow-y-auto rounded-t-2xl p-5 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
+        className="fixed inset-0 z-40 lg:hidden"
+        style={{ background: "var(--color-bt-overlay-sheet)" }}
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        className="fixed inset-0 z-40 hidden lg:block"
+        style={{ background: "var(--color-bt-overlay-drawer)" }}
+        onClick={onClose}
+        aria-hidden
+      />
+
+      {/* Panel — bottom-sheet (mobile) / right-anchored 440px drawer
+          (desktop, lg+) per the canonical edit-drawer spec. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={[
+          "fixed z-50 overflow-y-auto p-5",
+          // Mobile: bottom sheet
+          "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
+          // Desktop: 440px right drawer
+          "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:max-h-screen lg:w-[440px] lg:rounded-none",
+        ].join(" ")}
+        style={{
+          background: "var(--color-bt-card-float)",
+          boxShadow: "var(--shadow-floating)",
+          borderLeft: "1px solid var(--color-bt-border)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle bar (mobile) */}
@@ -506,6 +532,6 @@ export function AddPropertySheet({
           Cancel
         </button>
       </div>
-    </div>
+    </>
   );
 }
