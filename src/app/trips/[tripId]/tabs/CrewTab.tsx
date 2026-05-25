@@ -266,7 +266,42 @@ function CrewSection({
 
 // ── StatusLegend (right rail, always visible) ─────────────────────────────
 
-function StatusLegend() {
+function StatusLegend({ members }: { members: Member[] }) {
+  const counts = members.reduce(
+    (acc, m) => {
+      const s = deriveStatus(m);
+      acc[s] += 1;
+      return acc;
+    },
+    { active: 0, invited: 0, placeholder: 0 } as Record<DerivedStatus, number>
+  );
+
+  const rows: Array<{
+    key: DerivedStatus;
+    label: string;
+    body: string;
+    avatar: React.ReactNode;
+  }> = [
+    {
+      key: "active",
+      label: "Active",
+      body: "Has a BuddyTrip account.",
+      avatar: <UserAvatar name="A" avatarUrl={null} size="md" />,
+    },
+    {
+      key: "invited",
+      label: "Invited",
+      body: "Email sent, hasn't signed up yet.",
+      avatar: <InvitedAvatar name="I" />,
+    },
+    {
+      key: "placeholder",
+      label: "Placeholder",
+      body: "Name only — add an email to invite.",
+      avatar: <PlaceholderAvatar name="P" />,
+    },
+  ];
+
   return (
     <div
       className="rounded-xl p-4"
@@ -279,36 +314,28 @@ function StatusLegend() {
         className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Status
+        What these mean
       </div>
       <div className="space-y-2.5 text-[11px]" style={{ color: "var(--color-bt-text)" }}>
-        <div className="flex items-center gap-2.5">
-          <UserAvatar name="A" avatarUrl={null} sizePx={22} />
-          <div className="min-w-0 flex-1">
-            <div className="font-semibold">Active</div>
-            <div className="leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Has a BuddyTrip account.
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-2.5">
+            {r.avatar}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold">{r.label}</span>
+                <span
+                  className="font-mono text-[11px]"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  · {counts[r.key]}
+                </span>
+              </div>
+              <div className="leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                {r.body}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <InvitedAvatar name="I" />
-          <div className="min-w-0 flex-1">
-            <div className="font-semibold">Invited</div>
-            <div className="leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Email sent, hasn&apos;t signed up yet.
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <PlaceholderAvatar name="P" />
-          <div className="min-w-0 flex-1">
-            <div className="font-semibold">Placeholder</div>
-            <div className="leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Name only — add an email to invite.
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -552,7 +579,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
             </div>
           </section>
           <aside className="hidden lg:block">
-            <StatusLegend />
+            <StatusLegend members={members} />
           </aside>
         </div>
       </div>
@@ -663,7 +690,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         >
           {isOwner &&
             <AddCrewComposer tripId={tripId} boosted={isEmpty} />}
-          <StatusLegend />
+          <StatusLegend members={members} />
         </aside>
       </div>
 
