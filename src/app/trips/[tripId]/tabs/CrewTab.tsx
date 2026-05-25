@@ -225,25 +225,47 @@ function CrewSection({
    *  for Crew, 'dim' for the member-view's neutral single list. */
   tone?: "accent" | "planning" | "dim";
 }) {
-  const headerColor =
-    tone === "accent"
-      ? "var(--color-bt-accent)"
-      : tone === "planning"
-        ? "var(--color-bt-planning)"
-        : "var(--color-bt-text-dim)";
+  const TONE_STYLE: Record<
+    "accent" | "planning" | "dim",
+    { fg: string; bg: string; border: string }
+  > = {
+    accent: {
+      fg: "var(--color-bt-accent)",
+      bg: "var(--color-bt-accent-faint)",
+      border: "var(--color-bt-accent-border)",
+    },
+    planning: {
+      fg: "var(--color-bt-planning)",
+      bg: "var(--color-bt-planning-faint)",
+      border: "var(--color-bt-planning-border)",
+    },
+    dim: {
+      fg: "var(--color-bt-text-dim)",
+      bg: "transparent",
+      border: "transparent",
+    },
+  };
+  const t = TONE_STYLE[tone];
 
   return (
     <section>
       <h2
-        className="mb-2 flex items-baseline justify-between gap-2 text-xs font-semibold uppercase tracking-wider"
-        style={{ color: headerColor }}
+        className={[
+          "mb-2 flex items-baseline justify-between gap-2 text-xs font-semibold uppercase tracking-wider",
+          tone === "dim" ? "" : "rounded-lg px-3 py-1.5",
+        ].join(" ")}
+        style={{
+          color: t.fg,
+          background: t.bg,
+          border: tone === "dim" ? undefined : `1px solid ${t.border}`,
+        }}
       >
         <span>{title}</span>
         <span
           className="font-mono"
-          style={{ color: headerColor, opacity: 0.75 }}
+          style={{ color: t.fg, opacity: 0.75 }}
         >
-          · {members.length}
+          {members.length}
         </span>
       </h2>
       {members.length === 0 ? (
@@ -343,7 +365,7 @@ function StatusLegend({ members }: { members: Member[] }) {
                   className="font-mono text-[11px]"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  · {counts[r.key]}
+                  {counts[r.key]}
                 </span>
               </div>
               <div className="leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -609,8 +631,12 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
     return (
       <div className={embedded ? "@container" : "@container px-4"}>
         <TabHeader
-          eyebrow="Crew"
-          headline={`Everyone on the trip · ${totalCount}`}
+          // Member view picks up the same teal-eyebrow common pattern
+          // as the organizer view — only the headline shifts to the
+          // member-facing framing.
+          eyebrow={`Crew · ${totalCount}`}
+          eyebrowTone="accent"
+          headline="Everyone on the trip"
           body="Tag the Owner or any Organizer with planning questions. Roles and emails are managed by Organizers."
         />
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -652,22 +678,20 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   const hasActiveNonOwnerMembers = members.some(
     (m) => m.role !== "Owner" && deriveStatus(m) === "active"
   );
-  const tripDestination = trip.location ?? trip.locked_destination_location ?? null;
-  const tripEyebrow = [trip.title, tripDestination]
-    .filter(Boolean)
-    .join(" · ")
-    .toUpperCase();
 
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
       <TabHeader
-        // Crew is the only tab where the eyebrow conveys trip context
-        // ("BBMI · Pinehurst, NC") instead of tab identity — the
-        // heading "Crew · N" already carries the tab name. Applies to
-        // both empty and populated states per round-3 C3-1.
-        eyebrow={tripEyebrow || "Crew"}
-        eyebrowTone="dim"
-        headline={`Crew · ${totalCount}`}
+        // Round-4 item 4 supersedes round-3 C3-1: Crew now folds into
+        // the common tab pattern — teal "CREW · N" eyebrow (same
+        // 11px/700/0.12em treatment as Lodging/Agenda/Receipts), heading
+        // becomes "Who's on the trip". The dim trip-context eyebrow is
+        // redundant with the trip header strip above the tab bar, so
+        // it's gone. Section banners below still carry the role
+        // breakdown.
+        eyebrow={`Crew · ${totalCount}`}
+        eyebrowTone="accent"
+        headline="Who's on the trip"
         // Populated copy per round-3 C3-2: surfaces the **placeholder**
         // defined term and pins ownership/permissions correctly.
         body={
@@ -775,15 +799,19 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           {restCrew.length === 0 && isOwner ? (
             <section>
               <h2
-                className="mb-2 flex items-baseline justify-between gap-2 text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-planning)" }}
+                className="mb-2 flex items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                style={{
+                  color: "var(--color-bt-planning)",
+                  background: "var(--color-bt-planning-faint)",
+                  border: "1px solid var(--color-bt-planning-border)",
+                }}
               >
                 <span>Crew</span>
                 <span
                   className="font-mono"
                   style={{ color: "var(--color-bt-planning)", opacity: 0.75 }}
                 >
-                  · 0
+                  0
                 </span>
               </h2>
               <EmptyCrewInvitation />
