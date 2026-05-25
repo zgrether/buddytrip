@@ -105,8 +105,15 @@ export function AddScheduleItemSheet({
   // General fields
   const [title, setTitle] = useState(editItem?.title ?? "");
   const [detail, setDetail] = useState(editItem?.detail ?? "");
-  const [scheduledDate] = useState(editItem?.scheduled_date ?? "");
+  const [scheduledDate, setScheduledDate] = useState(editItem?.scheduled_date ?? "");
   const [scheduledTime, setScheduledTime] = useState(editItem?.scheduled_time ?? "");
+
+  // Trip date bounds — used to clamp the date input so users can't
+  // assign an item outside the trip range. Free read because the
+  // parent page already prefetches this.
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
+  const tripStart = trip?.start_date ?? undefined;
+  const tripEnd = trip?.end_date ?? undefined;
 
   // Golf fields
   const [selectedCourse, setSelectedCourse] = useState<{
@@ -372,10 +379,21 @@ export function AddScheduleItemSheet({
             : "Add to Agenda"}
         </h2>
 
+        {/* Helper caption per round-4 item 7 — sets expectations for
+            the type-selector + form below. */}
+        {!isEditing && (
+          <p
+            className="mt-1 text-[12px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Pick a type, then fill in the basics.
+          </p>
+        )}
+
         {/* ── Type selector (add mode only) ────────────────────────────── */}
         {!isEditing && (
           <div
-            className="mt-4 inline-flex rounded-xl p-1"
+            className="mt-3 inline-flex rounded-xl p-1"
             style={{
               background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
@@ -734,16 +752,37 @@ export function AddScheduleItemSheet({
             below, so this slot only renders for non-golf items. */}
         {!isGolf && (
           <>
-            <p className="mt-3 mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-              Time <span className="font-normal">(optional)</span>
-            </p>
-            <input
-              type="time"
-              value={scheduledTime}
-              onChange={(e) => setScheduledTime(e.target.value)}
-              className="w-32 rounded-xl border px-3 py-2.5 text-sm outline-none"
-              style={inputStyle}
-            />
+            {/* Date + Time — date select restored per round-4 item 8.
+                Native date input with min/max bound to the trip's date
+                range keeps users from assigning items outside it. */}
+            <div className="mt-3 flex gap-3">
+              <div>
+                <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Date <span className="font-normal">(optional)</span>
+                </p>
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  min={tripStart}
+                  max={tripEnd}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  className="rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Time <span className="font-normal">(optional)</span>
+                </p>
+                <input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                  className="w-32 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
           </>
         )}
 
