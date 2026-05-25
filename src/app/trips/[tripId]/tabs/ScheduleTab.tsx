@@ -329,6 +329,31 @@ function ScheduleItemRow({
         )}
       </div>
 
+      {/* DRAFT / CONFIRMED status pill — spec mandates an explicit label
+          per item so organizers can see at a glance which rows the crew
+          will see in their itinerary vs. which are still being shaped.
+          Golf items in On Deck (no scheduled_date) only show DRAFT if
+          they're not yet tee-timed/walked-on; everything else maps off
+          is_confirmed directly. */}
+      <span
+        className="mt-0.5 flex-shrink-0 self-start rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+        style={
+          item.is_confirmed
+            ? {
+                background: "var(--color-bt-accent-faint)",
+                color: "var(--color-bt-accent)",
+                border: "0.5px solid var(--color-bt-accent-border)",
+              }
+            : {
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text-dim)",
+                border: "0.5px dashed var(--color-bt-border)",
+              }
+        }
+      >
+        {item.is_confirmed ? "Confirmed" : "Draft"}
+      </span>
+
       <div className="flex flex-shrink-0 items-center gap-1">
 
         {/* Mobile-only: schedule to a day via picker (replaces drag on touch).
