@@ -232,8 +232,15 @@ export default function TripDetailPage() {
       : activeTabRaw;
 
   // ── Tab badge conditions ──────────────────────────────────────────────
-  // crewDot: owner sees a dot when any member hasn't joined yet (guest/placeholder)
-  const crewDot = isOwner && (members as Array<{ isGuest?: boolean }>).some((m) => m.isGuest);
+  // crewDot: owner sees a dot when at least one member is Invited —
+  // i.e., has an email but hasn't signed up yet, so a resend-invite
+  // action is meaningful. Placeholders (name-only) are intentional
+  // headcount entries and don't earn the dot.
+  const crewDot =
+    isOwner &&
+    (members as Array<{ isGuest?: boolean; user?: { email?: string | null } | null }>).some(
+      (m) => m.isGuest && !!m.user?.email
+    );
   // schedule badge: two tiers, parallel to lodging.
   //  "warning" — one or more agenda items have a scheduled_date that
   //              falls outside the trip date range (likely a typo).

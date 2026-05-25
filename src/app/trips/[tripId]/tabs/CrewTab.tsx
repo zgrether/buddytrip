@@ -732,23 +732,15 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         }
       />
 
-      {/* Unjoined-crew nudge — pairs with the crewDot signal on the
-          tab bar (page.tsx line ~236). Fires for Owners whenever any
-          member has isGuest=true (i.e., Invited or Placeholder rows),
-          so the dot has a panel to point at. Was lost in the Task 5b
-          rewrite and brought back here per round-4 item 5. */}
+      {/* Invited-crew nudge — pairs with the crewDot signal on the
+          tab bar (page.tsx). Fires for Owners only when at least one
+          member is Invited (has an email, hasn't signed up). Per
+          round-6 direction, Placeholders are intentional headcount
+          entries and don't trigger a nudge. */}
       {isOwner &&
-        members.some((m) => m.isGuest) &&
         (() => {
-          const unjoined = members.filter((m) => m.isGuest);
-          const placeholderCount = unjoined.filter((m) => !m.user?.email).length;
-          const invitedCount = unjoined.length - placeholderCount;
-          const subline =
-            placeholderCount === 0
-              ? "We'll keep nudging them — or tap a row to resend the invite."
-              : invitedCount === 0
-                ? "Add an email to each placeholder to send them an invite."
-                : "Add emails to placeholders, or resend pending invites from a row.";
+          const invited = members.filter((m) => deriveStatus(m) === "invited");
+          if (invited.length === 0) return null;
           return (
             <div
               className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
@@ -771,15 +763,15 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                   className="text-[13px] font-semibold leading-tight"
                   style={{ color: "var(--color-bt-text)" }}
                 >
-                  {unjoined.length}{" "}
-                  {unjoined.length === 1 ? "person hasn't" : "people haven't"} joined
-                  yet
+                  {invited.length}{" "}
+                  {invited.length === 1 ? "person hasn't" : "people haven't"} signed
+                  up yet
                 </p>
                 <p
                   className="mt-0.5 text-[11px] leading-snug"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  {subline}
+                  We&apos;ll keep nudging them — or tap a row to resend the invite.
                 </p>
               </div>
             </div>
