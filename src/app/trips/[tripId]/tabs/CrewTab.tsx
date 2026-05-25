@@ -379,11 +379,20 @@ function AddCrewComposer({ tripId, boosted }: { tripId: string; boosted: boolean
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const createGuest = trpc.ghostCrew.create.useMutation({
+    onMutate() {
+      setErrorMsg(null);
+    },
     onSuccess() {
       setName("");
       setEmail("");
       utils.tripMembers.list.invalidate({ tripId });
+    },
+    onError(err) {
+      // Surface the server's message so duplicates / conflicts don't
+      // silently swallow the click.
+      setErrorMsg(err.message);
     },
   });
 
@@ -471,6 +480,17 @@ function AddCrewComposer({ tripId, boosted }: { tripId: string; boosted: boolean
       >
         {createGuest.isPending ? "Adding…" : "Add to crew"}
       </button>
+
+      {/* Server-side error surface — duplicate / conflict / etc. The
+          composer used to silently swallow these. */}
+      {errorMsg && (
+        <p
+          className="text-[11px] leading-snug"
+          style={{ color: "var(--color-bt-danger)" }}
+        >
+          {errorMsg}
+        </p>
+      )}
 
       <p
         className="mt-1 text-[11px] leading-snug"

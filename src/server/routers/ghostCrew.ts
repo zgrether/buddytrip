@@ -42,14 +42,42 @@ export const ghostCrewRouter = router({
           if (existingMember) {
             throw new TRPCError({
               code: "CONFLICT",
-              message: "A user with this email is already a crew member",
+              message: "A crew member with this email already exists.",
             });
           }
 
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "This email belongs to an existing BuddyTrip account. Add them as a crew member instead.",
-          });
+          // Auto-link: instead of asking the caller to use a different
+          // endpoint, just insert a trip_members row for the existing
+          // real account. The composer's single-flow stays single-flow,
+          // and the resulting member is Active (matches the email's
+          // BT account) rather than a redundant guest record.
+          const { error: linkError } = await ctx.supabase
+            .from("trip_members")
+            .insert({
+              id: crypto.randomUUID(),
+              trip_id: ctx.tripId,
+              user_id: existingUser.id,
+              role: input.role,
+              status: "in",
+            });
+
+          if (linkError) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to add member to trip: ${linkError.message}`,
+            });
+          }
+
+          return {
+            id: existingUser.id,
+            name: input.name,
+            nickname: input.nickname ?? null,
+            email: input.email ?? null,
+            is_guest: false,
+            created_by: null,
+            created_at: null,
+            role: input.role,
+          };
         }
 
         if (existingUser && existingUser.is_guest) {
