@@ -11,6 +11,14 @@ interface TabHeaderProps {
    * this — the trip header above already makes context obvious).
    */
   eyebrow?: string;
+  /**
+   * Eyebrow color. "accent" (default) uses the brand teal — the
+   * standard tab eyebrow treatment. "dim" uses bt-text-dim and is
+   * reserved for empty-state pages where the eyebrow conveys
+   * neutral context (trip name · location) rather than the tab
+   * identity itself.
+   */
+  eyebrowTone?: "accent" | "dim";
   /** Bold display headline. */
   headline: string;
   /** Short paragraph of dim body copy below the headline. */
@@ -47,6 +55,7 @@ interface TabHeaderProps {
  */
 export function TabHeader({
   eyebrow,
+  eyebrowTone = "accent",
   headline,
   body,
   desktopAction,
@@ -63,7 +72,10 @@ export function TabHeader({
           <span
             className="text-[11px] font-semibold uppercase"
             style={{
-              color: "var(--color-bt-accent)",
+              color:
+                eyebrowTone === "dim"
+                  ? "var(--color-bt-text-dim)"
+                  : "var(--color-bt-accent)",
               letterSpacing: "0.1em",
             }}
           >
