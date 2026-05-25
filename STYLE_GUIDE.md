@@ -294,11 +294,20 @@ Member:   not rendered (returns null)
 
 ### Overlay / Modal backdrop
 
+Three scrim strengths. Pick by surface type — heavier UI gets a heavier backdrop.
+
 ```
-Token:     var(--color-bt-overlay)
-Light:     rgba(0,0,0,0.5)
-Dark:      rgba(0,0,0,0.7)
+Full modal:        var(--color-bt-overlay)
+                   light rgba(0,0,0,0.5)  ·  dark rgba(0,0,0,0.7)
+
+Mobile sheet:      var(--color-bt-overlay-sheet)
+                   light rgba(0,0,0,0.45) ·  dark rgba(0,0,0,0.55)
+
+Desktop drawer:    var(--color-bt-overlay-drawer)
+                   light rgba(0,0,0,0.30) ·  dark rgba(0,0,0,0.40)
 ```
+
+Drawer scrims are intentionally lighter so the underlying page reads as still-present context (you can see the row you tapped), not blacked-out behind a modal.
 
 ---
 
@@ -487,7 +496,9 @@ dark image-overlay contexts where tokens don't apply. No migration needed.
 | Token | Light | Dark | Use |
 |-------|-------|------|-----|
 | `--color-bt-hover` | `rgba(0,0,0,0.04)` | `rgba(255,255,255,0.06)` | Hover highlight |
-| `--color-bt-overlay` | `rgba(0,0,0,0.5)` | `rgba(0,0,0,0.7)` | Modal backdrop |
+| `--color-bt-overlay` | `rgba(0,0,0,0.5)` | `rgba(0,0,0,0.7)` | Modal backdrop (full screen) |
+| `--color-bt-overlay-sheet` | `rgba(0,0,0,0.45)` | `rgba(0,0,0,0.55)` | Mobile bottom sheet backdrop |
+| `--color-bt-overlay-drawer` | `rgba(0,0,0,0.30)` | `rgba(0,0,0,0.40)` | Desktop side drawer backdrop |
 | `--color-bt-subtle-border` | `#e2e8f0` | `rgba(148,163,184,0.08)` | Secondary borders |
 | `--color-bt-dim-faint` | `rgba(100,116,139,0.12)` | `rgba(148,163,184,0.12)` | Disabled/inactive fill |
 | `--color-bt-state-fill` | `rgba(0,0,0,0.08)` | `rgba(255,255,255,0.13)` | State silhouette watermark fill (LocationHero) |
