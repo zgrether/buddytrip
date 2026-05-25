@@ -5,10 +5,8 @@ import {
   Calendar,
   CalendarDays,
   CalendarPlus,
-  ClipboardList,
   Clock,
   Flag,
-  ListPlus,
   MapPin,
   Plus,
   Star,
@@ -1002,48 +1000,37 @@ export function ScheduleTab({
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
             <section style={{ alignSelf: "start" }}>
-              <div className="mb-2">
-                <div className="flex items-center gap-2">
-                  <span style={{ color: "var(--color-bt-text-dim)" }}>
-                    <ClipboardList size={12} />
-                  </span>
-                  <h4
-                    className="text-[11px] font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    On Deck
-                  </h4>
-                </div>
-                {canEdit && (
-                  <p className="mt-0.5 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                    Drag these to a day to add it to the agenda
-                  </p>
-                )}
-              </div>
-
-              {/* "Unscheduled" day-label — mirrors "Day N — Date" in the right column
-                  so both columns line up visually at the same level. */}
-              <div className="mb-1.5 flex items-center gap-2">
-                <CalendarDays size={14} style={{ color: "var(--color-bt-text-dim)" }} />
-                <p className="text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                  Unscheduled
+              {/* Eyebrow — text-only per HANDOFF round 2 A1. No icon
+                  prefix (calendar/trophy belong to DAY-BY-DAY and
+                  COMPETITION EVENTS specifically). */}
+              <h4
+                className="text-[11px] font-bold uppercase tracking-[0.12em]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                On Deck
+              </h4>
+              {canEdit && (
+                <p
+                  className="mt-1 text-[11px] italic leading-snug"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Add golf rounds, activities, or ideas — drag them onto a day
+                  when you&apos;re ready.
                 </p>
-              </div>
+              )}
+
+              {/* Round 2 A2: "Unscheduled" sub-heading deleted. Order
+                  under the eyebrow is now: eyebrow → italic caption →
+                  thin dashed button (when empty) or item list. */}
 
               {unscheduledItems.length === 0 && canEdit ? (
-                /* ── Invitation panel — replaces the outer dashed container ── */
-                /* Also serves as the drop target for dragging items back from  */
-                /* Day-by-Day when On Deck is empty (all items scheduled).      */
-                <div
-                  role="button"
-                  tabIndex={0}
+                /* Round 2 A3: thin one-line dashed teal button replaces
+                   the old 100px invitation block. Doubles as the drop
+                   target so items dragged back from Day-by-Day still
+                   have somewhere to land. */
+                <button
+                  type="button"
                   onClick={() => setAddMode("general")}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setAddMode("general"); }}
-                  className="flex flex-col items-center justify-center gap-2 rounded-xl px-4 py-8 text-center transition-all cursor-pointer"
-                  style={{
-                    background: unscheduledDragOver ? "var(--color-bt-accent-faint)" : "transparent",
-                    border: `1.5px dashed ${unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-                  }}
                   onDragOver={(e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
@@ -1061,18 +1048,16 @@ export function ScheduleTab({
                       handleDragDrop(null, unscheduledItems, unscheduledItems.length);
                     }
                   }}
+                  className="mt-3 flex w-full items-center justify-center gap-1 rounded-[10px] py-3 text-xs font-semibold transition-colors"
+                  style={{
+                    background: "var(--color-bt-accent-faint)",
+                    border: `1px dashed ${unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-accent)"}`,
+                    color: "var(--color-bt-accent)",
+                  }}
                 >
-                  <ListPlus
-                    size={22}
-                    style={{ color: unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-                  />
-                  <span className="text-sm font-semibold" style={{ color: unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-text)" }}>
-                    Plan Something
-                  </span>
-                  <span className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                    Add golf rounds, activities, or ideas —<br />drag them onto a day when you&apos;re ready.
-                  </span>
-                </div>
+                  <Plus size={12} strokeWidth={2.5} />
+                  Plan something
+                </button>
               ) : (
                 /* ── Outer dashed container — items present, or viewer ── */
                 <div
