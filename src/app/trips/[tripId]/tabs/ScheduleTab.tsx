@@ -153,6 +153,13 @@ function ScheduleItemRow({
   // Suppress the agenda-reorder drop indicator while a comp event is being
   // dragged — its visual cue would be confusing alongside the comp highlight.
   const showReorderIndicator = !compDragType && showDropIndicator;
+  // ON DECK rows render compact — just grip + kind icon + title +
+  // actions. The user explicitly called out hiding DRAFT/CONFIRMED,
+  // tee times, walk-on, and the detail/description for unscheduled
+  // items so the rail stays scannable. Other secondary content
+  // (course address, comp event chips, general location/time) is
+  // also dropped to keep On Deck visually flat.
+  const isOnDeck = !item.scheduled_date;
 
   return (
     <>
@@ -213,18 +220,18 @@ function ScheduleItemRow({
         <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
           {item.title}
         </p>
-        {item.detail && (
+        {!isOnDeck && item.detail && (
           <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {item.detail}
           </p>
         )}
         {/* Golf: address only. Title is already the course name. Map link lives in the itinerary. */}
-        {item.item_type === "golf" && (item.course?.address || item.course_location) && (
+        {!isOnDeck && item.item_type === "golf" && (item.course?.address || item.course_location) && (
           <p className="mt-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             {item.course?.address ?? item.course_location}
           </p>
         )}
-        {item.item_type === "golf" && (
+        {!isOnDeck && item.item_type === "golf" && (
           <>
             {/* Specific tee times */}
             {item.tee_times && item.tee_times.length > 0 && (
@@ -262,7 +269,7 @@ function ScheduleItemRow({
           </>
         )}
         {/* Competition event chips — one per linked event (many-to-one allowed) */}
-        {item.competition_events?.map((ce) => (
+        {!isOnDeck && item.competition_events?.map((ce) => (
           <div
             key={ce.id}
             className="mt-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2"
@@ -289,7 +296,7 @@ function ScheduleItemRow({
           </div>
         ))}
         {/* General: location + time */}
-        {item.item_type !== "golf" && item.course_name && (
+        {!isOnDeck && item.item_type !== "golf" && item.course_name && (
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             <MapPin size={10} />
             <span>{item.course_name}</span>
@@ -307,7 +314,7 @@ function ScheduleItemRow({
             )}
           </div>
         )}
-        {item.item_type !== "golf" && item.scheduled_time && (
+        {!isOnDeck && item.item_type !== "golf" && item.scheduled_time && (
           <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             <Clock size={10} />
             {item.scheduled_time}
@@ -326,30 +333,29 @@ function ScheduleItemRow({
         )}
       </div>
 
-      {/* DRAFT / CONFIRMED status pill — spec mandates an explicit label
-          per item so organizers can see at a glance which rows the crew
-          will see in their itinerary vs. which are still being shaped.
-          Golf items in On Deck (no scheduled_date) only show DRAFT if
-          they're not yet tee-timed/walked-on; everything else maps off
-          is_confirmed directly. */}
-      <span
-        className="mt-0.5 flex-shrink-0 self-start rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
-        style={
-          item.is_confirmed
-            ? {
-                background: "var(--color-bt-accent-faint)",
-                color: "var(--color-bt-accent)",
-                border: "0.5px solid var(--color-bt-accent-border)",
-              }
-            : {
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text-dim)",
-                border: "0.5px dashed var(--color-bt-border)",
-              }
-        }
-      >
-        {item.is_confirmed ? "Confirmed" : "Draft"}
-      </span>
+      {/* DRAFT / CONFIRMED status pill — only meaningful for items that
+          are actually on a day. On Deck rows hide it entirely (per
+          round-7 item 4) since they're inherently unconfirmed. */}
+      {!isOnDeck && (
+        <span
+          className="mt-0.5 flex-shrink-0 self-start rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+          style={
+            item.is_confirmed
+              ? {
+                  background: "var(--color-bt-accent-faint)",
+                  color: "var(--color-bt-accent)",
+                  border: "0.5px solid var(--color-bt-accent-border)",
+                }
+              : {
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text-dim)",
+                  border: "0.5px dashed var(--color-bt-border)",
+                }
+          }
+        >
+          {item.is_confirmed ? "Confirmed" : "Draft"}
+        </span>
+      )}
 
       <div className="flex flex-shrink-0 items-center gap-1">
 
