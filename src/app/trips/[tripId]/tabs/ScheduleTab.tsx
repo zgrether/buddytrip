@@ -997,7 +997,12 @@ export function ScheduleTab({
             so the page teaches its layout before the first item lands.
             See HANDOFF-gaps-agenda-empty.md. */}
         {(
-          <div className="grid gap-5 lg:grid-cols-2">
+          {/* Grid spec per AgendaEmpty line 712:
+              grid-template-columns: 320px 1fr; gap: 24px.
+              minmax(0,1fr) on the right column lets long day-row
+              titles truncate inside their grid track instead of
+              fighting the 1fr and pushing the rail wider than 320px. */}
+          <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
             <section style={{ alignSelf: "start" }}>
