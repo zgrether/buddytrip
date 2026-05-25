@@ -164,7 +164,7 @@ export function EditExpenseModal({
         <div className="mb-4 space-y-2">
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Receipt</label>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Title</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}

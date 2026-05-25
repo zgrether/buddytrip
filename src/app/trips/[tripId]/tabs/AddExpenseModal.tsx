@@ -149,7 +149,7 @@ export function AddExpenseModal({
           {/* Side-by-side Description + Amount */}
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Receipt</label>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Title</label>
               <input
                 data-testid="expense-title-input"
                 placeholder="Description (e.g. Dinner)"

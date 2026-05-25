@@ -98,15 +98,22 @@ const inputStyle = {
 
 function Field({
   label,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
       <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
         {label}
+        {hint && (
+          <span className="ml-1.5 font-normal" style={{ opacity: 0.75 }}>
+            ({hint})
+          </span>
+        )}
       </label>
       {children}
     </div>
@@ -269,7 +276,7 @@ export function AddPropertySheet({
 
         {/* URL field */}
         <div className="mt-4">
-          <Field label="Link to listing">
+          <Field label="Link" hint="opens externally">
             <div className="relative">
               <Link
                 size={15}
@@ -307,7 +314,7 @@ export function AddPropertySheet({
         {/* Name / Nickname — shown as soon as the form expands, above Optional divider */}
         {showExpanded && (
           <div className="mt-3">
-            <Field label={manualMode && !isEditing ? "Property name *" : "Nickname"}>
+            <Field label={manualMode && !isEditing ? "Title *" : "Title"}>
               <input
                 type="text"
                 placeholder="e.g. Beach House, The Lodge"
@@ -354,20 +361,29 @@ export function AddPropertySheet({
                     style={inputStyle}
                   />
                 </Field>
-                <Field label="Price">
-                  <input
-                    type="text"
-                    placeholder="e.g. $2,400"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className={inputCls}
-                    style={inputStyle}
-                  />
+                <Field label="Cost">
+                  <div className="relative">
+                    <span
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      $
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="2,400"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      className={`${inputCls} pl-7 text-right font-mono`}
+                      style={inputStyle}
+                    />
+                  </div>
                 </Field>
               </div>
 
-              {/* Thoughts */}
-              <Field label="Thoughts">
+              {/* Notes */}
+              <Field label="Notes" hint="optional">
                 <textarea
                   placeholder="e.g. great pool, tons of space, perfect grilling deck"
                   value={notes}
@@ -381,7 +397,7 @@ export function AddPropertySheet({
               {/* Address + Dates — planning only */}
               {showAddressAndDates && (
                 <>
-                  <Field label="Address">
+                  <Field label="Location" hint="optional">
                     <div className="relative">
                       <MapPin
                         size={14}
