@@ -616,6 +616,26 @@ export function AddScheduleItemSheet({
               </div>
             )}
 
+            {/* Date — restored for golf rounds too (round-7 item 7).
+                Native date input clamped to the trip date range so
+                rounds can be assigned to a day directly from the
+                drawer instead of via On Deck drag. */}
+            <p
+              className="mt-3 mb-1.5 text-xs font-medium"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Date <span className="font-normal">(optional)</span>
+            </p>
+            <input
+              type="date"
+              value={scheduledDate}
+              min={tripStart}
+              max={tripEnd}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              className="rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={inputStyle}
+            />
+
             {/* Tee times */}
             <p
               className="mt-3 mb-1.5 text-xs font-medium"
