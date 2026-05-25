@@ -374,7 +374,17 @@ function StatusLegend({ members }: { members: Member[] }) {
 // CrewSearchInput) so the populated and empty states share the same
 // affordance shape — different chrome, same flow.
 
-function AddCrewComposer({ tripId, boosted }: { tripId: string; boosted: boolean }) {
+function AddCrewComposer({
+  tripId,
+  boosted,
+  onAdded,
+}: {
+  tripId: string;
+  boosted: boolean;
+  /** Fired after a successful add — used by the mobile sheet wrapper
+   *  to dismiss the modal once the user has committed a crew member. */
+  onAdded?: () => void;
+}) {
   const utils = trpc.useUtils();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -388,6 +398,7 @@ function AddCrewComposer({ tripId, boosted }: { tripId: string; boosted: boolean
       setName("");
       setEmail("");
       utils.tripMembers.list.invalidate({ tripId });
+      onAdded?.();
     },
     onError(err) {
       // Surface the server's message so duplicates / conflicts don't
@@ -807,9 +818,66 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
       {/* Mobile add — sheet-like inline composer triggered by the FAB.
           Phones (<md) drop the rail entirely and route through this
           inline reveal. */}
+      {/* Mobile Add Crew — bottom sheet modal, not the inline reveal it
+          used to be. Brings the FAB → modal pattern in line with the
+          other tabs (Add Property, Add Receipt, Add Agenda) per
+          round-4 item 9. */}
       {isOwner && showMobileAdd && (
-        <div className="mt-4 md:hidden">
-          <AddCrewComposer tripId={tripId} boosted={isEmpty} />
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0"
+            style={{ background: "var(--color-bt-overlay-sheet)" }}
+            onClick={() => setShowMobileAdd(false)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add crew member"
+            className="absolute inset-x-0 bottom-0 flex flex-col rounded-t-2xl"
+            style={{
+              background: "var(--color-bt-card-float)",
+              boxShadow: "var(--shadow-floating)",
+              maxHeight: "85vh",
+            }}
+          >
+            <div className="flex justify-center py-2">
+              <span
+                className="block h-1 w-9 rounded-full"
+                style={{ background: "var(--color-bt-border)" }}
+              />
+            </div>
+            <div
+              className="flex items-center justify-between px-4 pb-3"
+              style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+            >
+              <span
+                className="text-sm font-semibold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                Add crew member
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowMobileAdd(false)}
+                aria-label="Close"
+                className="flex h-7 w-7 items-center justify-center rounded-full"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <AddCrewComposer
+                tripId={tripId}
+                boosted={isEmpty}
+                onAdded={() => setShowMobileAdd(false)}
+              />
+            </div>
+          </div>
         </div>
       )}
 
