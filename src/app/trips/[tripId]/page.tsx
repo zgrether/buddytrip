@@ -480,6 +480,7 @@ export default function TripDetailPage() {
                     canEdit={effectiveCanEdit}
                     isOwner={tripIsReadOnly ? false : isOwner}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
+                    onTabChange={setActiveTab}
                   />
                 )}
                 {activeTab === "crew" && (

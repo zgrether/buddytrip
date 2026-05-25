@@ -506,6 +506,7 @@ export function ScheduleTab({
   canEdit,
   embedded,
   onOpenDatesSheet,
+  onTabChange,
   // onNavigateToDates is deprecated — kept on the type for back-compat with
   // call sites that still pass it. The basic-planning grid that used it is gone.
   onNavigateToDates: _onNavigateToDates,
@@ -1174,13 +1175,22 @@ export function ScheduleTab({
                     Turn on competition mode to define events (scrambles, side
                     games, poker) and drag them onto agenda days.
                   </p>
-                  <a
-                    href={`/trips/${trip.id}?tab=comp`}
-                    className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold"
-                    style={{ color: "var(--color-bt-accent)" }}
+                  {/* In-place tab switch — avoids the full-page nav
+                      (loading state + scroll reset) of an <a href>. */}
+                  <button
+                    type="button"
+                    onClick={() => onTabChange?.("comp")}
+                    className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold transition-opacity hover:opacity-80"
+                    style={{
+                      color: "var(--color-bt-accent)",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                    }}
                   >
                     Enable competition →
-                  </a>
+                  </button>
                 </div>
               )}
 
