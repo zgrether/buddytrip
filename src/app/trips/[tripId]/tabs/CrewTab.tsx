@@ -430,11 +430,17 @@ function AddCrewComposerStandalone({ tripId }: { tripId: string }) {
         style={inputBase}
       />
 
+      {/* The button stays at full saturation regardless of name-field
+          emptiness — matching the other tabs' primary buttons. Clicking
+          while name is empty is a no-op (handleSubmit early-returns) so
+          the visual state isn't lying about clickability — it just
+          doesn't need to telegraph "you must fill the name" with a heavy
+          opacity-40 dim that reads as a different shade of teal. */}
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!canSubmit}
-        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+        disabled={createGuest.isPending}
+        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
         style={{
           background: "var(--color-bt-accent)",
           color: "var(--color-bt-on-accent)",
