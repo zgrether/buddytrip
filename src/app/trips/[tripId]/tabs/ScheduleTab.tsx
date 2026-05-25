@@ -980,7 +980,8 @@ export function ScheduleTab({
           </span>
           <div>
             <p className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
-              {outOfRangeCount} item{outOfRangeCount !== 1 ? "s" : ""} fall outside the trip dates
+              {outOfRangeCount} item{outOfRangeCount !== 1 ? "s" : ""}{" "}
+              {outOfRangeCount === 1 ? "falls" : "fall"} outside the trip dates
             </p>
             <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
               Double-check the date or update the trip dates if it was entered wrong

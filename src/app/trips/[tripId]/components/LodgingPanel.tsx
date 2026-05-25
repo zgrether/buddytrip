@@ -511,6 +511,49 @@ export function LodgingPanel({
             </div>
           </div>
         )}
+        {/* Unconfirmed-properties nudge — pairs with the info dot
+            (lodgingUnconfirmed in page.tsx). Suppressed when the
+            warning nudge above is showing so we don't stack two cards
+            for the same tab. */}
+        {canEdit &&
+          outOfRangeCount === 0 &&
+          confirmedCount < totalCount &&
+          totalCount > 0 && (
+            <div
+              className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <span
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{
+                  background: "var(--color-bt-accent-faint)",
+                  color: "var(--color-bt-accent)",
+                }}
+              >
+                <Hotel size={14} />
+              </span>
+              <div>
+                <p
+                  className="text-[13px] font-semibold leading-tight"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {totalCount - confirmedCount}{" "}
+                  {totalCount - confirmedCount === 1 ? "property is" : "properties are"} still
+                  being considered
+                </p>
+                <p
+                  className="mt-0.5 text-[11px] leading-snug"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Tap Confirm on any once they&apos;re booked so the crew sees the
+                  official lodging.
+                </p>
+              </div>
+            </div>
+          )}
 
         {/* Inline header + blurb + add affordance live in the parent
             LodgingTab via TabHeader + TabFab — this branch just renders

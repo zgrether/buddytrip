@@ -234,14 +234,19 @@ export default function TripDetailPage() {
   // ── Tab badge conditions ──────────────────────────────────────────────
   // crewDot: owner sees a dot when any member hasn't joined yet (guest/placeholder)
   const crewDot = isOwner && (members as Array<{ isGuest?: boolean }>).some((m) => m.isGuest);
-  // scheduleDot: fires when any item is incomplete — either has no date assigned
-  // (unscheduled) OR has a date but hasn't been confirmed yet. Both states need
-  // action before the item can appear on the crew's official itinerary.
+  // schedule badge: two tiers, parallel to lodging.
+  //  "warning" — one or more agenda items have a scheduled_date that
+  //              falls outside the trip date range (likely a typo).
+  //  "info"    — at least one item is still incomplete (unscheduled
+  //              or scheduled-but-unconfirmed). Normal planning action.
+  // Warning takes priority; only shown to editors.
+  const scheduleItems = prefetchedSchedule as Array<{
+    is_confirmed: boolean;
+    scheduled_date?: string | null;
+  }>;
   const scheduleDot =
     effectiveCanEdit &&
-    (prefetchedSchedule as Array<{ is_confirmed: boolean; scheduled_date?: string | null }>).some(
-      (item) => !item.scheduled_date || !item.is_confirmed
-    );
+    scheduleItems.some((item) => !item.scheduled_date || !item.is_confirmed);
   // lodging badge: two tiers.
   //  "warning" — one or more lodging properties have check-in/out dates
   //              that fall outside the trip date range (likely a typo).
@@ -269,6 +274,13 @@ export default function TripDetailPage() {
     effectiveCanEdit &&
     lodgingItems.length > 0 &&
     lodgingItems.some((i) => !i.is_confirmed);
+  const scheduleOutOfRange =
+    effectiveCanEdit &&
+    tripStart && tripEnd &&
+    scheduleItems.some((item) => {
+      const d = item.scheduled_date ?? null;
+      return d && (d < tripStart || d > tripEnd);
+    });
   // compDot: warning when any scored GOLF event has no agenda item linked.
   const compDot =
     !!competition &&
@@ -277,7 +289,8 @@ export default function TripDetailPage() {
 
   const tabBadges: Partial<Record<TabId, "info" | "warning">> = {};
   if (crewDot) tabBadges.crew = "info";
-  if (scheduleDot) tabBadges.schedule = "info";
+  if (scheduleOutOfRange) tabBadges.schedule = "warning";
+  else if (scheduleDot) tabBadges.schedule = "info";
   if (lodgingOutOfRange) tabBadges.lodging = "warning";
   else if (lodgingUnconfirmed) tabBadges.lodging = "info";
   if (compDot) tabBadges.comp = "warning";
