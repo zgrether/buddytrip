@@ -20,7 +20,6 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { EmptyState } from "@/components/EmptyState";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
 import { trpc } from "@/lib/trpc-client";
@@ -867,19 +866,36 @@ export function ScheduleTab({
         body="Tee times, dinners, side games, anything else on the calendar. Treat it like a rough draft — once an item is ready for the crew, confirm it and it'll appear on their itinerary."
         desktopAction={
           canEdit ? (
-            <button
-              type="button"
-              onClick={() => setAddMode("general")}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <Plus size={11} />
-              Add to agenda
-            </button>
+            allItems.length === 0 ? (
+              // Empty-state primary CTA — solid teal, "Add your first item"
+              // copy per HANDOFF-gaps-agenda-empty.md §1.
+              <button
+                type="button"
+                onClick={() => setAddMode("general")}
+                className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-opacity hover:opacity-90"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-on-accent)",
+                }}
+              >
+                <Plus size={12} strokeWidth={2.5} />
+                Add your first item
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddMode("general")}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                <Plus size={11} />
+                Add to agenda
+              </button>
+            )
           ) : undefined
         }
       />
@@ -976,13 +992,12 @@ export function ScheduleTab({
       )}
 
       <section>
-        {allItems.length === 0 ? (
-          <EmptyState
-            icon={<CalendarDays className="h-10 w-10" />}
-            headline="Your agenda is empty"
-            subtext={canEdit ? "Add activities, golf rounds, and ideas — then drag them onto days to build the schedule." : "The organizer hasn't added anything yet."}
-          />
-        ) : (
+        {/* No early-return on allItems.length === 0 — per global Rule 2 of
+            the empty-state addendum, Agenda's empty state should render
+            the real scaffolding (ON DECK + day-by-day with empty slots)
+            so the page teaches its layout before the first item lands.
+            See HANDOFF-gaps-agenda-empty.md. */}
+        {(
           <div className="grid gap-5 lg:grid-cols-2">
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
@@ -1165,6 +1180,43 @@ export function ScheduleTab({
                   )}
                 </div>
               )}
+              {/* Competition-off nudge — replaces the live competition-events
+                  list when there's no competition for this trip yet. Per
+                  HANDOFF-gaps-agenda-empty.md §2b. */}
+              {!competition && (
+                <div
+                  className="mt-6 rounded-xl p-3.5"
+                  style={{
+                    background: "var(--color-bt-card)",
+                    border: "1px dashed var(--color-bt-border)",
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+                    <h4
+                      className="text-[11px] font-semibold uppercase tracking-wider"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      Competition Events
+                    </h4>
+                  </div>
+                  <p
+                    className="mt-2 text-xs"
+                    style={{ color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}
+                  >
+                    Turn on competition mode to define events (scrambles, side
+                    games, poker) and drag them onto agenda days.
+                  </p>
+                  <a
+                    href={`/trips/${trip.id}?tab=comp`}
+                    className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold"
+                    style={{ color: "var(--color-bt-accent)" }}
+                  >
+                    Enable competition →
+                  </a>
+                </div>
+              )}
+
               {/* Competition Events — shown below On Deck when competition is active.
                   Drag a competition event onto a Day-by-Day agenda item to link it.
                   Linked events disappear from here (they belong to the agenda item). */}
