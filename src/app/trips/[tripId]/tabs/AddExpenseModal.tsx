@@ -121,15 +121,39 @@ export function AddExpenseModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <>
+      {/* Tiered backdrops — sheet alpha mobile, drawer alpha desktop. */}
       <div
-        className="absolute inset-0"
-        style={{ background: "var(--color-bt-overlay)" }}
+        className="fixed inset-0 z-40 lg:hidden"
+        style={{ background: "var(--color-bt-overlay-sheet)" }}
         onClick={onClose}
+        aria-hidden
       />
       <div
-        className="relative w-full max-w-lg rounded-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        className="fixed inset-0 z-40 hidden lg:block"
+        style={{ background: "var(--color-bt-overlay-drawer)" }}
+        onClick={onClose}
+        aria-hidden
+      />
+
+      {/* Panel — bottom sheet (mobile) / right-anchored 440px drawer
+          (desktop, lg+). Matches the Edit drawer + AddPropertySheet /
+          AddScheduleItemSheet pattern so every add/edit affordance
+          across tabs uses the same chrome. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={[
+          "fixed z-50 overflow-y-auto p-5",
+          "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
+          "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:max-h-screen lg:w-[440px] lg:rounded-none",
+        ].join(" ")}
+        style={{
+          background: "var(--color-bt-card-float)",
+          boxShadow: "var(--shadow-floating)",
+          borderLeft: "1px solid var(--color-bt-border)",
+        }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
@@ -286,6 +310,6 @@ export function AddExpenseModal({
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
