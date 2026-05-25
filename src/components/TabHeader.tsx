@@ -84,7 +84,13 @@ export function TabHeader({
             {eyebrow}
           </span>
           {desktopAction && (
-            <div className="hidden flex-shrink-0 sm:flex sm:items-center sm:gap-2">
+            // Per round-3 narrow-tablet Option A: the header action
+            // hides below md so the FAB is the sole add affordance at
+            // narrow tablet + phone widths. This pairs cleanly with
+            // TabFab's md:hidden (Task 14) so rail/FAB swap at the
+            // same breakpoint and Agenda's empty-state "+ Add your
+            // first item" stops doubling with the FAB at ~720px.
+            <div className="hidden flex-shrink-0 md:flex md:items-center md:gap-2">
               {desktopAction}
             </div>
           )}
