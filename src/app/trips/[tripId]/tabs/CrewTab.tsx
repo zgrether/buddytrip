@@ -384,6 +384,53 @@ function StatusLegend({ members }: { members: Member[] }) {
   );
 }
 
+// ── CompactStatusLegend ───────────────────────────────────────────────────
+// Single-row variant of the legend, rendered inline below the crew
+// list at narrow widths where the right rail is gone. Lets users
+// always know what the role/status pills mean without losing the
+// full descriptive cards above the fold on a phone.
+
+function CompactStatusLegend({ members }: { members: Member[] }) {
+  const counts = members.reduce(
+    (acc, m) => {
+      const s = deriveStatus(m);
+      acc[s] += 1;
+      return acc;
+    },
+    { active: 0, invited: 0, placeholder: 0 } as Record<DerivedStatus, number>
+  );
+
+  const items: Array<{ key: DerivedStatus; label: string; dot: string }> = [
+    { key: "active", label: "Active", dot: "var(--color-bt-accent)" },
+    { key: "invited", label: "Invited", dot: "var(--color-bt-warning)" },
+    { key: "placeholder", label: "Placeholder", dot: "var(--color-bt-text-dim)" },
+  ];
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]"
+      style={{ color: "var(--color-bt-text)" }}
+    >
+      {items.map((it) => (
+        <span key={it.key} className="inline-flex items-center gap-1.5">
+          <span
+            className="h-2 w-2 flex-shrink-0 rounded-full"
+            style={{ background: it.dot }}
+            aria-hidden
+          />
+          <span className="font-semibold">{it.label}</span>
+          <span
+            className="font-mono"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {counts[it.key]}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ── AddCrewComposer ───────────────────────────────────────────────────────
 // Single two-input form per spec (`AddCrewComposer` in explorations-screens.jsx
 // for populated state, `AddCrewComposerStandalone` for empty). The
@@ -825,18 +872,27 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           )}
         </div>
 
-        {/* Right rail — survives tablet stacking per global Rule 1.
-            Hidden only below md so phones get the FAB → modal flow.
-            Capped to 540px when stacked so it doesn't run away wide
-            on a 900px tablet. */}
+        {/* Right rail — composer + full legend. Visible at sm+ (≥640px)
+            per round-8 item 4 — pushes the composer-disappearance
+            breakpoint down to ~640 so the rail-below-content → no-rail
+            transition lands at the same spot the FAB appears, avoiding
+            the ~20px snap that used to happen between 750 and 770.
+            Capped to 540px when stacked so it doesn't run away wide. */}
         <aside
-          className="hidden flex-col gap-4 md:flex"
+          className="hidden flex-col gap-4 sm:flex"
           style={{ maxWidth: 540 }}
         >
           {isOwner &&
             <AddCrewComposer tripId={tripId} boosted={isEmpty} />}
           <StatusLegend members={members} />
         </aside>
+      </div>
+
+      {/* Compact horizontal legend — visible only at < sm where the
+          full legend has gone away. Keeps the role/status grammar on
+          every screen so users always know what the pills mean. */}
+      <div className="mt-4 sm:hidden">
+        <CompactStatusLegend members={members} />
       </div>
 
       {/* Mobile add — sheet-like inline composer triggered by the FAB.
@@ -847,7 +903,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           other tabs (Add Property, Add Receipt, Add Agenda) per
           round-4 item 9. */}
       {isOwner && showMobileAdd && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 sm:hidden">
           <div
             className="absolute inset-0"
             style={{ background: "var(--color-bt-overlay-sheet)" }}
@@ -993,14 +1049,21 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           );
         })()}
 
-      {/* Mobile-only FAB — toggles the inline composer above. */}
+      {/* Crew FAB — visible only below sm (640px), matching the
+          aside's sm+ visibility so the two affordances swap at the
+          same threshold (round-8 item 4). The TabFab's global
+          md:hidden gets tightened here via a sm:hidden wrapper so
+          Lodging / Receipts / Agenda keep their existing md threshold
+          unchanged. */}
       {isOwner && (
-        <TabFab
-          onClick={() => setShowMobileAdd((v) => !v)}
-          label="Add crew member"
-          icon={<UserPlus size={20} strokeWidth={2.25} />}
-          testId="add-crew-member-fab"
-        />
+        <div className="sm:hidden">
+          <TabFab
+            onClick={() => setShowMobileAdd((v) => !v)}
+            label="Add crew member"
+            icon={<UserPlus size={20} strokeWidth={2.25} />}
+            testId="add-crew-member-fab"
+          />
+        </div>
       )}
 
       {/* Bottom-right primary action on small placeholder-only state. */}
