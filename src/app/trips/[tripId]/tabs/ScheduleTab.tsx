@@ -1060,52 +1060,20 @@ export function ScheduleTab({
                   Plan something
                 </button>
               ) : (
-                /* ── Outer dashed container — items present, or viewer ── */
-                <div
-                  className="rounded-xl px-3 pt-3 pb-1 transition-colors"
-                  style={{
-                    background: "transparent",
-                    border: `${unscheduledDragOver ? "1.5px" : "1px"} dashed ${
-                      unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-border)"
-                    }`,
-                  }}
-                  onDragOver={
-                    canEdit
-                      ? (e) => {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                          setUnscheduledDragOver(true);
-                        }
-                      : undefined
-                  }
-                  onDragLeave={
-                    canEdit
-                      ? (e) => {
-                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                            setUnscheduledDragOver(false);
-                          }
-                        }
-                      : undefined
-                  }
-                  onDrop={
-                    canEdit
-                      ? (e) => {
-                          e.preventDefault();
-                          setUnscheduledDragOver(false);
-                          if (dragState.current && dragState.current.groupDate !== null) {
-                            handleDragDrop(null, unscheduledItems, unscheduledItems.length);
-                          }
-                        }
-                      : undefined
-                  }
-                >
-                  {unscheduledItems.length === 0 ? (
-                    /* Viewer empty state */
-                    <p className="text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                      All items have been scheduled.
-                    </p>
-                  ) : (
-                    <div className="space-y-1.5">
+                /* Items list — outer dashed drop-zone wrapper removed
+                   per round-5 item E. Returning items to ON DECK now
+                   happens via the X button on Day-by-Day rows (the
+                   onUnschedule path on ScheduleItemRow). The extra
+                   dash panel was distracting visual chrome. */
+                unscheduledItems.length === 0 ? (
+                  <p
+                    className="px-1 text-[11px] italic"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    All items have been scheduled.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
                       {/* eslint-disable react-hooks/refs */}
                       {unscheduledItems.map((item, idx) => (
                         <ScheduleItemRow
@@ -1147,24 +1115,25 @@ export function ScheduleTab({
                         />
                       ))}
                       {/* eslint-enable react-hooks/refs */}
-                      {/* Ghost add button at the bottom of the On Deck list */}
+                      {/* Teal-dashed "Plan something else" — matches the
+                          empty-state primary CTA pattern instead of the
+                          old dim ghost button. */}
                       {canEdit && (
                         <button
                           onClick={() => setAddMode("general")}
-                          className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-opacity hover:opacity-70"
+                          className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
                           style={{
-                            background: "transparent",
-                            color: "var(--color-bt-text-dim)",
-                            border: "1px dashed var(--color-bt-border)",
+                            background: "var(--color-bt-accent-faint)",
+                            color: "var(--color-bt-accent)",
+                            border: "1px dashed var(--color-bt-accent)",
                           }}
                         >
-                          <Plus size={12} />
-                          Plan Something Else
+                          <Plus size={12} strokeWidth={2.5} />
+                          Plan something else
                         </button>
                       )}
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )
               )}
               {/* Competition-off nudge — replaces the live competition-events
                   list when there's no competition for this trip yet. Per

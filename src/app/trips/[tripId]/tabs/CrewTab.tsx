@@ -257,7 +257,6 @@ function CrewSection({
         style={{
           color: t.fg,
           background: t.bg,
-          border: tone === "dim" ? undefined : `1px solid ${t.border}`,
         }}
       >
         <span>{title}</span>
@@ -803,7 +802,6 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
                 style={{
                   color: "var(--color-bt-planning)",
                   background: "var(--color-bt-planning-faint)",
-                  border: "1px solid var(--color-bt-planning-border)",
                 }}
               >
                 <span>Crew</span>
