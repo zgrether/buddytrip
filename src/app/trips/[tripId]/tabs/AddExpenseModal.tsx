@@ -144,7 +144,7 @@ export function AddExpenseModal({
         role="dialog"
         aria-modal="true"
         className={[
-          "fixed z-50 overflow-y-auto p-5",
+          "fixed z-50 flex flex-col",
           "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
           "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:max-h-screen lg:w-[440px] lg:rounded-none",
         ].join(" ")}
@@ -155,8 +155,11 @@ export function AddExpenseModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
+        {/* Header — sticky top */}
+        <div
+          className="flex flex-shrink-0 items-center justify-between px-5 pb-3 pt-4"
+          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+        >
           <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Add Receipt
           </h2>
@@ -169,7 +172,8 @@ export function AddExpenseModal({
           </button>
         </div>
 
-        <div className="space-y-3">
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {/* Side-by-side Description + Amount */}
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
@@ -282,32 +286,43 @@ export function AddExpenseModal({
             />
           )}
 
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="flex-1 rounded-lg border py-2 text-sm"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              Cancel
-            </button>
-            <button
-              data-testid="save-expense-btn"
-              disabled={
-                !title.trim() ||
-                !amount ||
-                amountNum <= 0 ||
-                !paidByUserId ||
-                (splitMode === "custom" && splitAmong.length === 0) ||
-                createExpense.isPending
-              }
-              onClick={handleCreate}
-              className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              Add Receipt
-            </button>
-          </div>
+        </div>
+
+        {/* Footer — sticky bottom */}
+        <div
+          className="flex flex-shrink-0 gap-2 px-5 py-3"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
+        >
+          <button
+            onClick={onClose}
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+            style={{
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text-dim)",
+              background: "transparent",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="save-expense-btn"
+            disabled={
+              !title.trim() ||
+              !amount ||
+              amountNum <= 0 ||
+              !paidByUserId ||
+              (splitMode === "custom" && splitAmong.length === 0) ||
+              createExpense.isPending
+            }
+            onClick={handleCreate}
+            className="flex-1 rounded-lg py-2 text-sm font-semibold disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-on-accent)",
+            }}
+          >
+            Add Receipt
+          </button>
         </div>
       </div>
     </>

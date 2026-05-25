@@ -376,12 +376,13 @@ export function AddScheduleItemSheet({
       />
 
       {/* Panel — bottom-sheet (mobile) / right-anchored 440px drawer
-          (desktop, lg+) per the canonical edit-drawer spec. */}
+          (desktop, lg+). Sticky header + scrollable body + sticky
+          footer per the canonical edit-drawer spec. */}
       <div
         role="dialog"
         aria-modal="true"
         className={[
-          "fixed z-50 overflow-y-auto p-5",
+          "fixed z-50 flex flex-col",
           "inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl",
           "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:max-h-screen lg:w-[440px] lg:rounded-none",
         ].join(" ")}
@@ -392,14 +393,23 @@ export function AddScheduleItemSheet({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2
-          className="text-lg font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
+        {/* Header — sticky top */}
+        <div
+          className="flex-shrink-0 px-5 pb-3 pt-4"
+          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
-          {isEditing
-            ? isGolf ? "Edit Golf Round" : "Edit Activity"
-            : "Add to Agenda"}
-        </h2>
+          <h2
+            className="text-lg font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {isEditing
+              ? isGolf ? "Edit Golf Round" : "Edit Activity"
+              : "Add to Agenda"}
+          </h2>
+        </div>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
 
         {/* Helper caption per round-4 item 7 — sets expectations for
             the type-selector + form below. */}
@@ -836,29 +846,40 @@ export function AddScheduleItemSheet({
           </>
         )}
 
-        {/* Actions */}
-        <button
-          onClick={handleSubmit}
-          disabled={isPending || !canSubmit}
-          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-          }}
+        </div>
+
+        {/* Footer — sticky bottom */}
+        <div
+          className="flex flex-shrink-0 gap-2 px-5 py-3"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
         >
-          {isPending
-            ? isEditing ? "Saving..." : "Adding..."
-            : isEditing
-            ? "Save changes"
-            : isGolf ? "Add Golf Round" : "Add Activity"}
-        </button>
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
+          <button
+            onClick={onClose}
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+            style={{
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text-dim)",
+              background: "transparent",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isPending || !canSubmit}
+            className="flex-1 rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-on-accent)",
+            }}
+          >
+            {isPending
+              ? isEditing ? "Saving..." : "Adding..."
+              : isEditing
+              ? "Save changes"
+              : isGolf ? "Add Golf Round" : "Add Activity"}
+          </button>
+        </div>
       </div>
     </>
   );

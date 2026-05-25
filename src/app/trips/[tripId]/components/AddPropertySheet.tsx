@@ -264,7 +264,7 @@ export function AddPropertySheet({
         role="dialog"
         aria-modal="true"
         className={[
-          "fixed z-50 overflow-y-auto p-5",
+          "fixed z-50 flex flex-col",
           // Mobile: bottom sheet
           "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
           // Desktop: 440px right drawer
@@ -279,14 +279,22 @@ export function AddPropertySheet({
       >
         {/* Handle bar (mobile) */}
         <div
-          className="mx-auto mb-4 h-1 w-10 rounded-full lg:hidden"
+          className="mx-auto mt-2 h-1 w-10 flex-shrink-0 rounded-full lg:hidden"
           style={{ background: "var(--color-bt-border)" }}
         />
 
-        {/* Header */}
-        <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          {isEditing ? "Edit property" : "Add a property"}
-        </h2>
+        {/* Header — sticky top */}
+        <div
+          className="flex-shrink-0 px-5 pb-3 pt-4"
+          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+        >
+          <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {isEditing ? "Edit property" : "Add a property"}
+          </h2>
+        </div>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
         {!isEditing && !manualMode && (
           <p className="mt-0.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
             Paste a listing link, or{" "}
@@ -513,24 +521,40 @@ export function AddPropertySheet({
           </>
         )}
 
-        {/* Actions */}
-        <button
-          onClick={handleSubmit}
-          disabled={isPending || !canSubmit}
-          className="mt-5 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        </div>
+
+        {/* Footer — sticky bottom. Cancel + Save side-by-side, matching
+            the MemberEditor pattern so every drawer's commit point
+            lives in the same spot. */}
+        <div
+          className="flex flex-shrink-0 gap-2 px-5 py-3"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
         >
-          {isPending
-            ? isEditing ? "Saving..." : "Adding..."
-            : isEditing ? "Save changes" : "Add property"}
-        </button>
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
+          <button
+            onClick={onClose}
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+            style={{
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text-dim)",
+              background: "transparent",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isPending || !canSubmit}
+            className="flex-1 rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-on-accent)",
+            }}
+          >
+            {isPending
+              ? isEditing ? "Saving..." : "Adding..."
+              : isEditing ? "Save changes" : "Add property"}
+          </button>
+        </div>
       </div>
     </>
   );
