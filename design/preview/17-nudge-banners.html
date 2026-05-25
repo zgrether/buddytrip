@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Nudge banners</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 18px 26px; }
+  .nudge {
+    background: var(--color-bt-card);
+    border: 1px solid var(--color-bt-border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 10px;
+  }
+  .iconsq {
+    height: 28px; width: 28px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .iconsq.accent { background: var(--color-bt-accent-faint); color: var(--color-bt-accent); }
+  .iconsq.warn   { background: var(--color-bt-warning-faint); color: var(--color-bt-warning); }
+  .ttl { font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--color-bt-text); }
+  .sub { font-size: 11px; line-height: 1.35; color: var(--color-bt-text-dim); margin-top: 2px; }
+  svg { stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+  <div class="nudge">
+    <span class="iconsq accent">
+      <svg width="14" height="14" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+    </span>
+    <div>
+      <div class="ttl">3 items still need confirmation</div>
+      <div class="sub">Tap to review and finalize before the trip starts.</div>
+    </div>
+  </div>
+  <div class="nudge">
+    <span class="iconsq warn">
+      <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+    </span>
+    <div>
+      <div class="ttl">Arrival is before the trip starts</div>
+      <div class="sub">2 properties have dates outside the trip window.</div>
+    </div>
+  </div>
+  <div style="font-size:10px;color:var(--color-bt-text-dim);margin-top:4px;text-align:center;font-family:var(--font-mono);">
+    accent-faint = actionable · warning-faint = heads-up
+  </div>
+</body>
+</html>

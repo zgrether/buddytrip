@@ -1,0 +1,36 @@
+/* Shared baseline for design system preview cards.
+   Each card is a self-contained HTML doc shown at ~700×<h>px in the
+   Design System tab. The body fills the card with the dark base bg. */
+@import url("../colors_and_type.css");
+
+html.dark, body {
+  background: var(--color-bt-base);
+  color: var(--color-bt-text);
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  width: 100%;
+  min-height: 100%;
+}
+* { box-sizing: border-box; }
+
+/* Most cards want a comfortable inner padding. Override per-card if needed. */
+.card-pad { padding: 22px 24px; }
+
+/* Utility row */
+.row { display: flex; align-items: center; gap: 10px; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+
+/* Small label, used in the cards to annotate swatches/specimens */
+.tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-bt-text-dim);
+}
+
+.mono { font-family: var(--font-mono); }

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Radii</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 24px 26px; }
+  .row { display:grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .swatch {
+    height: 78px;
+    background: var(--color-bt-card-raised);
+    border: 1px solid var(--color-bt-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--color-bt-text);
+  }
+  .meta { margin-top: 8px; text-align: center; font-family: var(--font-mono); font-size: 10px; color: var(--color-bt-text-dim); }
+  .name { margin-top: 4px; text-align: center; font-size: 10px; font-weight: 600; letter-spacing:.08em; text-transform: uppercase; color: var(--color-bt-text-dim); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div>
+      <div class="swatch" style="border-radius: 0;">none</div>
+      <div class="name">Nav / tabs</div><div class="meta">0px</div>
+    </div>
+    <div>
+      <div class="swatch" style="border-radius: 6px;">md</div>
+      <div class="name">Compact</div><div class="meta">6px</div>
+    </div>
+    <div>
+      <div class="swatch" style="border-radius: 12px; background: var(--color-bt-accent); color:#0d1f1a; border-color: transparent;">xl ← default</div>
+      <div class="name">Buttons · cards</div><div class="meta">12px</div>
+    </div>
+    <div>
+      <div class="swatch" style="border-radius: 16px;">2xl</div>
+      <div class="name">Hero · large panels</div><div class="meta">16px</div>
+    </div>
+    <div>
+      <div class="swatch" style="border-radius: 9999px;">pill</div>
+      <div class="name">Chips · icon-btn</div><div class="meta">∞</div>
+    </div>
+  </div>
+</body>
+</html>

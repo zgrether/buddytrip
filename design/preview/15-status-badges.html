@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Status badges</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 26px 26px; }
+  .row { display:flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  }
+  .lbl { font-size: 10px; font-weight: 600; letter-spacing:.08em; text-transform: uppercase; color: var(--color-bt-text-dim); width: 64px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <span class="lbl">Trip stage</span>
+    <span class="badge" style="background: #1e3a5f; color: #60a5fa;">IDEA</span>
+    <span class="badge" style="background: #134e4a; color: #2dd4bf;">PLANNING</span>
+    <span class="badge" style="background: #431407; color: #fb923c;">GOING</span>
+    <span class="badge" style="background: rgba(217,119,6,.10); color: #fbbf24;">NOW</span>
+    <span class="badge" style="background: #161c2b; color: #94a3b8;">PAST</span>
+    <span class="badge" style="background: #161c2b; color: #94a3b8;">SAVED</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Stage pill (marketing)</span>
+    <span style="display:inline-flex;padding:3px 9px;border-radius:9999px;font-size:10px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;background:rgba(251,191,36,.1);color:#fbbf24;border:.5px solid rgba(251,191,36,.25);">Planning</span>
+    <span style="display:inline-flex;padding:3px 9px;border-radius:9999px;font-size:10px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;background:rgba(45,212,191,.1);color:#2dd4bf;border:.5px solid rgba(45,212,191,.25);">Annual</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Live</span>
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:#f87171;padding:3px 8px;border-radius:9999px;background:rgba(239,68,68,.08);border:.5px solid rgba(239,68,68,.25);">
+      <span style="width:6px;height:6px;border-radius:50%;background:#f87171;display:inline-block;"></span>Live
+    </span>
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#2dd4bf;padding:2px 6px;border-radius:9999px;background:rgba(45,212,191,.1);border:.5px solid rgba(45,212,191,.25);">Leading</span>
+  </div>
+</body>
+</html>

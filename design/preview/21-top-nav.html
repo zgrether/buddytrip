@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Top nav (in-trip)</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 0; }
+  .nav {
+    height: 56px;
+    padding: 0 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--color-bt-nav-bg);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--color-bt-subtle-border);
+  }
+  .wordmark { display:inline-flex; align-items:center; gap: 7px; font-size: 18px; font-weight: 600; letter-spacing: 0.06em; color: var(--color-bt-text); }
+  .wordmark svg { color: var(--color-bt-accent); }
+  .right { display:flex; align-items: center; gap: 8px; }
+  .ic-btn {
+    width: 32px; height: 32px; border-radius: 9999px; display:inline-flex; align-items: center; justify-content: center; background: transparent; color: var(--color-bt-text-dim); border: none; position: relative;
+  }
+  .ic-btn.active { background: var(--color-bt-accent-faint); color: var(--color-bt-accent); border-radius: 8px; }
+  .badge {
+    position: absolute; top: 4px; right: 4px;
+    height: 16px; min-width: 16px; padding: 0 3px; border-radius: 9999px;
+    background: var(--color-bt-warning); color: #fff;
+    font-size: 10px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .av {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--color-bt-card-raised); color: var(--color-bt-accent);
+    border: 1.5px solid var(--color-bt-border);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 500;
+  }
+  svg { stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .below {
+    padding: 18px 24px 22px;
+    color: var(--color-bt-text-dim);
+    font-family: var(--font-mono); font-size: 10px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="nav">
+    <span class="wordmark">
+      <svg width="18" height="18" viewBox="0 0 100 100"><path d="M 28 8 L 38 8 L 76 26 L 38 44 L 38 75 L 33 92 L 28 75 Z" fill="currentColor"/></svg>
+      BuddyTrip
+    </span>
+    <div class="right">
+      <button class="ic-btn"><svg width="18" height="18" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
+      <button class="ic-btn active"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg></button>
+      <button class="ic-btn"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="badge">3</span></button>
+      <span class="av">ZG</span>
+    </div>
+  </div>
+  <div class="below">sticky · h-14 · blurred translucent base (10,14,26 @ 0.85) · 14px backdrop-filter</div>
+</body>
+</html>

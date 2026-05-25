@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Trip card</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 16px 24px; }
+  .trip {
+    position: relative; width: 100%; overflow: hidden; border-radius: 12px;
+    background: linear-gradient(135deg, #0a1f2e 0%, #1a3247 60%, #0d2533 100%);
+    box-shadow: var(--shadow-card);
+    cursor: pointer; padding: 0;
+    margin-bottom: 10px;
+  }
+  .body { padding: 16px; position: relative; }
+  .title-row { display:flex; min-width: 0; align-items: center; gap: 8px; padding-right: 96px; }
+  .role-badge {
+    display: inline-block; padding: 2px 7px; border-radius: 4px;
+    font-size: 10px; font-weight: 500; border: 1px solid var(--color-bt-owner);
+    color: var(--color-bt-owner);
+  }
+  .title { font-size: 16px; font-weight: 600; color: #ffffff; line-height: 1.2; }
+  .dest, .dates { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+  .dest { font-size: 14px; color: rgba(255,255,255,.7); }
+  .dates { font-size: 12px; color: rgba(255,255,255,.5); }
+  .badge {
+    display: inline-block; padding: 3px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  }
+  .badges {
+    position: absolute; right: 12px; top: 12px; display:flex; align-items: center; gap: 6px;
+  }
+  .trophy {
+    display:inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--color-bt-accent-faint); color: var(--color-bt-accent);
+    border: 1px solid var(--color-bt-accent-border);
+  }
+  .countdown {
+    border-top: 1px solid rgba(148,163,184,.15);
+    background: var(--color-bt-accent-faint);
+    padding: 8px 16px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    color: var(--color-bt-accent);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .pulse {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--color-bt-accent);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;}50%{opacity:.4;} }
+  svg { stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .silhouette {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    width: 80px; height: 64px; opacity: .9;
+  }
+</style>
+</head>
+<body>
+  <div class="trip">
+    <div class="body">
+      <!-- watermark: NC state silhouette stylized -->
+      <svg class="silhouette" viewBox="0 0 80 64">
+        <path d="M2 28 L 12 22 L 26 24 L 40 18 L 56 22 L 72 16 L 78 30 L 70 42 L 58 44 L 44 38 L 32 42 L 18 38 L 8 42 Z" fill="rgba(255,255,255,0.10)"/>
+        <circle cx="50" cy="32" r="6" fill="rgba(0,212,170,0.25)"/>
+        <circle cx="50" cy="32" r="3" fill="#00d4aa"/>
+      </svg>
+
+      <div class="badges">
+        <span class="trophy"><svg width="10" height="10" viewBox="0 0 24 24" stroke-width="2.5"><path d="M6 9h12v3a6 6 0 0 1-12 0V9zM10 21h4M12 17v4"/><path d="M3 6h3v3H3zM18 6h3v3h-3z"/></svg></span>
+        <span class="badge" style="background: #431407; color: #fb923c;">UPCOMING</span>
+        <span style="display:inline-flex;align-items:center;justify-content:center;height:20px;min-width:20px;padding:0 6px;border-radius:9999px;background:var(--color-bt-accent);color:#0d1f1a;font-size:10px;font-weight:700;">3</span>
+      </div>
+
+      <div class="title-row">
+        <span class="role-badge">Owner</span>
+        <span class="title">BBMI 2026 — Pinehurst No. 2</span>
+      </div>
+      <div class="dest">
+        <svg width="12" height="12" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        Pinehurst, NC
+      </div>
+      <div class="dates">
+        <svg width="11" height="11" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Sep 12 – Sep 15
+      </div>
+    </div>
+    <div class="countdown">
+      <span class="pulse"></span>
+      Starts in 32 days
+    </div>
+  </div>
+</body>
+</html>

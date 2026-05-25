@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Surface hierarchy — light</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  /* Force light mode for this card */
+  html { color-scheme: light; }
+  body { background: #d8e0e8; color: #0f172a; padding: 18px 22px; }
+  .stack { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .surface {
+    border-radius: 12px;
+    padding: 14px 14px 12px;
+    border: 1px solid #c8d0da;
+    min-height: 100px;
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .lbl { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #64748b; }
+  .name { font-size: 13px; color: #0f172a; font-weight: 500; margin-top: 4px; }
+  .val { font-family: var(--font-mono); font-size: 11px; color: #64748b; }
+</style>
+</head>
+<body>
+  <div class="stack">
+    <div class="surface" style="background: #f4f7fa;">
+      <div><div class="lbl">L0 · base</div><div class="name">Page</div></div>
+      <div class="val">#f4f7fa</div>
+    </div>
+    <div class="surface" style="background: #ffffff;">
+      <div><div class="lbl">L1 · card</div><div class="name">Panel</div></div>
+      <div class="val">#ffffff</div>
+    </div>
+    <div class="surface" style="background: #f4f7fa;">
+      <div><div class="lbl">L2 · raised</div><div class="name">Input / row</div></div>
+      <div class="val">#f4f7fa</div>
+    </div>
+    <div class="surface" style="background: #e8edf5;">
+      <div><div class="lbl">L3 · float</div><div class="name">Popover</div></div>
+      <div class="val">#e8edf5</div>
+    </div>
+  </div>
+</body>
+</html>

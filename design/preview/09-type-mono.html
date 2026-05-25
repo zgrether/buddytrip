@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Mono — numeric & code</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 20px 24px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile {
+    background: rgba(148, 163, 184, 0.04);
+    border: 1px solid rgba(148, 163, 184, 0.08);
+    border-radius: 10px; padding: 14px;
+  }
+  .lbl {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--color-bt-text-dim); margin-bottom: 8px;
+  }
+  .val {
+    font-family: var(--font-mono); font-size: 18px; font-weight: 500;
+    color: var(--color-bt-text); letter-spacing: 0.03em;
+  }
+  .footnote {
+    margin-top: 14px; font-family: var(--font-mono); font-size: 11px;
+    color: var(--color-bt-text-dim);
+  }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="tile">
+      <div class="lbl">▤  VRBO door code</div>
+      <div class="val">4821#</div>
+    </div>
+    <div class="tile">
+      <div class="lbl">⤳  WiFi password</div>
+      <div class="val">PinehurstGolf26</div>
+    </div>
+    <div class="tile">
+      <div class="lbl">⌖  Tee time confirmation</div>
+      <div class="val">PNH-2914-883</div>
+    </div>
+    <div class="tile">
+      <div class="lbl">$  Total expenses</div>
+      <div class="val" style="font-size: 22px;">$2,340</div>
+    </div>
+  </div>
+  <div class="footnote">ui-monospace · door codes · wifi · receipts · settlement math</div>
+</body>
+</html>

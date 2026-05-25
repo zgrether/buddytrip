@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Stage & status colors</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 20px 24px; }
+  .grid { display:grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .sw { border-radius: 10px; padding: 12px 10px; min-height: 82px; display:flex; flex-direction:column; justify-content:space-between; }
+  .label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .name  { font-size: 12px; font-weight: 500; margin-top: 4px; }
+  .hex   { font-family: var(--font-mono); font-size: 10px; opacity: .75; }
+</style>
+</head>
+<body>
+  <div class="tag" style="margin-bottom: 12px;">Stage / status colors · dark mode values</div>
+  <div class="grid">
+    <div class="sw" style="background: #1e3a5f; color: #60a5fa;">
+      <div class="label">IDEA</div>
+      <div><div class="name">Planning</div><div class="hex">#60a5fa</div></div>
+    </div>
+    <div class="sw" style="background: #134e4a; color: #2dd4bf;">
+      <div class="label">PLANNING</div>
+      <div><div class="name">Accent</div><div class="hex">#2dd4bf</div></div>
+    </div>
+    <div class="sw" style="background: #431407; color: #fb923c;">
+      <div class="label">GOING</div>
+      <div><div class="name">Ready</div><div class="hex">#fb923c</div></div>
+    </div>
+    <div class="sw" style="background: rgba(217,119,6,0.10); color: #fbbf24; border: 1px solid rgba(251,191,36,0.25);">
+      <div class="label">NOW · OWNER</div>
+      <div><div class="name">Warning</div><div class="hex">#fbbf24</div></div>
+    </div>
+    <div class="sw" style="background: #450a0a; color: #f87171;">
+      <div class="label">DANGER</div>
+      <div><div class="name">Red-400</div><div class="hex">#f87171</div></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>BuddyTrip — app UI kit</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../colors_and_type.css">
+<style>
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh; width: 100%;
+    background: #07090f;
+    color: var(--color-bt-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+
+  /* Layout: row of phone frames, each labelled */
+  .stage {
+    padding: 40px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 28px;
+  }
+  .stage-header {
+    width: 100%; max-width: 1320px;
+    display: flex; align-items: center; gap: 14px; margin: 0 auto;
+  }
+  .stage-header .wordmark {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 20px; font-weight: 600; letter-spacing: 0.06em; color: var(--color-bt-text);
+  }
+  .stage-header .breadcrumb {
+    font-family: var(--font-mono); font-size: 11px; color: var(--color-bt-text-dim);
+  }
+  .stage-header .spacer { flex: 1; }
+  .stage-header .controls { display: flex; gap: 6px; }
+  .ctrl {
+    all: unset; cursor: pointer;
+    padding: 6px 12px; border-radius: 9999px;
+    font-size: 12px; color: var(--color-bt-text-dim);
+    border: 1px solid var(--color-bt-border);
+    background: var(--color-bt-card);
+    transition: all 0.15s;
+  }
+  .ctrl:hover { color: var(--color-bt-text); border-color: var(--color-bt-accent); }
+  .ctrl.active { color: var(--color-bt-accent); border-color: var(--color-bt-accent); background: var(--color-bt-accent-faint); }
+
+  /* Multi-phone showcase row when "All" is active */
+  .row {
+    width: 100%; max-width: 1320px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 28px; justify-items: center;
+  }
+  .frame-label {
+    margin-top: 14px; text-align: center;
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--color-bt-text-dim); font-weight: 600;
+  }
+  .frame-wrap { display: flex; flex-direction: column; align-items: center; }
+
+  /* Keyframes used by inline animations (vote dot, countdown bar, live pill) */
+  @keyframes btPulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+
+  /* Hide the iOS frame's scroll-rounding edges on the inner content */
+  .phone-content { background: var(--color-bt-base); height: 100%; overflow: auto; }
+  .phone-content::-webkit-scrollbar { width: 0; }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- BuddyTrip atoms, chrome, screens -->
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="atoms.jsx"></script>
+<script type="text/babel" src="chrome.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+
+<!-- App entry -->
+<script type="text/babel">
+function PhoneFrame({ children, label }) {
+  return (
+    <div className="frame-wrap" data-screen-label={label}>
+      <IOSDevice width={390} height={780} dark={true}>
+        <div className="phone-content">{children}</div>
+      </IOSDevice>
+      <div className="frame-label">{label}</div>
+    </div>
+  );
+}
+
+function App() {
+  // 'all' = showcase row · or one of the screen ids for focused mode
+  const [view, setView] = React.useState('all');
+  // For the "focused" view (single phone with internal navigation)
+  const [stack, setStack] = React.useState(['dashboard']);
+  const current = stack[stack.length - 1];
+  const push = (s) => setStack((st) => [...st, s]);
+  const pop  = () => setStack((st) => st.length > 1 ? st.slice(0, -1) : st);
+
+  return (
+    <div className="stage">
+      <div className="stage-header">
+        <span className="wordmark"><BTFlag size={20} /> BuddyTrip</span>
+        <span className="breadcrumb">ui_kits / app / index.html</span>
+        <span className="spacer" />
+        <div className="controls">
+          <button className={`ctrl ${view === 'all' ? 'active' : ''}`} onClick={() => setView('all')}>Showcase</button>
+          <button className={`ctrl ${view === 'focus' ? 'active' : ''}`} onClick={() => { setView('focus'); setStack(['dashboard']); }}>Interactive</button>
+        </div>
+      </div>
+
+      {view === 'all' ? (
+        <div className="row">
+          <PhoneFrame label="01 Dashboard"><DashboardScreen onOpenTrip={() => {}} /></PhoneFrame>
+          <PhoneFrame label="02 Trip Home"><TripHomeScreen /></PhoneFrame>
+          <PhoneFrame label="03 Date poll"><DatePollScreen /></PhoneFrame>
+          <PhoneFrame label="04 Scoreboard"><ScoreboardScreen /></PhoneFrame>
+        </div>
+      ) : (
+        <div className="row" style={{ gridTemplateColumns: 'minmax(380px, 420px)' }}>
+          <PhoneFrame label={`Interactive · ${current}`}>
+            {current === 'dashboard'  && <DashboardScreen onOpenTrip={() => push('trip-home')} />}
+            {current === 'trip-home'  && <TripHomeScreen onBack={pop} onOpenDates={() => push('date-poll')} onOpenComp={() => push('scoreboard')} />}
+            {current === 'date-poll'  && <DatePollScreen onBack={pop} />}
+            {current === 'scoreboard' && <ScoreboardScreen onBack={pop} />}
+          </PhoneFrame>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+</body>
+</html>

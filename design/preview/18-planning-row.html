@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Planning row (closed + open)</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 18px 26px; }
+  .row {
+    border-radius: 12px;
+    border: 1px solid var(--color-bt-accent-border);
+    background: var(--color-bt-card);
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .row.done { background: var(--color-bt-tag-bg); }
+  .head { padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  .iconsq {
+    height: 32px; width: 32px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--color-bt-accent-faint); color: var(--color-bt-accent);
+    flex-shrink: 0;
+  }
+  .ttl { font-size: 14px; font-weight: 600; color: var(--color-bt-text); }
+  .sub { font-size: 12px; color: var(--color-bt-text-dim); margin-top: 2px; }
+  .chev { margin-left: auto; color: var(--color-bt-text-dim); }
+  .body { padding: 0 16px 16px; }
+  svg { stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .destbox {
+    background: var(--color-bt-card-raised);
+    border-radius: 10px; padding: 10px 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .badge-leading {
+    margin-left: auto; font-size: 9px; letter-spacing:.06em; text-transform: uppercase;
+    color: var(--color-bt-accent); padding: 2px 6px; border-radius: 9999px;
+    background: var(--color-bt-accent-faint); border: 0.5px solid var(--color-bt-accent-border);
+  }
+</style>
+</head>
+<body>
+  <!-- Done state -->
+  <div class="row done" style="box-shadow: var(--shadow-card);">
+    <div class="head">
+      <span class="iconsq" style="background:var(--color-bt-tag-bg);"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
+      <div>
+        <div class="ttl">Destination</div>
+        <div class="sub">Pinehurst, NC — locked ✓</div>
+      </div>
+      <span class="chev"><svg width="16" height="16" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+    </div>
+  </div>
+
+  <!-- In-progress, open -->
+  <div class="row" style="box-shadow: var(--shadow-raised);">
+    <div class="head">
+      <span class="iconsq"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg></span>
+      <div>
+        <div class="ttl">Crew</div>
+        <div class="sub">3 of 5 confirmed · 2 pending invite</div>
+      </div>
+      <span class="chev" style="transform: rotate(180deg);"><svg width="16" height="16" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+    </div>
+    <div class="body">
+      <div class="destbox">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--color-bt-accent);display:inline-block;"></span>
+        <span style="font-size: 13px; color: var(--color-bt-text);">Ryan Lynch confirmed via SMS</span>
+        <span class="badge-leading">2h ago</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

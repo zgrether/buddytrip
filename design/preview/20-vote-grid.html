@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Vote grid (date poll)</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 18px 24px; }
+  .card { background: var(--color-bt-card); border: 1px solid var(--color-bt-border); border-radius: 12px; padding: 14px; }
+  .lbl { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-bt-text-dim); margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 6px 4px; text-align: center; }
+  th { font-weight: 500; color: var(--color-bt-text-dim); font-size: 10px; }
+  td.name { text-align: left; color: var(--color-bt-text); width: 64px; padding-left: 0; border-right: 1px solid var(--color-bt-border); }
+  tr { border-bottom: 1px solid var(--color-bt-border); }
+  tr:last-child { border-bottom: none; }
+  tr:nth-child(even) td:not(.name) { background: rgba(255,255,255,.025); }
+  .v {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 22px; border-radius: 5px;
+    font-size: 11px; font-weight: 700;
+  }
+  .v.y { background: rgba(0,212,170,.15);  color: var(--color-bt-accent); }
+  .v.m { background: rgba(245,158,11,.15); color: #fbbf24; }
+  .v.n { background: rgba(239,68,68,.15);  color: var(--color-bt-danger); }
+  .v.u { background: transparent; color: var(--color-bt-text-dim);
+         border: 1px dashed var(--color-bt-border); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="lbl">Date poll · crew availability</div>
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Sep 12–15</th>
+          <th>Sep 19–22</th>
+          <th>Oct 3–6</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="name">Zach</td>  <td><span class="v y">✓</span></td><td><span class="v y">✓</span></td><td><span class="v n">✗</span></td></tr>
+        <tr><td class="name">Buddy</td> <td><span class="v y">✓</span></td><td><span class="v n">✗</span></td><td><span class="v y">✓</span></td></tr>
+        <tr><td class="name">Mike</td>  <td><span class="v y">✓</span></td><td><span class="v m">~</span></td><td><span class="v u">·</span></td></tr>
+        <tr><td class="name">Ryan</td>  <td><span class="v m">~</span></td><td><span class="v y">✓</span></td><td><span class="v n">✗</span></td></tr>
+        <tr><td class="name">Tom</td>   <td><span class="v u">·</span></td><td><span class="v y">✓</span></td><td><span class="v m">~</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
