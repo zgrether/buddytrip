@@ -672,6 +672,60 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
         }
       />
 
+      {/* Unjoined-crew nudge — pairs with the crewDot signal on the
+          tab bar (page.tsx line ~236). Fires for Owners whenever any
+          member has isGuest=true (i.e., Invited or Placeholder rows),
+          so the dot has a panel to point at. Was lost in the Task 5b
+          rewrite and brought back here per round-4 item 5. */}
+      {isOwner &&
+        members.some((m) => m.isGuest) &&
+        (() => {
+          const unjoined = members.filter((m) => m.isGuest);
+          const placeholderCount = unjoined.filter((m) => !m.user?.email).length;
+          const invitedCount = unjoined.length - placeholderCount;
+          const subline =
+            placeholderCount === 0
+              ? "We'll keep nudging them — or tap a row to resend the invite."
+              : invitedCount === 0
+                ? "Add an email to each placeholder to send them an invite."
+                : "Add emails to placeholders, or resend pending invites from a row.";
+          return (
+            <div
+              className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <span
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{
+                  background: "var(--color-bt-warning-faint)",
+                  color: "var(--color-bt-warning)",
+                }}
+              >
+                <Mail size={14} />
+              </span>
+              <div>
+                <p
+                  className="text-[13px] font-semibold leading-tight"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {unjoined.length}{" "}
+                  {unjoined.length === 1 ? "person hasn't" : "people haven't"} joined
+                  yet
+                </p>
+                <p
+                  className="mt-0.5 text-[11px] leading-snug"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  {subline}
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
         {/* Main column — Organizers + Crew sections */}
         <div className="flex flex-col gap-5">
