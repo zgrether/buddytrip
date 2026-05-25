@@ -1019,8 +1019,9 @@ export function ScheduleTab({
                   className="mt-1 text-[11px] italic leading-snug"
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
-                  Add golf rounds, activities, or ideas — drag them onto a day
-                  when you&apos;re ready.
+                  {unscheduledItems.length === 0
+                    ? "Unscheduled items live here. Drag onto a day when ready."
+                    : "Drag these to a day to add it to the agenda"}
                 </p>
               )}
 
@@ -1119,15 +1120,16 @@ export function ScheduleTab({
                         />
                       ))}
                       {/* eslint-enable react-hooks/refs */}
-                      {/* Teal-dashed "Plan something else" — matches the
-                          empty-state primary CTA pattern instead of the
-                          old dim ghost button. */}
+                      {/* "Plan something else" — dashed teal border + accent
+                          text, transparent fill so the populated-state CTA
+                          reads as a quieter "add more" affordance than the
+                          empty-state primary, which is teal-filled. */}
                       {canEdit && (
                         <button
                           onClick={() => setAddMode("general")}
                           className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-opacity hover:opacity-80"
                           style={{
-                            background: "var(--color-bt-accent-faint)",
+                            background: "transparent",
                             color: "var(--color-bt-accent)",
                             border: "1px dashed var(--color-bt-accent)",
                           }}
