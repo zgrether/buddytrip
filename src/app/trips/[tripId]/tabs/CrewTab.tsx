@@ -387,14 +387,21 @@ function AddCrewComposer({ tripId, boosted }: { tripId: string; boosted: boolean
     },
   });
 
-  const canSubmit = name.trim().length > 0 && !createGuest.isPending;
+  // Either name or email is enough — derive a sensible name from the
+  // email's local-part when the name field is left blank ("alice@x.com"
+  // → "alice"). Matches the spec hint "Either field works."
+  const trimmedName = name.trim();
+  const trimmedEmail = email.trim();
+  const derivedName =
+    trimmedName || trimmedEmail.split("@")[0]?.replace(/[._-]+/g, " ").trim();
+  const canSubmit = !!derivedName && !createGuest.isPending;
 
   const handleSubmit = () => {
-    if (!canSubmit) return;
+    if (!canSubmit || !derivedName) return;
     createGuest.mutate({
       tripId,
-      name: name.trim(),
-      ...(email.trim() && { email: email.trim() }),
+      name: derivedName,
+      ...(trimmedEmail && { email: trimmedEmail }),
       role: "Member",
     });
   };
@@ -606,6 +613,14 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   // Empty = just the owner, no one else added yet. Triggers the
   // gap-fix treatment per HANDOFF-gaps-crew-empty.md.
   const isEmpty = totalCount <= 1;
+  // Email-the-crew button is meaningless when there's no one to email.
+  // Only Active members (non-Owner) actually have a mailbox we can hit;
+  // Invited rows do too but their email reaches them through the invite
+  // system already, and Placeholders have no email at all. Show the
+  // button only when ≥ 1 non-Owner Active member exists.
+  const hasActiveNonOwnerMembers = members.some(
+    (m) => m.role !== "Owner" && deriveStatus(m) === "active"
+  );
   const tripDestination = trip.location ?? trip.locked_destination_location ?? null;
   const tripEyebrow = [trip.title, tripDestination]
     .filter(Boolean)
@@ -639,7 +654,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           )
         }
         desktopAction={
-          isOwner ? (
+          isOwner && hasActiveNonOwnerMembers ? (
             <button
               type="button"
               onClick={() => setShowEmailModal(true)}
