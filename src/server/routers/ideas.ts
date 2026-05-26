@@ -264,11 +264,11 @@ export const ideasRouter = router({
 
             const { data: voterData } = await ctx.supabase
               .from("users")
-              .select("name, nickname")
+              .select("name")
               .eq("id", ctx.user!.id)
               .single();
 
-            const voterName = voterData?.nickname ?? voterData?.name ?? "Someone";
+            const voterName = voterData?.name ?? "Someone";
 
             // Check for existing idea_voted notification within 24h
             const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

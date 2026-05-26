@@ -14,11 +14,21 @@ export type MemberEditorTarget = {
   role: string;
   isGuest: boolean;
   displayName: string;
+  /**
+   * Trip-scoped nickname from trip_members.nickname (null when unset). When
+   * set, overrides users.name for display on this trip only. Edited via
+   * tripMembers.updateNickname.
+   */
+  nickname?: string | null;
   user: {
     name?: string | null;
-    nickname?: string | null;
     email: string | null;
     is_guest?: boolean;
+    /** Account-level profile picture. The drawer's header avatar
+     *  surfaces this (with users.name as the initials fallback) so it
+     *  reflects who the account *is*, not whatever trip nickname is
+     *  currently in the input. */
+    avatar_url?: string | null;
   } | null;
 };
 
@@ -57,7 +67,10 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   const utils = trpc.useUtils();
 
   const initialEmail = member.user?.email ?? "";
-  const initialNickname = member.user?.nickname ?? member.user?.name ?? member.displayName;
+  // Nickname source-of-truth is the trip-scoped trip_members.nickname column.
+  // Falls back to the user's account name, then the resolved displayName.
+  const initialNickname =
+    member.nickname ?? member.user?.name ?? member.displayName;
 
   const [nickname, setNickname] = useState(initialNickname);
   const [email, setEmail] = useState(initialEmail);
@@ -97,6 +110,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   const updateGuest = trpc.ghostCrew.update.useMutation({
     onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
   });
+  // Trip-scoped nickname update — works for guest AND active members alike,
+  // because the nickname now lives on trip_members rather than users.
+  const updateNickname = trpc.tripMembers.updateNickname.useMutation({
+    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
   const removeMember = trpc.tripMembers.remove.useMutation({
     onSuccess: () => {
       utils.tripMembers.list.invalidate({ tripId });
@@ -130,15 +148,45 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   const isOwnerRow = member.role === "Owner";
 
   const handleSave = async () => {
-    const nicknameChanged = nickname.trim() !== (member.user?.nickname ?? member.user?.name ?? "");
+    if (!member.user_id) {
+      onClose();
+      return;
+    }
+
+    // Diff against the resolved initialNickname (what the input was
+    // pre-filled with) rather than the override-only value. Without
+    // this, opening the editor on a placeholder whose display name
+    // comes from users.name would mark the input "dirty" against an
+    // empty override and enable Save before the user typed anything.
+    // The mutation still writes trip-scoped: empty → null (falls back
+    // to users.name); non-empty → sets the override.
+    const nicknameChanged = nickname.trim() !== initialNickname.trim();
     const emailChanged = email.trim() !== (member.user?.email ?? "");
-    if (member.isGuest && member.user_id && (nicknameChanged || emailChanged)) {
-      await updateGuest.mutateAsync({
-        tripId,
-        guestUserId: member.user_id,
-        ...(nicknameChanged && { nickname: nickname.trim() }),
-        ...(emailChanged && { email: email.trim() || null }),
-      });
+
+    const tasks: Promise<unknown>[] = [];
+    if (nicknameChanged) {
+      tasks.push(
+        updateNickname.mutateAsync({
+          tripId,
+          userId: member.user_id,
+          nickname: nickname.trim(),
+        })
+      );
+    }
+    // Email is still a users-table concern, so it only applies to guest rows
+    // (real-account users manage their own email through account settings).
+    if (member.isGuest && emailChanged) {
+      tasks.push(
+        updateGuest.mutateAsync({
+          tripId,
+          guestUserId: member.user_id,
+          email: email.trim() || null,
+        })
+      );
+    }
+
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
     }
     onClose();
   };
@@ -211,52 +259,53 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
           <div className="flex min-w-0 items-center gap-3">
-            {/* Avatar — matches the row's variant logic. Placeholder
-                renders a neutral square with dim initials; invited
-                gets a small amber ✉ corner; active is the standard
-                team-color UserAvatar. */}
-            {status === "placeholder" ? (
-              <span
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-              >
-                {(nickname || member.displayName || "?")
-                  .split(/\s+/)
-                  .map((w) => w[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </span>
-            ) : status === "invited" ? (
-              <span className="relative h-9 w-9 flex-shrink-0">
-                <UserAvatar
-                  name={nickname || member.displayName}
-                  avatarUrl={null}
-                  sizePx={36}
-                />
-                <span
-                  className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
-                  style={{
-                    background: "var(--color-bt-warning)",
-                    color: "var(--color-bt-on-accent)",
-                    border: "1.5px solid var(--color-bt-card-float)",
-                  }}
-                  aria-label="Invited"
-                >
-                  <Mail size={8} strokeWidth={3} />
-                </span>
-              </span>
-            ) : (
-              <UserAvatar
-                name={nickname || member.displayName}
-                avatarUrl={null}
-                sizePx={36}
-              />
-            )}
+            {/* Avatar — always reflects the account identity (users.name
+                + users.avatar_url), never the trip-scoped nickname being
+                edited. So typing a new nickname doesn't rewrite the
+                avatar in the same drawer; the avatar stays tied to who
+                the account *is*. */}
+            {(() => {
+              const accountName = member.user?.name ?? member.displayName;
+              const accountAvatar = member.user?.avatar_url ?? null;
+              if (status === "placeholder") {
+                return (
+                  <span
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    {(accountName || "?")
+                      .split(/\s+/)
+                      .map((w) => w[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </span>
+                );
+              }
+              if (status === "invited") {
+                return (
+                  <span className="relative h-9 w-9 flex-shrink-0">
+                    <UserAvatar name={accountName} avatarUrl={accountAvatar} sizePx={36} />
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
+                      style={{
+                        background: "var(--color-bt-warning)",
+                        color: "var(--color-bt-on-accent)",
+                        border: "1.5px solid var(--color-bt-card-float)",
+                      }}
+                      aria-label="Invited"
+                    >
+                      <Mail size={8} strokeWidth={3} />
+                    </span>
+                  </span>
+                );
+              }
+              return <UserAvatar name={accountName} avatarUrl={accountAvatar} sizePx={36} />;
+            })()}
             <div className="min-w-0">
               <div
                 className="text-[10px] font-bold uppercase tracking-[0.12em]"
@@ -428,17 +477,35 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           >
             Cancel
           </button>
-          <button
-            onClick={handleSave}
-            disabled={updateGuest.isPending}
-            className="flex-1 rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-on-accent)",
-            }}
-          >
-            Save changes
-          </button>
+          {(() => {
+            // Save reflects actual unsaved diffs — typed input only.
+            // Role changes don't enable Save (they fire instantly via
+            // RoleControl; see Task 54). Email only counts as dirty
+            // for guest rows because real accounts manage their email
+            // through account settings.
+            // Mirror handleSave's diff exactly (against the resolved
+            // initialNickname, not the override-only value) so the
+            // button state matches what Save will actually do.
+            const nicknameDirty = nickname.trim() !== initialNickname.trim();
+            const emailDirty =
+              member.isGuest && email.trim() !== (member.user?.email ?? "");
+            const canSave = nicknameDirty || emailDirty;
+            const isPending = updateNickname.isPending || updateGuest.isPending;
+            return (
+              <button
+                onClick={handleSave}
+                disabled={!canSave || isPending}
+                className="flex-1 rounded-lg py-2 text-sm font-semibold transition-opacity enabled:hover:opacity-90 disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-on-accent)",
+                  cursor: !canSave || isPending ? "not-allowed" : "pointer",
+                }}
+              >
+                {isPending ? "Saving…" : "Save changes"}
+              </button>
+            );
+          })()}
         </div>
       </div>
     </>

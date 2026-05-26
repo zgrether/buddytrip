@@ -35,10 +35,10 @@ export interface AuthData {
 }
 
 const USERS = [
-  { key: "owner", email: "test-owner@buddytrip.app", name: "Test Owner", nickname: "owner" },
-  { key: "planner", email: "test-planner@buddytrip.app", name: "Test Planner", nickname: "planner" },
-  { key: "member", email: "test-member@buddytrip.app", name: "Test Member", nickname: "member" },
-  { key: "outsider", email: "test-outsider@buddytrip.app", name: "Test Outsider", nickname: "outsider" },
+  { key: "owner", email: "test-owner@buddytrip.app", name: "Test Owner" },
+  { key: "planner", email: "test-planner@buddytrip.app", name: "Test Planner" },
+  { key: "member", email: "test-member@buddytrip.app", name: "Test Member" },
+  { key: "outsider", email: "test-outsider@buddytrip.app", name: "Test Outsider" },
 ] as const;
 
 const PASSWORD = "BuddyTripTest2026!";
@@ -67,7 +67,7 @@ export async function setup() {
         email: u.email,
         password: PASSWORD,
         email_confirm: true,
-        user_metadata: { name: u.name, nickname: u.nickname },
+        user_metadata: { name: u.name },
       });
       if (error) {
         const hint = error.message.includes("Legacy API keys")

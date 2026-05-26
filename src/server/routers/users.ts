@@ -9,7 +9,7 @@ export const usersRouter = router({
   getMe: authedProcedure.query(async ({ ctx }) => {
     const { data, error } = await ctx.supabase
       .from("users")
-      .select("id, name, nickname, email, avatar_url, avatar_icon")
+      .select("id, name, email, avatar_url, avatar_icon")
       .eq("id", ctx.user.id)
       .single();
 
@@ -24,18 +24,17 @@ export const usersRouter = router({
   }),
 
   // -----------------------------------------------------------------------
-  // updateMe — update current user's name/nickname/avatar_url
+  // updateMe — update current user's name/avatar_url
   // -----------------------------------------------------------------------
   updateMe: authedProcedure
     .input(
       z.object({
         name: z.string().min(1).max(200).optional(),
-        nickname: z.string().min(1).max(100).optional(),
         avatar_url: z.string().url().optional().nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (!input.name && !input.nickname && input.avatar_url === undefined) {
+      if (!input.name && input.avatar_url === undefined) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "At least one field must be provided",
@@ -44,14 +43,13 @@ export const usersRouter = router({
 
       const update: Record<string, string | null> = {};
       if (input.name) update.name = input.name;
-      if (input.nickname) update.nickname = input.nickname;
       if (input.avatar_url !== undefined) update.avatar_url = input.avatar_url;
 
       const { data, error } = await ctx.supabase
         .from("users")
         .update(update)
         .eq("id", ctx.user.id)
-        .select("id, name, nickname, email, avatar_url, avatar_icon")
+        .select("id, name, email, avatar_url, avatar_icon")
         .single();
 
       if (error) {
@@ -80,7 +78,7 @@ export const usersRouter = router({
         .from("users")
         .update({ avatar_icon: input.avatarIcon })
         .eq("id", ctx.user.id)
-        .select("id, name, nickname, email, avatar_url, avatar_icon")
+        .select("id, name, email, avatar_url, avatar_icon")
         .single();
 
       if (error) {
@@ -108,7 +106,7 @@ export const usersRouter = router({
 
       const { data, error } = await ctx.supabase
         .from("users")
-        .select("id, name, nickname, email, is_guest")
+        .select("id, name, email, is_guest")
         .eq("email", query)
         .neq("id", ctx.user.id)
         .eq("is_guest", false)

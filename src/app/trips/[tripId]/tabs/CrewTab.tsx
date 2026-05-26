@@ -25,7 +25,7 @@ type Member = {
   status: string | null;
   displayName: string;
   isGuest: boolean;
-  user: { name?: string | null; nickname?: string | null; email: string | null; is_guest?: boolean } | null;
+  user: { name?: string | null; email: string | null; is_guest?: boolean } | null;
 };
 
 /** Three derived crew states. Status is computed, not chosen. */

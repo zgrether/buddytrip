@@ -211,11 +211,11 @@ export const datePollRouter = router({
 
           const { data: voterData } = await ctx.supabase
             .from("users")
-            .select("name, nickname")
+            .select("name")
             .eq("id", ctx.user!.id)
             .single();
 
-          const voterName = voterData?.nickname ?? voterData?.name ?? "Someone";
+          const voterName = voterData?.name ?? "Someone";
 
           // Check for existing date_poll_voted notification within 24h
           const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -663,7 +663,7 @@ export const datePollRouter = router({
 
         const { data: actorData } = await ctx.supabase
           .from("users")
-          .select("name, nickname")
+          .select("name")
           .eq("id", ctx.user!.id)
           .single();
 
@@ -681,7 +681,7 @@ export const datePollRouter = router({
             recipientId: member.user_id,
             type: "date_poll_started",
             payload: {
-              owner_name: actorData?.nickname ?? actorData?.name ?? "The organizer",
+              owner_name: actorData?.name ?? "The organizer",
               trip_name: tripData?.title ?? "the trip",
               trip_id: ctx.tripId,
             },
@@ -726,7 +726,7 @@ export const datePollRouter = router({
 
         const { data: actorData } = await ctx.supabase
           .from("users")
-          .select("name, nickname")
+          .select("name")
           .eq("id", ctx.user!.id)
           .single();
 
@@ -740,7 +740,7 @@ export const datePollRouter = router({
             recipientId: userId,
             type: "date_poll_started",
             payload: {
-              owner_name: actorData?.nickname ?? actorData?.name ?? "The organizer",
+              owner_name: actorData?.name ?? "The organizer",
               trip_name: tripData?.title ?? "the trip",
               trip_id: ctx.tripId,
             },
