@@ -691,7 +691,9 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           headline="Everyone on the trip"
           body="Tag the Owner or any Organizer with planning questions. Roles and emails are managed by Organizers."
         />
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Member view grid — same shrink-and-collapse rules as the
+            organizer view (see Task 44 comment below). */}
+        <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
           <section>
             <div
               className="overflow-hidden rounded-xl"
@@ -825,7 +827,16 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           );
         })()}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
+      {/* Crew grid — collapse threshold tightened from lg (1024) to
+          900px per round-9. At lg+ the rail had room, but the page
+          read cramped because the rail competed for visual weight at
+          its fixed 320px. Rail column is now `minmax(280px, 320px)`
+          so it shrinks gradually as the viewport narrows toward 900,
+          then stacks. 280px floor keeps the composer + legend
+          readable; 320px ceiling keeps it from over-padding on wider
+          screens. Below 900px the grid collapses to a single column
+          and the rail (still .sm:flex visible) stacks below content. */}
+      <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] min-[900px]:gap-5">
         {/* Main column — Organizers + Crew sections */}
         <div className="flex flex-col gap-5">
           <CrewSection
