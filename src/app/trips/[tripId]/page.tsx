@@ -277,10 +277,14 @@ export default function TripDetailPage() {
       return (ci && (ci < tripStart || ci > tripEnd)) ||
              (co && (co < tripStart || co > tripEnd));
     });
+  // Task 70: the dot fires only when NOTHING is confirmed yet. Once at
+  // least one property is locked in we consider the lodging decided —
+  // any leftover unconfirmed entries are "considered but not booked"
+  // (parallel options the crew can still browse), not a nag.
   const lodgingUnconfirmed =
     effectiveCanEdit &&
     lodgingItems.length > 0 &&
-    lodgingItems.some((i) => !i.is_confirmed);
+    !lodgingItems.some((i) => i.is_confirmed);
   const scheduleOutOfRange =
     effectiveCanEdit &&
     tripStart && tripEnd &&
