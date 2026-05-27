@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Hotel, HousePlus, Plus } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
 import { LodgingPanel } from "../components/LodgingPanel";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
@@ -20,14 +21,21 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
   const [addOpen, setAddOpen] = useState(false);
   const openAdd = () => setAddOpen(true);
 
+  // Shares the tRPC cache with LodgingPanel — used here only to suppress
+  // the header pill on the empty desktop state, where the boosted
+  // RailComposer is the canonical primary CTA.
+  const { data: items = [] } = trpc.logistics.list.useQuery({ tripId: trip.id });
+  const lodgingCount = items.filter((i) => i.type === "lodging").length;
+  const showHeaderAction = canEdit && lodgingCount > 0;
+
   return (
     <div className={embedded ? undefined : "px-4"}>
       <TabHeader
         eyebrow="Lodging"
         headline="Where everyone's staying"
-        body="Drop in the places you're considering so the crew can compare — links, prices, sleep counts, anything helpful. Confirm the winner once it's booked and it locks onto the official trip details."
+        body="Drop in the places you're considering so the crew can compare — links, prices, sleep counts. Confirm the one(s) you book, and they're locked in as official trip details. Multi-property and multi-leg trips are fine — confirm as many as you need."
         desktopAction={
-          canEdit ? (
+          showHeaderAction ? (
             <button
               type="button"
               onClick={openAdd}
@@ -56,13 +64,20 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
         onAddOpenChange={setAddOpen}
       />
 
+      {/* sm:hidden wrapper tightens the FAB visibility to <640px so it
+          swaps with the inline composer aside at the same threshold the
+          aside appears (Task 65). TabFab's default is md:hidden (<768),
+          which left a 640-767 dead zone where both the composer AND the
+          FAB rendered. Mirrors Crew's FAB wrap. */}
       {canEdit && (
-        <TabFab
-          onClick={openAdd}
-          label="Add property"
-          icon={<HousePlus size={20} strokeWidth={2.25} />}
-          testId="add-property-fab"
-        />
+        <div className="sm:hidden">
+          <TabFab
+            onClick={openAdd}
+            label="Add property"
+            icon={<HousePlus size={20} strokeWidth={2.25} />}
+            testId="add-property-fab"
+          />
+        </div>
       )}
     </div>
   );

@@ -19,18 +19,19 @@ interface TabFabProps {
 // ── Component ────────────────────────────────────────────────────────────
 
 /**
- * TabFab — mobile-only floating action button for the entry tabs.
+ * TabFab — mobile + narrow-tablet floating action button for the entry tabs.
  *
- * On desktop the same add action lives inline in the TabHeader's eyebrow
- * row, so this FAB is `sm:hidden`. On mobile the header button would
- * either wrap awkwardly or slide off-screen on narrow viewports, so the
- * add affordance moves to a fixed bottom-right circle (Material Design
- * canonical pattern — always thumb-reachable regardless of scroll
- * position, doesn't compete with content density).
+ * On desktop (md+, ≥768px) the same add action lives inline in the
+ * TabHeader's eyebrow row OR in the empty-state rail composer, so this
+ * FAB is `md:hidden`. Below md the inline affordances collapse, so the
+ * add action moves to a fixed bottom-right circle — keeps the rail/FAB
+ * pair a true two-state system with no dead-zone width where neither
+ * is visible (round-2 T4 fix).
  *
  * Positioned in the right gutter with bottom-20 to clear the optional
- * TripBottomNav (~56px) plus iOS safe-area. The tab page already pads
- * pb-24 at the bottom so scrolled content can pass under the FAB.
+ * TripBottomNav (~56px) plus iOS safe-area. The tab page pads pb-32
+ * (round-2 T5) so scrolled content fully clears the FAB's resting
+ * position instead of sliding under it at narrow widths.
  *
  * Render this at the bottom of each tab's JSX (after content). No portal
  * is needed because the trip-detail page chrome above doesn't create a
@@ -44,7 +45,7 @@ export function TabFab({ onClick, label, icon, testId }: TabFabProps) {
       onClick={onClick}
       aria-label={label}
       data-testid={testId}
-      className="fixed right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full transition-opacity hover:opacity-90 active:scale-95 sm:hidden"
+      className="fixed right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full transition-opacity hover:opacity-90 active:scale-95 md:hidden"
       style={{
         // 80px above the viewport bottom clears the optional comp BottomNav
         // (~56px) plus a 24px gap. iOS safe-area-inset is layered on so the

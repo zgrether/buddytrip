@@ -5,22 +5,24 @@ import { requireTripRole } from "../middleware";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
-  // create — add a guest user and add them to the trip (Planner+)
+  // create — Owner-only. Adds a guest user and adds them to the trip.
   //
   // Creates a users row with is_guest=true, then a trip_members row.
-  // If email belongs to an existing real account, throws PRECONDITION_FAILED.
+  // If email belongs to an existing real account, the trip_members row is
+  // inserted against the existing user instead (auto-link).
+  //
+  // Owner-only as of Task 53 — guest crew creation is roster management.
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         name: z.string().min(1).max(100),
-        nickname: z.string().min(1).max(100).optional(),
         email: z.string().email().optional(),
         role: z.enum(["Planner", "Member"]).default("Member"),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // If email provided, check it against existing accounts
       if (input.email) {
@@ -42,14 +44,41 @@ export const ghostCrewRouter = router({
           if (existingMember) {
             throw new TRPCError({
               code: "CONFLICT",
-              message: "A user with this email is already a crew member",
+              message: "A crew member with this email already exists.",
             });
           }
 
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "This email belongs to an existing BuddyTrip account. Add them as a crew member instead.",
-          });
+          // Auto-link: instead of asking the caller to use a different
+          // endpoint, just insert a trip_members row for the existing
+          // real account. The composer's single-flow stays single-flow,
+          // and the resulting member is Active (matches the email's
+          // BT account) rather than a redundant guest record.
+          const { error: linkError } = await ctx.supabase
+            .from("trip_members")
+            .insert({
+              id: crypto.randomUUID(),
+              trip_id: ctx.tripId,
+              user_id: existingUser.id,
+              role: input.role,
+              status: "in",
+            });
+
+          if (linkError) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to add member to trip: ${linkError.message}`,
+            });
+          }
+
+          return {
+            id: existingUser.id,
+            name: input.name,
+            email: input.email ?? null,
+            is_guest: false,
+            created_by: null,
+            created_at: null,
+            role: input.role,
+          };
         }
 
         if (existingUser && existingUser.is_guest) {
@@ -86,7 +115,7 @@ export const ghostCrewRouter = router({
             });
           }
 
-          return { id: existingUser.id, name: input.name, nickname: input.nickname ?? null, email: input.email ?? null, is_guest: true, created_by: null, created_at: null, role: input.role };
+          return { id: existingUser.id, name: input.name, email: input.email ?? null, is_guest: true, created_by: null, created_at: null, role: input.role };
         }
       }
 
@@ -97,12 +126,11 @@ export const ghostCrewRouter = router({
         .insert({
           id: guestId,
           name: input.name,
-          nickname: input.nickname ?? null,
           email: input.email ?? null,
           is_guest: true,
           created_by: ctx.user!.id,
         })
-        .select("id, name, nickname, email, is_guest, created_by, created_at")
+        .select("id, name, email, is_guest, created_by, created_at")
         .single();
 
       if (guestError) {
@@ -136,7 +164,7 @@ export const ghostCrewRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit a guest user's name/nickname/email (Planner+).
+  // update — Owner-only. Edits a guest user's name/email.
   //
   // If `email` is provided and matches an existing real BuddyTrip account,
   // this swaps trip_members.user_id from the ghost to the real user (the
@@ -145,6 +173,8 @@ export const ghostCrewRouter = router({
   // trips — only the trip_members pointer changes.
   //
   // Otherwise, falls through to a plain UPDATE on the ghost users row.
+  //
+  // Owner-only as of Task 53 — guest crew editing is roster management.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -152,11 +182,10 @@ export const ghostCrewRouter = router({
         tripId: z.string(),
         guestUserId: z.string(),
         name: z.string().min(1).max(100).optional(),
-        nickname: z.string().min(1).max(100).nullable().optional(),
         email: z.string().email().nullable().optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // Verify this guest is a member of this trip
       const { data: membership } = await ctx.supabase
@@ -177,7 +206,7 @@ export const ghostCrewRouter = router({
       if (input.email) {
         const { data: existingUser } = await ctx.supabase
           .from("users")
-          .select("id, name, nickname, email, is_guest, created_at")
+          .select("id, name, email, is_guest, created_at")
           .eq("email", input.email)
           .maybeSingle();
 
@@ -220,7 +249,6 @@ export const ghostCrewRouter = router({
       // ── Plain ghost update ────────────────────────────────────────────
       const update: Record<string, unknown> = {};
       if (input.name !== undefined) update.name = input.name;
-      if (input.nickname !== undefined) update.nickname = input.nickname;
       if (input.email !== undefined) update.email = input.email;
 
       if (Object.keys(update).length === 0) {
@@ -232,7 +260,7 @@ export const ghostCrewRouter = router({
         .update(update)
         .eq("id", input.guestUserId)
         .eq("is_guest", true)
-        .select("id, name, nickname, email, is_guest, created_at")
+        .select("id, name, email, is_guest, created_at")
         .single();
 
       if (error) {

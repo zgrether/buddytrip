@@ -12,7 +12,7 @@ export async function listMembers(
   const { data, error } = await ctx.supabase
     .from("trip_members")
     .select(
-      "id, trip_id, user_id, role, status, joined_at, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at",
+      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at",
     )
     .eq("trip_id", tripId)
     .order("joined_at", { ascending: true });
@@ -31,16 +31,16 @@ export async function listMembers(
     userIds.length > 0
       ? await ctx.supabase
           .from("users")
-          .select("id, name, nickname, email, is_guest, avatar_url")
+          .select("id, name, email, is_guest, avatar_url, avatar_icon")
           .in("id", userIds)
       : {
           data: [] as {
             id: string;
             name: string | null;
-            nickname: string | null;
             email: string | null;
             is_guest: boolean;
             avatar_url: string | null;
+            avatar_icon: string | null;
           }[],
         };
 
@@ -50,8 +50,10 @@ export async function listMembers(
     const user = m.user_id ? userMap.get(m.user_id) ?? null : null;
     const isGuest = user?.is_guest ?? false;
     const memberId = m.user_id as string;
+    // Display priority: trip_members.nickname (trip-scoped override) →
+    // users.name → email → short-id fallback.
     const displayName = user
-      ? user.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`
+      ? m.nickname ?? user.name ?? user.email ?? `User ${memberId.slice(0, 6)}`
       : `Unknown ${memberId.slice(0, 6)}`;
 
     return { ...m, user, memberId, isGuest, displayName };
@@ -71,8 +73,55 @@ export const tripMembersRouter = router({
     .query(({ ctx }) => listMembers(ctx, ctx.tripId!)),
 
   // -----------------------------------------------------------------------
-  // add — Owner or Planner can add real-account members (canEdit)
+  // checkEmail — does this email belong to an Active BuddyTrip account?
+  //
+  // Used by the Crew tab's member-editor to give live feedback as the
+  // organizer types: "Already on BuddyTrip" vs "We'll send an invite".
+  // Trip-scoped + auth-required to keep enumeration risk low; returns
+  // only the verdict, never the matched user's identity.
+  // -----------------------------------------------------------------------
+  checkEmail: authedProcedure
+    .input(z.object({ tripId: z.string(), email: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const email = input.email.trim().toLowerCase();
+      if (!email) return { result: "empty" as const };
+
+      // RFC-5322-ish format check. Server-side gate so a malformed
+      // payload can't reach the lookup; the client also pre-validates
+      // for instant feedback.
+      const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!ok) return { result: "invalid" as const };
+
+      const { data, error } = await ctx.supabase
+        .from("users")
+        .select("id, is_guest")
+        .ilike("email", email)
+        .maybeSingle();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to check email",
+        });
+      }
+
+      // A real BT account = users row with is_guest=false. Guest rows
+      // exist for placeholders and unaccepted invites; matching one of
+      // those shouldn't tell the organizer "already on BuddyTrip".
+      if (data && !data.is_guest) {
+        return { result: "match" as const };
+      }
+      return { result: "invite" as const };
+    }),
+
+  // -----------------------------------------------------------------------
+  // add — Owner-only. Adds a real-account user to the trip.
   // To add ghost crew, use ghostCrew.create instead.
+  //
+  // Roster management is Owner-only as of Task 53. The UI gates the Crew
+  // management view on `isOwner`; this middleware closes the API-level door
+  // so a Planner can't bypass the UI by calling tRPC directly.
   // -----------------------------------------------------------------------
   add: authedProcedure
     .input(
@@ -83,7 +132,7 @@ export const tripMembersRouter = router({
         status: z.enum(["draft", "in", "likely", "maybe", "out", "invited"]).default("maybe"),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // Check if already a member
       const { data: existing } = await ctx.supabase
@@ -175,6 +224,63 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // updateNickname — Owner-only. Sets a trip-scoped display name for any
+  // member except the Owner. Empty string clears the override and falls
+  // back to users.name. Lives on trip_members so it doesn't affect the
+  // member's name in any other trip they're on.
+  //
+  // Owner-only as of Task 53 — renaming crew is roster management.
+  // -----------------------------------------------------------------------
+  updateNickname: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        userId: z.string(),
+        nickname: z.string().max(80),
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      // Block setting a nickname on the Owner row — Owner controls their own
+      // display name through account settings. Without this guard, any
+      // Planner could rename the Owner inside the trip context.
+      const { data: target } = await ctx.supabase
+        .from("trip_members")
+        .select("role")
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+
+      if (!target) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Member not found in this trip" });
+      }
+      if (target.role === "Owner") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "The Owner's display name can only be changed by the Owner from account settings.",
+        });
+      }
+
+      const trimmed = input.nickname.trim();
+      const nextValue = trimmed.length === 0 ? null : trimmed;
+
+      const { error } = await ctx.supabase
+        .from("trip_members")
+        .update({ nickname: nextValue })
+        .eq("trip_id", ctx.tripId)
+        .eq("user_id", input.userId);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update nickname",
+        });
+      }
+
+      return { success: true, nickname: nextValue };
+    }),
+
+  // -----------------------------------------------------------------------
   // remove — Owner only, removes a real member (not self)
   // To remove ghost crew, use ghostCrew.remove instead.
   // -----------------------------------------------------------------------
@@ -211,9 +317,11 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // inviteByEmail — Planner/Owner can invite someone by email.
+  // inviteByEmail — Owner-only. Invite someone by email.
   //   - If a real account exists: adds them to the trip + sends notification
   //   - If no account: creates guest row + invites row + sends invite email
+  //
+  // Roster management is Owner-only as of Task 53 (mirrors the UI gate).
   // -----------------------------------------------------------------------
   inviteByEmail: authedProcedure
     .input(
@@ -223,22 +331,22 @@ export const tripMembersRouter = router({
         role: z.enum(["Planner", "Member"]).default("Planner"),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       const email = input.email.trim().toLowerCase();
 
       // Fetch inviter name and trip name for email content
       const [inviterResult, tripResult] = await Promise.all([
-        ctx.supabase.from("users").select("name, nickname").eq("id", ctx.user!.id).single(),
+        ctx.supabase.from("users").select("name").eq("id", ctx.user!.id).single(),
         ctx.supabase.from("trips").select("title").eq("id", ctx.tripId).single(),
       ]);
-      const inviterName = inviterResult.data?.nickname ?? inviterResult.data?.name ?? "Someone";
+      const inviterName = inviterResult.data?.name ?? "Someone";
       const tripName = tripResult.data?.title ?? "a trip";
 
       // Check if a real (non-guest) account exists for this email
       const { data: existing } = await ctx.supabase
         .from("users")
-        .select("id, name, nickname, is_guest")
+        .select("id, name, is_guest")
         .eq("email", email)
         .maybeSingle();
 
@@ -253,7 +361,7 @@ export const tripMembersRouter = router({
           .maybeSingle();
 
         if (alreadyMember) {
-          const displayName = existing.nickname ?? existing.name ?? email;
+          const displayName = existing.name ?? email;
           return { status: "already_member" as const, displayName };
         }
 
@@ -270,7 +378,7 @@ export const tripMembersRouter = router({
           const { sendInviteExistingUser } = await import("@/lib/email");
           await sendInviteExistingUser({
             toEmail: email,
-            toName: existing.nickname ?? existing.name ?? email.split("@")[0],
+            toName: existing.name ?? email.split("@")[0],
             inviterName,
             tripName,
             tripId: ctx.tripId,
@@ -282,7 +390,7 @@ export const tripMembersRouter = router({
         // In-app notifications — notify owner about new member, and the added person
         try {
           const { createNotification } = await import("./notifications");
-          const memberName = existing.nickname ?? existing.name ?? email;
+          const memberName = existing.name ?? email;
 
           // Notify the owner (if the inviter is not the owner)
           const { data: ownerMember } = await ctx.supabase
@@ -359,7 +467,7 @@ export const tripMembersRouter = router({
         .maybeSingle();
 
       if (alreadyMember) {
-        const displayName = existing?.nickname ?? existing?.name ?? email;
+        const displayName = existing?.name ?? email;
         return { status: "already_member" as const, displayName };
       }
 
@@ -569,10 +677,10 @@ export const tripMembersRouter = router({
       // Fetch owner display name
       const { data: owner } = await ctx.supabase
         .from("users")
-        .select("name, nickname")
+        .select("name")
         .eq("id", ctx.user!.id)
         .single();
-      const ownerName = owner?.nickname ?? owner?.name ?? "Your host";
+      const ownerName = owner?.name ?? "Your host";
 
       // Verify recipients are actual trip members (prevents spoofed IDs)
       const { data: memberRows } = await ctx.supabase
@@ -587,7 +695,7 @@ export const tripMembersRouter = router({
       // Fetch user records with emails
       const { data: users } = await ctx.supabase
         .from("users")
-        .select("id, name, nickname, email")
+        .select("id, name, email")
         .in("id", verifiedIds);
 
       // Build invitation message (custom or canned default)
@@ -603,7 +711,7 @@ export const tripMembersRouter = router({
         try {
           await sendBlast({
             toEmail: user.email,
-            toName: user.nickname ?? user.name ?? user.email.split("@")[0],
+            toName: user.name ?? user.email.split("@")[0],
             ownerName,
             tripTitle: trip.title,
             invitationMessage,

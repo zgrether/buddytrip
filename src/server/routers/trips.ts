@@ -869,7 +869,7 @@ export const tripsRouter = router({
 
         const { data: ownerData } = await ctx.supabase
           .from("users")
-          .select("name, nickname")
+          .select("name")
           .eq("id", ctx.user!.id)
           .single();
 
@@ -889,7 +889,7 @@ export const tripsRouter = router({
             payload: {
               trip_name: tripForNotif?.title ?? "the trip",
               trip_id: ctx.tripId,
-              owner_name: ownerData?.nickname ?? ownerData?.name ?? "The organizer",
+              owner_name: ownerData?.name ?? "The organizer",
             },
           });
         }

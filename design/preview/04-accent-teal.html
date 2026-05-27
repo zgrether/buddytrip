@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Accent — teal</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 20px 24px; }
+  .row { display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .sw { border-radius: 12px; padding: 14px; min-height: 86px; display:flex; flex-direction:column; justify-content:space-between; }
+  .label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+  .label.dark { color: var(--color-bt-text-dim); }
+  .name { font-size: 13px; font-weight: 500; }
+  .hex { font-family: var(--font-mono); font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="tag" style="margin-bottom: 12px;">Accent · primary CTA, links, "yes", confirmed</div>
+  <div class="row">
+    <div class="sw" style="background: #2dd4bf; color: #0d1f1a;">
+      <div class="label" style="color:rgba(13,31,26,0.6)">accent</div>
+      <div><div class="name">Teal-400</div><div class="hex">#2dd4bf</div></div>
+    </div>
+    <div class="sw" style="background: #14b8a6; color: #f1f5f9;">
+      <div class="label">accent-dim</div>
+      <div><div class="name">Teal-500</div><div class="hex">#14b8a6</div></div>
+    </div>
+    <div class="sw" style="background: #134e4a; color: #2dd4bf;">
+      <div class="label">tag-bg</div>
+      <div><div class="name">Teal-900</div><div class="hex">#134e4a</div></div>
+    </div>
+    <div class="sw" style="background: rgba(45,212,191,0.12); color: #2dd4bf; border: 1px solid rgba(45,212,191,0.25);">
+      <div class="label dark">accent-faint</div>
+      <div><div class="name">Faint + border</div><div class="hex">α 0.12</div></div>
+    </div>
+  </div>
+</body>
+</html>

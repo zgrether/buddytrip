@@ -18,6 +18,7 @@
 
   --color-bt-planning: #2563eb;      /* blue-600 — full saturation */
   --color-bt-blue-bg: #eff6ff;       /* blue-50 */
+  --color-bt-planning-faint: rgba(37, 99, 235, 0.08);
   --color-bt-planning-border: rgba(37, 99, 235, 0.22);
 
   --color-bt-ready: #f97316;         /* orange-500 — events tone, warm + distinct from amber-600 owner */
@@ -45,6 +46,9 @@
   --color-bt-base-alt: #0f172a;
   --color-bt-hover: rgba(0, 0, 0, 0.04);
   --color-bt-overlay: rgba(0, 0, 0, 0.5);
+  --color-bt-overlay-drawer: rgba(0, 0, 0, 0.30); /* desktop side drawer — less disruptive than a full modal */
+  --color-bt-overlay-sheet: rgba(0, 0, 0, 0.45);  /* mobile bottom sheet — between drawer and modal */
+  --color-bt-on-accent: #0d1f1a;  /* mode-independent — dark text on teal accent fills (badges, primary buttons) */
   --color-bt-subtle-border: #e2e8f0;
   --color-bt-dim-faint: rgba(100, 116, 139, 0.12);
   --color-bt-state-fill: rgba(0, 0, 0, 0.08);
@@ -80,8 +84,8 @@
 .dark {
   --color-bt-base: #0a0e1a;          /* deep navy — matches marketing page */
   --color-bt-base-alt: #0a0e1a;
-  --color-bt-card: #111827;          /* gray-900 — matches marketing page cards */
-  --color-bt-border: rgba(148, 163, 184, 0.15); /* slate/translucent — matches marketing */
+  --color-bt-card: #161e2f;          /* lifted +5% from #111827 so panels sit clearly above base */
+  --color-bt-border: rgba(148, 163, 184, 0.18); /* slate/translucent — slightly more present after surface lift */
   --color-bt-text: #f1f5f9;          /* slate-100 */
   --color-bt-text-dim: #94a3b8;      /* slate-400 — warmer than current #8b949e */
 
@@ -91,9 +95,19 @@
   --color-bt-accent-faint: rgba(45, 212, 191, 0.12);
   --color-bt-accent-border: rgba(45, 212, 191, 0.25);
 
-  --color-bt-planning: #60a5fa;      /* blue-400 — vivid on dark */
+  /* Planning blue is bumped from blue-400 (#60a5fa, L≈0.36) to blue-300
+     (#93c5fd, L≈0.54) so it reads at the same perceived brightness as
+     the teal accent #2dd4bf (L≈0.51) on dark. The two-tone treatment
+     stays — accent (teal) vs planning (blue) — but at matched luminosity
+     so the ORGANIZERS / CREW SectionBanners feel like the same component
+     in two hues rather than primary / secondary.
+     planning-faint alpha lifts 0.08 → 0.12 to match accent-faint's 0.12.
+     blue-bg (used by status badges + ItineraryView, not the banner) is
+     left at #1e3a5f — touching it would ripple into unrelated surfaces. */
+  --color-bt-planning: #93c5fd;      /* blue-300 — matches teal-400 luminosity */
   --color-bt-blue-bg: #1e3a5f;
-  --color-bt-planning-border: rgba(96, 165, 250, 0.25);
+  --color-bt-planning-faint: rgba(147, 197, 253, 0.12);
+  --color-bt-planning-border: rgba(147, 197, 253, 0.25);
 
   --color-bt-ready: #fb923c;         /* orange-400 — events tone on dark */
   --color-bt-ready-bg: #431407;      /* orange-950 */
@@ -123,11 +137,14 @@
   --shadow-card: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
   --shadow-raised: 0 4px 12px rgba(0,0,0,.4), 0 2px 4px rgba(0,0,0,.25);
   --shadow-floating: 0 8px 24px rgba(0,0,0,.5), 0 4px 8px rgba(0,0,0,.3);
-  --color-bt-card-raised: #1a2130;   /* one step above card */
-  --color-bt-card-float: #222b3d;   /* two steps above card — modals, dropdowns */
+  --color-bt-card-raised: #1f2a40;   /* lifted +8% — inputs, zebra rows, inactive chips read clean against lifted card */
+  --color-bt-card-float: #2a3654;   /* lifted to stay clearly above card-raised — tooltips, popovers, drawers */
 
   --color-bt-hover: rgba(255, 255, 255, 0.06);
   --color-bt-overlay: rgba(0, 0, 0, 0.7);
+  --color-bt-overlay-drawer: rgba(0, 0, 0, 0.40); /* desktop side drawer — less disruptive than a full modal */
+  --color-bt-overlay-sheet: rgba(0, 0, 0, 0.55);  /* mobile bottom sheet — between drawer and modal */
+  --color-bt-on-accent: #0d1f1a;  /* mode-independent — dark text on teal accent fills (badges, primary buttons) */
   --color-bt-subtle-border: rgba(148, 163, 184, 0.08); /* matches marketing dividers */
   --color-bt-dim-faint: rgba(148, 163, 184, 0.12);
   --color-bt-state-fill: rgba(255, 255, 255, 0.13);

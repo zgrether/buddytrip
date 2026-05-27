@@ -105,8 +105,15 @@ export function AddScheduleItemSheet({
   // General fields
   const [title, setTitle] = useState(editItem?.title ?? "");
   const [detail, setDetail] = useState(editItem?.detail ?? "");
-  const [scheduledDate] = useState(editItem?.scheduled_date ?? "");
+  const [scheduledDate, setScheduledDate] = useState(editItem?.scheduled_date ?? "");
   const [scheduledTime, setScheduledTime] = useState(editItem?.scheduled_time ?? "");
+
+  // Trip date bounds — used to clamp the date input so users can't
+  // assign an item outside the trip range. Free read because the
+  // parent page already prefetches this.
+  const { data: trip } = trpc.trips.getById.useQuery({ tripId });
+  const tripStart = trip?.start_date ?? undefined;
+  const tripEnd = trip?.end_date ?? undefined;
 
   // Golf fields
   const [selectedCourse, setSelectedCourse] = useState<{
@@ -353,29 +360,75 @@ export function AddScheduleItemSheet({
   const canSubmit = isGolf ? !!selectedCourse : !!title.trim();
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
+    <>
+      {/* Tiered backdrop tokens — sheet (mobile) vs drawer (desktop). */}
       <div
-        className="max-h-[85vh] w-full max-w-[480px] overflow-y-auto rounded-t-2xl p-5 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
+        className="fixed inset-0 z-40 sm:hidden"
+        style={{ background: "var(--color-bt-overlay-sheet)" }}
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        className="fixed inset-0 z-40 hidden sm:block"
+        style={{ background: "var(--color-bt-overlay-drawer)" }}
+        onClick={onClose}
+        aria-hidden
+      />
+
+      {/* Panel — bottom-sheet (mobile) / right-anchored 440px drawer
+          (tablet + desktop, sm+ / ≥640px). Sticky header + scrollable
+          body + sticky footer per the canonical edit-drawer spec.
+          Threshold dropped from lg (1024) to sm (640) per Task 51 —
+          bottom sheets are a mobile pattern and shouldn't activate at
+          tablet widths where the right drawer fits comfortably. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={[
+          "fixed z-50 flex flex-col",
+          "inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl",
+          "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:max-h-screen sm:w-[440px] sm:rounded-none",
+        ].join(" ")}
+        style={{
+          background: "var(--color-bt-card-float)",
+          boxShadow: "var(--shadow-floating)",
+          borderLeft: "1px solid var(--color-bt-border)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2
-          className="text-lg font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
+        {/* Header — sticky top */}
+        <div
+          className="flex-shrink-0 px-5 pb-3 pt-4"
+          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
-          {isEditing
-            ? isGolf ? "Edit Golf Round" : "Edit Activity"
-            : "Add to Agenda"}
-        </h2>
+          <h2
+            className="text-lg font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {isEditing
+              ? isGolf ? "Edit Golf Round" : "Edit Activity"
+              : "Add to Agenda"}
+          </h2>
+        </div>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+
+        {/* Helper caption per round-4 item 7 — sets expectations for
+            the type-selector + form below. */}
+        {!isEditing && (
+          <p
+            className="mt-1 text-[12px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Pick a type, then fill in the basics.
+          </p>
+        )}
 
         {/* ── Type selector (add mode only) ────────────────────────────── */}
         {!isEditing && (
           <div
-            className="mt-4 inline-flex rounded-xl p-1"
+            className="mt-3 inline-flex rounded-xl p-1"
             style={{
               background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
@@ -556,7 +609,15 @@ export function AddScheduleItemSheet({
                     type="button"
                     onClick={() => {
                       setManualMode(true);
-                      setManualName(placesSearch.query);
+                      const q = placesSearch.query.trim();
+                      setManualName(q);
+                      // Mirror the onChange path of the manual name
+                      // input so canSubmit picks up the pre-filled
+                      // query immediately. Without this, the button
+                      // stays disabled until the user re-types.
+                      if (q) {
+                        setSelectedCourse({ placeId: "", name: q, address: "" });
+                      }
                       placesSearch.clear();
                     }}
                     className="mt-1.5 text-xs transition-opacity hover:opacity-70"
@@ -567,6 +628,26 @@ export function AddScheduleItemSheet({
                 )}
               </div>
             )}
+
+            {/* Date — restored for golf rounds too (round-7 item 7).
+                Native date input clamped to the trip date range so
+                rounds can be assigned to a day directly from the
+                drawer instead of via On Deck drag. */}
+            <p
+              className="mt-3 mb-1.5 text-xs font-medium"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Date <span className="font-normal">(optional)</span>
+            </p>
+            <input
+              type="date"
+              value={scheduledDate}
+              min={tripStart}
+              max={tripEnd}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              className="rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={inputStyle}
+            />
 
             {/* Tee times */}
             <p
@@ -734,43 +815,75 @@ export function AddScheduleItemSheet({
             below, so this slot only renders for non-golf items. */}
         {!isGolf && (
           <>
-            <p className="mt-3 mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-              Time <span className="font-normal">(optional)</span>
-            </p>
-            <input
-              type="time"
-              value={scheduledTime}
-              onChange={(e) => setScheduledTime(e.target.value)}
-              className="w-32 rounded-xl border px-3 py-2.5 text-sm outline-none"
-              style={inputStyle}
-            />
+            {/* Date + Time — date select restored per round-4 item 8.
+                Native date input with min/max bound to the trip's date
+                range keeps users from assigning items outside it. */}
+            <div className="mt-3 flex gap-3">
+              <div>
+                <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Date <span className="font-normal">(optional)</span>
+                </p>
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  min={tripStart}
+                  max={tripEnd}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  className="rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Time <span className="font-normal">(optional)</span>
+                </p>
+                <input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                  className="w-32 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
           </>
         )}
 
-        {/* Actions */}
-        <button
-          onClick={handleSubmit}
-          disabled={isPending || !canSubmit}
-          className="mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-          }}
+        </div>
+
+        {/* Footer — sticky bottom */}
+        <div
+          className="flex flex-shrink-0 gap-2 px-5 py-3"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
         >
-          {isPending
-            ? isEditing ? "Saving..." : "Adding..."
-            : isEditing
-            ? "Save changes"
-            : isGolf ? "Add Golf Round" : "Add Activity"}
-        </button>
-        <button
-          onClick={onClose}
-          className="mt-2 w-full rounded-xl py-2.5 text-sm transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
+          <button
+            onClick={onClose}
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+            style={{
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text-dim)",
+              background: "transparent",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isPending || !canSubmit}
+            className="flex-1 rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-on-accent)",
+            }}
+          >
+            {isPending
+              ? isEditing ? "Saving..." : "Adding..."
+              : isEditing
+              ? "Save changes"
+              : isGolf ? "Add Golf Round" : "Add Activity"}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

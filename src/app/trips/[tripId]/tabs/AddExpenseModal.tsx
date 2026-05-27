@@ -121,18 +121,46 @@ export function AddExpenseModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <>
+      {/* Tiered backdrops — sheet alpha mobile, drawer alpha desktop. */}
       <div
-        className="absolute inset-0"
-        style={{ background: "var(--color-bt-overlay)" }}
+        className="fixed inset-0 z-40 sm:hidden"
+        style={{ background: "var(--color-bt-overlay-sheet)" }}
         onClick={onClose}
+        aria-hidden
       />
       <div
-        className="relative w-full max-w-lg rounded-2xl p-5"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+        className="fixed inset-0 z-40 hidden sm:block"
+        style={{ background: "var(--color-bt-overlay-drawer)" }}
+        onClick={onClose}
+        aria-hidden
+      />
+
+      {/* Panel — bottom sheet (mobile) / right-anchored 440px drawer
+          (tablet + desktop, sm+ / ≥640px). Matches the Edit drawer +
+          AddPropertySheet / AddScheduleItemSheet pattern so every
+          add/edit affordance across tabs uses the same chrome.
+          Breakpoint dropped from lg → sm per Task 51. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={[
+          "fixed z-50 flex flex-col",
+          "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
+          "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:max-h-screen sm:w-[440px] sm:rounded-none",
+        ].join(" ")}
+        style={{
+          background: "var(--color-bt-card-float)",
+          boxShadow: "var(--shadow-floating)",
+          borderLeft: "1px solid var(--color-bt-border)",
+        }}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
+        {/* Header — sticky top */}
+        <div
+          className="flex flex-shrink-0 items-center justify-between px-5 pb-3 pt-4"
+          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+        >
           <h2 className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
             Add Receipt
           </h2>
@@ -145,11 +173,12 @@ export function AddExpenseModal({
           </button>
         </div>
 
-        <div className="space-y-3">
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {/* Side-by-side Description + Amount */}
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Receipt</label>
+              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Title</label>
               <input
                 data-testid="expense-title-input"
                 placeholder="Description (e.g. Dinner)"
@@ -258,34 +287,45 @@ export function AddExpenseModal({
             />
           )}
 
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="flex-1 rounded-lg border py-2 text-sm"
-              style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-            >
-              Cancel
-            </button>
-            <button
-              data-testid="save-expense-btn"
-              disabled={
-                !title.trim() ||
-                !amount ||
-                amountNum <= 0 ||
-                !paidByUserId ||
-                (splitMode === "custom" && splitAmong.length === 0) ||
-                createExpense.isPending
-              }
-              onClick={handleCreate}
-              className="flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-40"
-              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            >
-              Add Receipt
-            </button>
-          </div>
+        </div>
+
+        {/* Footer — sticky bottom */}
+        <div
+          className="flex flex-shrink-0 gap-2 px-5 py-3"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
+        >
+          <button
+            onClick={onClose}
+            className="rounded-lg border px-4 py-2 text-sm font-medium"
+            style={{
+              borderColor: "var(--color-bt-border)",
+              color: "var(--color-bt-text-dim)",
+              background: "transparent",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="save-expense-btn"
+            disabled={
+              !title.trim() ||
+              !amount ||
+              amountNum <= 0 ||
+              !paidByUserId ||
+              (splitMode === "custom" && splitAmong.length === 0) ||
+              createExpense.isPending
+            }
+            onClick={handleCreate}
+            className="flex-1 rounded-lg py-2 text-sm font-semibold disabled:opacity-40"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-on-accent)",
+            }}
+          >
+            Add Receipt
+          </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }

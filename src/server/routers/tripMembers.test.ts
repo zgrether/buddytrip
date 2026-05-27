@@ -31,16 +31,23 @@ describe("tripMembers router", () => {
     expect(members[0].user).toBeTruthy();
   });
 
-  // add
-  it("add — planner can add a member", async () => {
+  // add — Owner-only (Task 53 hardening: roster management is Owner-only).
+  it("add — owner can add a member", async () => {
     const outsider = ctx.getUser("outsider");
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     const added = await caller.tripMembers.add({
       tripId,
       userId: outsider.id,
     });
     expect(added.user_id).toBe(outsider.id);
     expect(added.role).toBe("Member");
+  });
+
+  it("add — planner cannot add (Owner only)", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.add({ tripId, userId: genId("fake-user") })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("add — member cannot add", async () => {
@@ -53,7 +60,7 @@ describe("tripMembers router", () => {
 
   it("add — duplicate throws CONFLICT", async () => {
     const outsider = ctx.getUser("outsider");
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     await expect(
       caller.tripMembers.add({ tripId, userId: outsider.id })
     ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -86,9 +93,9 @@ describe("tripMembers router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // inviteByEmail
-  it("inviteByEmail — planner can invite a new email", async () => {
-    const caller = ctx.callerAs("planner");
+  // inviteByEmail — Owner-only (Task 53 hardening).
+  it("inviteByEmail — owner can invite a new email", async () => {
+    const caller = ctx.caller();
     const result = await caller.tripMembers.inviteByEmail({
       tripId,
       email: "newperson@example.com",
@@ -98,7 +105,7 @@ describe("tripMembers router", () => {
   });
 
   it("inviteByEmail — duplicate invite returns already_member", async () => {
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     const result = await caller.tripMembers.inviteByEmail({
       tripId,
       email: "newperson@example.com",
@@ -110,7 +117,7 @@ describe("tripMembers router", () => {
     // Use a fresh trip so outsider isn't already a member
     const freshTripId = await ctx.createTrip("Invite Fresh Trip");
     await ctx.addTripMember(freshTripId, "planner", "Planner");
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     const outsider = ctx.getUser("outsider");
     const result = await caller.tripMembers.inviteByEmail({
       tripId: freshTripId,
@@ -119,10 +126,92 @@ describe("tripMembers router", () => {
     expect(result.status).toBe("added_existing");
   });
 
+  it("inviteByEmail — planner cannot invite (Owner only)", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("inviteByEmail — member cannot invite", async () => {
     const caller = ctx.callerAs("member");
     await expect(
       caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  // updateNickname — trip-scoped display-name override (Task 47).
+  //
+  // The earlier MemberEditor only fired ghostCrew.update when the row was a
+  // guest, so renames for real-account members silently dropped. This
+  // mutation lives on trip_members so it works for everyone. As of Task 53
+  // it's Owner-only — the Owner row is also locked so an Owner can't rename
+  // themselves through the trip context (they use account settings).
+  it("updateNickname — owner can rename a member", async () => {
+    const member = ctx.getUser("member");
+    const caller = ctx.caller();
+    const result = await caller.tripMembers.updateNickname({
+      tripId,
+      userId: member.id,
+      nickname: "Buddy",
+    });
+    expect(result.success).toBe(true);
+    expect(result.nickname).toBe("Buddy");
+
+    // listMembers now surfaces the override as displayName so the rail and
+    // edit drawer pick it up without extra plumbing.
+    const list = await caller.tripMembers.list({ tripId });
+    const row = list.find((m) => m.user_id === member.id);
+    expect(row?.nickname).toBe("Buddy");
+    expect(row?.displayName).toBe("Buddy");
+  });
+
+  it("updateNickname — empty string clears the override", async () => {
+    const member = ctx.getUser("member");
+    const caller = ctx.caller();
+    const result = await caller.tripMembers.updateNickname({
+      tripId,
+      userId: member.id,
+      nickname: "   ",
+    });
+    // Whitespace-only collapses to null so display falls back to users.name.
+    expect(result.nickname).toBeNull();
+  });
+
+  it("updateNickname — Owner row is locked", async () => {
+    // The Owner-row guard is checked even for Owner callers, so this
+    // verifies the guard rather than the role middleware.
+    const caller = ctx.caller();
+    await expect(
+      caller.tripMembers.updateNickname({
+        tripId,
+        userId: ctx.user.id,
+        nickname: "Boss",
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("updateNickname — planner cannot rename (Owner only)", async () => {
+    const member = ctx.getUser("member");
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.updateNickname({
+        tripId,
+        userId: member.id,
+        nickname: "Nope",
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("updateNickname — plain member cannot rename others", async () => {
+    const member = ctx.getUser("member");
+    const caller = ctx.callerAs("member");
+    await expect(
+      caller.tripMembers.updateNickname({
+        tripId,
+        userId: member.id,
+        nickname: "Mine",
+      })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 

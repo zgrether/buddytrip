@@ -11,16 +11,34 @@ interface TabHeaderProps {
    * this — the trip header above already makes context obvious).
    */
   eyebrow?: string;
+  /**
+   * Eyebrow color. "accent" (default) uses the brand teal — the
+   * standard tab eyebrow treatment. "dim" uses bt-text-dim and is
+   * reserved for empty-state pages where the eyebrow conveys
+   * neutral context (trip name · location) rather than the tab
+   * identity itself.
+   */
+  eyebrowTone?: "accent" | "dim";
   /** Bold display headline. */
   headline: string;
-  /** Short paragraph of dim body copy below the headline. */
-  body: string;
+  /** Short paragraph of dim body copy below the headline. Accepts a
+   *  string for plain copy, or a ReactNode when the body needs inline
+   *  formatting (e.g. a bolded defined term like **placeholder**). */
+  body: import("react").ReactNode;
   /**
    * Optional action(s) rendered on the right of the eyebrow row at sm+.
    * Hidden on mobile (per-tab TabFab takes over the add affordance there).
    * Requires `eyebrow` to be present — without it there's no row anchor.
    */
   desktopAction?: ReactNode;
+  /**
+   * When true, the action stays visible at every viewport instead of
+   * hiding below md. Use this for non-add affordances (e.g. Crew's
+   * "Email the crew" button) where the FAB doesn't substitute — the
+   * FAB is the *add* CTA, secondary actions need their own real
+   * estate on mobile.
+   */
+  actionAlwaysVisible?: boolean;
   /** data-testid for E2E targeting. */
   testId?: string;
 }
@@ -47,9 +65,11 @@ interface TabHeaderProps {
  */
 export function TabHeader({
   eyebrow,
+  eyebrowTone = "accent",
   headline,
   body,
   desktopAction,
+  actionAlwaysVisible = false,
   testId,
 }: TabHeaderProps) {
   return (
@@ -63,14 +83,34 @@ export function TabHeader({
           <span
             className="text-[11px] font-semibold uppercase"
             style={{
-              color: "var(--color-bt-accent)",
+              color:
+                eyebrowTone === "dim"
+                  ? "var(--color-bt-text-dim)"
+                  : "var(--color-bt-accent)",
               letterSpacing: "0.1em",
             }}
           >
             {eyebrow}
           </span>
           {desktopAction && (
-            <div className="hidden flex-shrink-0 sm:flex sm:items-center sm:gap-2">
+            // Default behavior (round-3 narrow-tablet Option A): the
+            // header action hides below md so the FAB is the sole add
+            // affordance at narrow tablet + phone widths. Pairs with
+            // TabFab's md:hidden (Task 14) so rail/FAB swap at the
+            // same breakpoint.
+            //
+            // actionAlwaysVisible escape hatch: non-add affordances
+            // (e.g. Crew's "Email the crew" button) stay visible at
+            // every width — the FAB only substitutes for add, and a
+            // secondary action shouldn't lose its real estate on
+            // mobile.
+            <div
+              className={
+                actionAlwaysVisible
+                  ? "flex flex-shrink-0 items-center gap-2"
+                  : "hidden flex-shrink-0 md:flex md:items-center md:gap-2"
+              }
+            >
               {desktopAction}
             </div>
           )}

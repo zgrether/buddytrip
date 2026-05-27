@@ -232,16 +232,28 @@ export default function TripDetailPage() {
       : activeTabRaw;
 
   // ── Tab badge conditions ──────────────────────────────────────────────
-  // crewDot: owner sees a dot when any member hasn't joined yet (guest/placeholder)
-  const crewDot = isOwner && (members as Array<{ isGuest?: boolean }>).some((m) => m.isGuest);
-  // scheduleDot: fires when any item is incomplete — either has no date assigned
-  // (unscheduled) OR has a date but hasn't been confirmed yet. Both states need
-  // action before the item can appear on the crew's official itinerary.
+  // crewDot: owner sees a dot when at least one member is Invited —
+  // i.e., has an email but hasn't signed up yet, so a resend-invite
+  // action is meaningful. Placeholders (name-only) are intentional
+  // headcount entries and don't earn the dot.
+  const crewDot =
+    isOwner &&
+    (members as Array<{ isGuest?: boolean; user?: { email?: string | null } | null }>).some(
+      (m) => m.isGuest && !!m.user?.email
+    );
+  // schedule badge: two tiers, parallel to lodging.
+  //  "warning" — one or more agenda items have a scheduled_date that
+  //              falls outside the trip date range (likely a typo).
+  //  "info"    — at least one item is still incomplete (unscheduled
+  //              or scheduled-but-unconfirmed). Normal planning action.
+  // Warning takes priority; only shown to editors.
+  const scheduleItems = prefetchedSchedule as Array<{
+    is_confirmed: boolean;
+    scheduled_date?: string | null;
+  }>;
   const scheduleDot =
     effectiveCanEdit &&
-    (prefetchedSchedule as Array<{ is_confirmed: boolean; scheduled_date?: string | null }>).some(
-      (item) => !item.scheduled_date || !item.is_confirmed
-    );
+    scheduleItems.some((item) => !item.scheduled_date || !item.is_confirmed);
   // lodging badge: two tiers.
   //  "warning" — one or more lodging properties have check-in/out dates
   //              that fall outside the trip date range (likely a typo).
@@ -269,6 +281,13 @@ export default function TripDetailPage() {
     effectiveCanEdit &&
     lodgingItems.length > 0 &&
     lodgingItems.some((i) => !i.is_confirmed);
+  const scheduleOutOfRange =
+    effectiveCanEdit &&
+    tripStart && tripEnd &&
+    scheduleItems.some((item) => {
+      const d = item.scheduled_date ?? null;
+      return d && (d < tripStart || d > tripEnd);
+    });
   // compDot: warning when any scored GOLF event has no agenda item linked.
   const compDot =
     !!competition &&
@@ -276,8 +295,13 @@ export default function TripDetailPage() {
       .some((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item);
 
   const tabBadges: Partial<Record<TabId, "info" | "warning">> = {};
-  if (crewDot) tabBadges.crew = "info";
-  if (scheduleDot) tabBadges.schedule = "info";
+  // Crew uses the "warning" tier so the tab dot picks up amber — matches
+  // the Pending status hue elsewhere on the tab (legend dot, nudge icon,
+  // row subline, avatar corner badge). Task 61 tried planning-blue here
+  // for a softer feel but the dot blended in; amber stands out.
+  if (crewDot) tabBadges.crew = "warning";
+  if (scheduleOutOfRange) tabBadges.schedule = "warning";
+  else if (scheduleDot) tabBadges.schedule = "info";
   if (lodgingOutOfRange) tabBadges.lodging = "warning";
   else if (lodgingUnconfirmed) tabBadges.lodging = "info";
   if (compDot) tabBadges.comp = "warning";
@@ -427,7 +451,7 @@ export default function TripDetailPage() {
                 stage={stage}
                 badges={tabBadges}
               />
-              <div className="pt-4 pb-24">
+              <div className="pt-4 pb-32">
                 {tripIsReadOnly && activeTab === "home" && (
                   <div
                     className="mb-3 flex items-center gap-2 rounded-xl px-4 py-2.5"
@@ -460,6 +484,7 @@ export default function TripDetailPage() {
                     canEdit={effectiveCanEdit}
                     isOwner={tripIsReadOnly ? false : isOwner}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
+                    onTabChange={setActiveTab}
                   />
                 )}
                 {activeTab === "crew" && (

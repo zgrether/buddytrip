@@ -52,7 +52,7 @@ export interface ItineraryTripMember {
   travel_shared?: boolean | null;
   /** Guest (placeholder) members can't share their own travel — exclude them. */
   isGuest?: boolean | null;
-  user?: { name?: string | null; nickname?: string | null; avatar_url?: string | null } | null;
+  user?: { name?: string | null; avatar_url?: string | null } | null;
 }
 
 // ── Output shape ──────────────────────────────────────────────────────────

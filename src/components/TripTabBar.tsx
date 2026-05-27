@@ -31,7 +31,8 @@ interface TripTabBarProps {
    * active tab so the user keeps seeing there's an issue with the
    * surface they're on (not just on tabs they haven't visited).
    * "info"    → teal  (normal action item, e.g. unconfirmed items)
-   * "warning" → yellow (needs attention, e.g. dates out of range)
+   * "warning" → yellow (needs attention, e.g. dates out of range,
+   *                     Pending crew members waiting on you)
    */
   badges?: Partial<Record<TabId, "info" | "warning">>;
 }

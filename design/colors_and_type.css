@@ -1,0 +1,187 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   BuddyTrip — colors & type
+   ─────────────────────────────────────────────────────────────────────────
+   Single source of truth for tokens. Mirrors the runtime
+   `--color-bt-*` system from the production app's globals.css.
+
+   • Dark is the default theme — the app ships dark-only today.
+     Light tokens are kept here for parity with the in-repo style guide.
+   • Type stack is system-sans (SF / Segoe / Roboto) + system-mono.
+     No webfonts ship — the brand intentionally rides on the OS.
+   • Never use raw hex in product code — reference these vars.
+   ───────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Surfaces ─────────────────────────────────────────────────────── */
+  --color-bt-base:           #f4f7fa;  /* page background */
+  --color-bt-card:           #ffffff;  /* panel / card */
+  --color-bt-card-raised:    #f4f7fa;  /* inactive btn, zebra row, input */
+  --color-bt-card-float:     #e8edf5;  /* tooltips, popovers */
+  --color-bt-border:         #c8d0da;
+  --color-bt-subtle-border:  #e2e8f0;
+  --color-bt-hover:          rgba(0, 0, 0, 0.04);
+  --color-bt-overlay:        rgba(0, 0, 0, 0.5);
+  --color-bt-past-bg:        #f8fafc;
+  --color-bt-nav-bg:         rgba(244, 247, 250, 0.85);
+  --color-bt-surface-invitation: rgba(255, 255, 255, 0.6);
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --color-bt-text:           #0f172a;  /* near-black, hint of navy */
+  --color-bt-text-dim:       #64748b;  /* slate-500 */
+
+  /* ── Accent (teal — the brand) ────────────────────────────────────── */
+  --color-bt-accent:         #0d9488;  /* teal-600 */
+  --color-bt-accent-dim:     #0f766e;
+  --color-bt-tag-bg:         #f0fdfa;  /* teal-50 */
+  --color-bt-accent-faint:   rgba(13, 148, 136, 0.08);
+  --color-bt-accent-border:  rgba(13, 148, 136, 0.22);
+
+  /* ── Stage / status colors ────────────────────────────────────────── */
+  --color-bt-planning:        #2563eb;  /* IDEA / planning blue */
+  --color-bt-blue-bg:         #eff6ff;
+  --color-bt-planning-border: rgba(37, 99, 235, 0.22);
+
+  --color-bt-ready:           #f97316;  /* GOING / events orange */
+  --color-bt-ready-bg:        #fff7ed;
+  --color-bt-ready-border:    rgba(249, 115, 22, 0.22);
+
+  --color-bt-owner:           #d97706;  /* OWNER role amber */
+  --color-bt-warning:         #d97706;  /* maybe / heads-up amber */
+  --color-bt-warning-faint:   rgba(217, 119, 6, 0.08);
+  --color-bt-warning-border:  rgba(217, 119, 6, 0.20);
+
+  --color-bt-danger:          #dc2626;
+  --color-bt-danger-bg:       #fef2f2;
+  --color-bt-danger-faint:    rgba(220, 38, 38, 0.08);
+  --color-bt-danger-border:   rgba(220, 38, 38, 0.20);
+
+  /* ── Vote colors (mode-independent) ───────────────────────────────── */
+  --color-bt-vote-yes:        #00d4aa;
+  --color-bt-vote-yes-text:   #0d1f1a;
+  --color-bt-vote-maybe:      #f59e0b;
+  --color-bt-vote-no:         #ef4444;
+  --color-bt-vote-color:      #ffffff;
+
+  /* ── Heatmap places (finishing position 1–4) ──────────────────────── */
+  --color-bt-place-1-bg:      rgba(34, 197, 94, 0.18);
+  --color-bt-place-1-text:    #15803d;
+  --color-bt-place-2-bg:      rgba(59, 130, 246, 0.16);
+  --color-bt-place-2-text:    #1d4ed8;
+  --color-bt-place-3-bg:      rgba(245, 158, 11, 0.20);
+  --color-bt-place-3-text:    #b45309;
+  --color-bt-place-4-bg:      rgba(239, 68, 68, 0.16);
+  --color-bt-place-4-text:    #b91c1c;
+
+  /* ── Team identity (intentionally outside the design system) ──────── */
+  --color-bt-team-blue:       #3b82f6;
+  --color-bt-team-green:      #22c55e;
+  --color-bt-team-purple:     #a855f7;
+  --color-bt-team-cyan:       #06b6d4;
+  --color-bt-team-orange:     #f97316;
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  --shadow-card:     0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-raised:   0 4px 12px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
+  --shadow-floating: 0 8px 24px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.06);
+
+  /* ── Radii ────────────────────────────────────────────────────────── */
+  --radius-sm:  6px;   /* rounded-md  · compact inline edits */
+  --radius-md: 10px;   /* rounded-lg  · small chips, icon buttons */
+  --radius-lg: 12px;   /* rounded-xl  · DEFAULT for cards, buttons, modals */
+  --radius-xl: 16px;   /* rounded-2xl · hero cards, large panels */
+  --radius-pill: 9999px;
+
+  /* ── Type (system stack — no webfonts) ───────────────────────────── */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Semantic type vars — sized for mobile-first UI */
+  --type-h1:        700 24px/1.15 var(--font-sans);  /* trip title in hero */
+  --type-h2:        700 20px/1.2  var(--font-sans);  /* card title in idea-stage */
+  --type-h3:        600 16px/1.25 var(--font-sans);  /* section headers, trip card title */
+  --type-body:      400 14px/1.5  var(--font-sans);  /* default body */
+  --type-body-sm:   400 13px/1.45 var(--font-sans);  /* notification rows, subtitles */
+  --type-meta:      400 12px/1.4  var(--font-sans);  /* destination, dates row */
+  --type-micro:     500 11px/1.3  var(--font-sans);  /* crew label, timestamps */
+  --type-label:     600 10px/1.2  var(--font-sans);  /* uppercase tab labels, status badges */
+
+  /* Tracking buckets */
+  --tracking-tight:   -0.02em;   /* large display headlines */
+  --tracking-normal:   0;
+  --tracking-wide:    0.06em;    /* logo wordmark */
+  --tracking-widest:  0.1em;     /* uppercase labels, tab text */
+
+  color-scheme: light;
+}
+
+/* ── Dark mode (default in the shipping app) ──────────────────────────── */
+.dark, :root.dark {
+  --color-bt-base:           #0a0e1a;  /* deep navy — matches marketing */
+  --color-bt-card:           #161e2f;  /* +5% lifted from #111827 so panels sit clearly above base */
+  --color-bt-card-raised:    #1f2a40;  /* +8% — inputs, zebra rows, inactive chips read clean */
+  --color-bt-card-float:     #2a3654;  /* tooltips / popovers / drawers — distinctly above cards */
+  --color-bt-border:         rgba(148, 163, 184, 0.18);
+  --color-bt-subtle-border:  rgba(148, 163, 184, 0.08);
+  --color-bt-hover:          rgba(255, 255, 255, 0.06);
+  --color-bt-overlay:        rgba(0, 0, 0, 0.7);
+  --color-bt-past-bg:        #161c2b;
+  --color-bt-nav-bg:         rgba(10, 14, 26, 0.85);
+  --color-bt-surface-invitation: rgba(255, 255, 255, 0.03);
+
+  --color-bt-text:           #f1f5f9;  /* slate-100 */
+  --color-bt-text-dim:       #94a3b8;  /* slate-400 */
+
+  --color-bt-accent:         #2dd4bf;  /* teal-400 — brighter on dark */
+  --color-bt-accent-dim:     #14b8a6;
+  --color-bt-tag-bg:         #134e4a;
+  --color-bt-accent-faint:   rgba(45, 212, 191, 0.12);
+  --color-bt-accent-border:  rgba(45, 212, 191, 0.25);
+
+  --color-bt-planning:        #60a5fa;
+  --color-bt-blue-bg:         #1e3a5f;
+  --color-bt-planning-border: rgba(96, 165, 250, 0.25);
+
+  --color-bt-ready:           #fb923c;
+  --color-bt-ready-bg:        #431407;
+  --color-bt-ready-border:    rgba(251, 146, 60, 0.25);
+
+  --color-bt-owner:           #fbbf24;
+  --color-bt-warning:         #fbbf24;
+  --color-bt-warning-faint:   rgba(251, 191, 36, 0.08);
+  --color-bt-warning-border:  rgba(251, 191, 36, 0.20);
+
+  --color-bt-danger:          #f87171;
+  --color-bt-danger-bg:       #450a0a;
+  --color-bt-danger-faint:    rgba(248, 113, 113, 0.12);
+  --color-bt-danger-border:   rgba(248, 113, 113, 0.20);
+
+  --color-bt-place-1-bg:      rgba(34, 197, 94, 0.22);
+  --color-bt-place-1-text:    #86efac;
+  --color-bt-place-2-bg:      rgba(59, 130, 246, 0.24);
+  --color-bt-place-2-text:    #93c5fd;
+  --color-bt-place-3-bg:      rgba(245, 158, 11, 0.22);
+  --color-bt-place-3-text:    #fcd34d;
+  --color-bt-place-4-bg:      rgba(239, 68, 68, 0.20);
+  --color-bt-place-4-text:    #fca5a5;
+
+  --shadow-card:     0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
+  --shadow-raised:   0 4px 12px rgba(0,0,0,.4), 0 2px 4px rgba(0,0,0,.25);
+  --shadow-floating: 0 8px 24px rgba(0,0,0,.5), 0 4px 8px rgba(0,0,0,.3);
+
+  color-scheme: dark;
+}
+
+/* ── Base resets ──────────────────────────────────────────────────────── */
+html, body {
+  background: var(--color-bt-base);
+  color: var(--color-bt-text);
+  font: var(--type-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Standard fade-in used across the app */
+@keyframes bt-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.bt-fade-in { animation: bt-fade-in 0.25s ease-out both; }

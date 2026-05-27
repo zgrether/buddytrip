@@ -43,6 +43,12 @@ export interface TabProps {
   role: TripRole | null;
   canEdit: boolean;
   isOwner?: boolean;
+  /** In-place tab switcher exposed so cross-tab CTAs (e.g. Agenda's
+   *  "Enable competition →") can navigate without doing a full page
+   *  reload. Optional — tabs that don't need it can ignore. */
+  onTabChange?: (
+    tab: "home" | "crew" | "lodging" | "schedule" | "expenses" | "comp"
+  ) => void;
 }
 
 export interface CatalogIdea {

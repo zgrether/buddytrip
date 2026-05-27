@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { EmptyState } from "@/components/EmptyState";
+import { SampleHeader, SampleCard } from "@/components/SampleSection";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
 import { SplitPanel } from "./SplitPanel";
@@ -103,6 +104,449 @@ export function CurrencyInput({
         className="min-w-0 flex-1 bg-transparent py-2 pl-1 pr-3 text-right text-sm outline-none"
         style={{ color: "var(--color-bt-text)" }}
       />
+    </div>
+  );
+}
+
+// ── ReceiptExample ───────────────────────────────────────────────────────
+// Full-opacity sample receipt rendered inside <SampleCard /> on the
+// empty-state Receipts page. Mirrors the real receipt row styling
+// without depending on real data so it stays decoupled from row evolution.
+
+function ReceiptExample() {
+  return (
+    <div
+      className="grid items-center gap-3.5 rounded-xl px-3 py-2.5"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+        gridTemplateColumns: "auto 1fr auto auto",
+      }}
+    >
+      {/* $ chip — 36×36 accent-faint square with mono $ glyph */}
+      <span
+        className="flex h-9 w-9 items-center justify-center rounded-[9px] font-mono text-base font-bold"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+        }}
+      >
+        $
+      </span>
+
+      {/* Content — title + paid-by/split + your-share */}
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-bold" style={{ color: "var(--color-bt-text)" }}>
+          Steak dinner + open bar
+        </p>
+        <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Paid by{" "}
+          <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Ryan
+          </strong>
+          <span className="mx-2">·</span>
+          split 4 ways
+        </p>
+        <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-accent)" }}>
+          Your share:{" "}
+          <strong className="font-semibold">$120.00</strong>
+        </p>
+      </div>
+
+      {/* Amount — mono, right-aligned, min-width so the icons sit clear */}
+      <span
+        className="text-right font-mono text-[15px] font-semibold"
+        style={{ color: "var(--color-bt-text)", minWidth: 70 }}
+      >
+        $480.00
+      </span>
+
+      {/* Trailing icon trio — match the populated state's action set
+          so the EXAMPLE faithfully previews what a real row looks like. */}
+      <div className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)" }}>
+        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md">
+          <UserMinus size={14} />
+        </span>
+        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md">
+          <Pencil size={14} />
+        </span>
+        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md">
+          <Trash2 size={14} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── BalancesPreview ──────────────────────────────────────────────────────
+// Even on the empty Receipts state we render the live BALANCES section
+// pre-populated with every crew member at $0.00. This is REAL data
+// (not example), so it shows the user what the other half of the tab
+// does (squares up debts) before they've logged anything. Per
+// HANDOFF-gaps-receipts-empty.md §3.
+
+function BalancesPreview({
+  members,
+  currentUserId,
+}: {
+  members: ExpenseMember[];
+  currentUserId: string | null | undefined;
+}) {
+  // Order matches what the populated balances panel uses elsewhere:
+  // Owner first, Planners next, then everyone else by name.
+  const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+  const sorted = [...members].sort((a, b) => {
+    const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
+    const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
+    return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
+  });
+
+  if (sorted.length === 0) return null;
+
+  return (
+    <div className="mt-2">
+      <div
+        className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.12em]"
+        style={{ color: "var(--color-bt-accent)" }}
+      >
+        Balances
+      </div>
+      <div
+        className="rounded-[10px] px-4"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        {sorted.map((m, idx) => {
+          const name = memberName(members, m.user_id);
+          const isYou = m.user_id === currentUserId;
+          return (
+            <div
+              key={m.user_id}
+              className="flex items-center justify-between py-3"
+              style={{
+                borderBottom:
+                  idx < sorted.length - 1
+                    ? "1px solid var(--color-bt-subtle-border)"
+                    : undefined,
+              }}
+            >
+              <span
+                className="text-sm font-semibold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                {name}
+                {isYou && (
+                  <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
+                    {" "}
+                    (you)
+                  </span>
+                )}
+              </span>
+              <span
+                className="font-mono text-sm font-semibold"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                $0.00
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p
+        className="mt-2.5 text-[11px] italic"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Everyone&apos;s even — no receipts logged yet.
+      </p>
+    </div>
+  );
+}
+
+// ── AddReceiptFullComposer ───────────────────────────────────────────────
+// Boosted variant of the rail composer specific to Receipts. Mirrors
+// the spec's AddReceiptComposer: title input → amount + paid-by select
+// → "Split with" pill row → primary CTA + hint.
+//
+// The inputs are visual scaffolding for the spec — submission still
+// flows through AddExpenseModal (where the real validation + tRPC
+// wiring lives). Clicking any control opens that modal. A future
+// commit can pre-fill the modal with whatever the user typed here.
+
+function AddReceiptFullComposer({
+  tripId,
+  members,
+  currentUserId,
+  onOpenFull,
+  variant = "rail",
+}: {
+  tripId: string;
+  members: ExpenseMember[];
+  currentUserId: string | null | undefined;
+  /** Optional escape hatch — opens the full AddExpenseModal for cases
+   *  the inline composer can't handle (>6 crew, per-user split amounts,
+   *  etc.). Rendered as a small "More options →" link below the hint. */
+  onOpenFull: () => void;
+  /**
+   * "rail" (default) — full chrome: accent-bordered card, raised shadow,
+   *   internal padding, uppercase eyebrow row.
+   * "sheet" — chrome stripped. Inputs sit directly on the mobile bottom
+   *   sheet's card-float surface, which already supplies framing and a
+   *   title bar above the form, so the composer's own card would read
+   *   as a nested duplicate.
+   */
+  variant?: "rail" | "sheet";
+}) {
+  const utils = trpc.useUtils();
+  const me = members.find((m) => m.user_id === currentUserId);
+
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("");
+  const [paidBy, setPaidBy] = useState<string>(
+    me?.user_id ?? members[0]?.user_id ?? ""
+  );
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  const create = trpc.expenses.create.useMutation({
+    onMutate() {
+      setError(null);
+    },
+    onSuccess() {
+      setTitle("");
+      setAmount("");
+      setExcluded(new Set());
+      utils.expenses.list.invalidate({ tripId });
+    },
+    onError(err) {
+      setError(err.message);
+    },
+  });
+
+  const inputBase = {
+    background: "var(--color-bt-card-raised)",
+    borderColor: "var(--color-bt-border)",
+    color: "var(--color-bt-text)",
+  };
+
+  // Cap pill rendering to first ~6 members so wide crews don't blow
+  // out the rail. Anyone beyond that gets routed to the full modal
+  // via the "More options" link.
+  const pillCrew = members.slice(0, 6);
+  const hasOverflow = members.length > pillCrew.length;
+
+  const parsedAmount = (() => {
+    const cleaned = amount.replace(/[^0-9.]/g, "");
+    const n = parseFloat(cleaned);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
+  const canSubmit =
+    title.trim().length > 0 &&
+    parsedAmount !== null &&
+    !!paidBy &&
+    !create.isPending;
+
+  const togglePill = (uid: string) => {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
+  const handleSubmit = () => {
+    if (!canSubmit || parsedAmount === null) return;
+    const included = members.filter((m) => !excluded.has(m.user_id));
+    if (included.length === 0) {
+      setError("Need at least one person in the split.");
+      return;
+    }
+    create.mutate({
+      tripId,
+      id: crypto.randomUUID(),
+      title: title.trim(),
+      amount: parsedAmount,
+      paidByUserId: paidBy,
+      splitAmong: included.map((m) => ({ userId: m.user_id })),
+    });
+  };
+
+  const isSheet = variant === "sheet";
+
+  return (
+    <div
+      className={
+        isSheet
+          ? "flex flex-col gap-2.5"
+          : "flex flex-col gap-2.5 rounded-xl p-4"
+      }
+      style={
+        isSheet
+          ? undefined
+          : {
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-accent-border)",
+              boxShadow: "var(--shadow-raised)",
+            }
+      }
+    >
+      {!isSheet && (
+        <div
+          className="text-[11px] font-bold uppercase tracking-[0.12em]"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          Add your first receipt
+        </div>
+      )}
+
+      <input
+        type="text"
+        placeholder="Title (e.g. Steak dinner)"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSubmit();
+        }}
+        className="w-full rounded-lg border px-2.5 py-2 text-[13px] outline-none"
+        style={inputBase}
+      />
+
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder="$0.00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSubmit();
+          }}
+          className="min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-right font-mono text-[13px] outline-none"
+          style={inputBase}
+        />
+        <select
+          value={paidBy}
+          onChange={(e) => setPaidBy(e.target.value)}
+          className="min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-[13px] outline-none"
+          style={inputBase}
+        >
+          {members.map((m) => (
+            <option key={m.user_id} value={m.user_id}>
+              Paid by · {memberName(members, m.user_id)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        Split with
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {pillCrew.map((m) => {
+          const name = memberName(members, m.user_id);
+          const initials =
+            name
+              .split(/\s+/)
+              .map((w) => w[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase() || "?";
+          const out = excluded.has(m.user_id);
+          return (
+            <button
+              key={m.user_id}
+              type="button"
+              onClick={() => togglePill(m.user_id)}
+              className="inline-flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2 text-[11px] font-semibold transition-opacity"
+              style={{
+                background: out
+                  ? "transparent"
+                  : "var(--color-bt-card-raised)",
+                border: out
+                  ? "0.5px dashed var(--color-bt-border)"
+                  : "0.5px solid var(--color-bt-accent-border)",
+                color: out
+                  ? "var(--color-bt-text-dim)"
+                  : "var(--color-bt-text)",
+                opacity: out ? 0.6 : 1,
+              }}
+              title={out ? `Add ${name} back to the split` : `Toggle ${name} out of the split`}
+            >
+              <span
+                className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[8px]"
+                style={{
+                  background: out
+                    ? "var(--color-bt-card-raised)"
+                    : "var(--color-bt-accent)",
+                  color: out
+                    ? "var(--color-bt-text-dim)"
+                    : "var(--color-bt-on-accent)",
+                  border: out
+                    ? "0.5px solid var(--color-bt-border)"
+                    : undefined,
+                }}
+              >
+                {initials}
+              </span>
+              {name.split(/\s+/)[0]}
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={create.isPending}
+        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
+        style={{
+          background: "var(--color-bt-accent)",
+          color: "var(--color-bt-on-accent)",
+        }}
+      >
+        {create.isPending ? "Adding…" : "Add receipt"}
+      </button>
+
+      {error && (
+        <p
+          className="text-[11px] leading-snug"
+          style={{ color: "var(--color-bt-danger)" }}
+        >
+          {error}
+        </p>
+      )}
+
+      <p
+        className="text-[11px] leading-snug"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Tap a crew member to toggle them out of the split.
+        {hasOverflow && (
+          <>
+            {" "}
+            <button
+              type="button"
+              onClick={onOpenFull}
+              className="underline transition-opacity hover:opacity-80"
+              style={{
+                color: "var(--color-bt-accent)",
+                background: "none",
+                border: "none",
+                padding: 0,
+                font: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              More options
+            </button>{" "}
+            for a per-person split.
+          </>
+        )}
+      </p>
     </div>
   );
 }
@@ -224,11 +668,56 @@ export function ExpensesSection({
             TabHeader / TabFab, not inline here) ─────────────────────── */}
         <div className="space-y-3">
           {!hasExpenses ? (
-            <EmptyState
-              icon={<Receipt className="h-10 w-10" />}
-              headline="No receipts yet"
-              subtext="Add receipts to track who paid for what so we can square everyone up at the end of the trip."
-            />
+            canEdit ? (
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                {/* Main column — SampleHeader + example card + standalone
+                    caption + live BALANCES preview. Caption sits BETWEEN
+                    the example and BALANCES per spec; previously it lived
+                    inside the composer's hint, wrong placement. */}
+                <div className="flex flex-col gap-3.5">
+                  <SampleHeader label="How a receipt will look" />
+                  <SampleCard>
+                    <ReceiptExample />
+                  </SampleCard>
+                  <p
+                    className="m-0 hidden md:block"
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      color: "var(--color-bt-text-dim)",
+                    }}
+                  >
+                    Log who paid and how to split it. By default everyone
+                    splits evenly — tap a receipt later to customize.
+                  </p>
+                  <BalancesPreview
+                    members={members}
+                    currentUserId={currentUser?.id}
+                  />
+                </div>
+
+                {/* Right rail (lg+) / stacked composer (md ≤ x < lg).
+                    Hidden on phones (<md) — the TabFab is the mobile add
+                    affordance. Capped at 540px when stacked. */}
+                <aside
+                  className="hidden md:block"
+                  style={{ maxWidth: 540 }}
+                >
+                  <AddReceiptFullComposer
+                    tripId={tripId}
+                    members={members}
+                    currentUserId={currentUser?.id}
+                    onOpenFull={() => onAddOpenChange(true)}
+                  />
+                </aside>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<Receipt className="h-10 w-10" />}
+                headline="No receipts yet"
+                subtext="The crew hasn't logged any receipts yet."
+              />
+            )
           ) : (
             <div className="space-y-2">
               {(expenses as ExpenseItem[]).map((expense) => {

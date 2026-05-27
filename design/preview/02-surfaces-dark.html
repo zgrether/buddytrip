@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Surface hierarchy — dark</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 18px 22px; }
+  .stack { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .surface {
+    border-radius: 12px;
+    padding: 14px 14px 12px;
+    border: 1px solid var(--color-bt-border);
+    min-height: 100px;
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .lbl { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--color-bt-text-dim); }
+  .name { font-size: 13px; color: var(--color-bt-text); font-weight: 500; margin-top: 4px; }
+  .val { font-family: var(--font-mono); font-size: 11px; color: var(--color-bt-text-dim); }
+</style>
+</head>
+<body>
+  <div class="stack">
+    <div class="surface" style="background: var(--color-bt-base);">
+      <div><div class="lbl">L0 · base</div><div class="name">Page</div></div>
+      <div class="val">#0a0e1a</div>
+    </div>
+    <div class="surface" style="background: var(--color-bt-card);">
+      <div><div class="lbl">L1 · card</div><div class="name">Panel</div></div>
+      <div class="val">#161e2f</div>
+    </div>
+    <div class="surface" style="background: var(--color-bt-card-raised);">
+      <div><div class="lbl">L2 · raised</div><div class="name">Input / row</div></div>
+      <div class="val">#1f2a40</div>
+    </div>
+    <div class="surface" style="background: var(--color-bt-card-float);">
+      <div><div class="lbl">L3 · float</div><div class="name">Popover</div></div>
+      <div class="val">#2a3654</div>
+    </div>
+  </div>
+</body>
+</html>

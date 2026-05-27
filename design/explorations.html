@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>BuddyTrip — design explorations</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100vh; }
+  body { background: #1a2233; font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+  * { box-sizing: border-box; }
+  @keyframes btPulse { 0%,100%{opacity:1;} 50%{opacity:.45;} }
+  @keyframes btDrift { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="explorations-atoms.jsx"></script>
+<script type="text/babel" src="explorations-marks.jsx"></script>
+<script type="text/babel" src="explorations-screens.jsx"></script>
+<script type="text/babel" src="explorations-empty.jsx"></script>
+<script type="text/babel" src="explorations-crew-edit.jsx"></script>
+<script type="text/babel" src="explorations-mobile-modals.jsx"></script>
+<script type="text/babel" src="explorations-edit-drawers.jsx"></script>
+<script type="text/babel" src="explorations-palette.jsx"></script>
+
+<script type="text/babel">
+const { useState } = React;
+
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection
+        id="palette"
+        title="Palette — current vs lifted surfaces vs warm accents"
+        subtitle="Same trip-home content rendered with three different palette setups. Look at: how the trip-header hero sits against the page, whether nudge banners and planning rows separate cleanly, and how much warmth the secondary colors add.">
+        <DCArtboard id="pal-current" label="Current (shipping)" width={440} height={760}>
+          <PaletteArtboard variant="current" />
+        </DCArtboard>
+        <DCArtboard id="pal-lifted" label="A · Lifted surfaces" width={440} height={760}>
+          <PaletteArtboard variant="lifted" />
+        </DCArtboard>
+        <DCArtboard id="pal-warmer" label="A + C · Lifted + warm accents" width={440} height={760}>
+          <PaletteArtboard variant="warmer" />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="empty"
+        title="Empty states — Lodging, Agenda, Receipts (desktop)"
+        subtitle="Each empty tab uses the same three-part pattern: a SampleHeader callout + a single Example card showing what a populated state looks like + a boosted right-rail composer that earns its primary-action role. No more dimmed half-data ghost rows.">
+        <DCArtboard id="el-before" label="Lodging · before (today)" width={1200} height={680}>
+          <WindowShell wide><LodgingBefore /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="el-after" label="Lodging · after" width={1200} height={680}>
+          <WindowShell wide><LodgingAfter /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ea-empty" label="Agenda · empty (just set up)" width={1200} height={760}>
+          <WindowShell wide><AgendaEmpty /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ea-after" label="Agenda · populated (6-day trip)" width={1200} height={760}>
+          <WindowShell wide><AgendaAfter /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="er-after" label="Receipts · after" width={1200} height={760}>
+          <WindowShell wide><ReceiptsAfter /></WindowShell>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="add-modals"
+        title="Add modals · mobile"
+        subtitle="On desktop, each tab has a persistent right-rail composer (Lodging / Agenda / Receipts). Mobile collapses that into a tap-to-open bottom sheet — same fields, same primary action, same dismissal pattern as the existing 'Add a property' modal you shared.">
+        <DCArtboard id="am-crew" label="Add to crew" width={392} height={760}>
+          <PhoneShell><CrewMobileWithAddModal /></PhoneShell>
+        </DCArtboard>
+        <DCArtboard id="am-lodging" label="Add a property" width={392} height={760}>
+          <PhoneShell><LodgingMobileWithModal /></PhoneShell>
+        </DCArtboard>
+        <DCArtboard id="am-agenda" label="Add to agenda" width={392} height={760}>
+          <PhoneShell><AgendaMobileWithModal /></PhoneShell>
+        </DCArtboard>
+        <DCArtboard id="am-receipts" label="Add a receipt" width={392} height={760}>
+          <PhoneShell><ReceiptsMobileWithModal /></PhoneShell>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="edit-drawers"
+        title="Edit drawers · desktop"
+        subtitle="Same pattern as the Crew member editor: tap an item in Lodging / Agenda / Receipts and a 440px drawer slides in from the right with the page dimmed behind it. Agenda has Activity / Golf Round tabs (matching your existing modal). Receipts uses progressive disclosure for the split — even split is the default, 'Customize…' expands the per-person rows inline.">
+        <DCArtboard id="ed-property" label="Property" width={1200} height={760}>
+          <WindowShell wide><PropertyDesktopWithDrawer /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ed-agenda-activity" label="Agenda · Activity" width={1200} height={760}>
+          <WindowShell wide><AgendaDesktopWithDrawer initialTab="activity" /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ed-agenda-golf" label="Agenda · Golf Round" width={1200} height={760}>
+          <WindowShell wide><AgendaDesktopWithDrawer initialTab="golf" /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ed-receipt-even" label="Receipt · even split (default)" width={1200} height={760}>
+          <WindowShell wide><ReceiptsDesktopWithDrawer initialCustom={false} /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ed-receipt-custom" label="Receipt · custom split (expanded)" width={1200} height={760}>
+          <WindowShell wide><ReceiptsDesktopWithDrawer initialCustom={true} /></WindowShell>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="responsive"
+        title="Crew tab — mobile → tablet → desktop"
+        subtitle="Modeled on the actual crew system: Active (BT user) · Invited (email sent, awaiting signup) · Placeholder (name-only entry). Role overlay (Owner / Organizer / Member) is independent. Sections group by role; status pill shows lifecycle state at a glance.">
+        <DCArtboard id="r1" label="Mobile · 390" width={392} height={760}>
+          <PhoneShell><CrewMobile /></PhoneShell>
+        </DCArtboard>
+        <DCArtboard id="r2" label="Tablet · 768" width={780} height={760}>
+          <WindowShell><CrewTablet /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="r3" label="Desktop · 1200" width={1200} height={760}>
+          <WindowShell wide><CrewDesktop /></WindowShell>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="crew-edit"
+        title="Crew · editing & promotion"
+        subtitle="Status is derived from data (email present? matches a BT account?), not chosen — there's nothing to drag. Tap a row to open a drawer (desktop) / bottom sheet (mobile) that edits name, email, and role. Email field shows live validation feedback so the outcome (Active / Invited / Ghost) is visible BEFORE save.">
+        <DCArtboard id="ce-validation" label="Validation states — what the email field says" width={760} height={520}>
+          <ValidationStatesPanel />
+        </DCArtboard>
+        <DCArtboard id="ce-desktop" label="Desktop · drawer over Crew page" width={1200} height={780}>
+          <WindowShell wide><CrewDesktopWithDrawer /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ce-mobile" label="Mobile · bottom sheet" width={392} height={760}>
+          <PhoneShell><CrewMobileWithSheet /></PhoneShell>
+        </DCArtboard>
+        <DCArtboard id="ce-member" label="Member view · read-only (desktop)" width={1200} height={680}>
+          <WindowShell wide><CrewMemberView /></WindowShell>
+        </DCArtboard>
+        <DCArtboard id="ce-empty" label="Crew empty state · just the owner" width={1200} height={680}>
+          <WindowShell wide><CrewEmpty /></WindowShell>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection
+        id="palette"
+        title="Expanded team palette · with school-color names"
+        subtitle="The team color is a separate identity layer (intentionally outside the design system). These are named so a user picking 'Crimson' gets crimson, not scarlet. Text on these is always white — contrast handled by the palette author, not the user.">
+        <DCArtboard id="p1" label="Named palette · grouped by family" width={1100} height={560}>
+          <ExpandedPalette />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+</body>
+</html>

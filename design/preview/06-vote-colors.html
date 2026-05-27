@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Vote colors</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 26px; }
+  .row { display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: stretch; }
+  .col { display:flex; flex-direction:column; gap:10px; }
+  .lbl { font-size: 10px; font-weight: 600; letter-spacing:.08em; text-transform: uppercase; color: var(--color-bt-text-dim); }
+  .cell {
+    height: 62px; border-radius: 10px; display:flex; align-items:center; justify-content:center;
+  }
+  .cell svg { display: block; }
+  .yes  { background: #00d4aa; color: #0d1f1a; }
+  .maybe{ background: #f59e0b; color: #ffffff; }
+  .no   { background: #ef4444; color: #ffffff; }
+  .un   { background: transparent; color: var(--color-bt-text-dim);
+          border: 1.5px dashed var(--color-bt-border); }
+  .hex { font-family: var(--font-mono); font-size: 10px; color: var(--color-bt-text-dim); }
+</style>
+</head>
+<body>
+  <div class="tag" style="margin-bottom: 12px;">Vote answers · mode-independent · glyphs drawn with consistent stroke weight</div>
+  <div class="row">
+    <div class="col">
+      <div class="cell yes" aria-label="Yes">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12 10 17 19 7"/>
+        </svg>
+      </div>
+      <div class="lbl">Yes / Works</div>
+      <div class="hex">#00d4aa · #0d1f1a</div>
+    </div>
+    <div class="col">
+      <div class="cell maybe" aria-label="Maybe">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 14 q 3 -7 7 0 t 7 0"/>
+        </svg>
+      </div>
+      <div class="lbl">Maybe</div>
+      <div class="hex">#f59e0b · #ffffff</div>
+    </div>
+    <div class="col">
+      <div class="cell no" aria-label="No">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 6 18 18 M18 6 6 18"/>
+        </svg>
+      </div>
+      <div class="lbl">No / Can't</div>
+      <div class="hex">#ef4444 · #ffffff</div>
+    </div>
+    <div class="col">
+      <div class="cell un" aria-label="Unvoted">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 9 a3 3 0 1 1 4.2 2.8 c -0.9 0.5 -1.2 1.2 -1.2 2.2"/>
+          <circle cx="12" cy="18" r="0.5" fill="currentColor" stroke="none"/>
+        </svg>
+      </div>
+      <div class="lbl">Unvoted</div>
+      <div class="hex">dashed border · ?</div>
+    </div>
+  </div>
+</body>
+</html>

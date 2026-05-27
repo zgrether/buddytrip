@@ -24,9 +24,14 @@ import type { TabProps } from "./types";
  */
 export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId: trip.id });
+  const { data: expenses = [] } = trpc.expenses.list.useQuery({ tripId: trip.id });
 
   const [addOpen, setAddOpen] = useState(false);
   const openAdd = () => setAddOpen(true);
+
+  // On the empty state, the boosted RailComposer becomes the primary CTA;
+  // hide the redundant header pill so the eye lands on the right rail.
+  const showHeaderAction = canEdit && expenses.length > 0;
 
   return (
     <div className="px-4">
@@ -35,21 +40,23 @@ export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
         headline="Track who paid for what"
         body="Log anything the crew pays for — group dinners, lodging, green fees, rentals. Pick who paid and who's splitting it and we'll keep balances straight so nobody chases anyone for money at the end."
         desktopAction={
-          <button
-            type="button"
-            onClick={openAdd}
-            data-testid="show-add-expense-btn"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <Receipt size={13} />
-            <Plus size={11} />
-            Receipt
-          </button>
+          showHeaderAction ? (
+            <button
+              type="button"
+              onClick={openAdd}
+              data-testid="show-add-expense-btn"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Receipt size={13} />
+              <Plus size={11} />
+              Receipt
+            </button>
+          ) : undefined
         }
       />
 

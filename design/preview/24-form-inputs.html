@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Form inputs</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 24px; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .lbl { font-size: 11px; font-weight: 600; color: var(--color-bt-text); }
+  input, textarea, select {
+    background: var(--color-bt-card-raised);
+    border: 1px solid var(--color-bt-border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: 400 14px var(--font-sans);
+    color: var(--color-bt-text);
+    outline: none;
+    width: 100%;
+  }
+  input:focus { border-color: var(--color-bt-accent); box-shadow: 0 0 0 3px var(--color-bt-accent-faint); }
+  .hint { font-size: 11px; color: var(--color-bt-text-dim); }
+  .err  { font-size: 11px; color: var(--color-bt-danger); }
+  .danger-input { border-color: var(--color-bt-danger); }
+  .danger-input:focus { box-shadow: 0 0 0 3px var(--color-bt-danger-faint); }
+
+  .checkrow { display:flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .check {
+    width: 18px; height: 18px; border-radius: 5px;
+    background: var(--color-bt-accent); color: #0d1f1a;
+    display:inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .check svg { stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; width: 12px; height: 12px; }
+</style>
+</head>
+<body>
+  <div class="field">
+    <span class="lbl">Trip name</span>
+    <input value="BBMI 2026" />
+    <span class="hint">e.g. "BBMI 2026" or "Whistler 2025"</span>
+  </div>
+  <div class="field">
+    <span class="lbl">Destination</span>
+    <input class="danger-input" value="" placeholder="Pinehurst, NC" />
+    <span class="err">Pick a destination to advance to planning.</span>
+  </div>
+  <div class="checkrow">
+    <span class="check"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+    <span style="font-size: 13px; color: var(--color-bt-text);">Send invites by SMS as well as email</span>
+  </div>
+</body>
+</html>

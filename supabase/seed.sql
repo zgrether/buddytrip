@@ -41,9 +41,9 @@ SET CONSTRAINTS ALL DEFERRED;
 --     re-asserting it here makes the seed self-contained.)
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO users (id, name, nickname, email, created_at) VALUES
-  (:owner_id, 'Zach Grether', 'Zach',  'zgrether@gmail.com',  now()),
-  (:crew_id,  'Test Crew',    'Test',  'test@buddytrip.app',  now())
+INSERT INTO users (id, name, email, created_at) VALUES
+  (:owner_id, 'Zach Grether', 'zgrether@gmail.com',  now()),
+  (:crew_id,  'Test Crew',    'test@buddytrip.app',  now())
 ON CONFLICT (id) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════

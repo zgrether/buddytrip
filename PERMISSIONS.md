@@ -86,15 +86,26 @@
 
 ### Crew
 
+Roster management is **Owner-only** (Task 53). Planners can plan the trip,
+but the crew list — who's in, what they're called, what role they hold — is
+the Owner's responsibility. Both the Crew tab UI (`isOwner` gate) and the
+underlying tRPC procedures enforce this.
+
 | Action | Owner | Planner | Member | Gate | Component |
 |--------|:-----:|:-------:|:------:|------|-----------|
 | View crew roster | ✓ | ✓ | ✓ | None | TripDetail CrewTab |
-| Add crew member | ✓ | ✓ | — | `canEdit` | TripDetail CrewTab |
-| Send invite to member | ✓ | ✓ | — | `canEdit && !isMe` | TripDetail CrewTab |
+| Add crew member | ✓ | — | — | `isOwner` | TripDetail CrewTab |
+| Add guest crew (ghost) | ✓ | — | — | `isOwner` | TripDetail CrewTab |
+| Edit guest crew (name/email) | ✓ | — | — | `isOwner` | MemberEditor |
+| Rename a member (trip-scoped nickname) | ✓ | — | — | `isOwner` | MemberEditor |
+| Send invite to member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
+| Send invitation blast | ✓ | — | — | `isOwner` | InvitationCenter |
 | Change own RSVP status | ✓ | ✓ | ✓ | `isMe` | TripDetail CrewTab |
 | Promote Member → Planner | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
 | Demote Planner → Member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
 | Remove crew member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
+| Set travel info (self) | ✓ | ✓ | ✓ | `isMe` | TripDetail CrewTab |
+| Set travel info (other) | ✓ | — | — | `isOwner` | MemberEditor |
 
 ### Competition
 
@@ -151,7 +162,8 @@ RLS checks `trip_members.role = 'owner'` for the requesting user:
 
 - Destination lock / unlock / override
 - Idea creation and removal
-- Crew role management (promote, demote, remove)
+- All roster management — add, invite, rename, promote, demote, remove,
+  guest-crew CRUD, invitation blast
 - Trip settings (series link, ownership transfer, archive, delete)
 - Expense split modification
 
@@ -163,7 +175,6 @@ RLS checks `trip_members.role IN ('owner', 'planner')`:
 - Date setup, poll management, and date locking
 - Quick info tile CRUD
 - Competition setup (enable, disable, teams, rounds, sides)
-- Crew addition and invitations
 - Expense creation
 - Booking creation
 

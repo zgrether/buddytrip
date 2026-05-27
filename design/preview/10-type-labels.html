@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Uppercase labels & tracking</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 24px; }
+  table { width:100%; border-collapse: collapse; }
+  td { padding: 8px 0; vertical-align: middle; }
+  td.spec { color: var(--color-bt-text-dim); }
+  td.meta { font-family: var(--font-mono); font-size: 10px; color: var(--color-bt-text-dim); text-align: right; width: 200px; }
+  .section-h { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-bt-text-dim); }
+  .stat-lbl  { font-size: 9px;  letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-bt-text-dim); }
+  .tab-lbl   { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-bt-accent); }
+  .featuretag{ font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-bt-accent); }
+  .wordmark  { font-size: 18px; font-weight: 600; letter-spacing: 0.06em; color: var(--color-bt-text); }
+</style>
+</head>
+<body>
+  <table>
+    <tr><td><div class="wordmark">BuddyTrip</div></td><td class="meta">Wordmark · 0.06em</td></tr>
+    <tr><td><div class="featuretag">PLAN TOGETHER</div></td><td class="meta">Feature tag · 0.1em</td></tr>
+    <tr><td><div class="section-h">ACTIVE · IDEAS · PAST</div></td><td class="meta">Section header · 0.12em / 700</td></tr>
+    <tr><td><div class="tab-lbl">HOME · CREW · LODGING</div></td><td class="meta">Tab labels · 0.1em / 700</td></tr>
+    <tr><td><div class="stat-lbl">DESTINATION · DATES · CREW</div></td><td class="meta">Stat tile · 0.08em</td></tr>
+  </table>
+</body>
+</html>

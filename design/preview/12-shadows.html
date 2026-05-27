@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Elevation</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 30px 26px 22px; }
+  .row { display:grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card {
+    background: var(--color-bt-card);
+    border: 1px solid var(--color-bt-border);
+    border-radius: 12px;
+    height: 70px;
+    display:flex; align-items:center; justify-content:center;
+    color: var(--color-bt-text); font-size: 13px; font-weight: 500;
+  }
+  .lbl  { margin-top: 8px; text-align: center; font-size: 10px; font-weight: 600; letter-spacing:.08em; text-transform: uppercase; color: var(--color-bt-text-dim); }
+  .meta { margin-top: 3px; text-align: center; font-family: var(--font-mono); font-size: 10px; color: var(--color-bt-text-dim); }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div>
+      <div class="card" style="box-shadow: var(--shadow-card);">shadow-card</div>
+      <div class="lbl">Default elevation</div>
+      <div class="meta">trip card · panel</div>
+    </div>
+    <div>
+      <div class="card" style="box-shadow: var(--shadow-raised);">shadow-raised</div>
+      <div class="lbl">Hover / expanded</div>
+      <div class="meta">open planning row</div>
+    </div>
+    <div>
+      <div class="card" style="box-shadow: var(--shadow-floating);">shadow-floating</div>
+      <div class="lbl">Tooltips · popover</div>
+      <div class="meta">trip switcher</div>
+    </div>
+  </div>
+</body>
+</html>

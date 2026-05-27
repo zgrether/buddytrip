@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus } from "lucide-react";
+import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus, Check, Link2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { EmptyState } from "@/components/EmptyState";
+import { SampleHeader, SampleCard, RailComposer } from "@/components/SampleSection";
 import { PlanningRow, type ArcCardState } from "./PlanningRow";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
 
@@ -164,13 +165,28 @@ function LodgingCard({
       <div className="flex flex-shrink-0 flex-col items-end justify-between gap-2 self-stretch">
         <div className="flex items-center gap-1">
           {canEdit && (
-            <button
-              onClick={onConfirmToggle}
-              className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
-              style={{ color: confirmed ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-            >
-              {confirmed ? "Confirmed 🔒" : "Confirm"}
-            </button>
+            confirmed ? (
+              <button
+                onClick={onConfirmToggle}
+                aria-label="Mark as not confirmed"
+                className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] transition-opacity hover:opacity-80"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-on-accent)",
+                }}
+              >
+                <Check size={11} strokeWidth={3} />
+                Confirmed
+              </button>
+            ) : (
+              <button
+                onClick={onConfirmToggle}
+                className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Confirm
+              </button>
+            )
           )}
           {canEdit && (
             <>
@@ -204,6 +220,76 @@ function LodgingCard({
             <span className="text-[11px] font-medium">→ {platform.label}</span>
           </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── PropertyExample ───────────────────────────────────────────────────────
+// Tile-style sample rendered inside <SampleCard /> on the empty-state
+// Lodging page. Spec mandates a tile (not a row) so the example reads
+// like a populated property card with photo + meta + amenity pills,
+// not like a stripped-down list item.
+//
+// Layout matches `GhostCard` from explorations-empty.jsx:
+//   - 80px gradient image strip with the ✓ CONFIRMED pill at bottom-right
+//   - Name (12px / 600)
+//   - Monospace meta line "$2,400 · sleeps 6 · 3.2mi"
+//   - Three amenity pills
+
+function PropertyExample() {
+  const pills = ["Hot tub", "5 ★", "Pet OK"];
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-xl p-3"
+      style={{
+        background: "var(--color-bt-accent-faint)",
+        border: "1px solid var(--color-bt-accent-border)",
+      }}
+    >
+      {/* Photo placeholder — fixed-height gradient strip. Hex literals
+          are spec-explicit gradient stops (HANDOFF rule 4 exception). */}
+      <div
+        className="flex items-end justify-end rounded-lg p-2"
+        style={{
+          height: 80,
+          backgroundImage: "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
+        }}
+      >
+        <span
+          className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+          style={{
+            background: "var(--color-bt-accent)",
+            color: "var(--color-bt-on-accent)",
+          }}
+        >
+          <Check size={9} strokeWidth={3.5} />
+          Confirmed
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-0.5">
+        <div className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Sea Ranch Cottages
+        </div>
+        <div className="font-mono text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          $2,400 · sleeps 6 · 3.2mi
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {pills.map((p) => (
+          <span
+            key={p}
+            className="rounded-full px-1.5 py-0.5 text-[9px]"
+            style={{
+              background: "var(--color-bt-subtle-border)",
+              color: "var(--color-bt-text-dim)",
+            }}
+          >
+            {p}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -264,6 +350,10 @@ export function LodgingPanel({
     else setLocalShowAddLodging(open);
   };
   const [editingItem, setEditingItem] = useState<LodgingItemFull | null>(null);
+  // Composer rail URL — typed into the empty-state rail composer so
+  // clicking "Add property" pre-fills the AddPropertySheet's URL field
+  // instead of opening it blank. Cleared on close.
+  const [composerUrl, setComposerUrl] = useState("");
 
   const createItem = trpc.logistics.create.useMutation({
     onSuccess: () => { utils.logistics.list.invalidate({ tripId }); setShowAddLodging(false); },
@@ -421,21 +511,182 @@ export function LodgingPanel({
             </div>
           </div>
         )}
+        {/* Unconfirmed-properties nudge — pairs with the info dot
+            (lodgingUnconfirmed in page.tsx). Suppressed when the
+            warning nudge above is showing so we don't stack two cards
+            for the same tab. */}
+        {canEdit &&
+          outOfRangeCount === 0 &&
+          confirmedCount < totalCount &&
+          totalCount > 0 && (
+            <div
+              className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
+              style={{
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <span
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{
+                  background: "var(--color-bt-accent-faint)",
+                  color: "var(--color-bt-accent)",
+                }}
+              >
+                <Hotel size={14} />
+              </span>
+              <div>
+                <p
+                  className="text-[13px] font-semibold leading-tight"
+                  style={{ color: "var(--color-bt-text)" }}
+                >
+                  {totalCount - confirmedCount}{" "}
+                  {totalCount - confirmedCount === 1 ? "property is" : "properties are"} still
+                  being considered
+                </p>
+                <p
+                  className="mt-0.5 text-[11px] leading-snug"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  Tap Confirm on any once they&apos;re booked so the crew sees the
+                  official lodging.
+                </p>
+              </div>
+            </div>
+          )}
 
         {/* Inline header + blurb + add affordance live in the parent
             LodgingTab via TabHeader + TabFab — this branch just renders
             the property list and an empty state. */}
         <section>
           {lodgingItems.length === 0 ? (
-            <EmptyState
-              icon={<Hotel className="h-10 w-10" />}
-              headline="No properties yet"
-              subtext={
-                canEdit
-                  ? "Add properties to compare places the crew is considering — confirm the winner once it's booked."
-                  : "The organizer hasn't added any properties yet."
-              }
-            />
+            canEdit ? (
+              <div
+                className={[
+                  // Mirrors the Crew tab's responsive pattern (Task 65):
+                  //   <640   single column — composer aside hides, FAB
+                  //          (wrapped sm:hidden in LodgingTab) takes over
+                  //   640-899 two equal columns — sample-block | composer
+                  //          side-by-side so they fill the stacked space
+                  //          instead of expanding full-width vertically
+                  //   ≥900   1fr / 320px — sample in main slot, composer
+                  //          tucked into the narrow right rail
+                  // Both breakpoints use arbitrary `min-[...]:` variants
+                  // so Tailwind v4 sorts them numerically (Task 45's
+                  // cascade fix — `sm:` interleaved with `min-[900px]:`
+                  // ends up wrong-ordered in the generated stylesheet).
+                  "grid gap-5",
+                  "min-[640px]:grid-cols-2",
+                  "min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]",
+                ].join(" ")}
+              >
+                {/* Main column — SampleHeader + a 2-col grid pairing the
+                    tile example with helper copy. The grid collapses to
+                    single-column at < sm so the tile + helper read top to
+                    bottom on phones. Whole column capped at 540px so the
+                    example doesn't stretch awkwardly on very wide
+                    desktops. */}
+                <div className="flex flex-col gap-3" style={{ maxWidth: 540 }}>
+                  <SampleHeader label="How a property will look" />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <SampleCard>
+                      <PropertyExample />
+                    </SampleCard>
+                    <div
+                      className="hidden flex-col justify-center gap-2 sm:flex"
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        color: "var(--color-bt-text-dim)",
+                      }}
+                    >
+                      <p className="m-0">
+                        Drop a VRBO / Airbnb / hotels.com link and we&apos;ll
+                        pull the photo, price, and sleeps count.
+                      </p>
+                      <p className="m-0">
+                        The crew can compare across multiple properties. Confirm
+                        the one(s) you book to lock them in as official trip
+                        details.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Composer aside — visible at sm+ (≥640). Below that
+                    the LodgingTab's sm:hidden-wrapped TabFab is the
+                    sole add affordance, matching Crew. The outer grid
+                    handles the rest: at 640-899 the aside occupies the
+                    right half of a 2-col grid; at ≥900 it slots into
+                    the narrow `minmax(280px, 320px)` rail track. */}
+                <aside
+                  className="hidden min-[640px]:block"
+                  style={{ maxWidth: 540 }}
+                >
+                  <RailComposer
+                    title="Add your first property"
+                    primary="Add property"
+                    onPrimary={() => setShowAddLodging(true)}
+                    boosted
+                    hint={
+                      <>
+                        Paste a link from VRBO, Airbnb, or hotels.com — we&apos;ll
+                        pull the photo, price, and sleeps count. Or{" "}
+                        <button
+                          type="button"
+                          onClick={() => setShowAddLodging(true)}
+                          className="underline transition-opacity hover:opacity-80"
+                          style={{
+                            color: "var(--color-bt-accent)",
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            font: "inherit",
+                            cursor: "pointer",
+                          }}
+                        >
+                          enter manually
+                        </button>
+                        .
+                      </>
+                    }
+                  >
+                    {/* URL input — typed value pre-fills the AddPropertySheet's
+                        URL field when the user clicks "Add property", so the
+                        rail isn't just a button asking for action with no
+                        inline affordance. */}
+                    <div className="relative">
+                      <Link2
+                        size={13}
+                        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      />
+                      <input
+                        type="url"
+                        value={composerUrl}
+                        onChange={(e) => setComposerUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") setShowAddLodging(true);
+                        }}
+                        placeholder="https://airbnb.com/rooms/…"
+                        className="w-full rounded-lg border py-2 pl-8 pr-2 font-mono text-[13px] outline-none"
+                        style={{
+                          background: "var(--color-bt-card-raised)",
+                          borderColor: "var(--color-bt-border)",
+                          color: "var(--color-bt-text-dim)",
+                        }}
+                      />
+                    </div>
+                  </RailComposer>
+                </aside>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<Hotel className="h-10 w-10" />}
+                headline="No properties yet"
+                subtext="The organizer hasn't added any properties yet."
+              />
+            )
           ) : (
             <div className="flex flex-col gap-2">
               {lodgingItems.map((item) => (
@@ -462,7 +713,11 @@ export function LodgingPanel({
             showAddressAndDates
             isPending={createItem.isPending}
             onSubmit={handleCreate}
-            onClose={() => setShowAddLodging(false)}
+            onClose={() => {
+              setShowAddLodging(false);
+              setComposerUrl("");
+            }}
+            initialValues={composerUrl ? { url: composerUrl } : undefined}
           />
         )}
 
