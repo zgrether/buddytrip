@@ -31,6 +31,14 @@ interface TabHeaderProps {
    * Requires `eyebrow` to be present — without it there's no row anchor.
    */
   desktopAction?: ReactNode;
+  /**
+   * When true, the action stays visible at every viewport instead of
+   * hiding below md. Use this for non-add affordances (e.g. Crew's
+   * "Email the crew" button) where the FAB doesn't substitute — the
+   * FAB is the *add* CTA, secondary actions need their own real
+   * estate on mobile.
+   */
+  actionAlwaysVisible?: boolean;
   /** data-testid for E2E targeting. */
   testId?: string;
 }
@@ -61,6 +69,7 @@ export function TabHeader({
   headline,
   body,
   desktopAction,
+  actionAlwaysVisible = false,
   testId,
 }: TabHeaderProps) {
   return (
@@ -84,13 +93,24 @@ export function TabHeader({
             {eyebrow}
           </span>
           {desktopAction && (
-            // Per round-3 narrow-tablet Option A: the header action
-            // hides below md so the FAB is the sole add affordance at
-            // narrow tablet + phone widths. This pairs cleanly with
+            // Default behavior (round-3 narrow-tablet Option A): the
+            // header action hides below md so the FAB is the sole add
+            // affordance at narrow tablet + phone widths. Pairs with
             // TabFab's md:hidden (Task 14) so rail/FAB swap at the
-            // same breakpoint and Agenda's empty-state "+ Add your
-            // first item" stops doubling with the FAB at ~720px.
-            <div className="hidden flex-shrink-0 md:flex md:items-center md:gap-2">
+            // same breakpoint.
+            //
+            // actionAlwaysVisible escape hatch: non-add affordances
+            // (e.g. Crew's "Email the crew" button) stay visible at
+            // every width — the FAB only substitutes for add, and a
+            // secondary action shouldn't lose its real estate on
+            // mobile.
+            <div
+              className={
+                actionAlwaysVisible
+                  ? "flex flex-shrink-0 items-center gap-2"
+                  : "hidden flex-shrink-0 md:flex md:items-center md:gap-2"
+              }
+            >
               {desktopAction}
             </div>
           )}

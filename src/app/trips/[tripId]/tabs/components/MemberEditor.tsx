@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowUpCircle, Check, Crown, Loader2, Mail, Send, Trash2, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -24,11 +24,11 @@ export type MemberEditorTarget = {
     name?: string | null;
     email: string | null;
     is_guest?: boolean;
-    /** Account-level profile picture. The drawer's header avatar
-     *  surfaces this (with users.name as the initials fallback) so it
-     *  reflects who the account *is*, not whatever trip nickname is
-     *  currently in the input. */
-    avatar_url?: string | null;
+    /** Tabler icon id the user chose in /profile (e.g. "flag-2"). The
+     *  drawer header surfaces this, NOT users.avatar_url (the OAuth /
+     *  Google photo), so the avatar reflects the user's explicit
+     *  in-app identity rather than their login provider's photo. */
+    avatar_icon?: string | null;
   } | null;
 };
 
@@ -46,7 +46,11 @@ function statusLabel(s: ReturnType<typeof deriveStatus>) {
     case "active":
       return "Active";
     case "invited":
-      return "Invited";
+      // Matches the "Pending" umbrella in the StatusLegend / CompactStatusLegend
+      // — covers both "pending invite" (added, not sent) and "invited"
+      // (sent, not signed up) so the drawer reads consistently with the
+      // rail legend.
+      return "Pending";
     case "placeholder":
       return "Placeholder (no email)";
   }
@@ -197,14 +201,49 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
     else removeMember.mutate({ tripId, userId: member.user_id });
   };
 
+  // ── Role-change is instant, not part of Save (Task 54) ───────────────
+  //
+  // Role buttons fire `updateRole` the moment they're tapped — they
+  // don't enable Save, and Cancel won't roll them back. This makes the
+  // mental model crisp: typed input = Save; buttons = immediate.
+  //
+  // To soften the irreversibility, we show a transient confirmation
+  // row ("✓ Promoted to organizer · Undo") for ~6 seconds after the
+  // change. Undo flips the role back. After the window closes, the
+  // row disappears and the Permissions section settles into the new
+  // steady-state card (Organizer state-card + Demote button, or
+  // Member + Make-organizer button).
+  const [recentRoleChange, setRecentRoleChange] = useState<{
+    toRole: "Planner" | "Member";
+    fromRole: "Planner" | "Member";
+  } | null>(null);
+
+  useEffect(() => {
+    if (!recentRoleChange) return;
+    const timer = window.setTimeout(() => setRecentRoleChange(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [recentRoleChange]);
+
   const handleMakeOrganizer = () => {
     if (!member.user_id) return;
     updateRole.mutate({ tripId, userId: member.user_id, role: "Planner" });
+    setRecentRoleChange({ toRole: "Planner", fromRole: "Member" });
   };
 
   const handleRemoveOrganizer = () => {
     if (!member.user_id) return;
     updateRole.mutate({ tripId, userId: member.user_id, role: "Member" });
+    setRecentRoleChange({ toRole: "Member", fromRole: "Planner" });
+  };
+
+  const handleUndoRoleChange = () => {
+    if (!recentRoleChange || !member.user_id) return;
+    updateRole.mutate({
+      tripId,
+      userId: member.user_id,
+      role: recentRoleChange.fromRole,
+    });
+    setRecentRoleChange(null);
   };
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -213,30 +252,33 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
       {/* Backdrop — two tokens because drawer scrims are lighter than
           the modal/sheet ones (see Task 1). */}
       <div
-        className="fixed inset-0 z-40 lg:hidden"
+        className="fixed inset-0 z-40 sm:hidden"
         style={{ background: "var(--color-bt-overlay-sheet)" }}
         onClick={onClose}
         aria-hidden
       />
       <div
-        className="fixed inset-0 z-40 hidden lg:block"
+        className="fixed inset-0 z-40 hidden sm:block"
         style={{ background: "var(--color-bt-overlay-drawer)" }}
         onClick={onClose}
         aria-hidden
       />
 
-      {/* Panel — bottom-sheet (mobile) / right-side drawer (desktop). */}
+      {/* Panel — bottom-sheet (<640px) / right-side drawer (≥640px).
+          Per Task 51 the breakpoint dropped from lg (1024) to sm (640):
+          bottom sheets are a mobile pattern, and at tablet widths the
+          right drawer keeps working without obscuring most of the page. */}
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`Edit ${member.displayName}`}
         className={[
           "fixed z-50 flex flex-col",
-          // Mobile: bottom-anchored sheet, ~82% height
+          // Mobile (<640): bottom-anchored sheet, ~82% height
           "inset-x-0 bottom-0 h-[82vh] rounded-t-2xl",
-          // Desktop (lg+): right-anchored drawer, full height, 440px wide
-          // per the canonical edit-drawer spec.
-          "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:w-[440px] lg:rounded-none",
+          // Tablet + desktop (≥640): right-anchored drawer, full height,
+          // 440px wide per the canonical edit-drawer spec.
+          "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:w-[440px] sm:rounded-none",
         ].join(" ")}
         style={{
           background: "var(--color-bt-card-float)",
@@ -246,7 +288,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
         onClick={(e) => e.stopPropagation()}
       >
         {/* Mobile grab handle — only on small viewports */}
-        <div className="lg:hidden flex justify-center py-2">
+        <div className="sm:hidden flex justify-center py-2">
           <span
             className="block h-1 w-9 rounded-full"
             style={{ background: "var(--color-bt-border)" }}
@@ -259,14 +301,16 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
           <div className="flex min-w-0 items-center gap-3">
-            {/* Avatar — always reflects the account identity (users.name
-                + users.avatar_url), never the trip-scoped nickname being
-                edited. So typing a new nickname doesn't rewrite the
-                avatar in the same drawer; the avatar stays tied to who
-                the account *is*. */}
+            {/* Avatar — surfaces the user's in-app profile choice
+                (users.avatar_icon, the Tabler icon picked in /profile)
+                with users.name as the initials fallback. Trip-scoped
+                nickname does NOT drive the avatar — typing a new
+                nickname here leaves the avatar alone. We deliberately
+                ignore users.avatar_url (Google/OAuth photo) so what
+                shows up is what the user explicitly picked in-app. */}
             {(() => {
               const accountName = member.user?.name ?? member.displayName;
-              const accountAvatar = member.user?.avatar_url ?? null;
+              const accountIcon = member.user?.avatar_icon ?? null;
               if (status === "placeholder") {
                 return (
                   <span
@@ -289,7 +333,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               if (status === "invited") {
                 return (
                   <span className="relative h-9 w-9 flex-shrink-0">
-                    <UserAvatar name={accountName} avatarUrl={accountAvatar} sizePx={36} />
+                    <Avatar name={accountName} avatarIcon={accountIcon} size="md" />
                     <span
                       className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full"
                       style={{
@@ -304,7 +348,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
                   </span>
                 );
               }
-              return <UserAvatar name={accountName} avatarUrl={accountAvatar} sizePx={36} />;
+              return <Avatar name={accountName} avatarIcon={accountIcon} size="md" />;
             })()}
             <div className="min-w-0">
               <div
@@ -432,8 +476,22 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             </Field>
           )}
 
-          {/* Permissions — contextual control per spec */}
-          <Field label="Permissions">
+          {/* Permissions — rendered with a plain <div>, NOT the shared
+              <Field> wrapper. Field renders its children inside a
+              <label>, and a <label> proxies click events to the first
+              labelable form control it contains (HTML spec). Our
+              RoleControl contains a <button>, which IS labelable, so
+              under Field every click anywhere in the section — badge,
+              description text, whitespace — would fire the role-change
+              button. Rendering as <div> with a sibling <span> for the
+              eyebrow eliminates that hidden tap target. */}
+          <div className="flex flex-col gap-1.5">
+            <span
+              className="text-[11px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Permissions
+            </span>
             <RoleControl
               role={member.role}
               status={status}
@@ -441,7 +499,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               onMakeOrganizer={handleMakeOrganizer}
               onRemoveOrganizer={handleRemoveOrganizer}
             />
-          </Field>
+          </div>
 
           {/* Danger — remove from trip */}
           {!isOwnerRow && (
@@ -460,6 +518,50 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             </button>
           )}
         </div>
+
+        {/* Role-change toast — sits above the Save/Cancel row when a
+            role change just fired. Auto-fades after 6s (timer lives on
+            the recentRoleChange state). Lives in the footer region —
+            not inside the Permissions section — so the Permissions card
+            itself stays steady-state per the Task 55 spec. */}
+        {recentRoleChange && (
+          <div
+            className="flex-shrink-0 px-4 pt-3"
+            role="status"
+            aria-live="polite"
+          >
+            <div
+              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+              }}
+            >
+              <span
+                className="inline-flex items-center gap-1.5 text-[12px] font-semibold"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                <Check size={13} strokeWidth={3} />
+                {recentRoleChange.toRole === "Planner"
+                  ? "Promoted to organizer"
+                  : "Demoted to member"}
+              </span>
+              <button
+                type="button"
+                onClick={handleUndoRoleChange}
+                className="text-[12px] font-semibold underline-offset-2 transition-opacity hover:underline hover:opacity-80"
+                style={{
+                  color: "var(--color-bt-accent)",
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                }}
+              >
+                Undo
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Footer — Save / Cancel */}
         <div
@@ -657,7 +759,8 @@ function RoleControl({
   onMakeOrganizer: () => void;
   onRemoveOrganizer: () => void;
 }) {
-  // Owner — explainer only, no control.
+  // Owner — explainer only, no control. Distinct chrome (warning-tinted)
+  // because changing ownership lives in Trip settings, not here.
   if (role === "Owner") {
     return (
       <div
@@ -703,92 +806,69 @@ function RoleControl({
     );
   }
 
-  // Active Organizer — describe + danger demote.
-  if (role === "Planner") {
-    return (
-      <div className="flex flex-col gap-2">
-        <div
-          className="flex items-start gap-2.5 rounded-lg px-3 py-2.5"
-          style={{
-            background: "var(--color-bt-accent-faint)",
-            border: "1px solid var(--color-bt-accent-border)",
-          }}
-        >
-          <span
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-on-accent)",
-            }}
-          >
-            <Check size={12} strokeWidth={3} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[12px] font-semibold" style={{ color: "var(--color-bt-accent)" }}>
-              Organizer
-            </div>
-            <div
-              className="mt-0.5 text-[11px] leading-snug"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Can edit destination, dates, lodging, agenda, receipts, and the crew. Cannot delete the trip or transfer ownership.
-            </div>
-          </div>
-        </div>
-        {canManageRoles && (
-          <button
-            onClick={onRemoveOrganizer}
-            className="self-start rounded-lg border px-3 py-1.5 text-xs font-medium"
-            style={{
-              color: "var(--color-bt-danger)",
-              borderColor: "var(--color-bt-danger-border)",
-              background: "transparent",
-            }}
-          >
-            Remove organizer status
-          </button>
-        )}
-      </div>
-    );
-  }
+  // ── Active (Member OR Organizer) — unified shape per Task 55 ────────
+  //
+  // Both roles render the same layout: role badge, description, then a
+  // single ghost-outlined button whose only difference is its label
+  // ("Make organizer" vs "Demote to member"). No color asymmetry, no
+  // mixed primary-CTA / danger-button shapes. The post-tap confirmation
+  // toast now lives at the drawer footer (see MemberEditor), so the
+  // Permissions section itself stays steady-state.
+  const isOrganizer = role === "Planner";
+  const badge = isOrganizer
+    ? { label: "Organizer", color: "var(--color-bt-accent)", bg: "var(--color-bt-accent-faint)" }
+    : { label: "Member", color: "var(--color-bt-text-dim)", bg: "var(--color-bt-card-raised)" };
+  const description = isOrganizer
+    ? "Can edit destination, dates, lodging, agenda, receipts, and the crew. Cannot delete the trip or transfer ownership."
+    : "Counts for rooms, teams, and receipts. Tag any Organizer with planning questions; only Organizers (and the Owner) can edit trip details.";
+  const buttonLabel = isOrganizer ? "Demote to member" : "Make organizer";
+  const onButtonClick = isOrganizer ? onRemoveOrganizer : onMakeOrganizer;
 
-  // Active Member — single elevate action.
   return (
     <div className="flex flex-col gap-2">
+      {/* Role badge is a non-interactive label — no border, no hover, no
+          cursor — so it doesn't compete visually with the actual action
+          button below. The Make organizer / Demote to member button is
+          the sole path to change role. */}
+      <span
+        className="inline-flex items-center gap-1 self-start rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+        style={{
+          color: badge.color,
+          background: badge.bg,
+        }}
+      >
+        {badge.label}
+      </span>
+      <div
+        className="text-[12px] italic leading-snug"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        {description}
+      </div>
       {canManageRoles ? (
-        <>
-          {/* Solid teal CTA — distinct from the "is currently an
-              Organizer" state card, which uses a teal check inside an
-              accent-faint pill. This one's a primary action, so it
-              looks like one: bt-accent fill, on-accent text, an
-              arrow-up-circle promotion icon (not a check, which would
-              read as "already done"). */}
-          <button
-            onClick={onMakeOrganizer}
-            className="inline-flex items-center justify-center gap-2 self-start rounded-lg px-3.5 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-on-accent)",
-            }}
-          >
-            <ArrowUpCircle size={14} strokeWidth={2.5} />
-            Make organizer
-          </button>
-          <div
-            className="text-[11px] leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Organizers get nearly all owner permissions — useful for delegating trip planning.
-          </div>
-        </>
+        <button
+          type="button"
+          onClick={onButtonClick}
+          className="self-start rounded-lg border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-85"
+          style={{
+            color: "var(--color-bt-text)",
+            borderColor: "var(--color-bt-border)",
+            background: "transparent",
+          }}
+        >
+          {buttonLabel}
+        </button>
       ) : (
-        <div className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Only the Owner can promote a Member to Organizer.
+        <div className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Only the Owner can change crew roles.
         </div>
       )}
     </div>
   );
 }
+
+// (Task 55 inlined the role-change confirmation row into the drawer
+// footer; the standalone RoleConfirmationRow component is gone.)
 
 // Suppress unused-icon lint warning — `Mail` is referenced indirectly
 // in some build configurations.

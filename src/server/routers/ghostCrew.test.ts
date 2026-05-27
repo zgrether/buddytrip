@@ -29,9 +29,10 @@ describe("ghostCrew router", () => {
   });
 
   // ── create ────────────────────────────────────────────────────────────────
+  // Owner-only as of Task 53 — guest crew creation is roster management.
 
-  it("create — planner can add a guest user by name", async () => {
-    const caller = ctx.callerAs("planner");
+  it("create — owner can add a guest user by name", async () => {
+    const caller = ctx.caller();
     const ghost = await caller.ghostCrew.create({
       tripId,
       name: "Andy",
@@ -43,8 +44,8 @@ describe("ghostCrew router", () => {
     expect(ghost.is_guest).toBe(true);
   });
 
-  it("create — planner can add guest with optional email", async () => {
-    const caller = ctx.callerAs("planner");
+  it("create — owner can add guest with optional email", async () => {
+    const caller = ctx.caller();
     const bobEmail = `bob-ghost-${RUN_ID}@example.com`;
     const ghost = await caller.ghostCrew.create({
       tripId,
@@ -57,6 +58,13 @@ describe("ghostCrew router", () => {
     expect(ghost.is_guest).toBe(true);
   });
 
+  it("create — planner cannot add guest crew (Owner only)", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.ghostCrew.create({ tripId, name: "Fail" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("create — member cannot add guest crew", async () => {
     const caller = ctx.callerAs("member");
     await expect(
@@ -64,17 +72,34 @@ describe("ghostCrew router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("create — rejects email that belongs to an existing real account", async () => {
-    // 'outsider' has a real BuddyTrip account but is NOT a member of this trip
-    const caller = ctx.callerAs("planner");
+  it("create — auto-links to existing real BT account when email matches", async () => {
+    // 'outsider' has a real BuddyTrip account but is NOT a member of this trip.
+    // The composer's single-flow stays single-flow: instead of asking the
+    // caller to use a different endpoint, create() inserts a trip_members row
+    // pointing at the existing real user and returns is_guest: false.
+    //
+    // Use a fresh trip so outsider isn't already a member from an earlier test.
+    const freshTripId = await ctx.createTrip("Ghost Auto-Link Trip");
+    const caller = ctx.caller();
     const outsider = ctx.getUser("outsider");
+
+    const result = await caller.ghostCrew.create({
+      tripId: freshTripId,
+      name: "Dupe",
+      email: outsider.email,
+    });
+
+    expect(result.id).toBe(outsider.id);
+    expect(result.is_guest).toBe(false);
+
+    // Trying again should now CONFLICT since outsider is a member.
     await expect(
       caller.ghostCrew.create({
-        tripId,
-        name: "Dupe",
+        tripId: freshTripId,
+        name: "Dupe2",
         email: outsider.email,
       })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
   // ── tripMembers.list returns guest members alongside real ones ───────────
@@ -104,13 +129,14 @@ describe("ghostCrew router", () => {
   });
 
   // ── update ────────────────────────────────────────────────────────────────
+  // Owner-only as of Task 53 — guest crew editing is roster management.
 
-  it("update — planner can edit guest name", async () => {
-    const plannerCaller = ctx.callerAs("planner");
-    const members = await plannerCaller.tripMembers.list({ tripId });
+  it("update — owner can edit guest name", async () => {
+    const owner = ctx.caller();
+    const members = await owner.tripMembers.list({ tripId });
     const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     const ghost = ghosts[0];
-    const updated = await plannerCaller.ghostCrew.update({
+    const updated = await owner.ghostCrew.update({
       tripId,
       guestUserId: ghost.id,
       name: "Andrew",
@@ -118,13 +144,13 @@ describe("ghostCrew router", () => {
     expect(updated.name).toBe("Andrew");
   });
 
-  it("update — planner can add email to guest", async () => {
-    const plannerCaller = ctx.callerAs("planner");
-    const members = await plannerCaller.tripMembers.list({ tripId });
+  it("update — owner can add email to guest", async () => {
+    const owner = ctx.caller();
+    const members = await owner.tripMembers.list({ tripId });
     const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     const ghost = ghosts[0];
     const andrewEmail = `andrew-ghost-${RUN_ID}@example.com`;
-    const updated = await plannerCaller.ghostCrew.update({
+    const updated = await owner.ghostCrew.update({
       tripId,
       guestUserId: ghost.id,
       email: andrewEmail,
@@ -132,9 +158,23 @@ describe("ghostCrew router", () => {
     expect(updated.email).toBe(andrewEmail);
   });
 
+  it("update — planner cannot edit guest (Owner only)", async () => {
+    const owner = ctx.caller();
+    const plannerCaller = ctx.callerAs("planner");
+    const members = await owner.tripMembers.list({ tripId });
+    const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
+    await expect(
+      plannerCaller.ghostCrew.update({
+        tripId,
+        guestUserId: ghosts[0].id,
+        name: "Nope",
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("update — member cannot edit guest", async () => {
     const memberCaller = ctx.callerAs("member");
-    const members = await ctx.callerAs("planner").tripMembers.list({ tripId });
+    const members = await ctx.caller().tripMembers.list({ tripId });
     const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     await expect(
       memberCaller.ghostCrew.update({
@@ -147,14 +187,14 @@ describe("ghostCrew router", () => {
 
   it("update — auto-links to existing real BT account when email matches", async () => {
     // Create a fresh ghost on this trip
-    const planner = ctx.callerAs("planner");
-    const ghost = await planner.ghostCrew.create({ tripId, name: "LinkMe" });
+    const owner = ctx.caller();
+    const ghost = await owner.ghostCrew.create({ tripId, name: "LinkMe" });
     guestUserIds.push(ghost.id);
 
     // 'outsider' has a real BT account but isn't a member of this trip
     const outsider = ctx.getUser("outsider");
 
-    const result = await planner.ghostCrew.update({
+    const result = await owner.ghostCrew.update({
       tripId,
       guestUserId: ghost.id,
       email: outsider.email,
@@ -165,21 +205,21 @@ describe("ghostCrew router", () => {
     expect(result.is_guest).toBe(false);
 
     // trip_members should now point at the real user, not the ghost
-    const members = await planner.tripMembers.list({ tripId });
+    const members = await owner.tripMembers.list({ tripId });
     expect(members.find((m) => m.user_id === outsider.id)).toBeTruthy();
     expect(members.find((m) => m.user_id === ghost.id)).toBeFalsy();
   });
 
   it("update — refuses link when real account is already a trip member", async () => {
     // Create another ghost
-    const planner = ctx.callerAs("planner");
-    const ghost = await planner.ghostCrew.create({ tripId, name: "DupLink" });
+    const owner = ctx.caller();
+    const ghost = await owner.ghostCrew.create({ tripId, name: "DupLink" });
     guestUserIds.push(ghost.id);
 
     // 'member' is already a real member of this trip
     const member = ctx.getUser("member");
     await expect(
-      planner.ghostCrew.update({
+      owner.ghostCrew.update({
         tripId,
         guestUserId: ghost.id,
         email: member.email,
@@ -188,12 +228,12 @@ describe("ghostCrew router", () => {
   });
 
   it("update — non-matching email falls through to plain ghost update", async () => {
-    const planner = ctx.callerAs("planner");
-    const ghost = await planner.ghostCrew.create({ tripId, name: "Plain" });
+    const owner = ctx.caller();
+    const ghost = await owner.ghostCrew.create({ tripId, name: "Plain" });
     guestUserIds.push(ghost.id);
 
     const newEmail = `plain-${RUN_ID}@example.com`;
-    const result = await planner.ghostCrew.update({
+    const result = await owner.ghostCrew.update({
       tripId,
       guestUserId: ghost.id,
       email: newEmail,
@@ -207,15 +247,14 @@ describe("ghostCrew router", () => {
   // ── remove ────────────────────────────────────────────────────────────────
 
   it("remove — owner can remove a guest from the trip", async () => {
-    // Create one specifically to remove
-    const plannerCaller = ctx.callerAs("planner");
-    const ghost = await plannerCaller.ghostCrew.create({
+    // Create one specifically to remove (Owner-only as of Task 53).
+    const ownerCaller = ctx.caller();
+    const ghost = await ownerCaller.ghostCrew.create({
       tripId,
       name: "TempGuest",
     });
     guestUserIds.push(ghost.id);
 
-    const ownerCaller = ctx.caller();
     const result = await ownerCaller.ghostCrew.remove({
       tripId,
       guestUserId: ghost.id,
@@ -223,7 +262,7 @@ describe("ghostCrew router", () => {
     expect(result.success).toBe(true);
 
     // Verify gone from trip member list
-    const members = await plannerCaller.tripMembers.list({ tripId });
+    const members = await ownerCaller.tripMembers.list({ tripId });
     const ghosts = members.filter((m) => m.isGuest).map((m) => ({ id: m.user_id! }));
     expect(ghosts.find((g) => g.id === ghost.id)).toBeUndefined();
   });

@@ -139,27 +139,28 @@ export function EditExpenseModal({
     <>
       {/* Tiered backdrops — sheet alpha mobile, drawer alpha desktop. */}
       <div
-        className="fixed inset-0 z-40 lg:hidden"
+        className="fixed inset-0 z-40 sm:hidden"
         style={{ background: "var(--color-bt-overlay-sheet)" }}
         onClick={onClose}
         aria-hidden
       />
       <div
-        className="fixed inset-0 z-40 hidden lg:block"
+        className="fixed inset-0 z-40 hidden sm:block"
         style={{ background: "var(--color-bt-overlay-drawer)" }}
         onClick={onClose}
         aria-hidden
       />
 
       {/* Panel — bottom sheet (mobile) / right-anchored 440px drawer
-          (desktop, lg+) per the canonical edit-drawer spec. */}
+          (tablet + desktop, sm+ / ≥640px) per the canonical edit-drawer
+          spec. Threshold lowered from lg → sm per Task 51. */}
       <div
         role="dialog"
         aria-modal="true"
         className={[
           "fixed z-50 flex flex-col",
           "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
-          "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:max-h-screen lg:w-[440px] lg:rounded-none",
+          "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:max-h-screen sm:w-[440px] sm:rounded-none",
         ].join(" ")}
         style={{
           background: "var(--color-bt-card-float)",

@@ -64,13 +64,20 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
         onAddOpenChange={setAddOpen}
       />
 
+      {/* sm:hidden wrapper tightens the FAB visibility to <640px so it
+          swaps with the inline composer aside at the same threshold the
+          aside appears (Task 65). TabFab's default is md:hidden (<768),
+          which left a 640-767 dead zone where both the composer AND the
+          FAB rendered. Mirrors Crew's FAB wrap. */}
       {canEdit && (
-        <TabFab
-          onClick={openAdd}
-          label="Add property"
-          icon={<HousePlus size={20} strokeWidth={2.25} />}
-          testId="add-property-fab"
-        />
+        <div className="sm:hidden">
+          <TabFab
+            onClick={openAdd}
+            label="Add property"
+            icon={<HousePlus size={20} strokeWidth={2.25} />}
+            testId="add-property-fab"
+          />
+        </div>
       )}
     </div>
   );

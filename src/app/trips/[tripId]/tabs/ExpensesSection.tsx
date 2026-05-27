@@ -281,6 +281,7 @@ function AddReceiptFullComposer({
   members,
   currentUserId,
   onOpenFull,
+  variant = "rail",
 }: {
   tripId: string;
   members: ExpenseMember[];
@@ -289,6 +290,15 @@ function AddReceiptFullComposer({
    *  the inline composer can't handle (>6 crew, per-user split amounts,
    *  etc.). Rendered as a small "More options →" link below the hint. */
   onOpenFull: () => void;
+  /**
+   * "rail" (default) — full chrome: accent-bordered card, raised shadow,
+   *   internal padding, uppercase eyebrow row.
+   * "sheet" — chrome stripped. Inputs sit directly on the mobile bottom
+   *   sheet's card-float surface, which already supplies framing and a
+   *   title bar above the form, so the composer's own card would read
+   *   as a nested duplicate.
+   */
+  variant?: "rail" | "sheet";
 }) {
   const utils = trpc.useUtils();
   const me = members.find((m) => m.user_id === currentUserId);
@@ -365,21 +375,33 @@ function AddReceiptFullComposer({
     });
   };
 
+  const isSheet = variant === "sheet";
+
   return (
     <div
-      className="flex flex-col gap-2.5 rounded-xl p-4"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-accent-border)",
-        boxShadow: "var(--shadow-raised)",
-      }}
+      className={
+        isSheet
+          ? "flex flex-col gap-2.5"
+          : "flex flex-col gap-2.5 rounded-xl p-4"
+      }
+      style={
+        isSheet
+          ? undefined
+          : {
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-accent-border)",
+              boxShadow: "var(--shadow-raised)",
+            }
+      }
     >
-      <div
-        className="text-[11px] font-bold uppercase tracking-[0.12em]"
-        style={{ color: "var(--color-bt-accent)" }}
-      >
-        Add your first receipt
-      </div>
+      {!isSheet && (
+        <div
+          className="text-[11px] font-bold uppercase tracking-[0.12em]"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          Add your first receipt
+        </div>
+      )}
 
       <input
         type="text"

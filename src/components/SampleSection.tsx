@@ -87,6 +87,16 @@ interface RailComposerProps {
    * in populated states where the composer is one of several panels).
    */
   boosted?: boolean;
+  /**
+   * "rail" (default) — full chrome: card background, border, optional
+   *   raised shadow when boosted, rounded corners, internal padding,
+   *   uppercase eyebrow row. Canonical right-rail presentation.
+   * "sheet" — chrome stripped so the composer can be dropped into the
+   *   mobile bottom-sheet modal without reading as a nested card. The
+   *   sheet supplies the surface, elevation, radius, padding, and a
+   *   title bar above the form, so the eyebrow + frame are suppressed.
+   */
+  variant?: "rail" | "sheet";
 }
 
 /**
@@ -105,28 +115,40 @@ export function RailComposer({
   hint,
   children,
   boosted,
+  variant = "rail",
 }: RailComposerProps) {
+  const isSheet = variant === "sheet";
   return (
     <div
-      className="flex flex-col gap-2.5 rounded-xl p-4"
-      style={{
-        background: "var(--color-bt-card)",
-        border: boosted
-          ? "1px solid var(--color-bt-accent-border)"
-          : "1px solid var(--color-bt-border)",
-        boxShadow: boosted ? "var(--shadow-raised)" : undefined,
-      }}
+      className={
+        isSheet
+          ? "flex flex-col gap-2.5"
+          : "flex flex-col gap-2.5 rounded-xl p-4"
+      }
+      style={
+        isSheet
+          ? undefined
+          : {
+              background: "var(--color-bt-card)",
+              border: boosted
+                ? "1px solid var(--color-bt-accent-border)"
+                : "1px solid var(--color-bt-border)",
+              boxShadow: boosted ? "var(--shadow-raised)" : undefined,
+            }
+      }
     >
-      <div
-        className="text-[11px] font-bold uppercase tracking-[0.12em]"
-        style={{
-          color: boosted
-            ? "var(--color-bt-accent)"
-            : "var(--color-bt-text-dim)",
-        }}
-      >
-        {title}
-      </div>
+      {!isSheet && (
+        <div
+          className="text-[11px] font-bold uppercase tracking-[0.12em]"
+          style={{
+            color: boosted
+              ? "var(--color-bt-accent)"
+              : "var(--color-bt-text-dim)",
+          }}
+        >
+          {title}
+        </div>
+      )}
       {children}
       <button
         type="button"

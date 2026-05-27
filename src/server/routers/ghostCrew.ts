@@ -173,6 +173,8 @@ export const ghostCrewRouter = router({
   // trips — only the trip_members pointer changes.
   //
   // Otherwise, falls through to a plain UPDATE on the ghost users row.
+  //
+  // Owner-only as of Task 53 — guest crew editing is roster management.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(

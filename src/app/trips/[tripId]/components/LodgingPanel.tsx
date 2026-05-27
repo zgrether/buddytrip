@@ -561,7 +561,25 @@ export function LodgingPanel({
         <section>
           {lodgingItems.length === 0 ? (
             canEdit ? (
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <div
+                className={[
+                  // Mirrors the Crew tab's responsive pattern (Task 65):
+                  //   <640   single column — composer aside hides, FAB
+                  //          (wrapped sm:hidden in LodgingTab) takes over
+                  //   640-899 two equal columns — sample-block | composer
+                  //          side-by-side so they fill the stacked space
+                  //          instead of expanding full-width vertically
+                  //   ≥900   1fr / 320px — sample in main slot, composer
+                  //          tucked into the narrow right rail
+                  // Both breakpoints use arbitrary `min-[...]:` variants
+                  // so Tailwind v4 sorts them numerically (Task 45's
+                  // cascade fix — `sm:` interleaved with `min-[900px]:`
+                  // ends up wrong-ordered in the generated stylesheet).
+                  "grid gap-5",
+                  "min-[640px]:grid-cols-2",
+                  "min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]",
+                ].join(" ")}
+              >
                 {/* Main column — SampleHeader + a 2-col grid pairing the
                     tile example with helper copy. The grid collapses to
                     single-column at < sm so the tile + helper read top to
@@ -595,12 +613,14 @@ export function LodgingPanel({
                   </div>
                 </div>
 
-                {/* Right rail (lg+) / stacked composer (md ≤ x < lg).
-                    Hidden on phones (<md) — the TabFab is the mobile add
-                    affordance. Capped at 540px when stacked so it never
-                    stretches into a huge form on a 900px tablet. */}
+                {/* Composer aside — visible at sm+ (≥640). Below that
+                    the LodgingTab's sm:hidden-wrapped TabFab is the
+                    sole add affordance, matching Crew. The outer grid
+                    handles the rest: at 640-899 the aside occupies the
+                    right half of a 2-col grid; at ≥900 it slots into
+                    the narrow `minmax(280px, 320px)` rail track. */}
                 <aside
-                  className="hidden md:block"
+                  className="hidden min-[640px]:block"
                   style={{ maxWidth: 540 }}
                 >
                   <RailComposer

@@ -31,16 +31,23 @@ describe("tripMembers router", () => {
     expect(members[0].user).toBeTruthy();
   });
 
-  // add
-  it("add — planner can add a member", async () => {
+  // add — Owner-only (Task 53 hardening: roster management is Owner-only).
+  it("add — owner can add a member", async () => {
     const outsider = ctx.getUser("outsider");
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     const added = await caller.tripMembers.add({
       tripId,
       userId: outsider.id,
     });
     expect(added.user_id).toBe(outsider.id);
     expect(added.role).toBe("Member");
+  });
+
+  it("add — planner cannot add (Owner only)", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.add({ tripId, userId: genId("fake-user") })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("add — member cannot add", async () => {
@@ -53,7 +60,7 @@ describe("tripMembers router", () => {
 
   it("add — duplicate throws CONFLICT", async () => {
     const outsider = ctx.getUser("outsider");
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     await expect(
       caller.tripMembers.add({ tripId, userId: outsider.id })
     ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -86,9 +93,9 @@ describe("tripMembers router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // inviteByEmail
-  it("inviteByEmail — planner can invite a new email", async () => {
-    const caller = ctx.callerAs("planner");
+  // inviteByEmail — Owner-only (Task 53 hardening).
+  it("inviteByEmail — owner can invite a new email", async () => {
+    const caller = ctx.caller();
     const result = await caller.tripMembers.inviteByEmail({
       tripId,
       email: "newperson@example.com",
@@ -98,7 +105,7 @@ describe("tripMembers router", () => {
   });
 
   it("inviteByEmail — duplicate invite returns already_member", async () => {
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     const result = await caller.tripMembers.inviteByEmail({
       tripId,
       email: "newperson@example.com",
@@ -110,13 +117,20 @@ describe("tripMembers router", () => {
     // Use a fresh trip so outsider isn't already a member
     const freshTripId = await ctx.createTrip("Invite Fresh Trip");
     await ctx.addTripMember(freshTripId, "planner", "Planner");
-    const caller = ctx.callerAs("planner");
+    const caller = ctx.caller();
     const outsider = ctx.getUser("outsider");
     const result = await caller.tripMembers.inviteByEmail({
       tripId: freshTripId,
       email: outsider.email,
     });
     expect(result.status).toBe("added_existing");
+  });
+
+  it("inviteByEmail — planner cannot invite (Owner only)", async () => {
+    const caller = ctx.callerAs("planner");
+    await expect(
+      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("inviteByEmail — member cannot invite", async () => {

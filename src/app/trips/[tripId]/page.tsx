@@ -295,7 +295,11 @@ export default function TripDetailPage() {
       .some((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item);
 
   const tabBadges: Partial<Record<TabId, "info" | "warning">> = {};
-  if (crewDot) tabBadges.crew = "info";
+  // Crew uses the "warning" tier so the tab dot picks up amber — matches
+  // the Pending status hue elsewhere on the tab (legend dot, nudge icon,
+  // row subline, avatar corner badge). Task 61 tried planning-blue here
+  // for a softer feel but the dot blended in; amber stands out.
+  if (crewDot) tabBadges.crew = "warning";
   if (scheduleOutOfRange) tabBadges.schedule = "warning";
   else if (scheduleDot) tabBadges.schedule = "info";
   if (lodgingOutOfRange) tabBadges.lodging = "warning";

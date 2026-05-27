@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Crown, Mail, Plus, Trash2, UserPlus, X } from "lucide-react";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
+import { parseLocalDate } from "@/lib/dates";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
@@ -25,7 +26,20 @@ type Member = {
   status: string | null;
   displayName: string;
   isGuest: boolean;
-  user: { name?: string | null; email: string | null; is_guest?: boolean } | null;
+  /** When the trip invite email was last sent to this member. Null until
+   *  the first send; updated by sendInvitationBlast. Surfaced in the
+   *  invited subline so organizers know how stale the invite is. */
+  last_invited_at?: string | null;
+  user: {
+    name?: string | null;
+    email: string | null;
+    is_guest?: boolean;
+    /** Tabler icon id the user chose in /profile (e.g. "flag-2") — the
+     *  in-app profile avatar. We surface this, NOT users.avatar_url
+     *  (the Google / OAuth-supplied photo), so crew rows reflect what
+     *  the user explicitly picked as their identity in this app. */
+    avatar_icon?: string | null;
+  } | null;
 };
 
 /** Three derived crew states. Status is computed, not chosen. */
@@ -103,13 +117,18 @@ function PlaceholderAvatar({ name }: { name: string }) {
 
 // ── InvitedAvatar — team-color circle + amber ✉ corner badge ──────────────
 
-function InvitedAvatar({ name }: { name: string }) {
+function InvitedAvatar({ name, avatarIcon }: { name: string; avatarIcon?: string | null }) {
   return (
     <div className="relative h-8 w-8 flex-shrink-0">
-      <UserAvatar name={name} avatarUrl={null} size="md" />
+      <Avatar name={name} avatarIcon={avatarIcon ?? null} size="md" />
       <span
         className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full"
         style={{
+          // Pending status uses --color-bt-warning (amber). Task 61
+          // briefly tried planning-blue for "softer" treatment but the
+          // blue washed out against everything else; Task 62 reverted —
+          // amber stands out and reads as "needs your attention" which
+          // matches what the Pending state actually means.
           background: "var(--color-bt-warning)",
           color: "var(--color-bt-on-accent)",
           border: "1.5px solid var(--color-bt-card)",
@@ -155,13 +174,27 @@ function CrewRow({
         className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors disabled:cursor-default"
         style={{ background: "transparent" }}
       >
-        {/* Avatar — three variants per derived status */}
+        {/* Avatar — three variants per derived status. Surfaces the
+            user's in-app profile avatar (users.avatar_icon, the Tabler
+            icon they picked in /profile) with users.name as the
+            initials fallback. Trip-scoped nickname does NOT drive the
+            avatar — Guthridge stays a "ZG" / chosen-icon for the
+            zgrethphoto account. We deliberately ignore users.avatar_url
+            (the Google/OAuth profile photo) so the avatar reflects an
+            in-app identity choice, not the third-party login picture. */}
         {status === "placeholder" ? (
-          <PlaceholderAvatar name={m.displayName} />
+          <PlaceholderAvatar name={m.user?.name ?? m.displayName} />
         ) : status === "invited" ? (
-          <InvitedAvatar name={m.displayName} />
+          <InvitedAvatar
+            name={m.user?.name ?? m.displayName}
+            avatarIcon={m.user?.avatar_icon ?? null}
+          />
         ) : (
-          <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
+          <Avatar
+            name={m.user?.name ?? m.displayName}
+            avatarIcon={m.user?.avatar_icon ?? null}
+            size="md"
+          />
         )}
 
         {/* Nickname + subline */}
@@ -188,7 +221,19 @@ function CrewRow({
             <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
               <span className="font-mono">{m.user?.email}</span>
               <span className="ml-1" style={{ color: "var(--color-bt-warning)" }}>
-                · invited
+                {/* Two sub-states:
+                    - last_invited_at set → "· invited Mar 5" (sent but
+                      the user hasn't signed up yet)
+                    - last_invited_at null → "· pending invite" (added
+                      with an email but the invite blast hasn't gone
+                      out yet — the nudge above prompts the Owner to
+                      send it). */}
+                {m.last_invited_at
+                  ? `· invited ${parseLocalDate(m.last_invited_at).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}`
+                  : "· pending invite"}
               </span>
             </p>
           )}
@@ -328,13 +373,18 @@ function StatusLegend({ members }: { members: Member[] }) {
       label: "Active",
       body:
         "Email matches a BuddyTrip user. On the trip with full app access. Can be promoted to organizer.",
-      avatar: <UserAvatar name="A" avatarUrl={null} size="md" />,
+      avatar: <Avatar name="A" avatarIcon={null} size="md" />,
     },
     {
+      // Umbrella for the two sub-states a guest-with-email can be in:
+      // "pending invite" (added, blast not sent yet) and "invited"
+      // (blast sent, recipient hasn't signed up). The legend uses the
+      // single label "Pending" to keep one row per status — the row
+      // sublines + Owner nudges carry the finer distinction.
       key: "invited",
-      label: "Invited",
-      body: "Email sent, no account yet. They become Active once they sign in.",
-      avatar: <InvitedAvatar name="I" />,
+      label: "Pending",
+      body: "Has an email but no BuddyTrip account yet — they're waiting on an invite, or already got one and haven't signed up. They become Active once they sign in.",
+      avatar: <InvitedAvatar name="P" />,
     },
     {
       key: "placeholder",
@@ -402,7 +452,7 @@ function CompactStatusLegend({ members }: { members: Member[] }) {
 
   const items: Array<{ key: DerivedStatus; label: string; dot: string }> = [
     { key: "active", label: "Active", dot: "var(--color-bt-accent)" },
-    { key: "invited", label: "Invited", dot: "var(--color-bt-warning)" },
+    { key: "invited", label: "Pending", dot: "var(--color-bt-warning)" },
     { key: "placeholder", label: "Placeholder", dot: "var(--color-bt-text-dim)" },
   ];
 
@@ -451,10 +501,23 @@ function CompactStatusLegend({ members }: { members: Member[] }) {
 function AddCrewComposer({
   tripId,
   boosted,
+  variant = "rail",
   onAdded,
 }: {
   tripId: string;
   boosted: boolean;
+  /**
+   * "rail" (default) — full chrome: card background, border, optional
+   *   raised shadow when boosted, rounded corners, internal padding,
+   *   uppercase eyebrow row. This is the canonical right-rail / stacked
+   *   composer presentation.
+   * "sheet" — chrome stripped. The composer is rendered inside the
+   *   mobile bottom-sheet modal, which already supplies the surface,
+   *   elevation, radius, padding, and a title bar above the form. The
+   *   composer's own card would read as a nested duplicate. Inputs sit
+   *   directly on the sheet's card-float background.
+   */
+  variant?: "rail" | "sheet";
   /** Fired after a successful add — used by the mobile sheet wrapper
    *  to dismiss the modal once the user has committed a crew member. */
   onAdded?: () => void;
@@ -506,25 +569,39 @@ function AddCrewComposer({
     color: "var(--color-bt-text)",
   };
 
+  const isSheet = variant === "sheet";
+
   return (
     <div
-      className="flex flex-col gap-2 rounded-xl p-3.5"
-      style={{
-        background: "var(--color-bt-card)",
-        border: boosted
-          ? "1px solid var(--color-bt-accent-border)"
-          : "1px solid var(--color-bt-border)",
-        boxShadow: boosted ? "var(--shadow-raised)" : undefined,
-      }}
+      className={
+        isSheet
+          ? "flex flex-col gap-2"
+          : "flex flex-col gap-2 rounded-xl p-3.5"
+      }
+      style={
+        isSheet
+          ? undefined
+          : {
+              background: "var(--color-bt-card)",
+              border: boosted
+                ? "1px solid var(--color-bt-accent-border)"
+                : "1px solid var(--color-bt-border)",
+              boxShadow: boosted ? "var(--shadow-raised)" : undefined,
+            }
+      }
     >
-      <div
-        className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em]"
-        style={{
-          color: boosted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-        }}
-      >
-        {boosted ? "Add your first crew member" : "Add a person"}
-      </div>
+      {/* Eyebrow row — redundant inside the sheet because the sheet's
+          title bar already says "Add crew member". Rail-only. */}
+      {!isSheet && (
+        <div
+          className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em]"
+          style={{
+            color: boosted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+          }}
+        >
+          {boosted ? "Add your first crew member" : "Add a crew member"}
+        </div>
+      )}
 
       <input
         value={name}
@@ -549,18 +626,26 @@ function AddCrewComposer({
         style={inputBase}
       />
 
-      {/* Button stays at full saturation regardless of name emptiness —
-          clicking while name is empty is a no-op (handleSubmit
-          early-returns) so the visual state matches "this is the CTA"
-          rather than "you must fill the name first." */}
+      {/* Button reflects the actual canSubmit state — both empty fields
+          AND in-flight pending dim it. Earlier iteration kept it at full
+          saturation when name+email were blank ("the CTA is always the
+          CTA") but that conflicted with the hover-glow + had no visual
+          cue for *why* the click did nothing. Now hover only lifts when
+          enabled, and disabled state reads at 40% opacity. */}
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={createGuest.isPending}
-        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
+        disabled={!canSubmit}
+        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity enabled:hover:opacity-90 disabled:opacity-40"
         style={{
           background: "var(--color-bt-accent)",
           color: "var(--color-bt-on-accent)",
+          // cursor needs to be inline because globals.css's
+          // unlayered `button { cursor: pointer }` rule wins against
+          // the Tailwind `disabled:cursor-not-allowed` utility (the
+          // utility lives in @layer utilities, the global rule is
+          // unlayered → unlayered always wins).
+          cursor: canSubmit ? "pointer" : "not-allowed",
         }}
       >
         {createGuest.isPending ? "Adding…" : "Add to crew"}
@@ -604,6 +689,72 @@ function AddCrewComposer({
   );
 }
 
+// ── CrewNudge ─────────────────────────────────────────────────────────────
+// Shared chrome for the two Owner nudges that sit above the roster: one
+// for "pending invite" (added with email, never sent), one for "invited
+// but not signed up yet". Each carries a right-justified action button
+// that opens the email-blast modal — the previously-redundant header
+// email button was retired (Task 59) and consolidated here.
+function CrewNudge({
+  title,
+  body,
+  ctaLabel,
+  onCta,
+}: {
+  title: string;
+  body: string;
+  ctaLabel: string;
+  onCta: () => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 rounded-xl px-4 py-3"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
+      <span
+        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+        style={{
+          background: "var(--color-bt-warning-faint)",
+          color: "var(--color-bt-warning)",
+        }}
+        aria-hidden
+      >
+        <Mail size={14} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p
+          className="text-[13px] font-semibold leading-tight"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {title}
+        </p>
+        <p
+          className="mt-0.5 text-[11px] leading-snug"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {body}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onCta}
+        aria-label={ctaLabel}
+        className="ml-auto inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90"
+        style={{
+          background: "var(--color-bt-accent)",
+          color: "var(--color-bt-on-accent)",
+        }}
+      >
+        <Mail size={12} strokeWidth={2.5} />
+        {ctaLabel}
+      </button>
+    </div>
+  );
+}
+
 // ── EmptyCrewInvitation ───────────────────────────────────────────────────
 // Replaces the flat dashed "Nobody on the crew yet" strip with the
 // proper invitation card per HANDOFF-gaps-crew-empty.md §2. Sits inside
@@ -634,9 +785,24 @@ function EmptyCrewInvitation() {
         className="m-0 max-w-[360px] text-xs leading-snug"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Use the panel on the right to add your first crew member. Add an email
-        if you want them to access the trip themselves, or just a name to
-        track them as a{" "}
+        {/* Location prompt swaps with the rail's three layout states
+            (Task 45 / Task 48). The rail is to the right at ≥900,
+            stacks below content at 640-899, and disappears behind the
+            mobile FAB at <640 — so the copy needs three variants. We
+            render all three spans and let media queries pick exactly
+            one; using arbitrary variants on both edges so Tailwind's
+            sort puts them in numerical order. */}
+        <span className="min-[640px]:hidden">
+          Tap the <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>+</strong> button to add your first crew member.
+        </span>
+        <span className="hidden min-[640px]:inline min-[900px]:hidden">
+          Use the panel below to add your first crew member.
+        </span>
+        <span className="hidden min-[900px]:inline">
+          Use the panel on the right to add your first crew member.
+        </span>{" "}
+        Add an email if you want them to access the trip themselves, or just
+        a name to track them as a{" "}
         <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
           placeholder
         </strong>
@@ -648,7 +814,11 @@ function EmptyCrewInvitation() {
 
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
-export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boolean }) {
+export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
+  // Crew tab doesn't read canEdit anymore — see the `if (!isOwner)` gate
+  // below. Roster management (add/remove/rename/role changes) is
+  // intentionally Owner-only this iteration. canEdit still flows to
+  // Lodging / Schedule / Comp via the same TabProps shape.
   const currentUser = useCurrentUser();
   const tripId = trip.id;
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -678,8 +848,14 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   const restCrew = sortedAll.filter((m) => m.role === "Member");
   const totalCount = members.length;
 
-  // ── Member view (read-only): single sorted list, no Add, no edit ────────
-  if (!canEdit) {
+  // ── Read-only roster view: Owner gets the management chrome below;
+  // everyone else (including Planner/Organizer) sees this read-only
+  // list. We gate on isOwner rather than the broader canEdit because
+  // crew-management privileges (add/remove/rename, role changes) are
+  // intentionally Owner-only for now — Planners can edit Lodging /
+  // Schedule / Comp via canEdit elsewhere, but the roster itself is
+  // a single-person responsibility this iteration. ────────────────────
+  if (!isOwner) {
     return (
       <div className={embedded ? "@container" : "@container px-4"}>
         <TabHeader
@@ -689,7 +865,7 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
           eyebrow={`Crew · ${totalCount}`}
           eyebrowTone="accent"
           headline="Everyone on the trip"
-          body="Tag the Owner or any Organizer with planning questions. Roles and emails are managed by Organizers."
+          body="Tag the Owner with planning questions. Roles, emails, and the roster itself are managed by the Owner."
         />
         {/* Member view grid — same shrink-and-collapse rules as the
             organizer view (see Task 44 comment below). */}
@@ -712,9 +888,22 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
               ))}
             </div>
           </section>
-          <aside className="hidden lg:block">
+          {/* Member view rail — just the legend (no composer). Visible
+              at sm+ (stacked below content sm-899; in-grid right
+              column at ≥900). Member view never gets two side-by-side
+              cards because there's only one card to render. */}
+          <aside className="hidden sm:block">
             <StatusLegend members={members} />
           </aside>
+        </div>
+
+        {/* Compact horizontal legend — visible only at < sm where the
+            full rail legend has gone away. Mirrors the Owner view so
+            non-owners on mobile also get the Active / Pending /
+            Placeholder vocabulary instead of staring at unexplained
+            avatar variants. */}
+        <div className="mt-4 sm:hidden">
+          <CompactStatusLegend members={members} />
         </div>
       </div>
     );
@@ -724,15 +913,6 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
   // Empty = just the owner, no one else added yet. Triggers the
   // gap-fix treatment per HANDOFF-gaps-crew-empty.md.
   const isEmpty = totalCount <= 1;
-  // Email-the-crew button is meaningless when there's no one to email.
-  // Only Active members (non-Owner) actually have a mailbox we can hit;
-  // Invited rows do too but their email reaches them through the invite
-  // system already, and Placeholders have no email at all. Show the
-  // button only when ≥ 1 non-Owner Active member exists.
-  const hasActiveNonOwnerMembers = members.some(
-    (m) => m.role !== "Owner" && deriveStatus(m) === "active"
-  );
-
   return (
     <div className={embedded ? "@container" : "@container px-4"}>
       <TabHeader
@@ -762,67 +942,58 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
             </>
           )
         }
-        desktopAction={
-          isOwner && hasActiveNonOwnerMembers ? (
-            <button
-              type="button"
-              onClick={() => setShowEmailModal(true)}
-              aria-label="Email the crew"
-              title="Email the crew"
-              className="flex h-7 w-7 items-center justify-center rounded-lg transition-opacity hover:opacity-85"
-              style={{
-                background: "var(--color-bt-accent)",
-                color: "var(--color-bt-on-accent)",
-              }}
-            >
-              <Mail size={13} />
-            </button>
-          ) : undefined
-        }
+        // The previous header-corner email button has been retired —
+        // its job moved into the Pending Invite / Invited nudges below,
+        // where the action sits next to the count it acts on. Keeping
+        // a duplicate in the corner was redundant and didn't read as
+        // related to either nudge.
       />
 
-      {/* Invited-crew nudge — pairs with the crewDot signal on the
-          tab bar (page.tsx). Fires for Owners only when at least one
-          member is Invited (has an email, hasn't signed up). Per
-          round-6 direction, Placeholders are intentional headcount
-          entries and don't trigger a nudge. */}
+      {/* Two crew nudges — only fire for Owner.
+          - Pending: invite-eligible (guest + email) rows where the blast
+            has never been sent (last_invited_at is null). The Owner
+            added them but never hit "send invites" — the nudge prompts
+            that send.
+          - Invited: blast has gone out (last_invited_at set) but the
+            recipient hasn't signed up yet. Resend nudge.
+          Each carries a right-justified Send/Resend email button that
+          opens the blast modal — the previously-redundant header-corner
+          email button is gone (Task 59). */}
       {isOwner &&
         (() => {
-          const invited = members.filter((m) => deriveStatus(m) === "invited");
-          if (invited.length === 0) return null;
+          const pending = members.filter(
+            (m) => deriveStatus(m) === "invited" && !m.last_invited_at
+          );
+          const invited = members.filter(
+            (m) => deriveStatus(m) === "invited" && !!m.last_invited_at
+          );
+          if (pending.length === 0 && invited.length === 0) return null;
           return (
-            <div
-              className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
-              style={{
-                background: "var(--color-bt-card)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              <span
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{
-                  background: "var(--color-bt-warning-faint)",
-                  color: "var(--color-bt-warning)",
-                }}
-              >
-                <Mail size={14} />
-              </span>
-              <div>
-                <p
-                  className="text-[13px] font-semibold leading-tight"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {invited.length}{" "}
-                  {invited.length === 1 ? "person hasn't" : "people haven't"} signed
-                  up yet
-                </p>
-                <p
-                  className="mt-0.5 text-[11px] leading-snug"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  We&apos;ll keep nudging them — or tap a row to resend the invite.
-                </p>
-              </div>
+            <div className="mb-4 flex flex-col gap-2">
+              {pending.length > 0 && (
+                <CrewNudge
+                  title={
+                    pending.length === 1
+                      ? "1 member waiting on an invite"
+                      : `${pending.length} members waiting on an invite`
+                  }
+                  body="They were added with an email but haven't been invited yet — send the blast to give them access."
+                  ctaLabel="Send invites"
+                  onCta={() => setShowEmailModal(true)}
+                />
+              )}
+              {invited.length > 0 && (
+                <CrewNudge
+                  title={
+                    invited.length === 1
+                      ? "1 person hasn't signed up yet"
+                      : `${invited.length} people haven't signed up yet`
+                  }
+                  body="They got the invite but haven't created an account — resend to nudge them along."
+                  ctaLabel="Resend invites"
+                  onCta={() => setShowEmailModal(true)}
+                />
+              )}
             </div>
           );
         })()}
@@ -878,20 +1049,36 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
               isOwnerView={isOwner}
               currentUserId={currentUser?.id}
               onEditMember={(m) => setEditingMemberId(m.memberId)}
-              emptyHint="Nobody on the crew yet. Use the panel on the right to add someone."
+              // This branch only renders when the viewer is NOT the
+              // owner (owners get EmptyCrewInvitation above), so the
+              // copy doesn't point at the add panel — only Organizers
+              // can grow the crew from here.
+              emptyHint="Nobody on the crew yet. Ask an Organizer to add the rest of the trip."
             />
           )}
         </div>
 
-        {/* Right rail — composer + full legend. Visible at sm+ (≥640px)
-            per round-8 item 4 — pushes the composer-disappearance
-            breakpoint down to ~640 so the rail-below-content → no-rail
-            transition lands at the same spot the FAB appears, avoiding
-            the ~20px snap that used to happen between 750 and 770.
-            Capped to 540px when stacked so it doesn't run away wide. */}
+        {/* Right rail — composer + full legend.
+            Three responsive states (round-10):
+              ≥900  : single column inside the outer grid's narrow
+                      right track (composer above legend) — flex-col.
+              640-899: stacked below content as TWO side-by-side columns
+                      (composer | legend), each filling its half of the
+                      horizontal space the stacked layout gives them.
+              <640  : hidden — FAB + compact legend take over (Task 43).
+            Both breakpoints use arbitrary variants (`min-[640px]:` /
+            `min-[900px]:`) so Tailwind v4 sorts them numerically by
+            min-width — mixing `sm:` with `min-[900px]:` puts the named
+            variant later in the cascade and lets `sm:grid` beat
+            `min-[900px]:flex` at vw≥900. */}
         <aside
-          className="hidden flex-col gap-4 sm:flex"
-          style={{ maxWidth: 540 }}
+          className={[
+            "hidden gap-5",
+            isOwner
+              ? "min-[640px]:grid min-[640px]:grid-cols-2"
+              : "min-[640px]:block",
+            "min-[900px]:flex min-[900px]:flex-col min-[900px]:gap-4",
+          ].join(" ")}
         >
           {isOwner &&
             <AddCrewComposer tripId={tripId} boosted={isEmpty} />}
@@ -962,9 +1149,15 @@ export function CrewTab({ trip, canEdit, embedded }: TabProps & { embedded?: boo
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
+              {/* variant='sheet' strips the composer's card chrome
+                  (background, border, shadow, radius, padding, eyebrow).
+                  The bottom-sheet already provides framing + a title
+                  bar above, so the composer's own card would read as a
+                  nested duplicate. */}
               <AddCrewComposer
                 tripId={tripId}
                 boosted={isEmpty}
+                variant="sheet"
                 onAdded={() => setShowMobileAdd(false)}
               />
             </div>

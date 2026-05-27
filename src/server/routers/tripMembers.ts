@@ -116,8 +116,12 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // add — Owner or Planner can add real-account members (canEdit)
+  // add — Owner-only. Adds a real-account user to the trip.
   // To add ghost crew, use ghostCrew.create instead.
+  //
+  // Roster management is Owner-only as of Task 53. The UI gates the Crew
+  // management view on `isOwner`; this middleware closes the API-level door
+  // so a Planner can't bypass the UI by calling tRPC directly.
   // -----------------------------------------------------------------------
   add: authedProcedure
     .input(
@@ -128,7 +132,7 @@ export const tripMembersRouter = router({
         status: z.enum(["draft", "in", "likely", "maybe", "out", "invited"]).default("maybe"),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
       // Check if already a member
       const { data: existing } = await ctx.supabase
@@ -313,9 +317,11 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // inviteByEmail — Planner/Owner can invite someone by email.
+  // inviteByEmail — Owner-only. Invite someone by email.
   //   - If a real account exists: adds them to the trip + sends notification
   //   - If no account: creates guest row + invites row + sends invite email
+  //
+  // Roster management is Owner-only as of Task 53 (mirrors the UI gate).
   // -----------------------------------------------------------------------
   inviteByEmail: authedProcedure
     .input(

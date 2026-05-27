@@ -162,7 +162,8 @@ RLS checks `trip_members.role = 'owner'` for the requesting user:
 
 - Destination lock / unlock / override
 - Idea creation and removal
-- Crew role management (promote, demote, remove)
+- All roster management — add, invite, rename, promote, demote, remove,
+  guest-crew CRUD, invitation blast
 - Trip settings (series link, ownership transfer, archive, delete)
 - Expense split modification
 
@@ -174,7 +175,6 @@ RLS checks `trip_members.role IN ('owner', 'planner')`:
 - Date setup, poll management, and date locking
 - Quick info tile CRUD
 - Competition setup (enable, disable, teams, rounds, sides)
-- Crew addition and invitations
 - Expense creation
 - Booking creation
 

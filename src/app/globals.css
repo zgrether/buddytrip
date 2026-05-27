@@ -95,10 +95,19 @@
   --color-bt-accent-faint: rgba(45, 212, 191, 0.12);
   --color-bt-accent-border: rgba(45, 212, 191, 0.25);
 
-  --color-bt-planning: #60a5fa;      /* blue-400 — vivid on dark */
+  /* Planning blue is bumped from blue-400 (#60a5fa, L≈0.36) to blue-300
+     (#93c5fd, L≈0.54) so it reads at the same perceived brightness as
+     the teal accent #2dd4bf (L≈0.51) on dark. The two-tone treatment
+     stays — accent (teal) vs planning (blue) — but at matched luminosity
+     so the ORGANIZERS / CREW SectionBanners feel like the same component
+     in two hues rather than primary / secondary.
+     planning-faint alpha lifts 0.08 → 0.12 to match accent-faint's 0.12.
+     blue-bg (used by status badges + ItineraryView, not the banner) is
+     left at #1e3a5f — touching it would ripple into unrelated surfaces. */
+  --color-bt-planning: #93c5fd;      /* blue-300 — matches teal-400 luminosity */
   --color-bt-blue-bg: #1e3a5f;
-  --color-bt-planning-faint: rgba(96, 165, 250, 0.08);
-  --color-bt-planning-border: rgba(96, 165, 250, 0.25);
+  --color-bt-planning-faint: rgba(147, 197, 253, 0.12);
+  --color-bt-planning-border: rgba(147, 197, 253, 0.25);
 
   --color-bt-ready: #fb923c;         /* orange-400 — events tone on dark */
   --color-bt-ready-bg: #431407;      /* orange-950 */

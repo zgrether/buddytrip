@@ -246,20 +246,22 @@ export function AddPropertySheet({
           overlay token for its breakpoint (sheet alpha on mobile,
           drawer alpha on desktop), matching the MemberEditor pattern. */}
       <div
-        className="fixed inset-0 z-40 lg:hidden"
+        className="fixed inset-0 z-40 sm:hidden"
         style={{ background: "var(--color-bt-overlay-sheet)" }}
         onClick={onClose}
         aria-hidden
       />
       <div
-        className="fixed inset-0 z-40 hidden lg:block"
+        className="fixed inset-0 z-40 hidden sm:block"
         style={{ background: "var(--color-bt-overlay-drawer)" }}
         onClick={onClose}
         aria-hidden
       />
 
       {/* Panel — bottom-sheet (mobile) / right-anchored 440px drawer
-          (desktop, lg+) per the canonical edit-drawer spec. */}
+          (tablet + desktop, sm+ / ≥640px) per the canonical edit-drawer
+          spec. Threshold lowered from lg (1024) to sm (640) per Task 51
+          so a ~20px viewport change doesn't reorient the whole panel. */}
       <div
         role="dialog"
         aria-modal="true"
@@ -268,7 +270,7 @@ export function AddPropertySheet({
           // Mobile: bottom sheet
           "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
           // Desktop: 440px right drawer
-          "lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-0 lg:h-screen lg:max-h-screen lg:w-[440px] lg:rounded-none",
+          "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:max-h-screen sm:w-[440px] sm:rounded-none",
         ].join(" ")}
         style={{
           background: "var(--color-bt-card-float)",
@@ -279,7 +281,7 @@ export function AddPropertySheet({
       >
         {/* Handle bar (mobile) */}
         <div
-          className="mx-auto mt-2 h-1 w-10 flex-shrink-0 rounded-full lg:hidden"
+          className="mx-auto mt-2 h-1 w-10 flex-shrink-0 rounded-full sm:hidden"
           style={{ background: "var(--color-bt-border)" }}
         />
 
