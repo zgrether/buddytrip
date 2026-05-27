@@ -69,6 +69,24 @@ These patterns have been established through prior work. Follow them exactly —
 5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
 6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
 
+## Migration Workflow
+
+Migrations are committed as files in `supabase/migrations/` and applied to the remote DB by CI's `supabase db push` step. The CLI compares the `supabase_migrations.schema_migrations` history table against local filenames and **fails when they don't match exactly**.
+
+**Don't apply migrations directly via the Supabase MCP tool** (`apply_migration`, raw `execute_sql` for DDL). It records the migration under the *apply timestamp*, which always differs from the local filename timestamp — guaranteeing the next CI push fails with "Remote migration versions not found in local migrations directory."
+
+**The right flow:**
+
+1. Write the migration file locally (`supabase/migrations/YYYYMMDDHHMMSS_NNN_name.sql`).
+2. Apply via the linked CLI so the recorded version matches the filename:
+   ```bash
+   supabase db push --linked   # applies any new local migrations to remote
+   ```
+   (Or commit and let CI apply it. Either is fine — both preserve the filename timestamp.)
+3. Never edit a migration after it's been applied anywhere — write a new one.
+
+**If you already applied via MCP** and CI complains about an unknown remote version, fix it by deleting the apply-timestamped row from `supabase_migrations.schema_migrations` (history table only — the schema change itself stays in place because migrations are idempotent: `ADD COLUMN IF NOT EXISTS`, `DROP POLICY IF EXISTS` + `CREATE POLICY`, etc.). CI's next push then sees the local file as new and re-applies it as a no-op.
+
 ## What "Done" Means for Any Task
 
 1. Feature implemented
