@@ -62,6 +62,10 @@ interface LodgingItemFull {
   total_price?: string | null;
   notes?: string | null;
   is_confirmed?: boolean | null;
+  /** og:image fetched from the listing URL (or empty when unavailable).
+   *  When set, surfaces as the LodgingCard photo strip instead of the
+   *  placeholder gradient. */
+  image_url?: string | null;
 }
 
 // ── LodgingCard ───────────────────────────────────────────────────────────
@@ -101,126 +105,168 @@ function LodgingCard({
 
   return (
     <div
-      className="flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
+      className="flex flex-col gap-2 rounded-xl p-3 transition-all"
       style={{
         background: confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
         border: `1px solid ${confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
       }}
     >
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        {/* Line 1: Name · sleeps · price */}
-        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-          <span className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            {name}
-          </span>
-          {item.property_name && (
-            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              · Sleeps {item.property_name}
-            </span>
-          )}
-          {price && (
-            <span className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              · {price}
-            </span>
-          )}
-        </div>
-
-        {/* Line 2: Thoughts/notes */}
-        {item.notes && (
-          <p className="mt-0.5 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-            {item.notes}
-          </p>
+      {/* Photo strip — real listing photo (og:image) when we have one,
+          placeholder gradient otherwise. Mirrors PropertyExample so the
+          populated tiles match the empty-state preview promised.
+          Carries the Confirmed pill / Confirm button bottom-right and
+          the edit/delete actions top-right when canEdit. Gradient hex
+          literals are spec-explicit (HANDOFF rule 4 exception). */}
+      <div
+        className="relative flex items-end justify-end rounded-lg p-2"
+        style={{
+          height: 80,
+          backgroundImage: item.image_url
+            ? `url("${item.image_url}")`
+            : "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        {/* Generic-property placeholder icon — centered, low opacity.
+            Shows only when we don't have a real listing photo, so the
+            tile never reads as a blank panel waiting to load. */}
+        {!item.image_url && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+            <Hotel size={36} strokeWidth={1.5} style={{ color: "rgba(255,255,255,0.22)" }} />
+          </div>
         )}
 
-        {/* Line 3: Address → Map */}
-        {item.address && (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            <span>{item.address}</span>
-            <a
-              href={mapsUrl(item.address)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-0.5"
-              style={{ color: "var(--color-bt-accent)" }}
-              onClick={(e) => e.stopPropagation()}
+        {/* Edit / delete — top-right overlay on the photo strip */}
+        {canEdit && (
+          <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+            <button
+              onClick={onEdit}
+              aria-label="Edit property"
+              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-black/30"
+              style={{ background: "rgba(0,0,0,0.35)", color: "#e2e8f0" }}
             >
-              <MapPin size={10} />
-              Map
-            </a>
+              <Pencil size={12} strokeWidth={2.25} />
+            </button>
+            <button
+              onClick={onRemove}
+              disabled={removing}
+              aria-label="Remove property"
+              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-black/30 disabled:opacity-40"
+              style={{ background: "rgba(0,0,0,0.35)", color: "#e2e8f0" }}
+            >
+              <Trash2 size={12} strokeWidth={2.25} />
+            </button>
           </div>
         )}
 
-        {/* Line 4: Check-in / check-out */}
-        {dateRange && (
-          <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-            <Clock size={10} />
-            {dateRange}
-          </div>
-        )}
-
+        {/* Confirmed / Confirm — bottom-right matches PropertyExample */}
+        {confirmed ? (
+          <button
+            onClick={onConfirmToggle}
+            disabled={!canEdit}
+            aria-label={canEdit ? "Mark as not confirmed" : undefined}
+            className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] transition-opacity hover:opacity-85 disabled:cursor-default"
+            style={{
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-on-accent)",
+            }}
+          >
+            <Check size={9} strokeWidth={3.5} />
+            Confirmed
+          </button>
+        ) : canEdit ? (
+          <button
+            onClick={onConfirmToggle}
+            className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] transition-opacity hover:opacity-85"
+            style={{
+              background: "rgba(0,0,0,0.45)",
+              color: "#e2e8f0",
+              border: "1px solid rgba(255,255,255,0.18)",
+            }}
+          >
+            Confirm
+          </button>
+        ) : null}
       </div>
 
-      {/* Right column: actions (top) + listing link (bottom) */}
-      <div className="flex flex-shrink-0 flex-col items-end justify-between gap-2 self-stretch">
-        <div className="flex items-center gap-1">
-          {canEdit && (
-            confirmed ? (
-              <button
-                onClick={onConfirmToggle}
-                aria-label="Mark as not confirmed"
-                className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] transition-opacity hover:opacity-80"
-                style={{
-                  background: "var(--color-bt-accent)",
-                  color: "var(--color-bt-on-accent)",
-                }}
-              >
-                <Check size={11} strokeWidth={3} />
-                Confirmed
-              </button>
-            ) : (
-              <button
-                onClick={onConfirmToggle}
-                className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Confirm
-              </button>
-            )
-          )}
-          {canEdit && (
-            <>
-              <button
-                onClick={onEdit}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded"
-                aria-label="Edit property"
-              >
-                <Pencil size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-              </button>
-              <button
-                onClick={onRemove}
-                disabled={removing}
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded disabled:opacity-40"
-                aria-label="Remove property"
-              >
-                <Trash2 size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-              </button>
-            </>
-          )}
+      {/* Name + monospace meta line — same hierarchy as PropertyExample */}
+      <div className="flex flex-col gap-0.5">
+        <div
+          className="truncate text-sm font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+          title={name}
+        >
+          {name}
         </div>
-        {url && (
+        <div
+          className="font-mono text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {[
+            price ? price : null,
+            item.property_name ? `sleeps ${item.property_name}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "—"}
+        </div>
+      </div>
+
+      {/* Notes — italic, smaller */}
+      {item.notes && (
+        <p
+          className="m-0 line-clamp-2 text-[11px] italic leading-snug"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {item.notes}
+        </p>
+      )}
+
+      {/* Address + Map link */}
+      {item.address && (
+        <div
+          className="flex flex-wrap items-center gap-1.5 text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <span className="truncate" title={item.address}>{item.address}</span>
           <a
-            href={url}
+            href={mapsUrl(item.address)}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-0.5 no-underline"
+            className="inline-flex items-center gap-0.5"
             style={{ color: "var(--color-bt-accent)" }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <ExternalLink size={10} />
-            <span className="text-[11px] font-medium">→ {platform.label}</span>
+            <MapPin size={10} />
+            Map
           </a>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Date range */}
+      {dateRange && (
+        <div
+          className="inline-flex items-center gap-1 text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <Clock size={10} />
+          {dateRange}
+        </div>
+      )}
+
+      {/* Listing link — anchored to the tile's bottom row */}
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-auto inline-flex items-center gap-0.5 self-start pt-1 no-underline"
+          style={{ color: "var(--color-bt-accent)" }}
+        >
+          <ExternalLink size={10} />
+          <span className="text-[11px] font-medium">→ {platform.label}</span>
+        </a>
+      )}
     </div>
   );
 }
@@ -247,15 +293,20 @@ function PropertyExample() {
         border: "1px solid var(--color-bt-accent-border)",
       }}
     >
-      {/* Photo placeholder — fixed-height gradient strip. Hex literals
-          are spec-explicit gradient stops (HANDOFF rule 4 exception). */}
+      {/* Photo placeholder — gradient strip + centered generic-property
+          icon so the preview never looks like a missing photo. Hex
+          literals are spec-explicit gradient stops (HANDOFF rule 4
+          exception). */}
       <div
-        className="flex items-end justify-end rounded-lg p-2"
+        className="relative flex items-end justify-end rounded-lg p-2"
         style={{
           height: 80,
           backgroundImage: "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
         }}
       >
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+          <Hotel size={32} strokeWidth={1.5} style={{ color: "rgba(255,255,255,0.22)" }} />
+        </div>
         <span
           className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
           style={{
@@ -428,6 +479,7 @@ export function LodgingPanel({
       checkInTimeOfDay: values.checkInTimeOfDay || undefined,
       checkOutTimeOfDay: values.checkOutTimeOfDay || undefined,
       transportType: platform,
+      imageUrl: values.imageUrl || undefined,
     });
   };
 
@@ -449,6 +501,7 @@ export function LodgingPanel({
       checkInTimeOfDay: values.checkInTimeOfDay || null,
       checkOutTimeOfDay: values.checkOutTimeOfDay || null,
       transportType: platform,
+      imageUrl: values.imageUrl || null,
     });
   };
 
@@ -511,13 +564,17 @@ export function LodgingPanel({
             </div>
           </div>
         )}
-        {/* Unconfirmed-properties nudge — pairs with the info dot
-            (lodgingUnconfirmed in page.tsx). Suppressed when the
-            warning nudge above is showing so we don't stack two cards
-            for the same tab. */}
+        {/* Unconfirmed-properties nudge — only fires when nothing has
+            been confirmed yet (Task 70). Once at least one property is
+            locked in, the rest can sit unconfirmed as "considered but
+            not booked" without nagging. Also suppressed when the
+            warning nudge above is showing so two cards don't stack on
+            the same tab. Pairs with lodgingUnconfirmed in page.tsx,
+            which uses the same `confirmedCount === 0` test for the
+            info dot. */}
         {canEdit &&
           outOfRangeCount === 0 &&
-          confirmedCount < totalCount &&
+          confirmedCount === 0 &&
           totalCount > 0 && (
             <div
               className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
@@ -540,8 +597,8 @@ export function LodgingPanel({
                   className="text-[13px] font-semibold leading-tight"
                   style={{ color: "var(--color-bt-text)" }}
                 >
-                  {totalCount - confirmedCount}{" "}
-                  {totalCount - confirmedCount === 1 ? "property is" : "properties are"} still
+                  {totalCount}{" "}
+                  {totalCount === 1 ? "property is" : "properties are"} still
                   being considered
                 </p>
                 <p
@@ -688,7 +745,15 @@ export function LodgingPanel({
               />
             )
           ) : (
-            <div className="flex flex-col gap-2">
+            // Tile grid (Task 67) — properties stack horizontally as
+            // feature-rich cards instead of full-width rows, matching
+            // the PropertyExample preview. Breakpoints:
+            //   <500px (phone)  : single column
+            //   500-799px       : two-column grid
+            //   ≥800px          : three-column grid
+            // Items shrink to fit; the gradient strip + meta + actions
+            // stay readable down to ~220px tile widths.
+            <div className="grid gap-3 min-[500px]:grid-cols-2 min-[800px]:grid-cols-3">
               {lodgingItems.map((item) => (
                 <LodgingCard
                   key={item.id}
@@ -739,6 +804,7 @@ export function LodgingPanel({
               checkOut: editingItem.check_out_time ?? "",
               checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
               checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
+              imageUrl: editingItem.image_url ?? "",
             }}
             isPending={updateItem.isPending}
             onSubmit={handleUpdate}
@@ -827,24 +893,29 @@ export function LodgingPanel({
         onToggle={onToggle}
         noExpand={true}
       >
-        <div className="flex flex-col gap-2">
-          {lodgingItems.map((item) => (
-            <LodgingCard
-              key={item.id}
-              item={item}
-              canEdit={canEdit}
-              onEdit={() => setEditingItem(item)}
-              onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
-              onConfirmToggle={() =>
-                item.is_confirmed
-                  ? unconfirmItem.mutate({ tripId, itemId: item.id })
-                  : confirmItem.mutate({ tripId, itemId: item.id })
-              }
-              removing={removeItem.isPending}
-            />
-          ))}
+        <div className="flex flex-col gap-3">
+          {/* Same tile grid as the inline LodgingTab path (Task 67). */}
+          <div className="grid gap-3 min-[500px]:grid-cols-2 min-[800px]:grid-cols-3">
+            {lodgingItems.map((item) => (
+              <LodgingCard
+                key={item.id}
+                item={item}
+                canEdit={canEdit}
+                onEdit={() => setEditingItem(item)}
+                onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
+                onConfirmToggle={() =>
+                  item.is_confirmed
+                    ? unconfirmItem.mutate({ tripId, itemId: item.id })
+                    : confirmItem.mutate({ tripId, itemId: item.id })
+                }
+                removing={removeItem.isPending}
+              />
+            ))}
+          </div>
 
-          {/* Add property — dashed/add style, bottom of list, canEdit only */}
+          {/* Add property — dashed/add style, full-width below the tile
+              grid, canEdit only. Kept at full width so the affordance
+              reads as a list-level CTA rather than another card. */}
           {canEdit && (
             <button
               onClick={() => setShowAddLodging(true)}
@@ -888,6 +959,7 @@ export function LodgingPanel({
             checkOut: editingItem.check_out_time ?? "",
             checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
             checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
+            imageUrl: editingItem.image_url ?? "",
           }}
           isPending={updateItem.isPending}
           onSubmit={handleUpdate}

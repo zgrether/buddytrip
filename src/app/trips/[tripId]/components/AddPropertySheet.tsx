@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Globe, Link, MapPin } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Globe, Hotel, Link, MapPin } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
 // ── Platform detection (exported so parents can use it) ───────────────────
@@ -58,6 +58,8 @@ export interface PropertyFormValues {
   checkOut: string;  // planning only — YYYY-MM-DD
   checkInTimeOfDay: string;  // planning only — HH:MM, optional
   checkOutTimeOfDay: string; // planning only — HH:MM, optional
+  /** og:image fetched from /api/lodging-meta when the URL is pasted. */
+  imageUrl: string;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────
@@ -122,7 +124,21 @@ function Field({
 
 // ── Link preview card ─────────────────────────────────────────────────────
 
-function LinkPreviewCard({ url, name }: { url: string; name: string }) {
+function LinkPreviewCard({
+  url,
+  name,
+  imageUrl,
+  loading,
+}: {
+  url: string;
+  name: string;
+  /** og:image fetched from /api/lodging-meta. Renders as the preview
+   *  photo strip when present; falls back to the placeholder gradient
+   *  while loading or when the host doesn't expose an og:image. */
+  imageUrl?: string | null;
+  /** True while /api/lodging-meta is in flight for this URL. */
+  loading?: boolean;
+}) {
   const platform = detectPlatform(url);
   const domain = extractDomain(url);
   const label = PLATFORM_LABEL[platform];
@@ -132,6 +148,45 @@ function LinkPreviewCard({ url, name }: { url: string; name: string }) {
       className="overflow-hidden rounded-xl"
       style={{ border: "1px solid var(--color-bt-accent-border)" }}
     >
+      {/* Photo strip — real listing image if fetched, placeholder
+          gradient + generic-property icon otherwise. Matches the
+          LodgingCard photo strip so the preview reads like what the
+          saved card will look like (no blank panel). */}
+      <div
+        className="relative h-32 w-full"
+        style={{
+          backgroundImage: imageUrl
+            ? `url("${imageUrl}")`
+            : "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        {!imageUrl && !loading && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+            <Hotel size={44} strokeWidth={1.5} style={{ color: "rgba(255,255,255,0.22)" }} />
+          </div>
+        )}
+        {loading && !imageUrl && (
+          <div
+            className="absolute inset-0 flex items-center justify-center text-[11px] font-medium"
+            style={{ color: "#e2e8f0" }}
+          >
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
+              style={{ background: "rgba(0,0,0,0.45)" }}
+            >
+              <span
+                className="inline-block h-2 w-2 animate-pulse rounded-full"
+                style={{ background: "var(--color-bt-accent)" }}
+                aria-hidden
+              />
+              Fetching listing…
+            </span>
+          </div>
+        )}
+      </div>
+
       <div
         className="flex items-center gap-1.5 px-3 py-2"
         style={{ background: "var(--color-bt-tag-bg)" }}
@@ -152,7 +207,9 @@ function LinkPreviewCard({ url, name }: { url: string; name: string }) {
           <p className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>{name}</p>
         ) : (
           <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-            Add a nickname in the fields below
+            {loading
+              ? "Pulling the title from the listing…"
+              : "Add a nickname in the fields below"}
           </p>
         )}
         <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -185,9 +242,76 @@ export function AddPropertySheet({
   const [checkOut, setCheckOut] = useState(initialValues.checkOut ?? "");
   const [checkInTimeOfDay, setCheckInTimeOfDay] = useState(initialValues.checkInTimeOfDay ?? "");
   const [checkOutTimeOfDay, setCheckOutTimeOfDay] = useState(initialValues.checkOutTimeOfDay ?? "");
+  const [imageUrl, setImageUrl] = useState(initialValues.imageUrl ?? "");
 
   // Manual mode — expand the form without requiring a valid URL
   const [manualMode, setManualMode] = useState(isEditing && !(initialValues.url ?? ""));
+
+  // ── Listing-metadata fetch (Task 68) ──────────────────────────────
+  //
+  // When the URL turns into a valid http(s) URL, fire /api/lodging-meta
+  // to pull og:title / og:image / og:description from the listing.
+  // Pre-fills `name` (empty fields only — never overwrite something the
+  // user typed) and `imageUrl` so the LodgingCard renders the real
+  // photo instead of the placeholder gradient.
+  //
+  // Debounced (500ms) so each keystroke doesn't kick off a fetch. The
+  // fetch itself bails fast on a non-success response — surfacing
+  // failures inline would be more noise than signal, the user can
+  // always type the fields by hand.
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [metaFetchedFor, setMetaFetchedFor] = useState<string | null>(null);
+  const metaTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    const trimmed = url.trim();
+    if (metaTimer.current) clearTimeout(metaTimer.current);
+    if (!isValidUrl(trimmed) || trimmed === metaFetchedFor) return;
+
+    metaTimer.current = setTimeout(async () => {
+      setMetaLoading(true);
+      try {
+        const res = await fetch("/api/lodging-meta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: trimmed }),
+        });
+        const data: {
+          ok: boolean;
+          title?: string | null;
+          description?: string | null;
+          image?: string | null;
+        } = await res.json();
+        if (data.ok) {
+          // Only fill empty fields — preserve anything the user typed.
+          if (data.title && !name.trim()) setName(data.title);
+          if (data.description && !notes.trim()) {
+            // Trim to ~240 chars; full og:description is often a long
+            // marketing blurb the user wouldn't paste themselves.
+            const trimmedDesc =
+              data.description.length > 240
+                ? data.description.slice(0, 237).trimEnd() + "…"
+                : data.description;
+            setNotes(trimmedDesc);
+          }
+          if (data.image && !imageUrl) setImageUrl(data.image);
+        }
+        setMetaFetchedFor(trimmed);
+      } catch {
+        // Best-effort — silent failure, user fills the form manually.
+      } finally {
+        setMetaLoading(false);
+      }
+    }, 500);
+
+    return () => {
+      if (metaTimer.current) clearTimeout(metaTimer.current);
+    };
+    // We intentionally don't depend on name/notes/imageUrl — those
+    // can be set by this very effect, which would re-trigger. The
+    // metaFetchedFor guard handles "URL hasn't changed, skip."
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, metaFetchedFor]);
 
   // Address autocomplete
   const [addressDropdown, setAddressDropdown] = useState<PlacePrediction[]>([]);
@@ -237,7 +361,19 @@ export function AddPropertySheet({
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ url, name, sleeps, price, notes, address, checkIn, checkOut, checkInTimeOfDay, checkOutTimeOfDay });
+    onSubmit({
+      url,
+      name,
+      sleeps,
+      price,
+      notes,
+      address,
+      checkIn,
+      checkOut,
+      checkInTimeOfDay,
+      checkOutTimeOfDay,
+      imageUrl,
+    });
   };
 
   return (
@@ -343,7 +479,7 @@ export function AddPropertySheet({
             <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
               Preview
             </p>
-            <LinkPreviewCard url={url} name={name} />
+            <LinkPreviewCard url={url} name={name} imageUrl={imageUrl} loading={metaLoading} />
           </div>
         )}
 
