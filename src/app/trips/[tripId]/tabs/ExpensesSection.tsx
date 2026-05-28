@@ -906,7 +906,10 @@ export function ExpensesSection({
                         }
                         disabled={optOutMutation.isPending}
                         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70 disabled:opacity-40"
-                        style={{ color: isOptedOut ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                        // Teal in both states so the row icon matches the
+                        // legend (both opt-out and opt-in are teal there)
+                        // — the +/− glyph carries the meaning, not the color.
+                        style={{ color: "var(--color-bt-accent)" }}
                         title={isOptedOut ? "Rejoin" : "Opt out"}
                       >
                         {isOptedOut ? <UserPlus size={13} /> : <UserMinus size={13} />}
