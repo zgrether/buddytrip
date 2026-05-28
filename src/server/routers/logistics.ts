@@ -53,6 +53,8 @@ export const logisticsRouter = router({
         transportType: z.string().max(100).optional(),
         pickupLocation: z.string().max(500).optional(),
         pickupTime: z.string().max(50).optional(),
+        // Lodging photo URL (og:image fetched in AddPropertySheet).
+        imageUrl: z.string().url().max(2048).optional(),
         // Ordering
         sortOrder: z.number().int().default(0),
       })
@@ -78,6 +80,7 @@ export const logisticsRouter = router({
           transport_type: input.transportType ?? null,
           pickup_location: input.pickupLocation ?? null,
           pickup_time: input.pickupTime ?? null,
+          image_url: input.imageUrl ?? null,
           sort_order: input.sortOrder,
           created_by: ctx.user!.id,
         })
@@ -116,6 +119,7 @@ export const logisticsRouter = router({
         transportType: z.string().max(100).nullable().optional(),
         pickupLocation: z.string().max(500).nullable().optional(),
         pickupTime: z.string().max(50).nullable().optional(),
+        imageUrl: z.string().url().max(2048).nullable().optional(),
         sortOrder: z.number().int().optional(),
       })
     )
@@ -136,6 +140,7 @@ export const logisticsRouter = router({
       if (input.transportType !== undefined) update.transport_type = input.transportType;
       if (input.pickupLocation !== undefined) update.pickup_location = input.pickupLocation;
       if (input.pickupTime !== undefined) update.pickup_time = input.pickupTime;
+      if (input.imageUrl !== undefined) update.image_url = input.imageUrl;
       if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
 
       if (Object.keys(update).length === 0) {
