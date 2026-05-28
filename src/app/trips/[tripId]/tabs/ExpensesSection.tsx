@@ -638,15 +638,19 @@ export function ExpensesSection({
 
   const hasExpenses = expenses.length > 0;
   const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
-  const balanceRows = members
-    .filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
-    .sort((a, b) => {
-      const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
-      const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
-      return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
-    });
+  // Show every current crew member — including anyone added after the
+  // receipts were logged (they sit at $0.00 until a split pulls them
+  // in). Previously this filtered to members with a non-zero balance,
+  // so a freshly-added member never appeared until their first receipt.
+  // Matches the empty-state BalancesPreview, which already lists
+  // everyone at $0.00.
+  const balanceRows = [...members].sort((a, b) => {
+    const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
+    const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
+    return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
+  });
 
   return (
     <>
@@ -859,8 +863,22 @@ export function ExpensesSection({
                           <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
                         )}
                       </span>
-                      <span className="text-sm font-semibold tabular-nums" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
-                        {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
+                      <span
+                        className="text-sm font-semibold tabular-nums"
+                        style={{
+                          color:
+                            Math.abs(bal) < 0.01
+                              ? "var(--color-bt-text-dim)"
+                              : bal > 0
+                                ? "var(--color-bt-accent)"
+                                : "var(--color-bt-danger)",
+                        }}
+                      >
+                        {Math.abs(bal) < 0.01
+                          ? "$0.00"
+                          : bal > 0
+                            ? `+$${bal.toFixed(2)}`
+                            : `-$${Math.abs(bal).toFixed(2)}`}
                       </span>
                     </div>
                   );
