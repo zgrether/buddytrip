@@ -693,8 +693,10 @@ export function ExpensesSection({
               //   md–lg  sample on top, composer below it
               //   <md   sample only; composer hidden (TabFab adds).
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-                {/* Sample — "how a receipt will look". */}
-                <div className="flex flex-col gap-3.5" style={{ maxWidth: 540 }}>
+                {/* Sample — "how a receipt will look". Fills the full
+                    width of its column (no max-width cap) so the example
+                    receipt spans the left column. */}
+                <div className="flex flex-col gap-3.5">
                   <SampleHeader label="How a receipt will look" />
                   <SampleCard>
                     <ReceiptExample />
