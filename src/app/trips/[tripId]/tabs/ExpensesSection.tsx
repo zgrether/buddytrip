@@ -681,18 +681,16 @@ export function ExpensesSection({
             TabHeader / TabFab, not inline here) ─────────────────────── */}
         <div className="space-y-3">
           {!hasExpenses ? (
-            // Any member can log a receipt (expenses.create is gated to
+            // Any member can log a receipt (expenses.create is
             // requireTripMember, not Planner), so the composer empty
-            // state shows for everyone — no more read-only EmptyState
-            // for plain members.
-            (
-              // Empty-state grid — just the sample + composer. Balances
-              // are hidden until there's an actual receipt to balance
-              // (the live BALANCES panel shows in the populated state).
-              //   lg+   [ sample (1fr) | composer (300px) ]  composer right
-              //   md–lg  sample on top, composer below it
-              //   <md   sample only; composer hidden (TabFab adds).
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+            // state shows for everyone — no read-only EmptyState fork.
+            // Empty-state grid — just the sample + composer. Balances
+            // are hidden until there's an actual receipt to balance
+            // (the live BALANCES panel shows in the populated state).
+            //   lg+   [ sample (1fr) | composer (300px) ]  composer right
+            //   md–lg  sample on top, composer below it
+            //   <md   sample only; composer hidden (TabFab adds).
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
                 {/* Sample — "how a receipt will look". Fills the full
                     width of its column (no max-width cap) so the example
                     receipt spans the left column. */}
@@ -726,7 +724,6 @@ export function ExpensesSection({
                   />
                 </aside>
               </div>
-            )
           ) : (
             <div className="space-y-2">
               {(expenses as ExpenseItem[]).map((expense) => {
