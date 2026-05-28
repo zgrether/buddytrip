@@ -330,12 +330,6 @@ function ReceiptLegend() {
           );
         })}
       </div>
-      <p
-        className="mt-3 text-[11px] leading-snug"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        The icon shows on each receipt next to your share — only on your own row.
-      </p>
     </div>
   );
 }
