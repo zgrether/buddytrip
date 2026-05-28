@@ -29,9 +29,11 @@ export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
   const [addOpen, setAddOpen] = useState(false);
   const openAdd = () => setAddOpen(true);
 
-  // On the empty state, the boosted RailComposer becomes the primary CTA;
-  // hide the redundant header pill so the eye lands on the right rail.
-  const showHeaderAction = canEdit && expenses.length > 0;
+  // Anyone can log a receipt (expenses.create is requireTripMember, not
+  // Planner), so the header pill isn't gated by canEdit. On the empty
+  // state the boosted rail composer is the primary CTA, so the redundant
+  // header pill only appears once there's at least one receipt.
+  const showHeaderAction = expenses.length > 0;
 
   return (
     <div className="px-4">

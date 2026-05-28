@@ -328,6 +328,36 @@ Schema: add last_read_at to trip_members or a separate message_reads table.
 
 ---
 
+### Unify receipt opt-in / opt-out (let anyone join a receipt they were left off)
+
+Today the opt-in/opt-out flow only covers members who were *included*
+in a receipt's split: they can opt out (drop themselves) and opt back
+in. A member who was **never** part of the split has no self-service
+path — only the Owner can add them via Edit splits.
+
+Two problems:
+- **Styling is misleading.** A receipt you're not part of still renders
+  at full opacity (not dimmed), so it looks like you're in the split
+  when you aren't. There's no visual signal that it doesn't involve you.
+- **No self opt-in.** You can't add yourself to a receipt you were left
+  off of — it's an owner-only capability via the edit-splits modal.
+
+Combine the two states into one consistent model:
+- Receipt where you have an active split → normal styling, "Opt out".
+- Receipt where you've opted out → dimmed, "Rejoin" (existing).
+- Receipt where you were never included → dimmed (so it reads as
+  "not yours"), with an "Opt in" / "Add me" action that creates a split
+  row for you. Same teal/gray legend grammar.
+
+Backend: `expenses.optOut` already lets any member toggle their own
+split via `requireTripMember`; extend it (or add `optIn`) to *create* a
+split row when one doesn't exist yet, not just flip `opted_out`.
+
+**Files:** `ExpensesSection.tsx` (row styling + the third state),
+`SplitPanel.tsx`, `src/server/routers/expenses.ts` (optOut/optIn).
+
+---
+
 ## UX Polish (Logged, Not Urgent)
 
 ### Field Mode (outdoor scoring)

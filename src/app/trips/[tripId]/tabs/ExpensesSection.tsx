@@ -11,7 +11,6 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { EmptyState } from "@/components/EmptyState";
 import { SampleHeader, SampleCard } from "@/components/SampleSection";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
@@ -178,90 +177,100 @@ function ReceiptExample() {
   );
 }
 
-// ── BalancesPreview ──────────────────────────────────────────────────────
-// Even on the empty Receipts state we render the live BALANCES section
-// pre-populated with every crew member at $0.00. This is REAL data
-// (not example), so it shows the user what the other half of the tab
-// does (squares up debts) before they've logged anything. Per
-// HANDOFF-gaps-receipts-empty.md §3.
+// ── ReceiptLegend ────────────────────────────────────────────────────────
+// Explains the opt-in / opt-out icons that appear on each receipt row.
+// Wide layout: full card pinned to the top of the balances column.
+// Mirrors the Crew tab's StatusLegend so the two tabs feel consistent.
 
-function BalancesPreview({
-  members,
-  currentUserId,
-}: {
-  members: ExpenseMember[];
-  currentUserId: string | null | undefined;
-}) {
-  // Order matches what the populated balances panel uses elsewhere:
-  // Owner first, Planners next, then everyone else by name.
-  const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
-  const sorted = [...members].sort((a, b) => {
-    const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
-    const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
-    return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
-  });
+const RECEIPT_LEGEND_ROWS = [
+  {
+    key: "out",
+    icon: UserMinus,
+    label: "Opt out",
+    // Matches the receipt row: opt-out is the quiet gray action.
+    color: "var(--color-bt-text-dim)",
+    body: "You're in this split. Tap to drop yourself from a receipt you didn't share in — your share gets spread across everyone else.",
+  },
+  {
+    key: "in",
+    icon: UserPlus,
+    label: "Opt in",
+    // Matches the receipt row: rejoin is teal to invite you back in.
+    color: "var(--color-bt-accent)",
+    body: "You've opted out. Tap to rejoin the split and take your share again.",
+  },
+] as const;
 
-  if (sorted.length === 0) return null;
-
+function ReceiptLegend() {
   return (
-    <div className="mt-2">
+    <div
+      className="rounded-xl p-4"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+    >
       <div
-        className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.12em]"
-        style={{ color: "var(--color-bt-accent)" }}
+        className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em]"
+        style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Balances
+        What these mean
       </div>
-      <div
-        className="rounded-[10px] px-4"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {sorted.map((m, idx) => {
-          const name = memberName(members, m.user_id);
-          const isYou = m.user_id === currentUserId;
+      <div className="space-y-2.5 text-[11px]" style={{ color: "var(--color-bt-text)" }}>
+        {RECEIPT_LEGEND_ROWS.map((r) => {
+          const Icon = r.icon;
           return (
-            <div
-              key={m.user_id}
-              className="flex items-center justify-between py-3"
-              style={{
-                borderBottom:
-                  idx < sorted.length - 1
-                    ? "1px solid var(--color-bt-subtle-border)"
-                    : undefined,
-              }}
-            >
+            <div key={r.key} className="flex items-start gap-2.5">
               <span
-                className="text-sm font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  border: "1px solid var(--color-bt-border)",
+                  color: r.color,
+                }}
+                aria-hidden
               >
-                {name}
-                {isYou && (
-                  <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
-                    {" "}
-                    (you)
-                  </span>
-                )}
+                <Icon size={14} />
               </span>
-              <span
-                className="font-mono text-sm font-semibold"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                $0.00
-              </span>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">{r.label}</div>
+                <div className="leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {r.body}
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
-      <p
-        className="mt-2.5 text-[11px] italic"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Everyone&apos;s even — no receipts logged yet.
-      </p>
+    </div>
+  );
+}
+
+// ── CompactReceiptLegend ──────────────────────────────────────────────────
+// Single-row variant rendered below the receipts list at narrow widths
+// where the balances column has stacked underneath. Same morph behavior
+// as the Crew tab's CompactStatusLegend.
+
+function CompactReceiptLegend() {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]"
+      style={{ color: "var(--color-bt-text)" }}
+    >
+      {RECEIPT_LEGEND_ROWS.map((r) => {
+        const Icon = r.icon;
+        return (
+          <span key={r.key} className="inline-flex items-center gap-1.5">
+            <Icon
+              size={13}
+              className="flex-shrink-0"
+              style={{ color: r.color }}
+              aria-hidden
+            />
+            <span className="font-semibold">{r.label}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -638,15 +647,19 @@ export function ExpensesSection({
 
   const hasExpenses = expenses.length > 0;
   const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
-  const balanceRows = members
-    .filter((m) => Math.abs(balances.get(m.user_id) ?? 0) >= 0.01)
-    .sort((a, b) => {
-      const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
-      const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
-      return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
-    });
+  // Show every current crew member — including anyone added after the
+  // receipts were logged (they sit at $0.00 until a split pulls them
+  // in). Previously this filtered to members with a non-zero balance,
+  // so a freshly-added member never appeared until their first receipt.
+  // Matches the empty-state BalancesPreview, which already lists
+  // everyone at $0.00.
+  const balanceRows = [...members].sort((a, b) => {
+    const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
+    const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
+    return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
+  });
 
   return (
     <>
@@ -659,7 +672,7 @@ export function ExpensesSection({
       <div
         className={
           hasExpenses
-            ? "grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
+            ? "grid gap-4 min-[900px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
             : ""
         }
       >
@@ -668,12 +681,19 @@ export function ExpensesSection({
             TabHeader / TabFab, not inline here) ─────────────────────── */}
         <div className="space-y-3">
           {!hasExpenses ? (
-            canEdit ? (
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-                {/* Main column — SampleHeader + example card + standalone
-                    caption + live BALANCES preview. Caption sits BETWEEN
-                    the example and BALANCES per spec; previously it lived
-                    inside the composer's hint, wrong placement. */}
+            // Any member can log a receipt (expenses.create is
+            // requireTripMember, not Planner), so the composer empty
+            // state shows for everyone — no read-only EmptyState fork.
+            // Empty-state grid — just the sample + composer. Balances
+            // are hidden until there's an actual receipt to balance
+            // (the live BALANCES panel shows in the populated state).
+            //   lg+   [ sample (1fr) | composer (300px) ]  composer right
+            //   md–lg  sample on top, composer below it
+            //   <md   sample only; composer hidden (TabFab adds).
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                {/* Sample — "how a receipt will look". Fills the full
+                    width of its column (no max-width cap) so the example
+                    receipt spans the left column. */}
                 <div className="flex flex-col gap-3.5">
                   <SampleHeader label="How a receipt will look" />
                   <SampleCard>
@@ -690,19 +710,12 @@ export function ExpensesSection({
                     Log who paid and how to split it. By default everyone
                     splits evenly — tap a receipt later to customize.
                   </p>
-                  <BalancesPreview
-                    members={members}
-                    currentUserId={currentUser?.id}
-                  />
                 </div>
 
-                {/* Right rail (lg+) / stacked composer (md ≤ x < lg).
-                    Hidden on phones (<md) — the TabFab is the mobile add
-                    affordance. Capped at 540px when stacked. */}
-                <aside
-                  className="hidden md:block"
-                  style={{ maxWidth: 540 }}
-                >
+                {/* Composer — top-right rail at lg, stacks under the
+                    sample below lg. Hidden on phones (<md); the TabFab
+                    is the mobile add affordance. */}
+                <aside className="hidden md:block" style={{ maxWidth: 540 }}>
                   <AddReceiptFullComposer
                     tripId={tripId}
                     members={members}
@@ -711,13 +724,6 @@ export function ExpensesSection({
                   />
                 </aside>
               </div>
-            ) : (
-              <EmptyState
-                icon={<Receipt className="h-10 w-10" />}
-                headline="No receipts yet"
-                subtext="The crew hasn't logged any receipts yet."
-              />
-            )
           ) : (
             <div className="space-y-2">
               {(expenses as ExpenseItem[]).map((expense) => {
@@ -729,6 +735,7 @@ export function ExpensesSection({
                 const userShare = currentUser
                   ? computeUserShare(expense, currentUser.id)
                   : null;
+                const paidByYou = !!currentUser && expense.paid_by_user_id === currentUser.id;
 
                 return (
                   <div
@@ -738,40 +745,61 @@ export function ExpensesSection({
                     style={{
                       background: isOptedOut ? "var(--color-bt-base)" : "var(--color-bt-card)",
                       border: "1px solid var(--color-bt-border)",
-                      opacity: isOptedOut ? 0.7 : 1,
+                      // Teal left accent marks receipts you paid for — a
+                      // highlight, not a fill (STYLE_GUIDE: teal fills are
+                      // reserved for Primary buttons). 3px so it reads at
+                      // a glance down the list.
+                      borderLeft: paidByYou
+                        ? "3px solid var(--color-bt-accent)"
+                        : "1px solid var(--color-bt-border)",
                     }}
                   >
-                    <DollarSign size={14} style={{ color: "var(--color-bt-accent)" }} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-                          {expense.title}
-                        </p>
-                        {expense.date && (
-                          <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                            {new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    {/* Content group — dimmed when opted out. The action
+                        buttons live OUTSIDE this wrapper so the opt-in
+                        button stays full opacity (opacity on a parent
+                        can't be undone by a child). */}
+                    <div
+                      className="flex min-w-0 flex-1 items-center gap-3"
+                      style={{ opacity: isOptedOut ? 0.55 : 1 }}
+                    >
+                      <DollarSign size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                            {expense.title}
+                          </p>
+                          {expense.date && (
+                            <span className="flex-shrink-0 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                              {new Date(expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                          <span>
+                            Paid by{" "}
+                            <span style={{ color: "var(--color-bt-text)" }}>
+                              {paidByYou ? "you" : memberName(members, expense.paid_by_user_id)}
+                            </span>
                           </span>
+                          <span aria-hidden>·</span>
+                          <span>split {activeSplitCount} ways</span>
+                        </div>
+                        {userSplit && (
+                          <p className="mt-0.5 text-xs" style={{
+                            color: isOptedOut ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
+                          }}>
+                            {isOptedOut
+                              ? "Opted out"
+                              : userShare !== null
+                                ? `Your share: $${userShare.toFixed(2)}`
+                                : null}
+                          </p>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-x-2 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                        <span>Paid by {memberName(members, expense.paid_by_user_id)}</span>
-                        <span>split {activeSplitCount} ways</span>
-                      </div>
-                      {userSplit && (
-                        <p className="mt-0.5 text-xs" style={{
-                          color: isOptedOut ? "var(--color-bt-text-dim)" : "var(--color-bt-accent)",
-                        }}>
-                          {isOptedOut
-                            ? "Opted out"
-                            : userShare !== null
-                              ? `Your share: $${userShare.toFixed(2)}`
-                              : null}
-                        </p>
-                      )}
+                      <span className="flex-shrink-0 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                        ${expense.amount.toFixed(2)}
+                      </span>
                     </div>
-                    <span className="flex-shrink-0 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                      ${expense.amount.toFixed(2)}
-                    </span>
                     {userSplit && (
                       <button
                         onClick={() =>
@@ -783,6 +811,9 @@ export function ExpensesSection({
                         }
                         disabled={optOutMutation.isPending}
                         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70 disabled:opacity-40"
+                        // Opt out (you're in) reads as a quiet gray action;
+                        // rejoin (you're out) is teal to invite you back in.
+                        // The legend mirrors these two colors exactly.
                         style={{ color: isOptedOut ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                         title={isOptedOut ? "Rejoin" : "Opt out"}
                       >
@@ -817,15 +848,51 @@ export function ExpensesSection({
               })}
             </div>
           )}
+
+          {/* Compact opt-in/out legend — only below 640px (true mobile),
+              where the legend panel collapses to text. Between 640 and
+              900 the full legend panel sits beside Balances under the
+              receipts; at ≥900 it moves into the right rail. Morphs to
+              icon + label like the Crew tab. */}
+          {hasExpenses && (
+            <div className="min-[640px]:hidden pt-1">
+              <CompactReceiptLegend />
+            </div>
+          )}
         </div>
 
-        {/* ── Right: balances ──────────────────────────────────────────── */}
+        {/* ── Right: legend + balances ─────────────────────────────────── */}
         {/* Only render when there's at least one receipt to balance —
             otherwise the column is just a "Balances appear once receipts
             are added" placeholder, which is noise. alignSelf start keeps
             the panel pinned at the top while the left column grows. */}
         {hasExpenses && (
-          <div style={{ alignSelf: "start" }}>
+          <aside
+            style={{ alignSelf: "start" }}
+            className={[
+              // Right rail — legend + balances. Three states, mirroring
+              // the Crew tab's stacked-rail morph:
+              //   <640   single column; legend collapses to the compact
+              //          text under the receipts (hidden here), balances
+              //          full width below.
+              //   640-899 two side-by-side panels under the receipts
+              //          (legend | balances).
+              //   ≥900   stacked in the narrow right rail track of the
+              //          main grid (legend panel on top, balances below).
+              // Arbitrary min-[…] variants on both edges so Tailwind v4
+              // sorts the cascade numerically.
+              "grid gap-4",
+              "min-[640px]:grid-cols-2",
+              "min-[900px]:flex min-[900px]:flex-col",
+            ].join(" ")}
+          >
+            {/* Full opt-in/out legend panel — shown at ≥640. Below that
+                the CompactReceiptLegend under the receipts takes over. */}
+            <div className="hidden min-[640px]:block">
+              <ReceiptLegend />
+            </div>
+
+            <div>
             <h2
               className="mb-2 text-xs font-semibold uppercase tracking-wider"
               style={{ color: "var(--color-bt-text-dim)" }}
@@ -859,8 +926,22 @@ export function ExpensesSection({
                           <span className="ml-1 text-xs font-normal" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
                         )}
                       </span>
-                      <span className="text-sm font-semibold tabular-nums" style={{ color: bal > 0 ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}>
-                        {bal > 0 ? `+$${bal.toFixed(2)}` : `-$${Math.abs(bal).toFixed(2)}`}
+                      <span
+                        className="text-sm font-semibold tabular-nums"
+                        style={{
+                          color:
+                            Math.abs(bal) < 0.01
+                              ? "var(--color-bt-text-dim)"
+                              : bal > 0
+                                ? "var(--color-bt-accent)"
+                                : "var(--color-bt-danger)",
+                        }}
+                      >
+                        {Math.abs(bal) < 0.01
+                          ? "$0.00"
+                          : bal > 0
+                            ? `+$${bal.toFixed(2)}`
+                            : `-$${Math.abs(bal).toFixed(2)}`}
                       </span>
                     </div>
                   );
@@ -871,7 +952,8 @@ export function ExpensesSection({
                 All settled up 🎉
               </p>
             )}
-          </div>
+            </div>
+          </aside>
         )}
 
       </div>

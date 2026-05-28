@@ -157,36 +157,50 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
       return;
     }
 
-    // Diff against the resolved initialNickname (what the input was
-    // pre-filled with) rather than the override-only value. Without
-    // this, opening the editor on a placeholder whose display name
-    // comes from users.name would mark the input "dirty" against an
-    // empty override and enable Save before the user typed anything.
-    // The mutation still writes trip-scoped: empty → null (falls back
-    // to users.name); non-empty → sets the override.
-    const nicknameChanged = nickname.trim() !== initialNickname.trim();
+    const nameChanged = nickname.trim() !== initialNickname.trim();
     const emailChanged = email.trim() !== (member.user?.email ?? "");
-
     const tasks: Promise<unknown>[] = [];
-    if (nicknameChanged) {
-      tasks.push(
-        updateNickname.mutateAsync({
-          tripId,
-          userId: member.user_id,
-          nickname: nickname.trim(),
-        })
-      );
-    }
-    // Email is still a users-table concern, so it only applies to guest rows
-    // (real-account users manage their own email through account settings).
-    if (member.isGuest && emailChanged) {
-      tasks.push(
-        updateGuest.mutateAsync({
-          tripId,
-          guestUserId: member.user_id,
-          email: email.trim() || null,
-        })
-      );
+
+    if (member.isGuest) {
+      // ── Ghost (placeholder / invited) ──────────────────────────────
+      // A ghost has no real account and no profile to self-edit, so the
+      // name field edits users.name *directly* — it's the single source
+      // of truth, not a trip-scoped override. (Renaming a ghost via the
+      // nickname override left the original typo frozen in users.name;
+      // now we just fix the name.) Name + email both flow through one
+      // ghostCrew.update call.
+      const guestUpdate: {
+        tripId: string;
+        guestUserId: string;
+        name?: string;
+        email?: string | null;
+      } = { tripId, guestUserId: member.user_id };
+      if (nameChanged && nickname.trim()) guestUpdate.name = nickname.trim();
+      if (emailChanged) guestUpdate.email = email.trim() || null;
+      if (guestUpdate.name !== undefined || guestUpdate.email !== undefined) {
+        tasks.push(updateGuest.mutateAsync(guestUpdate));
+      }
+      // Clear any legacy trip-nickname override so users.name is the only
+      // name in play (older ghosts renamed under the previous model still
+      // carry one; without this, the stale override would keep winning).
+      if (member.nickname) {
+        tasks.push(
+          updateNickname.mutateAsync({ tripId, userId: member.user_id, nickname: "" })
+        );
+      }
+    } else {
+      // ── Real account ───────────────────────────────────────────────
+      // Never touch their users.name (they own it via their profile);
+      // the name field edits the trip-scoped nickname override only.
+      if (nameChanged) {
+        tasks.push(
+          updateNickname.mutateAsync({
+            tripId,
+            userId: member.user_id,
+            nickname: nickname.trim(),
+          })
+        );
+      }
     }
 
     if (tasks.length > 0) {
