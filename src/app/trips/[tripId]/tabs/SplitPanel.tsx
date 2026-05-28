@@ -75,7 +75,12 @@ export function SplitPanel({
 
   const memberName = (uid: string) => {
     const m = members.find((x) => x.user_id === uid);
-    return m?.user?.name ?? m?.user?.email ?? uid.slice(0, 6);
+    // displayName first — it carries the trip-scoped nickname
+    // (trip_members.nickname) so an Owner-renamed member shows their
+    // trip name here, not the stale account name. Was reading
+    // m.user.name directly, which surfaced the original users.name
+    // even after a rename (e.g. "Tak" lingering after editing to "Taj").
+    return m?.displayName ?? m?.user?.name ?? m?.user?.email ?? uid.slice(0, 6);
   };
 
   return (
