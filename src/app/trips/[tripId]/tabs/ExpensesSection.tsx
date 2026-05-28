@@ -177,94 +177,6 @@ function ReceiptExample() {
   );
 }
 
-// ── BalancesPreview ──────────────────────────────────────────────────────
-// Even on the empty Receipts state we render the live BALANCES section
-// pre-populated with every crew member at $0.00. This is REAL data
-// (not example), so it shows the user what the other half of the tab
-// does (squares up debts) before they've logged anything. Per
-// HANDOFF-gaps-receipts-empty.md §3.
-
-function BalancesPreview({
-  members,
-  currentUserId,
-}: {
-  members: ExpenseMember[];
-  currentUserId: string | null | undefined;
-}) {
-  // Order matches what the populated balances panel uses elsewhere:
-  // Owner first, Planners next, then everyone else by name.
-  const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
-  const sorted = [...members].sort((a, b) => {
-    const aOrder = ROLE_ORDER[a.role ?? "Member"] ?? 2;
-    const bOrder = ROLE_ORDER[b.role ?? "Member"] ?? 2;
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
-    return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
-  });
-
-  if (sorted.length === 0) return null;
-
-  return (
-    <div className="mt-2">
-      <div
-        className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.12em]"
-        style={{ color: "var(--color-bt-accent)" }}
-      >
-        Balances
-      </div>
-      <div
-        className="rounded-[10px] px-4"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {sorted.map((m, idx) => {
-          const name = memberName(members, m.user_id);
-          const isYou = m.user_id === currentUserId;
-          return (
-            <div
-              key={m.user_id}
-              className="flex items-center justify-between py-3"
-              style={{
-                borderBottom:
-                  idx < sorted.length - 1
-                    ? "1px solid var(--color-bt-subtle-border)"
-                    : undefined,
-              }}
-            >
-              <span
-                className="text-sm font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                {name}
-                {isYou && (
-                  <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
-                    {" "}
-                    (you)
-                  </span>
-                )}
-              </span>
-              <span
-                className="font-mono text-sm font-semibold"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                $0.00
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      <p
-        className="mt-2.5 text-[11px] italic"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Everyone&apos;s even — no receipts logged yet.
-      </p>
-    </div>
-  );
-}
-
 // ── ReceiptLegend ────────────────────────────────────────────────────────
 // Explains the opt-in / opt-out icons that appear on each receipt row.
 // Wide layout: full card pinned to the top of the balances column.
@@ -774,22 +686,15 @@ export function ExpensesSection({
             // state shows for everyone — no more read-only EmptyState
             // for plain members.
             (
-              // Empty-state grid. Three pieces — sample, composer,
-              // balances — placed differently per breakpoint so the
-              // composer ("Add your first receipt") is always reachable:
-              //   lg+      [ sample  | composer ]   composer top-right
-              //            [ balances |    —     ]
-              //   md–lg    [ sample (full width)  ]  composer drops to the
-              //            [ composer | balances ]   bottom row, LEFT of
-              //                                       balances (not below)
-              //   <md      sample → balances; composer hidden (TabFab is
-              //            the mobile add affordance).
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_300px]">
-                {/* Sample — top. Full width at md, left column at lg. */}
-                <div
-                  className="flex flex-col gap-3.5 md:col-span-2 md:row-start-1 lg:col-span-1 lg:col-start-1 lg:row-start-1"
-                  style={{ maxWidth: 540 }}
-                >
+              // Empty-state grid — just the sample + composer. Balances
+              // are hidden until there's an actual receipt to balance
+              // (the live BALANCES panel shows in the populated state).
+              //   lg+   [ sample (1fr) | composer (300px) ]  composer right
+              //   md–lg  sample on top, composer below it
+              //   <md   sample only; composer hidden (TabFab adds).
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                {/* Sample — "how a receipt will look". */}
+                <div className="flex flex-col gap-3.5" style={{ maxWidth: 540 }}>
                   <SampleHeader label="How a receipt will look" />
                   <SampleCard>
                     <ReceiptExample />
@@ -807,13 +712,10 @@ export function ExpensesSection({
                   </p>
                 </div>
 
-                {/* Composer — top-right rail at lg; drops to the bottom
-                    row's LEFT cell at md (beside balances, never below).
-                    Hidden on phones (<md). */}
-                <aside
-                  className="hidden md:block md:col-start-1 md:row-start-2 lg:col-start-2 lg:row-start-1"
-                  style={{ maxWidth: 540 }}
-                >
+                {/* Composer — top-right rail at lg, stacks under the
+                    sample below lg. Hidden on phones (<md); the TabFab
+                    is the mobile add affordance. */}
+                <aside className="hidden md:block" style={{ maxWidth: 540 }}>
                   <AddReceiptFullComposer
                     tripId={tripId}
                     members={members}
@@ -821,16 +723,6 @@ export function ExpensesSection({
                     onOpenFull={() => onAddOpenChange(true)}
                   />
                 </aside>
-
-                {/* Live balances — under the sample at lg; bottom-right
-                    cell beside the composer at md; stacked under the
-                    sample on phones. */}
-                <div className="md:col-start-2 md:row-start-2 lg:col-start-1 lg:row-start-2">
-                  <BalancesPreview
-                    members={members}
-                    currentUserId={currentUser?.id}
-                  />
-                </div>
               </div>
             )
           ) : (
