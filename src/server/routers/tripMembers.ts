@@ -3,6 +3,29 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { postSystemMessage } from "./messages";
+
+/** Resolve a member's trip display name (nickname → account name) for
+ *  system chat lines. Best-effort; falls back to "Someone". */
+async function memberDisplayName(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<string> {
+  const { data: tm } = await supabase
+    .from("trip_members")
+    .select("nickname")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (tm?.nickname) return tm.nickname as string;
+  const { data: u } = await supabase
+    .from("users")
+    .select("name")
+    .eq("id", userId)
+    .maybeSingle();
+  return (u?.name as string) || "Someone";
+}
 
 /** Shared between tripMembers.list and competitions.hydrate. */
 export async function listMembers(
@@ -157,6 +180,9 @@ export const tripMembersRouter = router({
           user_id: input.userId,
           role: input.role,
           status: input.status,
+          // History floor: a member added now shouldn't see Crew chat
+          // banter from before they joined.
+          chat_visible_from: new Date().toISOString(),
         })
         .select()
         .single();
@@ -166,6 +192,18 @@ export const tripMembersRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to add member: ${error.message}`,
         });
+      }
+
+      // System line in Crew chat announcing the new member (best-effort).
+      try {
+        const name = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
+        await postSystemMessage(ctx.supabase, {
+          tripId: ctx.tripId!,
+          visibility: "crew",
+          text: `${name} joined the crew`,
+        });
+      } catch {
+        /* system message failure shouldn't block the add */
       }
 
       return data;
@@ -203,6 +241,9 @@ export const tripMembersRouter = router({
         if (current?.status === "draft") {
           update.status = "invited";
         }
+        // History floor: a newly-promoted organizer shouldn't see the
+        // Organizers chat from before they were promoted.
+        update.planning_visible_from = new Date().toISOString();
       }
 
       const { data, error } = await ctx.supabase
@@ -218,6 +259,23 @@ export const tripMembersRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update role",
         });
+      }
+
+      // System line in the Organizers chat for the role change
+      // (best-effort). Promote announces the new organizer; demote
+      // notes the departure so remaining organizers have context.
+      try {
+        const name = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
+        await postSystemMessage(ctx.supabase, {
+          tripId: ctx.tripId!,
+          visibility: "planning",
+          text:
+            input.role === "Planner"
+              ? `${name} is now an organizer`
+              : `${name} is no longer an organizer`,
+        });
+      } catch {
+        /* system message failure shouldn't block the role change */
       }
 
       return data;
@@ -371,7 +429,19 @@ export const tripMembersRouter = router({
           user_id: existing.id,
           role: input.role,
           status: "in",
+          chat_visible_from: new Date().toISOString(),
         });
+
+        // Crew-chat system line announcing the new member (best-effort).
+        try {
+          await postSystemMessage(ctx.supabase, {
+            tripId: ctx.tripId!,
+            visibility: "crew",
+            text: `${existing.name ?? email.split("@")[0]} joined the crew`,
+          });
+        } catch {
+          /* best-effort */
+        }
 
         // Send notification email (best effort — don't fail on email error)
         try {
@@ -490,12 +560,15 @@ export const tripMembersRouter = router({
         });
       }
 
-      // Add to trip_members with status 'invited'
+      // Add to trip_members with status 'invited'. The chat floor is set
+      // now so once they accept + sign in they only see Crew chat from
+      // this point forward.
       await ctx.supabase.from("trip_members").insert({
         trip_id: ctx.tripId,
         user_id: guestUserId,
         role: input.role,
         status: "invited",
+        chat_visible_from: new Date().toISOString(),
       });
 
       // Send invite email (best effort)
