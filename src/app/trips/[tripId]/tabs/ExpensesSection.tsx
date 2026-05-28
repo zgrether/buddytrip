@@ -774,12 +774,11 @@ export function ExpensesSection({
             // state shows for everyone — no more read-only EmptyState
             // for plain members.
             (
-              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-                {/* Main column — SampleHeader + example card + standalone
-                    caption + live BALANCES preview. Caption sits BETWEEN
-                    the example and BALANCES per spec; previously it lived
-                    inside the composer's hint, wrong placement. */}
-                <div className="flex flex-col gap-3.5">
+              <div className="flex flex-col gap-5">
+                {/* Sample — illustrative "how a receipt will look", on top.
+                    Caption sits between the example and the composer/
+                    balances row. */}
+                <div className="flex flex-col gap-3.5" style={{ maxWidth: 540 }}>
                   <SampleHeader label="How a receipt will look" />
                   <SampleCard>
                     <ReceiptExample />
@@ -795,26 +794,31 @@ export function ExpensesSection({
                     Log who paid and how to split it. By default everyone
                     splits evenly — tap a receipt later to customize.
                   </p>
-                  <BalancesPreview
-                    members={members}
-                    currentUserId={currentUser?.id}
-                  />
                 </div>
 
-                {/* Right rail (lg+) / stacked composer (md ≤ x < lg).
-                    Hidden on phones (<md) — the TabFab is the mobile add
-                    affordance. Capped at 540px when stacked. */}
-                <aside
-                  className="hidden md:block"
-                  style={{ maxWidth: 540 }}
-                >
-                  <AddReceiptFullComposer
-                    tripId={tripId}
-                    members={members}
-                    currentUserId={currentUser?.id}
-                    onOpenFull={() => onAddOpenChange(true)}
-                  />
-                </aside>
+                {/* Composer (left) + live balances (right). Composer is
+                    the primary CTA, so it stays on the LEFT of the
+                    balances at every width — a long crew list can't push
+                    "Add your first receipt" off-screen below the balances
+                    (the previous layout stacked composer beneath them).
+                    Composer hidden on phones (<md); the TabFab is the
+                    mobile add affordance and balances still shows. */}
+                <div className="grid gap-5 md:grid-cols-2">
+                  <aside className="hidden md:block" style={{ maxWidth: 540 }}>
+                    <AddReceiptFullComposer
+                      tripId={tripId}
+                      members={members}
+                      currentUserId={currentUser?.id}
+                      onOpenFull={() => onAddOpenChange(true)}
+                    />
+                  </aside>
+                  <div>
+                    <BalancesPreview
+                      members={members}
+                      currentUserId={currentUser?.id}
+                    />
+                  </div>
+                </div>
               </div>
             )
           ) : (
