@@ -78,17 +78,19 @@ function FloatingChatPanelInner({
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
-  const [activeChannel, setActiveChannel] = useState<Visibility>("crew");
+  const [selectedChannel, setSelectedChannel] = useState<Visibility>("crew");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(DEFAULT_WIDTH);
 
-  // Non-organizers can never land on the planning channel.
-  useEffect(() => {
-    if (!canSeeOrganizers && activeChannel === "planning") setActiveChannel("crew");
-  }, [canSeeOrganizers, activeChannel]);
+  // Derived, not stored: non-organizers can never resolve to the planning
+  // channel even if they were demoted mid-session with the panel open. The
+  // channel tabs (the only caller of setSelectedChannel) only render for
+  // organizers, so this guard is the single source of truth.
+  const activeChannel: Visibility = canSeeOrganizers ? selectedChannel : "crew";
+  const setActiveChannel = setSelectedChannel;
 
   // Mobile sheet drag state — restored from localStorage as a vh fraction.
   const [sheetHeight, setSheetHeight] = useState<number | null>(() => {
@@ -214,28 +216,28 @@ function FloatingChatPanelInner({
     crew: null,
     planning: null,
   });
-  const refreshReadMarks = useCallback(() => {
-    try {
-      setReadMarks({
-        crew: localStorage.getItem(lastReadKey(tripId, "crew")),
-        planning: localStorage.getItem(lastReadKey(tripId, "planning")),
-      });
-    } catch { /* localStorage unavailable */ }
-  }, [tripId]);
 
   useEffect(() => {
-    refreshReadMarks();
+    const read = () => {
+      try {
+        setReadMarks({
+          crew: localStorage.getItem(lastReadKey(tripId, "crew")),
+          planning: localStorage.getItem(lastReadKey(tripId, "planning")),
+        });
+      } catch { /* localStorage unavailable */ }
+    };
+    read();
     const onRead = (e: Event) => {
       const detail = (e as CustomEvent<{ tripId: string }>).detail;
-      if (detail?.tripId === tripId) refreshReadMarks();
+      if (detail?.tripId === tripId) read();
     };
     window.addEventListener("chat-read", onRead);
-    window.addEventListener("storage", refreshReadMarks);
+    window.addEventListener("storage", read);
     return () => {
       window.removeEventListener("chat-read", onRead);
-      window.removeEventListener("storage", refreshReadMarks);
+      window.removeEventListener("storage", read);
     };
-  }, [tripId, refreshReadMarks]);
+  }, [tripId]);
 
   const unreadFor = (messages: ChatMessage[], visibility: Visibility): number => {
     if (!currentUser?.id) return 0;
@@ -255,6 +257,8 @@ function FloatingChatPanelInner({
   }, [displayed.length, activeChannel]);
 
   // Mark the active channel read whenever it's shown and new messages arrive.
+  // The dispatched "chat-read" event is caught by the listener above, which
+  // refreshes readMarks — so no direct setState here.
   useEffect(() => {
     if (displayed.length === 0) return;
     const latest = displayed[displayed.length - 1];
@@ -262,12 +266,11 @@ function FloatingChatPanelInner({
       try {
         localStorage.setItem(lastReadKey(tripId, activeChannel), latest.created_at);
         window.dispatchEvent(new CustomEvent("chat-read", { detail: { tripId } }));
-        refreshReadMarks();
       } catch {
         // localStorage unavailable — ignore
       }
     }
-  }, [tripId, activeChannel, displayed, refreshReadMarks]);
+  }, [tripId, activeChannel, displayed]);
 
   // Persist sheet height as a vh fraction so it survives close/reopen.
   useEffect(() => {

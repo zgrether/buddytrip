@@ -338,7 +338,8 @@ function ChatButton({ tripId, onClick, isOpen }: { tripId: string; onClick: () =
       aria-label="Open crew chat"
       data-testid="chat-button"
       onClick={onClick}
-      className={`relative flex h-8 w-8 items-center justify-center transition-colors ${isOpen ? "rounded-lg" : "rounded-full hover:bg-[var(--color-bt-hover)]"}`}
+      // Desktop-only: on mobile the chat lives in the bottom nav's Messages tab.
+      className={`relative hidden lg:flex h-8 w-8 items-center justify-center transition-colors ${isOpen ? "rounded-lg" : "rounded-full hover:bg-[var(--color-bt-hover)]"}`}
       style={
         isOpen
           ? { color: "var(--color-bt-accent)", background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }

@@ -1,8 +1,9 @@
 "use client";
 
 import { type FC, useEffect } from "react";
-import { Home, Plus, Activity, type LucideIcon } from "lucide-react";
+import { Home, Plus, Activity, MessageCircle, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
+import { useChatUnreadCount } from "./FloatingChatPanel";
 
 // ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
 // This is the old "tab" concept — now handled by TripTabBar.tsx
@@ -15,9 +16,14 @@ interface NavItem {
   id: string;
   label: string;
   Icon: LucideIcon;
-  href: string;
+  /** Route items navigate here; action items (e.g. Messages) omit it. */
+  href?: string;
+  /** Action items run this instead of navigating (e.g. open the chat sheet). */
+  onClick?: () => void;
   badge?: number;
   hidden?: boolean;
+  /** Show only below lg — used for Messages, which lives in the top nav on desktop. */
+  mobileOnly?: boolean;
 }
 
 // ── Outside-trip bottom nav (Dashboard, TripNew, etc.) ─────────────────────
@@ -60,7 +66,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
           <button
             key={id}
             data-testid={`nav-${id}`}
-            onClick={() => router.push(href)}
+            onClick={() => href && router.push(href)}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
           >
@@ -80,38 +86,64 @@ interface TripBottomNavProps {
   tripId: string;
   eventId?: string | null;
   showComp?: boolean;
+  /** Opens the crew-chat sheet. When provided, the mobile-only Messages
+   *  item appears in the bar (desktop keeps the top-nav chat button). */
+  onOpenChat?: () => void;
 }
 
 export const TripBottomNav: FC<TripBottomNavProps> = ({
   tripId,
   eventId,
   showComp,
+  onOpenChat,
 }) => {
   const router = useRouter();
   const pathname = usePathname();
+  const chatUnread = useChatUnreadCount(tripId);
+
+  const compVisible = showComp !== undefined ? showComp : !!eventId;
 
   const items: NavItem[] = [
     { id: "trip-home", label: "Trip Home", Icon: Home, href: `/trips/${tripId}` },
+    {
+      id: "messages",
+      label: "Messages",
+      Icon: MessageCircle,
+      onClick: onOpenChat,
+      badge: chatUnread,
+      mobileOnly: true,
+      hidden: !onOpenChat,
+    },
     {
       id: "live",
       label: "Live",
       Icon: Activity,
       href: `/trips/${tripId}/leaderboard`,
-      hidden: showComp !== undefined ? !showComp : !eventId,
+      hidden: !compVisible,
     },
   ];
 
-  // Prefetch JS bundles for all nav destinations so tapping is instant.
+  // Prefetch JS bundles for route destinations so tapping is instant.
   useEffect(() => {
-    items.filter((i) => !i.hidden).forEach(({ href }) => {
-      router.prefetch(href);
-    });
+    items
+      .filter((i) => !i.hidden && i.href)
+      .forEach(({ href }) => {
+        router.prefetch(href!);
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- stable after mount
-  }, [tripId]);
+  }, [tripId, compVisible]);
+
+  const visibleItems = items.filter((i) => !i.hidden);
+
+  // The bottom bar is a mobile construct (desktop navigates via the top
+  // nav). It only earns a place on desktop when a live competition needs
+  // the Live tab — otherwise hide it at lg+ so it doesn't shadow the top
+  // nav with a near-empty bar.
+  const navVisibility = compVisible ? "" : " lg:hidden";
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40"
+      className={`fixed bottom-0 left-0 right-0 z-40${navVisibility}`}
       style={{
         background: "var(--color-bt-card)",
         borderTop: "1px solid var(--color-bt-border)",
@@ -119,17 +151,22 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       }}
     >
       <div className="mx-auto flex max-w-2xl items-stretch">
-      {items.filter((i) => !i.hidden).map(({ id, label, Icon, href, badge }) => {
-        const active =
-          id === "trip-home"
+      {visibleItems.map(({ id, label, Icon, href, onClick, badge, mobileOnly }) => {
+        const active = href
+          ? id === "trip-home"
             ? pathname === `/trips/${tripId}`
-            : pathname === href;
+            : pathname === href
+          : false;
         return (
           <button
             key={id}
             data-testid={`nav-${id}`}
             onClick={() => {
-              if (pathname === href) return; // already here
+              if (onClick) {
+                onClick();
+                return;
+              }
+              if (!href || pathname === href) return; // already here
               const onTripHome = pathname === `/trips/${tripId}`;
               const goingToTripHome = href === `/trips/${tripId}`;
               if (goingToTripHome) {
@@ -145,7 +182,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
                 router.replace(href);
               }
             }}
-            className="relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
+            className={`relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors${mobileOnly ? " lg:hidden" : ""}`}
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
           >
             <Icon size={22} />
