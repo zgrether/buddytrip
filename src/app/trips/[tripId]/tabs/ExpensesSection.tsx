@@ -275,12 +275,16 @@ const RECEIPT_LEGEND_ROWS = [
     key: "out",
     icon: UserMinus,
     label: "Opt out",
+    // Matches the receipt row: opt-out is the quiet gray action.
+    color: "var(--color-bt-text-dim)",
     body: "You're in this split. Tap to drop yourself from a receipt you didn't share in — your share gets spread across everyone else.",
   },
   {
     key: "in",
     icon: UserPlus,
     label: "Opt in",
+    // Matches the receipt row: rejoin is teal to invite you back in.
+    color: "var(--color-bt-accent)",
     body: "You've opted out. Tap to rejoin the split and take your share again.",
   },
 ] as const;
@@ -310,7 +314,7 @@ function ReceiptLegend() {
                 style={{
                   background: "var(--color-bt-card-raised)",
                   border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-accent)",
+                  color: r.color,
                 }}
                 aria-hidden
               >
@@ -354,7 +358,7 @@ function CompactReceiptLegend() {
             <Icon
               size={13}
               className="flex-shrink-0"
-              style={{ color: "var(--color-bt-accent)" }}
+              style={{ color: r.color }}
               aria-hidden
             />
             <span className="font-semibold">{r.label}</span>
@@ -906,10 +910,10 @@ export function ExpensesSection({
                         }
                         disabled={optOutMutation.isPending}
                         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70 disabled:opacity-40"
-                        // Teal in both states so the row icon matches the
-                        // legend (both opt-out and opt-in are teal there)
-                        // — the +/− glyph carries the meaning, not the color.
-                        style={{ color: "var(--color-bt-accent)" }}
+                        // Opt out (you're in) reads as a quiet gray action;
+                        // rejoin (you're out) is teal to invite you back in.
+                        // The legend mirrors these two colors exactly.
+                        style={{ color: isOptedOut ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
                         title={isOptedOut ? "Rejoin" : "Opt out"}
                       >
                         {isOptedOut ? <UserPlus size={13} /> : <UserMinus size={13} />}
