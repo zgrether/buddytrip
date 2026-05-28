@@ -774,11 +774,22 @@ export function ExpensesSection({
             // state shows for everyone — no more read-only EmptyState
             // for plain members.
             (
-              <div className="flex flex-col gap-5">
-                {/* Sample — illustrative "how a receipt will look", on top.
-                    Caption sits between the example and the composer/
-                    balances row. */}
-                <div className="flex flex-col gap-3.5" style={{ maxWidth: 540 }}>
+              // Empty-state grid. Three pieces — sample, composer,
+              // balances — placed differently per breakpoint so the
+              // composer ("Add your first receipt") is always reachable:
+              //   lg+      [ sample  | composer ]   composer top-right
+              //            [ balances |    —     ]
+              //   md–lg    [ sample (full width)  ]  composer drops to the
+              //            [ composer | balances ]   bottom row, LEFT of
+              //                                       balances (not below)
+              //   <md      sample → balances; composer hidden (TabFab is
+              //            the mobile add affordance).
+              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_300px]">
+                {/* Sample — top. Full width at md, left column at lg. */}
+                <div
+                  className="flex flex-col gap-3.5 md:col-span-2 md:row-start-1 lg:col-span-1 lg:col-start-1 lg:row-start-1"
+                  style={{ maxWidth: 540 }}
+                >
                   <SampleHeader label="How a receipt will look" />
                   <SampleCard>
                     <ReceiptExample />
@@ -796,28 +807,29 @@ export function ExpensesSection({
                   </p>
                 </div>
 
-                {/* Composer (left) + live balances (right). Composer is
-                    the primary CTA, so it stays on the LEFT of the
-                    balances at every width — a long crew list can't push
-                    "Add your first receipt" off-screen below the balances
-                    (the previous layout stacked composer beneath them).
-                    Composer hidden on phones (<md); the TabFab is the
-                    mobile add affordance and balances still shows. */}
-                <div className="grid gap-5 md:grid-cols-2">
-                  <aside className="hidden md:block" style={{ maxWidth: 540 }}>
-                    <AddReceiptFullComposer
-                      tripId={tripId}
-                      members={members}
-                      currentUserId={currentUser?.id}
-                      onOpenFull={() => onAddOpenChange(true)}
-                    />
-                  </aside>
-                  <div>
-                    <BalancesPreview
-                      members={members}
-                      currentUserId={currentUser?.id}
-                    />
-                  </div>
+                {/* Composer — top-right rail at lg; drops to the bottom
+                    row's LEFT cell at md (beside balances, never below).
+                    Hidden on phones (<md). */}
+                <aside
+                  className="hidden md:block md:col-start-1 md:row-start-2 lg:col-start-2 lg:row-start-1"
+                  style={{ maxWidth: 540 }}
+                >
+                  <AddReceiptFullComposer
+                    tripId={tripId}
+                    members={members}
+                    currentUserId={currentUser?.id}
+                    onOpenFull={() => onAddOpenChange(true)}
+                  />
+                </aside>
+
+                {/* Live balances — under the sample at lg; bottom-right
+                    cell beside the composer at md; stacked under the
+                    sample on phones. */}
+                <div className="md:col-start-2 md:row-start-2 lg:col-start-1 lg:row-start-2">
+                  <BalancesPreview
+                    members={members}
+                    currentUserId={currentUser?.id}
+                  />
                 </div>
               </div>
             )
