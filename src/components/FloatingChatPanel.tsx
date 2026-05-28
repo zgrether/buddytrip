@@ -8,17 +8,22 @@ const MAX_WIDTH = 720;
 const DEFAULT_WIDTH = 380;
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+
+type Visibility = "crew" | "planning";
 
 interface ChatMessage {
   id: string;
   trip_id: string;
-  user_id: string;
+  user_id: string | null;
   channel: string;
   team_id: string | null;
   text: string;
   created_at: string;
+  visibility?: Visibility;
+  message_type?: "user" | "system";
   _optimistic?: boolean;
 }
 
@@ -29,13 +34,24 @@ interface FloatingChatPanelProps {
   memberNames: Record<string, string>;
 }
 
-const lastReadKey = (tripId: string) => `chat-last-read-${tripId}`;
+/**
+ * Per-channel last-read marker. Crew keeps the legacy un-suffixed key so
+ * existing read state survives the split; planning gets its own.
+ */
+const lastReadKey = (tripId: string, visibility: Visibility) =>
+  visibility === "crew"
+    ? `chat-last-read-${tripId}`
+    : `chat-last-read-${tripId}-planning`;
 
 /**
- * FloatingChatPanel — the single crew-chat surface, mounted once per trip page.
+ * FloatingChatPanel — the trip chat surface, mounted once per trip page.
+ *
+ * Two sub-channels live behind a tab toggle (Owner/Planner only see the
+ * toggle — everyone else just gets Crew):
+ *   - Crew       — every trip member (messages.visibility = 'crew')
+ *   - Organizers — Owner + Planner only (messages.visibility = 'planning')
  *
  * Desktop (lg+): anchored panel below the top nav, slides in from the right.
- *   Optional expand toggle widens it to ~640px for denser reading.
  * Mobile: full-width bottom sheet with a drag handle and a backdrop that
  *   closes on tap. Body scroll is locked while open.
  *
@@ -56,14 +72,23 @@ function FloatingChatPanelInner({
   memberNames: Record<string, string>;
 }) {
   const currentUser = useCurrentUser();
+  const { role } = useTripRole(tripId);
+  const canSeeOrganizers = role === "Owner" || role === "Planner";
+
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
+  const [activeChannel, setActiveChannel] = useState<Visibility>("crew");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(DEFAULT_WIDTH);
+
+  // Non-organizers can never land on the planning channel.
+  useEffect(() => {
+    if (!canSeeOrganizers && activeChannel === "planning") setActiveChannel("crew");
+  }, [canSeeOrganizers, activeChannel]);
 
   // Mobile sheet drag state — restored from localStorage as a vh fraction.
   const [sheetHeight, setSheetHeight] = useState<number | null>(() => {
@@ -160,34 +185,89 @@ function FloatingChatPanelInner({
     document.addEventListener("mouseup", onUp);
   }, [panelWidth]);
 
-  const { data: messages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel: "trip", limit: 50 }
+  const { data: crewMessages = [] } = trpc.messages.list.useQuery(
+    { tripId, channel: "trip", visibility: "crew", limit: 50 }
+  );
+  const { data: planningMessages = [] } = trpc.messages.list.useQuery(
+    { tripId, channel: "trip", visibility: "planning", limit: 50 },
+    { enabled: canSeeOrganizers }
   );
 
-  const realIds = new Set(messages.map((m) => m.id));
-  const pending = optimisticMessages.filter((m) => !realIds.has(m.id));
-  const displayed: ChatMessage[] = (messages as ChatMessage[])
-    .slice()
-    .reverse()
-    .concat(pending);
+  // Merge in any not-yet-confirmed optimistic messages for a channel.
+  const buildDisplayed = useCallback(
+    (real: ChatMessage[], visibility: Visibility): ChatMessage[] => {
+      const realIds = new Set(real.map((m) => m.id));
+      const pending = optimisticMessages.filter(
+        (m) => m.visibility === visibility && !realIds.has(m.id)
+      );
+      return real.slice().reverse().concat(pending);
+    },
+    [optimisticMessages]
+  );
+
+  const crewDisplayed = buildDisplayed(crewMessages as ChatMessage[], "crew");
+  const planningDisplayed = buildDisplayed(planningMessages as ChatMessage[], "planning");
+  const displayed = activeChannel === "crew" ? crewDisplayed : planningDisplayed;
+
+  // ── Read tracking ──────────────────────────────────────────────────────
+  const [readMarks, setReadMarks] = useState<Record<Visibility, string | null>>({
+    crew: null,
+    planning: null,
+  });
+  const refreshReadMarks = useCallback(() => {
+    try {
+      setReadMarks({
+        crew: localStorage.getItem(lastReadKey(tripId, "crew")),
+        planning: localStorage.getItem(lastReadKey(tripId, "planning")),
+      });
+    } catch { /* localStorage unavailable */ }
+  }, [tripId]);
+
+  useEffect(() => {
+    refreshReadMarks();
+    const onRead = (e: Event) => {
+      const detail = (e as CustomEvent<{ tripId: string }>).detail;
+      if (detail?.tripId === tripId) refreshReadMarks();
+    };
+    window.addEventListener("chat-read", onRead);
+    window.addEventListener("storage", refreshReadMarks);
+    return () => {
+      window.removeEventListener("chat-read", onRead);
+      window.removeEventListener("storage", refreshReadMarks);
+    };
+  }, [tripId, refreshReadMarks]);
+
+  const unreadFor = (messages: ChatMessage[], visibility: Visibility): number => {
+    if (!currentUser?.id) return 0;
+    const others = messages.filter(
+      (m) => m.user_id !== currentUser.id && m.message_type !== "system"
+    );
+    const lr = readMarks[visibility];
+    if (!lr) return others.length;
+    const threshold = new Date(lr).getTime();
+    return others.filter((m) => new Date(m.created_at).getTime() > threshold).length;
+  };
+  const crewUnread = unreadFor(crewDisplayed, "crew");
+  const planningUnread = canSeeOrganizers ? unreadFor(planningDisplayed, "planning") : 0;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [displayed.length]);
+  }, [displayed.length, activeChannel]);
 
-  // Mark read whenever the panel is open and new messages arrive.
+  // Mark the active channel read whenever it's shown and new messages arrive.
   useEffect(() => {
     if (displayed.length === 0) return;
     const latest = displayed[displayed.length - 1];
     if (latest?.created_at) {
       try {
-        localStorage.setItem(lastReadKey(tripId), latest.created_at);
+        localStorage.setItem(lastReadKey(tripId, activeChannel), latest.created_at);
         window.dispatchEvent(new CustomEvent("chat-read", { detail: { tripId } }));
+        refreshReadMarks();
       } catch {
         // localStorage unavailable — ignore
       }
     }
-  }, [tripId, displayed]);
+  }, [tripId, activeChannel, displayed, refreshReadMarks]);
 
   // Persist sheet height as a vh fraction so it survives close/reopen.
   useEffect(() => {
@@ -213,8 +293,12 @@ function FloatingChatPanelInner({
   }, []);
 
   const sendMessage = trpc.messages.send.useMutation({
-    onSuccess: async () => {
-      await utils.messages.list.invalidate({ tripId, channel: "trip" });
+    onSuccess: async (_, variables) => {
+      await utils.messages.list.invalidate({
+        tripId,
+        channel: "trip",
+        visibility: variables.visibility,
+      });
     },
     onError: (_, variables) => {
       setOptimisticMessages((prev) => prev.filter((m) => m.id !== variables.id));
@@ -236,13 +320,85 @@ function FloatingChatPanelInner({
         team_id: null,
         text: trimmed,
         created_at: new Date().toISOString(),
+        visibility: activeChannel,
+        message_type: "user",
         _optimistic: true,
       },
     ]);
 
     setText("");
-    sendMessage.mutate({ tripId, id, channel: "trip", text: trimmed });
-  }, [text, sendMessage, currentUser, tripId]);
+    sendMessage.mutate({
+      tripId,
+      id,
+      channel: "trip",
+      visibility: activeChannel,
+      text: trimmed,
+    });
+  }, [text, sendMessage, currentUser, tripId, activeChannel]);
+
+  // Active-channel accent — Organizers picks up the planning-blue identity,
+  // Crew uses the default teal accent. (Highlights/borders only, no fills
+  // outside the Primary send button per the style guide.)
+  const isPlanningChannel = activeChannel === "planning";
+  const accentVar = isPlanningChannel ? "var(--color-bt-planning)" : "var(--color-bt-accent)";
+  const accentFaint = isPlanningChannel
+    ? "var(--color-bt-planning-faint)"
+    : "var(--color-bt-accent-faint)";
+  const accentBorder = isPlanningChannel
+    ? "var(--color-bt-planning-border)"
+    : "var(--color-bt-accent-border)";
+
+  // Header — channel tabs for organizers, static label otherwise. Shared
+  // between the desktop panel and the mobile sheet.
+  const header = canSeeOrganizers ? (
+    <div className="flex items-center gap-1">
+      {([
+        { ch: "crew" as const, label: "Crew", unread: crewUnread },
+        { ch: "planning" as const, label: "Organizers", unread: planningUnread },
+      ]).map(({ ch, label, unread }) => {
+        const active = activeChannel === ch;
+        const planning = ch === "planning";
+        return (
+          <button
+            key={ch}
+            type="button"
+            onClick={() => setActiveChannel(ch)}
+            className="relative flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+            style={{
+              color: active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+              background: active
+                ? planning
+                  ? "var(--color-bt-planning-faint)"
+                  : "var(--color-bt-accent-faint)"
+                : "transparent",
+              border: `1px solid ${
+                active
+                  ? planning
+                    ? "var(--color-bt-planning-border)"
+                    : "var(--color-bt-accent-border)"
+                  : "transparent"
+              }`,
+            }}
+          >
+            {label}
+            {unread > 0 && !active && (
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: planning ? "var(--color-bt-planning)" : "var(--color-bt-accent)" }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  ) : (
+    <p
+      className="text-[11px] font-semibold uppercase tracking-wider"
+      style={{ color: "var(--color-bt-text-dim)" }}
+    >
+      Crew Chat
+    </p>
+  );
 
   // Panel body — shared content between desktop + mobile wrappers.
   const body = (
@@ -256,10 +412,26 @@ function FloatingChatPanelInner({
         <div className="space-y-1.5 px-3 py-2">
           {displayed.length === 0 && (
             <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
-              No messages yet. Say something!
+              {isPlanningChannel
+                ? "No organizer chatter yet — this channel is just for owners and organizers."
+                : "No messages yet. Say something!"}
             </p>
           )}
           {displayed.map((msg) => {
+            // System lifecycle lines render centered + muted, no bubble.
+            if (msg.message_type === "system") {
+              return (
+                <div key={msg.id} className="flex justify-center py-1">
+                  <span
+                    className="text-[10px] italic px-2 text-center"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    {msg.text}
+                  </span>
+                </div>
+              );
+            }
+
             const isMe = msg.user_id === currentUser?.id;
             const time = new Date(msg.created_at).toLocaleTimeString("en-US", {
               hour: "numeric",
@@ -276,15 +448,15 @@ function FloatingChatPanelInner({
                   </span>
                   {!isMe && (
                     <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {memberNames[msg.user_id] ?? "Unknown"}
+                      {msg.user_id ? memberNames[msg.user_id] ?? "Unknown" : "Unknown"}
                     </span>
                   )}
                 </div>
                 <div
                   className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm"
                   style={{
-                    background: isMe ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-                    border: `1px solid ${isMe ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+                    background: isMe ? accentFaint : "var(--color-bt-card-raised)",
+                    border: `1px solid ${isMe ? accentBorder : "var(--color-bt-border)"}`,
                     color: "var(--color-bt-text)",
                     opacity: msg._optimistic ? 0.6 : 1,
                   }}
@@ -305,7 +477,7 @@ function FloatingChatPanelInner({
       >
         <input
           type="text"
-          placeholder="Say something..."
+          placeholder={isPlanningChannel ? "Message the organizers..." : "Say something..."}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
@@ -320,7 +492,7 @@ function FloatingChatPanelInner({
           onClick={handleSend}
           disabled={sendMessage.isPending || !text.trim()}
           className="flex h-7 w-7 items-center justify-center rounded-full disabled:opacity-30"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+          style={{ background: accentVar, color: "var(--color-bt-base)" }}
           aria-label="Send message"
         >
           <Send size={13} />
@@ -367,12 +539,7 @@ function FloatingChatPanelInner({
           className="flex flex-shrink-0 items-center justify-between gap-2 px-3 py-2"
           style={{ borderBottom: "1px solid var(--color-bt-border)" }}
         >
-          <p
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Crew Chat
-          </p>
+          {header}
           <button
             onClick={onClose}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
@@ -424,12 +591,7 @@ function FloatingChatPanelInner({
             className="flex items-center justify-between px-4 pb-2"
             style={{ borderBottom: "1px solid var(--color-bt-border)" }}
           >
-            <p
-              className="text-[13px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Crew Chat
-            </p>
+            {header}
             <button
               onClick={onClose}
               className="flex h-8 w-8 items-center justify-center rounded-full"
@@ -447,24 +609,39 @@ function FloatingChatPanelInner({
 }
 
 /**
- * useChatUnreadCount — derives unread crew-chat count from the cached messages
- * list vs the last-read timestamp in localStorage. Updates when messages flow
- * in (query cache change) and when the panel marks itself read.
+ * useChatUnreadCount — total unread across the channels the viewer can see
+ * (Crew always; Organizers when Owner/Planner). Derived from the cached
+ * messages lists vs the per-channel last-read timestamps in localStorage.
+ * System lifecycle lines never count toward unread.
  */
 export function useChatUnreadCount(tripId: string): number {
   const currentUser = useCurrentUser();
-  const { data: messages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel: "trip", limit: 50 },
+  const { role } = useTripRole(tripId);
+  const canSeeOrganizers = role === "Owner" || role === "Planner";
+
+  const { data: crewMessages = [] } = trpc.messages.list.useQuery(
+    { tripId, channel: "trip", visibility: "crew", limit: 50 },
     { enabled: !!tripId }
   );
-  const [lastReadAt, setLastReadAt] = useState<string | null>(null);
+  const { data: planningMessages = [] } = trpc.messages.list.useQuery(
+    { tripId, channel: "trip", visibility: "planning", limit: 50 },
+    { enabled: !!tripId && canSeeOrganizers }
+  );
+
+  const [readMarks, setReadMarks] = useState<Record<Visibility, string | null>>({
+    crew: null,
+    planning: null,
+  });
 
   useEffect(() => {
     const read = () => {
       try {
-        setLastReadAt(localStorage.getItem(lastReadKey(tripId)));
+        setReadMarks({
+          crew: localStorage.getItem(lastReadKey(tripId, "crew")),
+          planning: localStorage.getItem(lastReadKey(tripId, "planning")),
+        });
       } catch {
-        setLastReadAt(null);
+        setReadMarks({ crew: null, planning: null });
       }
     };
     read();
@@ -481,12 +658,21 @@ export function useChatUnreadCount(tripId: string): number {
   }, [tripId]);
 
   if (!currentUser?.id) return 0;
-  if (!lastReadAt) {
-    // No read marker yet — count every message from others.
-    return messages.filter((m) => m.user_id !== currentUser.id).length;
-  }
-  const threshold = new Date(lastReadAt).getTime();
-  return messages.filter((m) =>
-    m.user_id !== currentUser.id && new Date(m.created_at).getTime() > threshold
-  ).length;
+
+  const countChannel = (
+    messages: { user_id: string | null; created_at: string; message_type?: string }[],
+    visibility: Visibility
+  ): number => {
+    const others = messages.filter(
+      (m) => m.user_id !== currentUser.id && m.message_type !== "system"
+    );
+    const lr = readMarks[visibility];
+    if (!lr) return others.length;
+    const threshold = new Date(lr).getTime();
+    return others.filter((m) => new Date(m.created_at).getTime() > threshold).length;
+  };
+
+  const crew = countChannel(crewMessages, "crew");
+  const planning = canSeeOrganizers ? countChannel(planningMessages, "planning") : 0;
+  return crew + planning;
 }
