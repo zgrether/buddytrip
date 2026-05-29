@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, X } from "lucide-react";
+import { Send, X, ChevronDown } from "lucide-react";
 
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 720;
@@ -88,8 +88,6 @@ function FloatingChatPanelInner({
   const canSeeOrganizers = role === "Owner" || role === "Planner";
 
   const utils = trpc.useUtils();
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Drafts are kept per channel so an unsent message stays with the tab it was
   // typed in. Switching tabs swaps the visible draft; hitting Enter only ever
   // sends the draft that belongs to the channel you're currently looking at.
@@ -288,9 +286,6 @@ function FloatingChatPanelInner({
   const crewUnread = unreadFor(crewDisplayed, "crew");
   const planningUnread = canSeeOrganizers ? unreadFor(planningDisplayed, "planning") : 0;
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [displayed.length, activeChannel]);
 
   // Mark the active channel read whenever it's shown and new messages arrive.
   // The dispatched "chat-read" event is caught by the listener above, which
@@ -384,16 +379,6 @@ function FloatingChatPanelInner({
     });
   }, [text, sendMessage, currentUser, tripId, activeChannel]);
 
-  // Auto-grow the composer up to ~3 lines, then scroll internally. Runs on
-  // every text change so it also collapses back to one line after a send
-  // (when setText("") empties the field).
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [text]);
-
   // Active-channel accent — mirrors the CrewTab section headers: Organizers
   // takes the teal accent, Crew takes the planning-blue identity. (Highlights/
   // borders only, no fills outside the Primary send button per the style guide.)
@@ -450,147 +435,25 @@ function FloatingChatPanelInner({
     </p>
   );
 
-  // Panel body — shared content between desktop + mobile wrappers.
+  // Panel body — shared content between desktop + mobile wrappers. It MUST be
+  // its own component (not inline JSX rendered twice) so each of the two
+  // simultaneously-mounted wrappers gets independent scroll/textarea refs.
   const body = (
-    <>
-      {/* Pinned explainer — stays put while messages scroll beneath it. */}
-      {isPlanningChannel && (
-        <div className="flex-shrink-0 px-3 pt-2">
-          <div
-            className="rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
-            style={{
-              background: "var(--color-bt-accent-faint)",
-              border: "1px solid var(--color-bt-accent-border)",
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            <p
-              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              Organizers only
-            </p>
-            <p>
-              A private channel for the trip&rsquo;s owner and organizers to
-              sort out planning away from the full crew.
-            </p>
-            {organizers.length > 0 && (
-              <p className="mt-1.5">
-                <span className="mr-1.5">In this chat:</span>
-                <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
-                  {organizers
-                    .map((m) =>
-                      m.user_id === currentUser?.id
-                        ? `${m.displayName} (you)`
-                        : m.displayName
-                    )
-                    .join(", ")}
-                </span>
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Messages */}
-      <div className="relative flex-1 min-h-0 overflow-y-auto">
-        <div
-          className="pointer-events-none sticky top-0 z-10 h-8 -mb-8"
-          style={{ background: "linear-gradient(to bottom, var(--color-bt-card), transparent)" }}
-        />
-        <div className="space-y-1.5 px-3 py-2">
-          {displayed.length === 0 && (
-            <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
-              {isPlanningChannel
-                ? "No organizer chatter yet — this channel is just for owners and organizers."
-                : "No messages yet. Say something!"}
-            </p>
-          )}
-          {displayed.map((msg) => {
-            // System lifecycle lines render centered + muted, no bubble.
-            if (msg.message_type === "system") {
-              return (
-                <div key={msg.id} className="flex justify-center py-1">
-                  <span
-                    className="text-[10px] italic px-2 text-center"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    {msg.text}
-                  </span>
-                </div>
-              );
-            }
-
-            const isMe = msg.user_id === currentUser?.id;
-            const time = new Date(msg.created_at).toLocaleTimeString("en-US", {
-              hour: "numeric",
-              minute: "2-digit",
-            });
-            return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-              >
-                <div className="flex items-center gap-1.5 px-1 mb-0.5">
-                  <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {time}
-                  </span>
-                  {!isMe && (
-                    <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {msg.user_id ? memberNames[msg.user_id] ?? "Unknown" : "Unknown"}
-                    </span>
-                  )}
-                </div>
-                <div
-                  className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm"
-                  style={{
-                    background: isMe ? accentFaint : "var(--color-bt-card-raised)",
-                    border: `1px solid ${isMe ? accentBorder : "var(--color-bt-border)"}`,
-                    color: "var(--color-bt-text)",
-                    opacity: msg._optimistic ? 0.6 : 1,
-                  }}
-                >
-                  {msg.text}
-                </div>
-              </div>
-            );
-          })}
-          <div ref={bottomRef} />
-        </div>
-      </div>
-
-      {/* Input */}
-      <div
-        className="flex items-end gap-2 px-3 py-2"
-        style={{ borderTop: "1px solid var(--color-bt-border)" }}
-      >
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          placeholder={isPlanningChannel ? "Message the organizers..." : "Say something..."}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          className="min-w-0 flex-1 resize-none rounded-2xl border px-3 py-1.5 text-sm leading-5 outline-none"
-          style={{
-            background: "var(--color-bt-base)",
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-            maxHeight: "4.5rem", // ~3 lines (leading-5 = 20px × 3 + py-1.5), then scrolls
-            overflowY: "auto",
-          }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={sendMessage.isPending || !text.trim()}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-30"
-          style={{ background: accentVar, color: "var(--color-bt-base)" }}
-          aria-label="Send message"
-        >
-          <Send size={13} />
-        </button>
-      </div>
-    </>
+    <ChatBody
+      displayed={displayed}
+      activeChannel={activeChannel}
+      currentUserId={currentUser?.id}
+      memberNames={memberNames}
+      isPlanningChannel={isPlanningChannel}
+      organizers={organizers}
+      accentVar={accentVar}
+      accentFaint={accentFaint}
+      accentBorder={accentBorder}
+      text={text}
+      setText={setText}
+      onSend={handleSend}
+      sending={sendMessage.isPending}
+    />
   );
 
   return (
@@ -704,6 +567,271 @@ function FloatingChatPanelInner({
           </div>
           {body}
         </div>
+      </div>
+    </>
+  );
+}
+
+// ── ChatBody ────────────────────────────────────────────────────────────────
+// Messages list + composer. Rendered inside BOTH the desktop side panel and the
+// mobile bottom sheet. Both wrappers are mounted at once (one is CSS-hidden, not
+// unmounted), so this MUST be a component rather than inline JSX shared via a
+// single ref — otherwise scrollRef/bottomRef/textareaRef would all point at
+// whichever instance committed last (the hidden one), and auto-scroll/autosize
+// would silently target an off-screen node. As its own component each instance
+// owns independent refs and the visible surface behaves correctly.
+interface ChatBodyProps {
+  displayed: ChatMessage[];
+  activeChannel: Visibility;
+  currentUserId: string | undefined;
+  memberNames: Record<string, string>;
+  isPlanningChannel: boolean;
+  organizers: { user_id: string | null; displayName: string }[];
+  accentVar: string;
+  accentFaint: string;
+  accentBorder: string;
+  text: string;
+  setText: (value: string) => void;
+  onSend: () => void;
+  sending: boolean;
+}
+
+function ChatBody({
+  displayed,
+  activeChannel,
+  currentUserId,
+  memberNames,
+  isPlanningChannel,
+  organizers,
+  accentVar,
+  accentFaint,
+  accentBorder,
+  text,
+  setText,
+  onSend,
+  sending,
+}: ChatBodyProps) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Live "pinned to the bottom?" flag, updated on scroll. A ref (not state) so
+  // the new-message effect reads the current value without re-subscribing.
+  const atBottomRef = useRef(true);
+  const [showJumpButton, setShowJumpButton] = useState(false);
+
+  // Auto-grow the composer up to ~3 lines, then scroll internally. Runs on
+  // every text change so it also collapses back to one line after a send and
+  // resizes to the other channel's draft when the active tab changes.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    bottomRef.current?.scrollIntoView({ behavior });
+    atBottomRef.current = true;
+    setShowJumpButton(false);
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distanceFromBottom < 80;
+    atBottomRef.current = atBottom;
+    if (atBottom) setShowJumpButton(false);
+  }, []);
+
+  // Smart auto-scroll. Texting convention: if you're at the bottom (or you
+  // just sent something), new messages scroll into view; if you've scrolled up
+  // to read history, leave the viewport put and surface a "New messages" pill
+  // instead. prevChannelRef starts as "" (not a valid channel) so the first
+  // run jumps instantly to the newest message on open.
+  const prevLenRef = useRef(0);
+  const prevChannelRef = useRef<string>("");
+  useEffect(() => {
+    const len = displayed.length;
+
+    if (prevChannelRef.current !== activeChannel) {
+      prevChannelRef.current = activeChannel;
+      prevLenRef.current = len;
+      scrollToBottom("auto");
+      return;
+    }
+
+    const grew = len > prevLenRef.current;
+    prevLenRef.current = len;
+    if (!grew || len === 0) return;
+
+    const last = displayed[len - 1];
+    const isMine = last?.user_id === currentUserId;
+    if (isMine || atBottomRef.current) {
+      scrollToBottom("smooth");
+    } else {
+      setShowJumpButton(true);
+    }
+  }, [displayed, activeChannel, currentUserId, scrollToBottom]);
+
+  return (
+    <>
+      {/* Pinned explainer — stays put while messages scroll beneath it. */}
+      {isPlanningChannel && (
+        <div className="flex-shrink-0 px-3 pt-2">
+          <div
+            className="rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              border: "1px solid var(--color-bt-accent-border)",
+              color: "var(--color-bt-text-dim)",
+            }}
+          >
+            <p
+              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Organizers only
+            </p>
+            <p>
+              A private channel for the trip&rsquo;s owner and organizers to
+              sort out planning away from the full crew.
+            </p>
+            {organizers.length > 0 && (
+              <p className="mt-1.5">
+                <span className="mr-1.5">In this chat:</span>
+                <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
+                  {organizers
+                    .map((m) =>
+                      m.user_id === currentUserId
+                        ? `${m.displayName} (you)`
+                        : m.displayName
+                    )
+                    .join(", ")}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className="relative flex-1 min-h-0">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="absolute inset-0 overflow-y-auto"
+        >
+          <div
+            className="pointer-events-none sticky top-0 z-10 h-8 -mb-8"
+            style={{ background: "linear-gradient(to bottom, var(--color-bt-card), transparent)" }}
+          />
+          <div className="space-y-1.5 px-3 py-2">
+            {displayed.length === 0 && (
+              <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
+                {isPlanningChannel
+                  ? "No organizer chatter yet — this channel is just for owners and organizers."
+                  : "No messages yet. Say something!"}
+              </p>
+            )}
+            {displayed.map((msg) => {
+              // System lifecycle lines render centered + muted, no bubble.
+              if (msg.message_type === "system") {
+                return (
+                  <div key={msg.id} className="flex justify-center py-1">
+                    <span
+                      className="text-[10px] italic px-2 text-center"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      {msg.text}
+                    </span>
+                  </div>
+                );
+              }
+
+              const isMe = msg.user_id === currentUserId;
+              const time = new Date(msg.created_at).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+              });
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
+                >
+                  <div className="flex items-center gap-1.5 px-1 mb-0.5">
+                    <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                      {time}
+                    </span>
+                    {!isMe && (
+                      <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {msg.user_id ? memberNames[msg.user_id] ?? "Unknown" : "Unknown"}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm"
+                    style={{
+                      background: isMe ? accentFaint : "var(--color-bt-card-raised)",
+                      border: `1px solid ${isMe ? accentBorder : "var(--color-bt-border)"}`,
+                      color: "var(--color-bt-text)",
+                      opacity: msg._optimistic ? 0.6 : 1,
+                    }}
+                  >
+                    {msg.text}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+        {showJumpButton && (
+          <button
+            onClick={() => scrollToBottom("smooth")}
+            className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold"
+            style={{
+              background: accentVar,
+              color: "var(--color-bt-base)",
+              boxShadow: "var(--shadow-floating)",
+            }}
+          >
+            <ChevronDown size={13} />
+            New messages
+          </button>
+        )}
+      </div>
+
+      {/* Input */}
+      <div
+        className="flex items-end gap-2 px-3 py-2"
+        style={{ borderTop: "1px solid var(--color-bt-border)" }}
+      >
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          placeholder={isPlanningChannel ? "Message the organizers..." : "Say something..."}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+          className="min-w-0 flex-1 resize-none rounded-2xl border px-3 py-1.5 text-sm leading-5 outline-none"
+          style={{
+            background: "var(--color-bt-base)",
+            borderColor: "var(--color-bt-border)",
+            color: "var(--color-bt-text)",
+            maxHeight: "4.5rem", // ~3 lines (leading-5 = 20px × 3 + py-1.5), then scrolls
+            overflowY: "auto",
+          }}
+        />
+        <button
+          onClick={onSend}
+          disabled={sending || !text.trim()}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-30"
+          style={{ background: accentVar, color: "var(--color-bt-base)" }}
+          aria-label="Send message"
+        >
+          <Send size={13} />
+        </button>
       </div>
     </>
   );
