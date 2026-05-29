@@ -90,7 +90,10 @@ function FloatingChatPanelInner({
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [text, setText] = useState("");
+  // Drafts are kept per channel so an unsent message stays with the tab it was
+  // typed in. Switching tabs swaps the visible draft; hitting Enter only ever
+  // sends the draft that belongs to the channel you're currently looking at.
+  const [drafts, setDrafts] = useState<Record<Visibility, string>>({ crew: "", planning: "" });
   const [selectedChannel, setSelectedChannel] = useState<Visibility>("crew");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
@@ -104,6 +107,13 @@ function FloatingChatPanelInner({
   // organizers, so this guard is the single source of truth.
   const activeChannel: Visibility = canSeeOrganizers ? selectedChannel : "crew";
   const setActiveChannel = setSelectedChannel;
+
+  // The visible draft + writer for the active channel.
+  const text = drafts[activeChannel];
+  const setText = useCallback(
+    (value: string) => setDrafts((d) => ({ ...d, [activeChannel]: value })),
+    [activeChannel]
+  );
 
   // Mobile sheet drag state — restored from localStorage as a vh fraction.
   const [sheetHeight, setSheetHeight] = useState<number | null>(() => {
