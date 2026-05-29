@@ -58,11 +58,6 @@
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.6);
   --color-bt-nav-bg: rgba(244, 247, 250, 0.85); /* translucent base for sticky chrome */
 
-  /* Layout dimension (mode-independent): content height of the bottom nav,
-     excluding the iOS safe-area inset which the bar adds as paddingBottom.
-     The chat panel anchors its bottom edge here so it sits ABOVE the bar. */
-  --bt-bottomnav-height: 3.5rem;
-
   /* Vote answer colors — semantic, mode-independent (same in light & dark) */
   --color-bt-vote-yes: #00d4aa;
   --color-bt-vote-yes-text: #0d1f1a;

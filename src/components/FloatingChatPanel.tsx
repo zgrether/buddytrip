@@ -517,13 +517,11 @@ function FloatingChatPanelInner({
     <>
       {/* ── Desktop: anchored side panel ───────────────────────────────── */}
       <div
-        className="hidden lg:flex fixed right-0 top-14 z-30 flex-col animate-slide-in-right"
+        className="hidden lg:flex fixed right-0 top-14 bottom-0 z-30 flex-col animate-slide-in-right"
         style={{
           background: "var(--color-bt-card)",
           borderLeft: "1px solid var(--color-bt-border)",
           width: panelWidth,
-          // Stop above the now-permanent bottom nav so it stays visible.
-          bottom: "calc(var(--bt-bottomnav-height) + env(safe-area-inset-bottom, 0px))",
         }}
       >
         {/* Drag handle — visible grip on the left edge */}
@@ -568,14 +566,9 @@ function FloatingChatPanelInner({
       </div>
 
       {/* ── Mobile: bottom sheet ───────────────────────────────────────── */}
-      {/* Anchored to the top of the permanent bottom nav: the overlay stops
-          at the nav's top edge so the bar stays visible and tappable. */}
       <div
-        className="lg:hidden fixed left-0 right-0 top-0 z-50 flex items-end"
-        style={{
-          background: "var(--color-bt-overlay)",
-          bottom: "calc(var(--bt-bottomnav-height) + env(safe-area-inset-bottom, 0px))",
-        }}
+        className="lg:hidden fixed inset-0 z-50 flex items-end"
+        style={{ background: "var(--color-bt-overlay)" }}
         onClick={onClose}
       >
         <div

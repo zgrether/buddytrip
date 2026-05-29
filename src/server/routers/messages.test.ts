@@ -110,14 +110,19 @@ describe("messages router", () => {
     const owner = ctx.caller();
 
     // Message posted before the member is given access.
-    await owner.messages.send({
+    const banter = await owner.messages.send({
       tripId: floorTrip,
       id: genId("msg"),
       text: "Banter before you joined",
     });
 
-    // Add member with a floor set to "now" — after the first message.
-    const floor = new Date().toISOString();
+    // Add member with a floor 1ms past the banter's own server timestamp.
+    // Deriving the floor from created_at (server clock) rather than the
+    // local clock avoids a false pass/fail when the test machine's clock
+    // is skewed relative to Postgres now().
+    const floor = new Date(
+      new Date(banter.created_at as string).getTime() + 1
+    ).toISOString();
     await ctx.admin.from("trip_members").insert({
       trip_id: floorTrip,
       user_id: ctx.getUser("member").id,

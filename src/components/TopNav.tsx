@@ -13,12 +13,14 @@ import {
   Send,
   ThumbsUp,
   FileText,
+  MessageCircle,
 } from "lucide-react";
 import { IconLayoutGrid } from "@tabler/icons-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
 import { trpc } from "@/lib/trpc-client";
 import { getNotificationText, relativeTime } from "@/lib/notificationText";
+import { useChatUnreadCount } from "./FloatingChatPanel";
 
 interface Notification {
   id: string;
@@ -34,9 +36,15 @@ interface TopNavProps {
   notifications?: Notification[];
   onMarkAllRead?: () => void;
   unreadCount?: number;
-  /** Trip context for the switcher/notification routing. Crew chat is no
-   *  longer launched from here — the bottom nav owns the Messages entry. */
+  /** When present, renders the crew-chat button with an unread badge driven
+   *  by useChatUnreadCount(tripId). */
   tripId?: string;
+  /** Opens the FloatingChatPanel. Required alongside tripId to show the chat
+   *  button. */
+  onOpenChat?: () => void;
+  /** Reflects whether the FloatingChatPanel is currently open — used to
+   *  render the chat button in its active state. */
+  chatOpen?: boolean;
 }
 
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
@@ -57,6 +65,9 @@ export const TopNav: FC<TopNavProps> = ({
   notifications = [],
   onMarkAllRead,
   unreadCount = 0,
+  tripId,
+  onOpenChat,
+  chatOpen = false,
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -163,6 +174,9 @@ export const TopNav: FC<TopNavProps> = ({
           </>
         )}
 
+        {tripId && onOpenChat && (
+          <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
+        )}
         <div ref={ref} className="relative">
           <button
             aria-label="Notifications"
@@ -311,3 +325,36 @@ export const TopNav: FC<TopNavProps> = ({
     </header>
   );
 };
+
+// ── ChatButton ───────────────────────────────────────────────────────────────
+// Isolated sub-component so the useChatUnreadCount hook only mounts on trip
+// pages where a tripId is present. Mirrors the notification bell's shape,
+// hover, and badge treatment.
+
+function ChatButton({ tripId, onClick, isOpen }: { tripId: string; onClick: () => void; isOpen: boolean }) {
+  const unread = useChatUnreadCount(tripId);
+  return (
+    <button
+      aria-label="Open crew chat"
+      data-testid="chat-button"
+      onClick={onClick}
+      className={`relative flex h-8 w-8 items-center justify-center transition-colors ${isOpen ? "rounded-lg" : "rounded-full hover:bg-[var(--color-bt-hover)]"}`}
+      style={
+        isOpen
+          ? { color: "var(--color-bt-accent)", background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }
+          : { color: "var(--color-bt-text-dim)" }
+      }
+    >
+      <MessageCircle size={20} strokeWidth={1.5} />
+      {unread > 0 && (
+        <span
+          data-testid="chat-unread-badge"
+          className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-0.5 text-[10px] font-bold"
+          style={{ background: "var(--color-bt-warning)", color: "#fff" }}
+        >
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
+    </button>
+  );
+}

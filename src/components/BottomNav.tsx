@@ -1,9 +1,8 @@
 "use client";
 
 import { type FC, useEffect } from "react";
-import { Home, Plus, Activity, MessageCircle, type LucideIcon } from "lucide-react";
+import { Home, Plus, Activity, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
-import { useChatUnreadCount } from "./FloatingChatPanel";
 
 // ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
 // This is the old "tab" concept — now handled by TripTabBar.tsx
@@ -16,10 +15,7 @@ interface NavItem {
   id: string;
   label: string;
   Icon: LucideIcon;
-  /** Route items navigate here; action items (e.g. Messages) omit it. */
-  href?: string;
-  /** Action items run this instead of navigating (e.g. open the chat sheet). */
-  onClick?: () => void;
+  href: string;
   badge?: number;
   hidden?: boolean;
 }
@@ -64,7 +60,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
           <button
             key={id}
             data-testid={`nav-${id}`}
-            onClick={() => href && router.push(href)}
+            onClick={() => router.push(href)}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
           >
@@ -84,57 +80,35 @@ interface TripBottomNavProps {
   tripId: string;
   eventId?: string | null;
   showComp?: boolean;
-  /** Opens the crew-chat sheet. When provided, the mobile-only Messages
-   *  item appears in the bar (desktop keeps the top-nav chat button). */
-  onOpenChat?: () => void;
 }
 
 export const TripBottomNav: FC<TripBottomNavProps> = ({
   tripId,
   eventId,
   showComp,
-  onOpenChat,
 }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const chatUnread = useChatUnreadCount(tripId);
-
-  const compVisible = showComp !== undefined ? showComp : !!eventId;
 
   const items: NavItem[] = [
     { id: "trip-home", label: "Trip Home", Icon: Home, href: `/trips/${tripId}` },
-    {
-      id: "messages",
-      label: "Messages",
-      Icon: MessageCircle,
-      onClick: onOpenChat,
-      badge: chatUnread,
-      hidden: !onOpenChat,
-    },
     {
       id: "live",
       label: "Live",
       Icon: Activity,
       href: `/trips/${tripId}/leaderboard`,
-      hidden: !compVisible,
+      hidden: showComp !== undefined ? !showComp : !eventId,
     },
   ];
 
-  // Prefetch JS bundles for route destinations so tapping is instant.
+  // Prefetch JS bundles for all nav destinations so tapping is instant.
   useEffect(() => {
-    items
-      .filter((i) => !i.hidden && i.href)
-      .forEach(({ href }) => {
-        router.prefetch(href!);
-      });
+    items.filter((i) => !i.hidden).forEach(({ href }) => {
+      router.prefetch(href);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- stable after mount
-  }, [tripId, compVisible]);
+  }, [tripId]);
 
-  const visibleItems = items.filter((i) => !i.hidden);
-
-  // The bottom bar is permanent across every viewport — Messages now lives
-  // here at all sizes (it was removed from the top nav), so the bar is the
-  // sole entry point to crew chat and must always be present.
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40"
@@ -144,26 +118,18 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      <div
-        className="mx-auto flex max-w-2xl items-stretch"
-        style={{ height: "var(--bt-bottomnav-height)" }}
-      >
-      {visibleItems.map(({ id, label, Icon, href, onClick, badge }) => {
-        const active = href
-          ? id === "trip-home"
+      <div className="mx-auto flex max-w-2xl items-stretch">
+      {items.filter((i) => !i.hidden).map(({ id, label, Icon, href, badge }) => {
+        const active =
+          id === "trip-home"
             ? pathname === `/trips/${tripId}`
-            : pathname === href
-          : false;
+            : pathname === href;
         return (
           <button
             key={id}
             data-testid={`nav-${id}`}
             onClick={() => {
-              if (onClick) {
-                onClick();
-                return;
-              }
-              if (!href || pathname === href) return; // already here
+              if (pathname === href) return; // already here
               const onTripHome = pathname === `/trips/${tripId}`;
               const goingToTripHome = href === `/trips/${tripId}`;
               if (goingToTripHome) {

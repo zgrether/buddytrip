@@ -352,6 +352,8 @@ export default function TripDetailPage() {
         unreadCount={unreadCount}
         onMarkAllRead={() => markAllRead.mutate({ tripId })}
         tripId={tripId}
+        onOpenChat={() => setChatOpen((prev) => !prev)}
+        chatOpen={chatOpen}
       />
 
       {/* ── Trip content ────────────────────────────────────────────────── */}
@@ -385,9 +387,7 @@ export default function TripDetailPage() {
               onDatesTap={() => setActiveTab("schedule")}
             />
           </div>
-          {/* pb clears the bottom nav (Trip Home · Messages · Live), which is
-              now permanent across every viewport. */}
-          <main className="mx-auto max-w-[1280px] pt-4 pb-24">
+          <main className="mx-auto max-w-[1280px] pt-4 pb-6">
             {activeTab === "home" && (
               <HomeTab
                 trip={trip}
@@ -524,16 +524,12 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* Bottom nav — mobile's primary navigation: Trip Home · Messages ·
-          Live. Messages opens the crew-chat sheet in place. The Live tab
-          only appears once the owner flips the competition to "active"
-          (Go Live in CompetitionHeader); on desktop the whole bar hides
-          unless Live is showing, since desktop navigates via the top nav. */}
-      <TripBottomNav
-        tripId={tripId}
-        showComp={competition?.status === "active"}
-        onOpenChat={() => setChatOpen(true)}
-      />
+      {/* Bottom nav appears once the owner flips the competition to
+          "active" (Go Live button in CompetitionHeader). Stays hidden
+          during setup so we don't surface an empty leaderboard. */}
+      {competition?.status === "active" && (
+        <TripBottomNav tripId={tripId} showComp={true} />
+      )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && role && (
