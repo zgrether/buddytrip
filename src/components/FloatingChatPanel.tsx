@@ -614,10 +614,13 @@ function ChatBody({
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Live "pinned to the bottom?" flag, updated on scroll. A ref (not state) so
-  // the new-message effect reads the current value without re-subscribing.
+  // Messenger-style jump-to-latest affordance. `isAtBottom` drives button
+  // visibility (state so it re-renders as you scroll); `atBottomRef` mirrors it
+  // for the new-message effect to read without re-subscribing. `hasNew`
+  // emphasizes the button when messages land while you're scrolled up.
   const atBottomRef = useRef(true);
-  const [showJumpButton, setShowJumpButton] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [hasNew, setHasNew] = useState(false);
 
   // Auto-grow the composer up to ~3 lines, then scroll internally. Runs on
   // every text change so it also collapses back to one line after a send and
@@ -632,7 +635,8 @@ function ChatBody({
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     bottomRef.current?.scrollIntoView({ behavior });
     atBottomRef.current = true;
-    setShowJumpButton(false);
+    setIsAtBottom(true);
+    setHasNew(false);
   }, []);
 
   const handleScroll = useCallback(() => {
@@ -641,13 +645,14 @@ function ChatBody({
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const atBottom = distanceFromBottom < 80;
     atBottomRef.current = atBottom;
-    if (atBottom) setShowJumpButton(false);
+    setIsAtBottom(atBottom);
+    if (atBottom) setHasNew(false);
   }, []);
 
-  // Smart auto-scroll. Texting convention: if you're at the bottom (or you
-  // just sent something), new messages scroll into view; if you've scrolled up
-  // to read history, leave the viewport put and surface a "New messages" pill
-  // instead. prevChannelRef starts as "" (not a valid channel) so the first
+  // Auto-scroll on new content when pinned to the bottom (or it's your own
+  // send); otherwise leave the viewport put — the jump button stays visible
+  // because you're scrolled up, and `hasNew` lights it up to flag the new
+  // message. prevChannelRef starts as "" (not a valid channel) so the first
   // run jumps instantly to the newest message on open.
   const prevLenRef = useRef(0);
   const prevChannelRef = useRef<string>("");
@@ -670,7 +675,7 @@ function ChatBody({
     if (isMine || atBottomRef.current) {
       scrollToBottom("smooth");
     } else {
-      setShowJumpButton(true);
+      setHasNew(true);
     }
   }, [displayed, activeChannel, currentUserId, scrollToBottom]);
 
@@ -786,18 +791,23 @@ function ChatBody({
             <div ref={bottomRef} />
           </div>
         </div>
-        {showJumpButton && (
+        {/* Messenger-style jump-to-latest — hovers above the message window
+            whenever you're scrolled up. Neutral by default; fills with the
+            channel accent (plus a badge dot) when new messages arrived while
+            you were away. */}
+        {!isAtBottom && (
           <button
             onClick={() => scrollToBottom("smooth")}
-            className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold"
+            className="absolute bottom-3 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full transition-colors"
             style={{
-              background: accentVar,
-              color: "var(--color-bt-base)",
+              background: hasNew ? accentVar : "var(--color-bt-card-float)",
+              color: hasNew ? "var(--color-bt-base)" : "var(--color-bt-text)",
+              border: hasNew ? "none" : "1px solid var(--color-bt-border)",
               boxShadow: "var(--shadow-floating)",
             }}
+            aria-label={hasNew ? "Jump to new messages" : "Scroll to latest"}
           >
-            <ChevronDown size={13} />
-            New messages
+            <ChevronDown size={18} />
           </button>
         )}
       </div>
