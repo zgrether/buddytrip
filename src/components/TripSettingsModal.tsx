@@ -723,7 +723,7 @@ export function TripSettingsModal({
           )}
         </div>
 
-        {/* ── Section: Chat privacy (owner only) ─────────────────────── */}
+        {/* ── Section 3: Danger zone (owner only) ────────────────────── */}
         {isOwner && (
           <>
             {/* Divider */}
@@ -734,9 +734,9 @@ export function TripSettingsModal({
 
             <p
               className="mb-3 text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.08em" }}
+              style={{ color: "var(--color-bt-danger)", opacity: 0.7, letterSpacing: "0.08em" }}
             >
-              Chat privacy
+              Danger zone
             </p>
 
             <div className="space-y-2">
@@ -751,21 +751,21 @@ export function TripSettingsModal({
                   className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
                   style={{
                     background: "var(--color-bt-card-raised)",
-                    borderColor: "var(--color-bt-border)",
+                    borderColor: "rgba(248,113,113,0.2)",
                   }}
                 >
                   <div
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                    style={{ background: "var(--color-bt-planning-faint)" }}
+                    style={{ background: "rgba(248,113,113,0.12)" }}
                   >
-                    <MessageSquare size={16} style={{ color: "var(--color-bt-planning)" }} />
+                    <MessageSquare size={16} style={{ color: "var(--color-bt-danger)" }} />
                   </div>
                   <div className="min-w-0 flex-1 text-left">
-                    <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
                       Clear crew chat
                     </p>
                     <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Delete every message in the Crew channel
+                      Permanent — deletes all Crew messages.
                     </p>
                   </div>
                   <ChevronRight
@@ -823,21 +823,21 @@ export function TripSettingsModal({
                   className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
                   style={{
                     background: "var(--color-bt-card-raised)",
-                    borderColor: "var(--color-bt-border)",
+                    borderColor: "rgba(248,113,113,0.2)",
                   }}
                 >
                   <div
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                    style={{ background: "var(--color-bt-accent-faint)" }}
+                    style={{ background: "rgba(248,113,113,0.12)" }}
                   >
-                    <MessageSquare size={16} style={{ color: "var(--color-bt-accent)" }} />
+                    <MessageSquare size={16} style={{ color: "var(--color-bt-danger)" }} />
                   </div>
                   <div className="min-w-0 flex-1 text-left">
-                    <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+                    <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
                       Clear organizer chat
                     </p>
                     <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Delete every message in the Organizers channel
+                      Permanent — deletes all Organizer messages.
                     </p>
                   </div>
                   <ChevronRight
@@ -885,27 +885,9 @@ export function TripSettingsModal({
                   </div>
                 )}
               </div>
-            </div>
-          </>
-        )}
 
-        {/* ── Section 3: Danger zone (owner only) ────────────────────── */}
-        {isOwner && (
-          <>
-            {/* Divider */}
-            <div
-              className="my-4"
-              style={{ height: 1, background: "var(--color-bt-border)" }}
-            />
-
-            <p
-              className="mb-3 text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "var(--color-bt-danger)", opacity: 0.7, letterSpacing: "0.08em" }}
-            >
-              Danger zone
-            </p>
-
-            <div>
+              {/* Delete trip */}
+              <div>
               <button
                 data-testid="settings-delete-btn"
                 onClick={() => setDeleteConfirming(!deleteConfirming)}
@@ -961,6 +943,7 @@ export function TripSettingsModal({
                   </button>
                 </div>
               )}
+              </div>
             </div>
           </>
         )}
