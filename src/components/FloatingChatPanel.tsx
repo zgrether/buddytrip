@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { Send, X, ChevronDown } from "lucide-react";
 
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 720;
 const DEFAULT_WIDTH = 380;
+// Chat history page size — how many messages each lazy "load older" fetch pulls.
+const CHAT_PAGE_SIZE = 50;
 // Live height of the trip bottom nav, published by BottomNav as a CSS var
 // (0px when no nav is mounted). Both the desktop panel and the mobile sheet
 // anchor their bottom to it so the nav stays visible and the input never hides
@@ -211,13 +213,38 @@ function FloatingChatPanelInner({
     document.addEventListener("mouseup", onUp);
   }, [panelWidth]);
 
-  const { data: crewMessages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel: "trip", visibility: "crew", limit: 50 }
+  // Chat history is paginated, not loaded all at once: each page is the newest
+  // PAGE_SIZE messages older than the previous page's cursor (server orders
+  // created_at DESC and applies `.lt(created_at, cursor)`). Older history is
+  // pulled in on demand as the viewer scrolls toward the top — so opening a
+  // trip with 10k messages fetches 50 rows, not 10k. `getNextPageParam` hands
+  // back the oldest loaded row's timestamp as the next cursor, and returns
+  // undefined once a short page proves there's nothing older left.
+  const crewQuery = trpc.messages.list.useInfiniteQuery(
+    { tripId, channel: "trip", visibility: "crew", limit: CHAT_PAGE_SIZE },
+    {
+      getNextPageParam: (lastPage) =>
+        lastPage.length === CHAT_PAGE_SIZE
+          ? lastPage[lastPage.length - 1].created_at
+          : undefined,
+    }
   );
-  const { data: planningMessages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel: "trip", visibility: "planning", limit: 50 },
-    { enabled: canSeeOrganizers }
+  const planningQuery = trpc.messages.list.useInfiniteQuery(
+    { tripId, channel: "trip", visibility: "planning", limit: CHAT_PAGE_SIZE },
+    {
+      enabled: canSeeOrganizers,
+      getNextPageParam: (lastPage) =>
+        lastPage.length === CHAT_PAGE_SIZE
+          ? lastPage[lastPage.length - 1].created_at
+          : undefined,
+    }
   );
+
+  // Pages come back newest-first within each page and progressively older across
+  // pages, so the flattened list is fully created_at DESC. buildDisplayed
+  // reverses it to chronological order for rendering.
+  const crewMessages = (crewQuery.data?.pages.flat() ?? []) as ChatMessage[];
+  const planningMessages = (planningQuery.data?.pages.flat() ?? []) as ChatMessage[];
 
   // Roster of the people who can see the Organizers channel — Owner + Planners
   // who are actually on the trip. Powers the explainer at the top of that tab.
@@ -438,6 +465,7 @@ function FloatingChatPanelInner({
   // Panel body — shared content between desktop + mobile wrappers. It MUST be
   // its own component (not inline JSX rendered twice) so each of the two
   // simultaneously-mounted wrappers gets independent scroll/textarea refs.
+  const activeQuery = activeChannel === "crew" ? crewQuery : planningQuery;
   const body = (
     <ChatBody
       displayed={displayed}
@@ -453,6 +481,9 @@ function FloatingChatPanelInner({
       setText={setText}
       onSend={handleSend}
       sending={sendMessage.isPending}
+      onLoadOlder={activeQuery.fetchNextPage}
+      hasOlder={!!activeQuery.hasNextPage}
+      loadingOlder={activeQuery.isFetchingNextPage}
     />
   );
 
@@ -594,6 +625,9 @@ interface ChatBodyProps {
   setText: (value: string) => void;
   onSend: () => void;
   sending: boolean;
+  onLoadOlder: () => void;
+  hasOlder: boolean;
+  loadingOlder: boolean;
 }
 
 function ChatBody({
@@ -610,6 +644,9 @@ function ChatBody({
   setText,
   onSend,
   sending,
+  onLoadOlder,
+  hasOlder,
+  loadingOlder,
 }: ChatBodyProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -621,6 +658,11 @@ function ChatBody({
   const atBottomRef = useRef(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [hasNew, setHasNew] = useState(false);
+  // When older history is pulled in at the top, the list grows upward and would
+  // shove the viewport down. We record the distance-from-bottom at fetch time
+  // and restore it after the prepend lands (in the layout effect below) so the
+  // messages you were reading stay visually fixed.
+  const pendingAnchorRef = useRef<number | null>(null);
 
   // Auto-grow the composer up to ~3 lines, then scroll internally. Runs on
   // every text change so it also collapses back to one line after a send and
@@ -647,28 +689,59 @@ function ChatBody({
     atBottomRef.current = atBottom;
     setIsAtBottom(atBottom);
     if (atBottom) setHasNew(false);
-  }, []);
 
-  // Auto-scroll on new content when pinned to the bottom (or it's your own
-  // send); otherwise leave the viewport put — the jump button stays visible
-  // because you're scrolled up, and `hasNew` lights it up to flag the new
-  // message. prevChannelRef starts as "" (not a valid channel) so the first
-  // run jumps instantly to the newest message on open.
+    // Near the top — pull in the next page of older history. Capture the
+    // distance-from-bottom now so the layout effect can pin the viewport once
+    // the older messages prepend. Guard on pendingAnchorRef so a burst of
+    // scroll events doesn't queue multiple fetches before the first lands.
+    if (el.scrollTop < 120 && hasOlder && !loadingOlder && pendingAnchorRef.current == null) {
+      pendingAnchorRef.current = el.scrollHeight - el.scrollTop;
+      onLoadOlder();
+    }
+  }, [hasOlder, loadingOlder, onLoadOlder]);
+
+  // React to changes in the message list. Three distinct cases, told apart by
+  // length growth + whether the NEWEST message (last in the chronological list)
+  // changed:
+  //   • channel switch  → jump instantly to the newest message
+  //   • prepend (older history loaded) → length grew but the last id is the
+  //     same; restore the saved scroll position so the view doesn't jump
+  //   • append (a new message arrived) → last id changed; auto-scroll if you're
+  //     pinned to the bottom or it's your own send, otherwise flag `hasNew`
+  // Runs as a layout effect so the prepend anchor is applied before the browser
+  // paints — no visible jump. prevChannelRef starts as "" so the first run
+  // jumps instantly to the newest message on open.
   const prevLenRef = useRef(0);
+  const prevLastIdRef = useRef<string | null>(null);
   const prevChannelRef = useRef<string>("");
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
     const len = displayed.length;
+    const lastId = len > 0 ? displayed[len - 1].id : null;
 
     if (prevChannelRef.current !== activeChannel) {
       prevChannelRef.current = activeChannel;
       prevLenRef.current = len;
+      prevLastIdRef.current = lastId;
+      pendingAnchorRef.current = null;
       scrollToBottom("auto");
       return;
     }
 
     const grew = len > prevLenRef.current;
+    const prepended = grew && lastId === prevLastIdRef.current;
+    const appended = grew && lastId !== prevLastIdRef.current;
     prevLenRef.current = len;
-    if (!grew || len === 0) return;
+    prevLastIdRef.current = lastId;
+
+    // Older history landed at the top — pin the viewport by distance-from-bottom.
+    if (prepended && el && pendingAnchorRef.current != null) {
+      el.scrollTop = el.scrollHeight - pendingAnchorRef.current;
+      pendingAnchorRef.current = null;
+      return;
+    }
+
+    if (!appended) return;
 
     const last = displayed[len - 1];
     const isMine = last?.user_id === currentUserId;
@@ -732,6 +805,14 @@ function ChatBody({
             style={{ background: "linear-gradient(to bottom, var(--color-bt-card), transparent)" }}
           />
           <div className="space-y-1.5 px-3 py-2">
+            {loadingOlder && (
+              <p
+                className="py-1 text-center text-[10px] italic"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Loading earlier messages…
+              </p>
+            )}
             {displayed.length === 0 && (
               <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
                 {isPlanningChannel

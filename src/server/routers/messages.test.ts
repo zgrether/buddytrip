@@ -146,4 +146,49 @@ describe("messages router", () => {
       false
     );
   });
+
+  it("list — planning_visible_from floor hides Organizers history from before promotion", async () => {
+    const floorTrip = await ctx.createTrip("Planning Floor Test");
+    const owner = ctx.caller();
+
+    // Owner posts to the Organizers channel before the new organizer arrives.
+    const secret = await owner.messages.send({
+      tripId: floorTrip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "Secret organizer plan",
+    });
+
+    // Promote a member to Planner with a planning floor 1ms past the secret
+    // message's own server timestamp — the same clock-skew-proof derivation
+    // used by the crew-floor test (floor from created_at, not the local clock).
+    const floor = new Date(
+      new Date(secret.created_at as string).getTime() + 1
+    ).toISOString();
+    await ctx.admin.from("trip_members").insert({
+      trip_id: floorTrip,
+      user_id: ctx.getUser("outsider").id,
+      role: "Planner",
+      status: "in",
+      chat_visible_from: floor,
+      planning_visible_from: floor,
+    });
+
+    // Owner posts again after the promotion.
+    await owner.messages.send({
+      tripId: floorTrip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "Plan after promotion",
+    });
+
+    const promotedView = await ctx.callerAs("outsider").messages.list({
+      tripId: floorTrip,
+      visibility: "planning",
+    });
+    expect(promotedView.some((m) => m.text === "Plan after promotion")).toBe(true);
+    expect(promotedView.some((m) => m.text === "Secret organizer plan")).toBe(
+      false
+    );
+  });
 });
