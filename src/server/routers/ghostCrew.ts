@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
+import { postSystemMessage } from "./messages";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
@@ -61,6 +62,8 @@ export const ghostCrewRouter = router({
               user_id: existingUser.id,
               role: input.role,
               status: "in",
+              // New members only see crew chat from when they were added.
+              chat_visible_from: new Date().toISOString(),
             });
 
           if (linkError) {
@@ -68,6 +71,17 @@ export const ghostCrewRouter = router({
               code: "INTERNAL_SERVER_ERROR",
               message: `Failed to add member to trip: ${linkError.message}`,
             });
+          }
+
+          // Best-effort lifecycle line into Crew chat.
+          try {
+            await postSystemMessage(ctx.supabase, {
+              tripId: ctx.tripId,
+              visibility: "crew",
+              text: `${input.name} joined the crew`,
+            });
+          } catch {
+            /* never block the add on a failed system message */
           }
 
           return {
@@ -106,6 +120,8 @@ export const ghostCrewRouter = router({
               user_id: existingUser.id,
               role: input.role,
               status: "in",
+              // New members only see crew chat from when they were added.
+              chat_visible_from: new Date().toISOString(),
             });
 
           if (memberError) {
@@ -113,6 +129,17 @@ export const ghostCrewRouter = router({
               code: "INTERNAL_SERVER_ERROR",
               message: `Failed to add guest to trip: ${memberError.message}`,
             });
+          }
+
+          // Best-effort lifecycle line into Crew chat.
+          try {
+            await postSystemMessage(ctx.supabase, {
+              tripId: ctx.tripId,
+              visibility: "crew",
+              text: `${input.name} joined the crew`,
+            });
+          } catch {
+            /* never block the add on a failed system message */
           }
 
           return { id: existingUser.id, name: input.name, email: input.email ?? null, is_guest: true, created_by: null, created_at: null, role: input.role };
@@ -149,6 +176,8 @@ export const ghostCrewRouter = router({
           user_id: guest.id,
           role: input.role,
           status: "in",
+          // New members only see crew chat from when they were added.
+          chat_visible_from: new Date().toISOString(),
         });
 
       if (memberError) {
@@ -158,6 +187,17 @@ export const ghostCrewRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to add guest to trip members: ${memberError.message}`,
         });
+      }
+
+      // Best-effort lifecycle line into Crew chat.
+      try {
+        await postSystemMessage(ctx.supabase, {
+          tripId: ctx.tripId,
+          visibility: "crew",
+          text: `${input.name} joined the crew`,
+        });
+      } catch {
+        /* never block the add on a failed system message */
       }
 
       return { ...guest, role: input.role };

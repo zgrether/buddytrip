@@ -58,6 +58,11 @@
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.6);
   --color-bt-nav-bg: rgba(244, 247, 250, 0.85); /* translucent base for sticky chrome */
 
+  /* Live height of the bottom nav, published by BottomNav while mounted.
+     Defaults to 0px so bottom-anchored surfaces (chat panel/sheet) sit flush
+     when no nav is present. Mode-independent — structural, not a color. */
+  --bt-bottomnav-height: 0px;
+
   /* Vote answer colors — semantic, mode-independent (same in light & dark) */
   --color-bt-vote-yes: #00d4aa;
   --color-bt-vote-yes-text: #0d1f1a;
