@@ -417,6 +417,39 @@ function FloatingChatPanelInner({
   // Panel body — shared content between desktop + mobile wrappers.
   const body = (
     <>
+      {/* Pinned explainer — stays put while messages scroll beneath it. */}
+      {isPlanningChannel && (
+        <div className="flex-shrink-0 px-3 pt-2">
+          <div
+            className="rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
+            style={{
+              background: "var(--color-bt-accent-faint)",
+              border: "1px solid var(--color-bt-accent-border)",
+              color: "var(--color-bt-text-dim)",
+            }}
+          >
+            <p
+              className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-accent)" }}
+            >
+              Organizers only
+            </p>
+            <p>
+              A private channel for the trip&rsquo;s owner and organizers to
+              sort out planning away from the full crew.
+            </p>
+            {organizers.length > 0 && (
+              <p className="mt-1.5">
+                <span>In this chat: </span>
+                <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
+                  {organizers.map((m) => m.displayName).join(", ")}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="relative flex-1 min-h-0 overflow-y-auto">
         <div
@@ -424,35 +457,6 @@ function FloatingChatPanelInner({
           style={{ background: "linear-gradient(to bottom, var(--color-bt-card), transparent)" }}
         />
         <div className="space-y-1.5 px-3 py-2">
-          {isPlanningChannel && (
-            <div
-              className="mb-1.5 rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
-              style={{
-                background: "var(--color-bt-accent-faint)",
-                border: "1px solid var(--color-bt-accent-border)",
-                color: "var(--color-bt-text-dim)",
-              }}
-            >
-              <p
-                className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-accent)" }}
-              >
-                Organizers only
-              </p>
-              <p>
-                A private channel for the trip&rsquo;s owner and organizers to
-                sort out planning away from the full crew.
-              </p>
-              {organizers.length > 0 && (
-                <p className="mt-1.5">
-                  <span>In this chat: </span>
-                  <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
-                    {organizers.map((m) => m.displayName).join(", ")}
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
           {displayed.length === 0 && (
             <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
               {isPlanningChannel
