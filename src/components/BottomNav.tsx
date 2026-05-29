@@ -22,8 +22,6 @@ interface NavItem {
   onClick?: () => void;
   badge?: number;
   hidden?: boolean;
-  /** Show only below lg — used for Messages, which lives in the top nav on desktop. */
-  mobileOnly?: boolean;
 }
 
 // ── Outside-trip bottom nav (Dashboard, TripNew, etc.) ─────────────────────
@@ -111,7 +109,6 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
       Icon: MessageCircle,
       onClick: onOpenChat,
       badge: chatUnread,
-      mobileOnly: true,
       hidden: !onOpenChat,
     },
     {
@@ -135,23 +132,23 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
 
   const visibleItems = items.filter((i) => !i.hidden);
 
-  // The bottom bar is a mobile construct (desktop navigates via the top
-  // nav). It only earns a place on desktop when a live competition needs
-  // the Live tab — otherwise hide it at lg+ so it doesn't shadow the top
-  // nav with a near-empty bar.
-  const navVisibility = compVisible ? "" : " lg:hidden";
-
+  // The bottom bar is permanent across every viewport — Messages now lives
+  // here at all sizes (it was removed from the top nav), so the bar is the
+  // sole entry point to crew chat and must always be present.
   return (
     <nav
-      className={`fixed bottom-0 left-0 right-0 z-40${navVisibility}`}
+      className="fixed bottom-0 left-0 right-0 z-40"
       style={{
         background: "var(--color-bt-card)",
         borderTop: "1px solid var(--color-bt-border)",
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      <div className="mx-auto flex max-w-2xl items-stretch">
-      {visibleItems.map(({ id, label, Icon, href, onClick, badge, mobileOnly }) => {
+      <div
+        className="mx-auto flex max-w-2xl items-stretch"
+        style={{ height: "var(--bt-bottomnav-height)" }}
+      >
+      {visibleItems.map(({ id, label, Icon, href, onClick, badge }) => {
         const active = href
           ? id === "trip-home"
             ? pathname === `/trips/${tripId}`
@@ -182,7 +179,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
                 router.replace(href);
               }
             }}
-            className={`relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors${mobileOnly ? " lg:hidden" : ""}`}
+            className="relative flex flex-1 flex-col items-center justify-center gap-1 py-2 transition-colors"
             style={{ color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
           >
             <Icon size={22} />

@@ -352,8 +352,6 @@ export default function TripDetailPage() {
         unreadCount={unreadCount}
         onMarkAllRead={() => markAllRead.mutate({ tripId })}
         tripId={tripId}
-        onOpenChat={() => setChatOpen((prev) => !prev)}
-        chatOpen={chatOpen}
       />
 
       {/* ── Trip content ────────────────────────────────────────────────── */}
@@ -387,9 +385,9 @@ export default function TripDetailPage() {
               onDatesTap={() => setActiveTab("schedule")}
             />
           </div>
-          {/* pb clears the mobile bottom nav (Trip Home · Messages); lg+
-              shrinks back since the bar hides there without a live comp. */}
-          <main className="mx-auto max-w-[1280px] pt-4 pb-24 lg:pb-6">
+          {/* pb clears the bottom nav (Trip Home · Messages · Live), which is
+              now permanent across every viewport. */}
+          <main className="mx-auto max-w-[1280px] pt-4 pb-24">
             {activeTab === "home" && (
               <HomeTab
                 trip={trip}
