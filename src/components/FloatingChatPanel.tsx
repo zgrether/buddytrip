@@ -32,6 +32,9 @@ interface FloatingChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   memberNames: Record<string, string>;
+  /** When the trip's bottom nav is showing, anchor the desktop panel's
+   *  bottom to the top of that nav so the input isn't hidden behind it. */
+  hasBottomNav?: boolean;
 }
 
 /**
@@ -57,19 +60,28 @@ const lastReadKey = (tripId: string, visibility: Visibility) =>
  *
  * Open state is owned by the page; this component only renders + reads.
  */
-export function FloatingChatPanel({ tripId, isOpen, onClose, memberNames }: FloatingChatPanelProps) {
+export function FloatingChatPanel({ tripId, isOpen, onClose, memberNames, hasBottomNav }: FloatingChatPanelProps) {
   if (!isOpen) return null;
-  return <FloatingChatPanelInner tripId={tripId} onClose={onClose} memberNames={memberNames} />;
+  return (
+    <FloatingChatPanelInner
+      tripId={tripId}
+      onClose={onClose}
+      memberNames={memberNames}
+      hasBottomNav={hasBottomNav}
+    />
+  );
 }
 
 function FloatingChatPanelInner({
   tripId,
   onClose,
   memberNames,
+  hasBottomNav,
 }: {
   tripId: string;
   onClose: () => void;
   memberNames: Record<string, string>;
+  hasBottomNav?: boolean;
 }) {
   const currentUser = useCurrentUser();
   const { role } = useTripRole(tripId);
@@ -558,11 +570,16 @@ function FloatingChatPanelInner({
     <>
       {/* ── Desktop: anchored side panel ───────────────────────────────── */}
       <div
-        className="hidden lg:flex fixed right-0 top-14 bottom-0 z-30 flex-col animate-slide-in-right"
+        className="hidden lg:flex fixed right-0 top-14 z-30 flex-col animate-slide-in-right"
         style={{
           background: "var(--color-bt-card)",
           borderLeft: "1px solid var(--color-bt-border)",
           width: panelWidth,
+          // Sit above the trip bottom nav when it's present so the input
+          // isn't hidden behind it; otherwise run to the screen bottom.
+          bottom: hasBottomNav
+            ? "calc(3.5rem + env(safe-area-inset-bottom))"
+            : 0,
         }}
       >
         {/* Drag handle — visible grip on the left edge */}
