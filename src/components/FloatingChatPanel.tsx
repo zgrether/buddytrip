@@ -725,7 +725,7 @@ function ChatBody({
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="absolute inset-0 overflow-y-auto"
+          className="absolute inset-0 overflow-y-auto overflow-x-hidden"
         >
           <div
             className="pointer-events-none sticky top-0 z-10 h-8 -mb-8"
@@ -775,7 +775,7 @@ function ChatBody({
                     )}
                   </div>
                   <div
-                    className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm"
+                    className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words"
                     style={{
                       background: isMe ? accentFaint : "var(--color-bt-card-raised)",
                       border: `1px solid ${isMe ? accentBorder : "var(--color-bt-border)"}`,
