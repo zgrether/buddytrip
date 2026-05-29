@@ -258,17 +258,26 @@ function FloatingChatPanelInner({
 
   // Mark the active channel read whenever it's shown and new messages arrive.
   // The dispatched "chat-read" event is caught by the listener above, which
-  // refreshes readMarks — so no direct setState here.
+  // refreshes readMarks — that re-render produces a fresh `displayed` array
+  // reference, which would re-trigger this effect. To avoid an infinite loop
+  // we track the last-marked timestamp in a ref and only write + dispatch when
+  // the newest message timestamp actually changes (per channel).
+  const lastMarkedRef = useRef<Record<Visibility, string | null>>({
+    crew: null,
+    planning: null,
+  });
   useEffect(() => {
     if (displayed.length === 0) return;
     const latest = displayed[displayed.length - 1];
-    if (latest?.created_at) {
-      try {
-        localStorage.setItem(lastReadKey(tripId, activeChannel), latest.created_at);
-        window.dispatchEvent(new CustomEvent("chat-read", { detail: { tripId } }));
-      } catch {
-        // localStorage unavailable — ignore
-      }
+    const ts = latest?.created_at;
+    if (!ts) return;
+    if (lastMarkedRef.current[activeChannel] === ts) return; // already marked
+    lastMarkedRef.current[activeChannel] = ts;
+    try {
+      localStorage.setItem(lastReadKey(tripId, activeChannel), ts);
+      window.dispatchEvent(new CustomEvent("chat-read", { detail: { tripId } }));
+    } catch {
+      // localStorage unavailable — ignore
     }
   }, [tripId, activeChannel, displayed]);
 
