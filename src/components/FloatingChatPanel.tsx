@@ -43,15 +43,6 @@ interface FloatingChatPanelProps {
 }
 
 /**
- * Per-channel last-read marker. Crew keeps the legacy un-suffixed key so
- * existing read state survives the split; planning gets its own.
- */
-const lastReadKey = (tripId: string, visibility: Visibility) =>
-  visibility === "crew"
-    ? `chat-last-read-${tripId}`
-    : `chat-last-read-${tripId}-planning`;
-
-/**
  * FloatingChatPanel — the trip chat surface, mounted once per trip page.
  *
  * Two sub-channels live behind a tab toggle (Owner/Planner only see the
@@ -272,33 +263,20 @@ function FloatingChatPanelInner({
   const planningDisplayed = buildDisplayed(planningMessages as ChatMessage[], "planning");
   const displayed = activeChannel === "crew" ? crewDisplayed : planningDisplayed;
 
-  // ── Read tracking ──────────────────────────────────────────────────────
-  const [readMarks, setReadMarks] = useState<Record<Visibility, string | null>>({
+  // ── Read tracking (server-backed, cross-device) ─────────────────────────
+  // Read state lives in chat_reads server-side, so the unread badge + the
+  // new-messages divider follow the account across devices. Both this panel
+  // and useChatUnreadCount read the same readState query, and markRead
+  // invalidates it — so marking read here updates the badge with no manual
+  // cross-component plumbing.
+  const { data: readStateData } = trpc.messages.readState.useQuery(
+    { tripId },
+    { enabled: !!tripId }
+  );
+  const readMarks: Record<Visibility, string | null> = readStateData ?? {
     crew: null,
     planning: null,
-  });
-
-  useEffect(() => {
-    const read = () => {
-      try {
-        setReadMarks({
-          crew: localStorage.getItem(lastReadKey(tripId, "crew")),
-          planning: localStorage.getItem(lastReadKey(tripId, "planning")),
-        });
-      } catch { /* localStorage unavailable */ }
-    };
-    read();
-    const onRead = (e: Event) => {
-      const detail = (e as CustomEvent<{ tripId: string }>).detail;
-      if (detail?.tripId === tripId) read();
-    };
-    window.addEventListener("chat-read", onRead);
-    window.addEventListener("storage", read);
-    return () => {
-      window.removeEventListener("chat-read", onRead);
-      window.removeEventListener("storage", read);
-    };
-  }, [tripId]);
+  };
 
   const unreadFor = (messages: ChatMessage[], visibility: Visibility): number => {
     if (!currentUser?.id) return 0;
@@ -315,11 +293,16 @@ function FloatingChatPanelInner({
 
 
   // Mark the active channel read whenever it's shown and new messages arrive.
-  // The dispatched "chat-read" event is caught by the listener above, which
-  // refreshes readMarks — that re-render produces a fresh `displayed` array
-  // reference, which would re-trigger this effect. To avoid an infinite loop
-  // we track the last-marked timestamp in a ref and only write + dispatch when
-  // the newest message timestamp actually changes (per channel).
+  // markRead stamps the server clock; on success it invalidates the readState
+  // query, refreshing readMarks here AND the badge in useChatUnreadCount. That
+  // refresh produces a fresh `displayed` reference which would re-trigger this
+  // effect, so we track the last-marked newest-message timestamp in a ref and
+  // only fire when it actually changes (per channel) — no mutation loop.
+  const { mutate: markReadMutate } = trpc.messages.markRead.useMutation({
+    onSuccess: () => {
+      utils.messages.readState.invalidate({ tripId });
+    },
+  });
   const lastMarkedRef = useRef<Record<Visibility, string | null>>({
     crew: null,
     planning: null,
@@ -331,13 +314,8 @@ function FloatingChatPanelInner({
     if (!ts) return;
     if (lastMarkedRef.current[activeChannel] === ts) return; // already marked
     lastMarkedRef.current[activeChannel] = ts;
-    try {
-      localStorage.setItem(lastReadKey(tripId, activeChannel), ts);
-      window.dispatchEvent(new CustomEvent("chat-read", { detail: { tripId } }));
-    } catch {
-      // localStorage unavailable — ignore
-    }
-  }, [tripId, activeChannel, displayed]);
+    markReadMutate({ tripId, visibility: activeChannel });
+  }, [tripId, activeChannel, displayed, markReadMutate]);
 
   // Persist sheet height as a vh fraction so it survives close/reopen.
   useEffect(() => {
@@ -958,34 +936,17 @@ export function useChatUnreadCount(tripId: string): number {
     { enabled: !!tripId && canSeeOrganizers }
   );
 
-  const [readMarks, setReadMarks] = useState<Record<Visibility, string | null>>({
+  // Server-backed read state (shared with FloatingChatPanel via the query
+  // cache). markRead in the panel invalidates this query, so the badge reacts
+  // the moment a channel is read — on this device or any other.
+  const { data: readStateData } = trpc.messages.readState.useQuery(
+    { tripId },
+    { enabled: !!tripId }
+  );
+  const readMarks: Record<Visibility, string | null> = readStateData ?? {
     crew: null,
     planning: null,
-  });
-
-  useEffect(() => {
-    const read = () => {
-      try {
-        setReadMarks({
-          crew: localStorage.getItem(lastReadKey(tripId, "crew")),
-          planning: localStorage.getItem(lastReadKey(tripId, "planning")),
-        });
-      } catch {
-        setReadMarks({ crew: null, planning: null });
-      }
-    };
-    read();
-    const onRead = (e: Event) => {
-      const detail = (e as CustomEvent<{ tripId: string }>).detail;
-      if (detail?.tripId === tripId) read();
-    };
-    window.addEventListener("chat-read", onRead);
-    window.addEventListener("storage", read);
-    return () => {
-      window.removeEventListener("chat-read", onRead);
-      window.removeEventListener("storage", read);
-    };
-  }, [tripId]);
+  };
 
   if (!currentUser?.id) return 0;
 
