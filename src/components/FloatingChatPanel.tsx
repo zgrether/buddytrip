@@ -89,6 +89,7 @@ function FloatingChatPanelInner({
 
   const utils = trpc.useUtils();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
   const [selectedChannel, setSelectedChannel] = useState<Visibility>("crew");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
@@ -122,7 +123,10 @@ function FloatingChatPanelInner({
   const sheetDragStartY = useRef(0);
   const sheetDragStartHeight = useRef(0);
 
-  useRealtimeChat(tripId, "trip");
+  // Note: the realtime subscription lives in useChatUnreadCount (always
+  // mounted on the trip page), not here. A single subscription keeps both the
+  // unread badge and this open panel in sync via the shared query cache, and
+  // avoids two channels with the same topic colliding on the supabase singleton.
   useModalBackButton(onClose);
 
   const finalSheetHeight = useRef<number>(0);
@@ -370,6 +374,16 @@ function FloatingChatPanelInner({
     });
   }, [text, sendMessage, currentUser, tripId, activeChannel]);
 
+  // Auto-grow the composer up to ~3 lines, then scroll internally. Runs on
+  // every text change so it also collapses back to one line after a send
+  // (when setText("") empties the field).
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
+
   // Active-channel accent — mirrors the CrewTab section headers: Organizers
   // takes the teal accent, Crew takes the planning-blue identity. (Highlights/
   // borders only, no fills outside the Primary send button per the style guide.)
@@ -537,26 +551,29 @@ function FloatingChatPanelInner({
 
       {/* Input */}
       <div
-        className="flex items-center gap-2 px-3 py-2"
+        className="flex items-end gap-2 px-3 py-2"
         style={{ borderTop: "1px solid var(--color-bt-border)" }}
       >
-        <input
-          type="text"
+        <textarea
+          ref={textareaRef}
+          rows={1}
           placeholder={isPlanningChannel ? "Message the organizers..." : "Say something..."}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          className="min-w-0 flex-1 rounded-full border px-3 py-1.5 text-sm outline-none"
+          className="min-w-0 flex-1 resize-none rounded-2xl border px-3 py-1.5 text-sm leading-5 outline-none"
           style={{
             background: "var(--color-bt-base)",
             borderColor: "var(--color-bt-border)",
             color: "var(--color-bt-text)",
+            maxHeight: "4.5rem", // ~3 lines (leading-5 = 20px × 3 + py-1.5), then scrolls
+            overflowY: "auto",
           }}
         />
         <button
           onClick={handleSend}
           disabled={sendMessage.isPending || !text.trim()}
-          className="flex h-7 w-7 items-center justify-center rounded-full disabled:opacity-30"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-30"
           style={{ background: accentVar, color: "var(--color-bt-base)" }}
           aria-label="Send message"
         >
@@ -692,6 +709,12 @@ export function useChatUnreadCount(tripId: string): number {
   const currentUser = useCurrentUser();
   const { role } = useTripRole(tripId);
   const canSeeOrganizers = role === "Owner" || role === "Planner";
+
+  // Subscribe to realtime here (this hook is always mounted on the trip page).
+  // On every new message it invalidates the cached messages lists, so both the
+  // unread badge and an open FloatingChatPanel refetch and stay live — even
+  // when the panel is closed. The panel deliberately does NOT also subscribe.
+  useRealtimeChat(tripId, "trip");
 
   const { data: crewMessages = [] } = trpc.messages.list.useQuery(
     { tripId, channel: "trip", visibility: "crew", limit: 50 },
