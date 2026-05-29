@@ -190,7 +190,7 @@ export const TopNav: FC<TopNavProps> = ({
               <span
                 data-testid="notification-badge"
                 className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-0.5 text-[10px] font-bold"
-                style={{ background: "var(--color-bt-warning)", color: "#fff" }}
+                style={{ background: "var(--color-bt-warning)", color: "var(--color-bt-base-alt)" }}
               >
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
@@ -350,7 +350,7 @@ function ChatButton({ tripId, onClick, isOpen }: { tripId: string; onClick: () =
         <span
           data-testid="chat-unread-badge"
           className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-0.5 text-[10px] font-bold"
-          style={{ background: "var(--color-bt-warning)", color: "#fff" }}
+          style={{ background: "var(--color-bt-warning)", color: "var(--color-bt-base-alt)" }}
         >
           {unread > 9 ? "9+" : unread}
         </span>
