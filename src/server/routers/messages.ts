@@ -142,6 +142,91 @@ export const messagesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // readState — the caller's own per-channel last-read timestamps for a trip.
+  // Returns { crew, planning }, each an ISO string or null (never read on any
+  // device). Source of truth for the unread badge + the new-messages divider,
+  // so read state follows the account across devices (was localStorage-only).
+  // -----------------------------------------------------------------------
+  readState: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }) => {
+      const { data, error } = await ctx.supabase
+        .from("chat_reads")
+        .select("visibility, last_read_at")
+        .eq("trip_id", ctx.tripId!)
+        .eq("user_id", ctx.user!.id);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to load chat read state",
+        });
+      }
+
+      const out: { crew: string | null; planning: string | null } = {
+        crew: null,
+        planning: null,
+      };
+      for (const row of (data ?? []) as {
+        visibility: string;
+        last_read_at: string;
+      }[]) {
+        if (row.visibility === "crew" || row.visibility === "planning") {
+          out[row.visibility] = row.last_read_at;
+        }
+      }
+      return out;
+    }),
+
+  // -----------------------------------------------------------------------
+  // markRead — record that the caller has seen a channel up to now(). Upserts
+  // one (trip, user, visibility) row. Uses now() server-side (not a client
+  // timestamp) so it's monotonic and a stale device can't roll a read marker
+  // backward. Organizers chat is Owner/Planner only, mirroring list/send.
+  // -----------------------------------------------------------------------
+  markRead: authedProcedure
+    .input(z.object({ tripId: z.string(), visibility: Visibility }))
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      if (input.visibility === "planning") {
+        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Planner") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Organizers chat is owner/organizer only.",
+          });
+        }
+      }
+
+      // Return the DB-stored value (not the JS toISOString form) so callers and
+      // readState agree on the exact string representation: Postgres timestamptz
+      // serializes as "...+00:00", JS's toISOString as "...Z". Same instant, but
+      // the divider/unread logic compares these as strings, so they must match.
+      const { data, error } = await ctx.supabase
+        .from("chat_reads")
+        .upsert(
+          {
+            trip_id: ctx.tripId!,
+            user_id: ctx.user!.id,
+            visibility: input.visibility,
+            last_read_at: new Date().toISOString(),
+          },
+          { onConflict: "trip_id,user_id,visibility" }
+        )
+        .select("last_read_at")
+        .single();
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to mark chat read: ${error.message}`,
+        });
+      }
+
+      return { last_read_at: (data as { last_read_at: string }).last_read_at };
+    }),
+
+  // -----------------------------------------------------------------------
   // send — Crew chat: any member. Organizers chat: Owner/Planner only.
   // -----------------------------------------------------------------------
   send: authedProcedure

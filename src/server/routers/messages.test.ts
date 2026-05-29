@@ -14,7 +14,8 @@ describe("messages router", () => {
 
   afterAll(async () => {
     await ctx.cleanup();
-  });
+  }, 30000); // cleanup does many sequential remote deletes per trip; this suite
+  // creates a dozen-plus trips, so the default 10s hook timeout is too tight.
 
   it("send — member can send a trip message", async () => {
     const caller = ctx.callerAs("member");
@@ -101,6 +102,63 @@ describe("messages router", () => {
     await expect(
       caller.messages.list({ tripId, visibility: "planning" })
     ).rejects.toThrow(/owner\/organizer only/i);
+  });
+
+  // ── Read state — server-backed, cross-device ───────────────────────────
+
+  it("readState — defaults to null on both channels before anything is read", async () => {
+    const trip = await ctx.createTrip("Read State Defaults");
+    const msgs = await ctx.caller().messages.readState({ tripId: trip });
+    expect(msgs.crew).toBeNull();
+    expect(msgs.planning).toBeNull();
+  });
+
+  it("markRead — records the caller's crew read timestamp", async () => {
+    const trip = await ctx.createTrip("Mark Read Crew");
+    const owner = ctx.caller();
+    const res = await owner.messages.markRead({ tripId: trip, visibility: "crew" });
+    expect(typeof res.last_read_at).toBe("string");
+
+    const state = await owner.messages.readState({ tripId: trip });
+    expect(state.crew).toBe(res.last_read_at);
+    expect(state.planning).toBeNull();
+  });
+
+  it("markRead — is idempotent and advances the timestamp on re-read", async () => {
+    const trip = await ctx.createTrip("Mark Read Advance");
+    const owner = ctx.caller();
+    const first = await owner.messages.markRead({ tripId: trip, visibility: "crew" });
+    await new Promise((r) => setTimeout(r, 10));
+    const second = await owner.messages.markRead({ tripId: trip, visibility: "crew" });
+    expect(new Date(second.last_read_at).getTime()).toBeGreaterThanOrEqual(
+      new Date(first.last_read_at).getTime()
+    );
+
+    const state = await owner.messages.readState({ tripId: trip });
+    expect(state.crew).toBe(second.last_read_at);
+  });
+
+  it("markRead — member cannot mark the Organizers channel read", async () => {
+    const trip = await ctx.createTrip("Mark Read Guard");
+    await ctx.addTripMember(trip, "member", "Member");
+    await expect(
+      ctx.callerAs("member").messages.markRead({ tripId: trip, visibility: "planning" })
+    ).rejects.toThrow(/owner\/organizer only/i);
+  });
+
+  it("readState — read marks are per-user, not shared", async () => {
+    const trip = await ctx.createTrip("Read State Per User");
+    await ctx.addTripMember(trip, "member", "Member");
+
+    await ctx.caller().messages.markRead({ tripId: trip, visibility: "crew" });
+
+    // The member never marked anything read — their state stays null even
+    // though the owner just did.
+    const memberState = await ctx.callerAs("member").messages.readState({ tripId: trip });
+    expect(memberState.crew).toBeNull();
+
+    const ownerState = await ctx.caller().messages.readState({ tripId: trip });
+    expect(ownerState.crew).not.toBeNull();
   });
 
   // ── Per-member visibility floor ────────────────────────────────────────
