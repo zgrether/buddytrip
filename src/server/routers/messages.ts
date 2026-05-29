@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember } from "../middleware";
+import { createAdminClient } from "@/lib/supabase-admin";
 
 /**
  * Sub-channel within `messages.channel = 'trip'`:
@@ -19,14 +19,23 @@ const Visibility = z.enum(["crew", "planning"]);
 /**
  * Post a server-authored lifecycle line into a trip chat channel
  * (member added, promoted, etc.). message_type='system', no author.
- * Best-effort: callers wrap this so a failed system message never
- * blocks the underlying mutation.
+ *
+ * Uses the service-role admin client, NOT the caller's session: the
+ * messages_insert RLS policy only allows a member to insert their own
+ * (`user_id = auth.uid()`) `message_type='user'` rows, so a system row
+ * (user_id=null, message_type='system') is rejected through the user client.
+ * The first arg is ignored, kept only so existing callers (which pass
+ * ctx.supabase) don't all have to change at once.
+ *
+ * Best-effort: callers wrap this so a failed system message never blocks the
+ * underlying mutation. Throws on insert error so that wrapper can log it.
  */
 export async function postSystemMessage(
-  supabase: SupabaseClient,
+  _supabase: unknown,
   args: { tripId: string; visibility: "crew" | "planning"; text: string }
 ) {
-  await supabase.from("messages").insert({
+  const admin = createAdminClient();
+  const { error } = await admin.from("messages").insert({
     id: crypto.randomUUID(),
     trip_id: args.tripId,
     user_id: null,
@@ -36,6 +45,9 @@ export async function postSystemMessage(
     visibility: args.visibility,
     message_type: "system",
   });
+  if (error) {
+    throw new Error(`postSystemMessage failed: ${error.message}`);
+  }
 }
 
 export const messagesRouter = router({

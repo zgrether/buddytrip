@@ -78,6 +78,32 @@ describe("tripMembers router", () => {
     expect(updated.role).toBe("Planner");
   });
 
+  it("updateRole — promotion posts a system line in the Organizers chat", async () => {
+    // Regression: the messages_insert RLS policy only allows a member to insert
+    // their own message_type='user' rows, so system lines (user_id=null,
+    // message_type='system') must go through the service-role admin client.
+    // This proves the promotion announcement actually lands in the channel.
+    const freshTrip = await ctx.createTrip("Promote Announce Trip");
+    await ctx.addTripMember(freshTrip, "member", "Member");
+    const owner = ctx.caller();
+
+    await owner.tripMembers.updateRole({
+      tripId: freshTrip,
+      userId: ctx.getUser("member").id,
+      role: "Planner",
+    });
+
+    const planning = await owner.messages.list({
+      tripId: freshTrip,
+      visibility: "planning",
+    });
+    expect(
+      planning.some(
+        (m) => m.message_type === "system" && /is now an organizer/.test(m.text)
+      )
+    ).toBe(true);
+  });
+
   it("updateRole — owner cannot change own role", async () => {
     const caller = ctx.caller();
     await expect(
