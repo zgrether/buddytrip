@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { Send, X, ChevronDown } from "lucide-react";
 
 const MIN_WIDTH = 280;
@@ -278,6 +278,20 @@ function FloatingChatPanelInner({
     planning: null,
   };
 
+  // ── New-messages divider boundary ───────────────────────────────────────
+  // Freeze each channel's last-read timestamp at the moment the panel opens —
+  // before the markRead effect below advances it to now() — by reading the
+  // cached readState once in a lazy initializer (the badge hook on the trip
+  // page keeps that cache warm). The "New" divider sits at this frozen boundary:
+  // the first message from someone else newer than it. It stays put for the
+  // whole session even as we mark the channel read. null = never read / unknown
+  // at open, so no divider is drawn.
+  const [dividerSnapshots] = useState<Record<Visibility, string | null>>(() => {
+    const cached = utils.messages.readState.getData({ tripId });
+    return { crew: cached?.crew ?? null, planning: cached?.planning ?? null };
+  });
+  const dividerSnapshot = dividerSnapshots[activeChannel];
+
   const unreadFor = (messages: ChatMessage[], visibility: Visibility): number => {
     if (!currentUser?.id) return 0;
     const others = messages.filter(
@@ -449,6 +463,7 @@ function FloatingChatPanelInner({
       displayed={displayed}
       activeChannel={activeChannel}
       currentUserId={currentUser?.id}
+      lastReadSnapshot={dividerSnapshot}
       memberNames={memberNames}
       isPlanningChannel={isPlanningChannel}
       organizers={organizers}
@@ -597,6 +612,9 @@ interface ChatBodyProps {
   displayed: ChatMessage[];
   activeChannel: Visibility;
   currentUserId: string | undefined;
+  /** Frozen last-read timestamp for the active channel; the "New" divider sits
+   *  before the first other-authored message newer than this. null = no divider. */
+  lastReadSnapshot: string | null;
   memberNames: Record<string, string>;
   isPlanningChannel: boolean;
   organizers: { user_id: string | null; displayName: string }[];
@@ -616,6 +634,7 @@ function ChatBody({
   displayed,
   activeChannel,
   currentUserId,
+  lastReadSnapshot,
   memberNames,
   isPlanningChannel,
   organizers,
@@ -645,6 +664,24 @@ function ChatBody({
   // and restore it after the prepend lands (in the layout effect below) so the
   // messages you were reading stay visually fixed.
   const pendingAnchorRef = useRef<number | null>(null);
+  // Anchor for the "New" divider so we can scroll it into view when the channel
+  // first opens (rather than always jumping to the very bottom).
+  const dividerRef = useRef<HTMLDivElement>(null);
+
+  // The first message from someone else that's newer than the frozen last-read
+  // boundary — the divider renders just above it. null when there's nothing to
+  // mark (never read, or everything already seen).
+  const firstUnreadId = useMemo(() => {
+    if (!lastReadSnapshot) return null;
+    const threshold = new Date(lastReadSnapshot).getTime();
+    const first = displayed.find(
+      (m) =>
+        m.message_type !== "system" &&
+        m.user_id !== currentUserId &&
+        new Date(m.created_at).getTime() > threshold
+    );
+    return first?.id ?? null;
+  }, [displayed, lastReadSnapshot, currentUserId]);
 
   // Auto-grow the composer up to ~3 lines, then scroll internally. Runs on
   // every text change so it also collapses back to one line after a send and
@@ -706,7 +743,15 @@ function ChatBody({
       prevLenRef.current = len;
       prevLastIdRef.current = lastId;
       pendingAnchorRef.current = null;
-      scrollToBottom("auto");
+      // Land on the "New" divider if this channel has unread history, so you
+      // start reading exactly where you left off; otherwise jump to the newest.
+      if (dividerRef.current && el) {
+        dividerRef.current.scrollIntoView({ block: "center" });
+        atBottomRef.current = false;
+        setIsAtBottom(false);
+      } else {
+        scrollToBottom("auto");
+      }
       return;
     }
 
@@ -803,17 +848,37 @@ function ChatBody({
               </p>
             )}
             {displayed.map((msg) => {
+              // "New" divider — sits just above the first message that arrived
+              // since you last read this channel. accent-colored hairline so it
+              // reads as a soft boundary, not an alarm.
+              const divider =
+                msg.id === firstUnreadId ? (
+                  <div ref={dividerRef} className="flex items-center gap-2 py-1.5">
+                    <div className="h-px flex-1" style={{ background: accentBorder }} />
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wider"
+                      style={{ color: accentVar }}
+                    >
+                      New
+                    </span>
+                    <div className="h-px flex-1" style={{ background: accentBorder }} />
+                  </div>
+                ) : null;
+
               // System lifecycle lines render centered + muted, no bubble.
               if (msg.message_type === "system") {
                 return (
-                  <div key={msg.id} className="flex justify-center py-1">
-                    <span
-                      className="text-[10px] italic px-2 text-center"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      {msg.text}
-                    </span>
-                  </div>
+                  <Fragment key={msg.id}>
+                    {divider}
+                    <div className="flex justify-center py-1">
+                      <span
+                        className="text-[10px] italic px-2 text-center"
+                        style={{ color: "var(--color-bt-text-dim)" }}
+                      >
+                        {msg.text}
+                      </span>
+                    </div>
+                  </Fragment>
                 );
               }
 
@@ -823,32 +888,32 @@ function ChatBody({
                 minute: "2-digit",
               });
               return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-                >
-                  <div className="flex items-center gap-1.5 px-1 mb-0.5">
-                    <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      {time}
-                    </span>
-                    {!isMe && (
-                      <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {msg.user_id ? memberNames[msg.user_id] ?? "Unknown" : "Unknown"}
+                <Fragment key={msg.id}>
+                  {divider}
+                  <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                    <div className="flex items-center gap-1.5 px-1 mb-0.5">
+                      <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                        {time}
                       </span>
-                    )}
+                      {!isMe && (
+                        <span className="text-[10px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+                          {msg.user_id ? memberNames[msg.user_id] ?? "Unknown" : "Unknown"}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words"
+                      style={{
+                        background: isMe ? accentFaint : "var(--color-bt-card-raised)",
+                        border: `1px solid ${isMe ? accentBorder : "var(--color-bt-border)"}`,
+                        color: "var(--color-bt-text)",
+                        opacity: msg._optimistic ? 0.6 : 1,
+                      }}
+                    >
+                      {msg.text}
+                    </div>
                   </div>
-                  <div
-                    className="max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words"
-                    style={{
-                      background: isMe ? accentFaint : "var(--color-bt-card-raised)",
-                      border: `1px solid ${isMe ? accentBorder : "var(--color-bt-border)"}`,
-                      color: "var(--color-bt-text)",
-                      opacity: msg._optimistic ? 0.6 : 1,
-                    }}
-                  >
-                    {msg.text}
-                  </div>
-                </div>
+                </Fragment>
               );
             })}
             <div ref={bottomRef} />
