@@ -17,7 +17,7 @@ const CONFIG: Record<
   idea: { label: "IDEA", bg: "var(--color-bt-blue-bg)", text: "var(--color-bt-planning)" },
   planning: { label: "PLANNING", bg: "var(--color-bt-tag-bg)", text: "var(--color-bt-accent)" },
   going: { label: "GOING", bg: "var(--color-bt-ready-bg, rgba(124,58,237,0.1))", text: "var(--color-bt-ready)" },
-  now: { label: "NOW", bg: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))", text: "var(--color-bt-warning)" },
+  now: { label: "NOW", bg: "var(--color-bt-warning-faint)", text: "var(--color-bt-warning)" },
   past: { label: "PAST", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
   saved: { label: "SAVED", bg: "var(--color-bt-past-bg)", text: "var(--color-bt-text-dim)" },
 };

@@ -256,7 +256,7 @@ export function TripSettingsModal({
                 className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                 style={{
                   background: "var(--color-bt-accent)",
-                  color: "var(--color-bt-base)",
+                  color: "var(--color-bt-on-accent)",
                 }}
               >
                 {renameMutation.isPending ? "Saving…" : "Rename"}
@@ -338,7 +338,7 @@ export function TripSettingsModal({
                     >
                       <div
                         className="flex items-start gap-2 rounded-lg px-3 py-2"
-                        style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+                        style={{ background: "var(--color-bt-warning-faint)" }}
                       >
                         <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
                         <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
@@ -369,7 +369,7 @@ export function TripSettingsModal({
                         className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                         style={{
                           background: "var(--color-bt-accent)",
-                          color: "var(--color-bt-base)",
+                          color: "var(--color-bt-on-accent)",
                         }}
                       >
                         {changeDestinationMutation.isPending ? "Updating…" : "Update destination"}
@@ -492,7 +492,7 @@ export function TripSettingsModal({
                             className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                             style={{
                               background: "var(--color-bt-accent)",
-                              color: "var(--color-bt-base)",
+                              color: "var(--color-bt-on-accent)",
                             }}
                           >
                             {lockDatesMutation.isPending ? "Updating…" : "Update dates"}
@@ -644,7 +644,7 @@ export function TripSettingsModal({
                     className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                     style={{
                       background: "var(--color-bt-accent)",
-                      color: "var(--color-bt-base)",
+                      color: "var(--color-bt-on-accent)",
                     }}
                   >
                     {selectedNewOwner

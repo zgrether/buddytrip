@@ -138,7 +138,7 @@ export function ConfirmDatesModal({
         {showClearWarning && (
           <div
             className="mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5"
-            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+            style={{ background: "var(--color-bt-warning-faint)" }}
           >
             <span style={{ color: "var(--color-bt-warning)", flexShrink: 0 }}>⚠</span>
             <p className="text-[12px]" style={{ color: "var(--color-bt-warning)" }}>
@@ -167,7 +167,7 @@ export function ConfirmDatesModal({
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
             style={{
               background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
+              color: "var(--color-bt-on-accent)",
             }}
           >
             Set dates
