@@ -768,14 +768,6 @@ export function TripSettingsModal({
                       Permanent — deletes all Crew messages.
                     </p>
                   </div>
-                  <ChevronRight
-                    size={16}
-                    style={{
-                      color: "var(--color-bt-text-dim)",
-                      transform: clearCrewConfirming ? "rotate(90deg)" : undefined,
-                      transition: "transform 150ms",
-                    }}
-                  />
                 </button>
 
                 {clearCrewConfirming && (
@@ -840,14 +832,6 @@ export function TripSettingsModal({
                       Permanent — deletes all Organizer messages.
                     </p>
                   </div>
-                  <ChevronRight
-                    size={16}
-                    style={{
-                      color: "var(--color-bt-text-dim)",
-                      transform: clearOrgConfirming ? "rotate(90deg)" : undefined,
-                      transition: "transform 150ms",
-                    }}
-                  />
                 </button>
 
                 {clearOrgConfirming && (
