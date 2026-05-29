@@ -11,6 +11,7 @@ import {
   Lock,
   MapPin,
   Calendar,
+  MessageSquare,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -167,6 +168,27 @@ export function TripSettingsModal({
   const selectedMemberName = transferCandidates.find(
     (m) => m.user_id === selectedNewOwner
   )?.displayName;
+
+  // ── Clear chat state (owner only) ─────────────────────────────────────
+  const [clearCrewConfirming, setClearCrewConfirming] = useState(false);
+  const [clearOrgConfirming, setClearOrgConfirming] = useState(false);
+
+  const clearChatMutation = trpc.messages.clearChannel.useMutation({
+    onSuccess: (_, variables) => {
+      utils.messages.list.invalidate({
+        tripId,
+        channel: "trip",
+        visibility: variables.visibility,
+      });
+      setClearCrewConfirming(false);
+      setClearOrgConfirming(false);
+    },
+  });
+  // Which channel (if any) is mid-clear — drives per-button "Clearing…" labels
+  // while a single shared mutation handles both.
+  const clearingVisibility = clearChatMutation.isPending
+    ? clearChatMutation.variables?.visibility
+    : undefined;
 
   // ── Delete trip state ────────────────────────────────────────────────
   const [deleteConfirming, setDeleteConfirming] = useState(false);
@@ -700,6 +722,172 @@ export function TripSettingsModal({
             </p>
           )}
         </div>
+
+        {/* ── Section: Chat privacy (owner only) ─────────────────────── */}
+        {isOwner && (
+          <>
+            {/* Divider */}
+            <div
+              className="my-4"
+              style={{ height: 1, background: "var(--color-bt-border)" }}
+            />
+
+            <p
+              className="mb-3 text-[11px] font-medium uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.08em" }}
+            >
+              Chat privacy
+            </p>
+
+            <div className="space-y-2">
+              {/* Clear crew chat */}
+              <div>
+                <button
+                  data-testid="settings-clear-crew-btn"
+                  onClick={() => {
+                    setClearCrewConfirming(!clearCrewConfirming);
+                    setClearOrgConfirming(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    borderColor: "var(--color-bt-border)",
+                  }}
+                >
+                  <div
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: "var(--color-bt-planning-faint)" }}
+                  >
+                    <MessageSquare size={16} style={{ color: "var(--color-bt-planning)" }} />
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+                      Clear crew chat
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      Delete every message in the Crew channel
+                    </p>
+                  </div>
+                  <ChevronRight
+                    size={16}
+                    style={{
+                      color: "var(--color-bt-text-dim)",
+                      transform: clearCrewConfirming ? "rotate(90deg)" : undefined,
+                      transition: "transform 150ms",
+                    }}
+                  />
+                </button>
+
+                {clearCrewConfirming && (
+                  <div
+                    className="mt-2 space-y-2 rounded-xl border p-3"
+                    style={{ borderColor: "var(--color-bt-border)" }}
+                  >
+                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      Permanently deletes all Crew chat messages for everyone on the
+                      trip. This cannot be undone.
+                    </p>
+                    <button
+                      data-testid="settings-confirm-clear-crew-btn"
+                      disabled={clearChatMutation.isPending}
+                      onClick={() =>
+                        clearChatMutation.mutate({ tripId, visibility: "crew" })
+                      }
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+                      style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                    >
+                      {clearingVisibility === "crew" ? "Clearing…" : "Clear crew chat"}
+                    </button>
+                    <button
+                      onClick={() => setClearCrewConfirming(false)}
+                      className="w-full rounded-xl border py-2 text-sm"
+                      style={{
+                        borderColor: "var(--color-bt-border)",
+                        color: "var(--color-bt-text-dim)",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Clear organizer chat */}
+              <div>
+                <button
+                  data-testid="settings-clear-org-btn"
+                  onClick={() => {
+                    setClearOrgConfirming(!clearOrgConfirming);
+                    setClearCrewConfirming(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
+                  style={{
+                    background: "var(--color-bt-card-raised)",
+                    borderColor: "var(--color-bt-border)",
+                  }}
+                >
+                  <div
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: "var(--color-bt-accent-faint)" }}
+                  >
+                    <MessageSquare size={16} style={{ color: "var(--color-bt-accent)" }} />
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
+                      Clear organizer chat
+                    </p>
+                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      Delete every message in the Organizers channel
+                    </p>
+                  </div>
+                  <ChevronRight
+                    size={16}
+                    style={{
+                      color: "var(--color-bt-text-dim)",
+                      transform: clearOrgConfirming ? "rotate(90deg)" : undefined,
+                      transition: "transform 150ms",
+                    }}
+                  />
+                </button>
+
+                {clearOrgConfirming && (
+                  <div
+                    className="mt-2 space-y-2 rounded-xl border p-3"
+                    style={{ borderColor: "var(--color-bt-border)" }}
+                  >
+                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+                      Permanently deletes all Organizers chat messages for every owner
+                      and organizer. This cannot be undone.
+                    </p>
+                    <button
+                      data-testid="settings-confirm-clear-org-btn"
+                      disabled={clearChatMutation.isPending}
+                      onClick={() =>
+                        clearChatMutation.mutate({ tripId, visibility: "planning" })
+                      }
+                      className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+                      style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                    >
+                      {clearingVisibility === "planning"
+                        ? "Clearing…"
+                        : "Clear organizer chat"}
+                    </button>
+                    <button
+                      onClick={() => setClearOrgConfirming(false)}
+                      className="w-full rounded-xl border py-2 text-sm"
+                      style={{
+                        borderColor: "var(--color-bt-border)",
+                        color: "var(--color-bt-text-dim)",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         {/* ── Section 3: Danger zone (owner only) ────────────────────── */}
         {isOwner && (

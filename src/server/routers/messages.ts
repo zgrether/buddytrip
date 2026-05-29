@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember } from "../middleware";
+import { requireTripMember, requireTripRole } from "../middleware";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 /**
@@ -199,5 +199,55 @@ export const messagesRouter = router({
       }
 
       return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // clearChannel — Owner-only. Permanently deletes every message in one
+  // sub-channel of a trip (Crew or Organizers), for privacy. Uses the
+  // service-role admin client because there's no per-user DELETE RLS policy
+  // on messages — the Owner gate is enforced here at the procedure layer.
+  // Leaves a single system marker so connected clients refresh via Realtime
+  // (which only fires on INSERT) and everyone sees the chat was cleared on
+  // purpose rather than silently emptied.
+  // -----------------------------------------------------------------------
+  clearChannel: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        visibility: Visibility,
+      })
+    )
+    .use(requireTripRole("Owner"))
+    .mutation(async ({ ctx, input }) => {
+      const admin = createAdminClient();
+
+      const { error, count } = await admin
+        .from("messages")
+        .delete({ count: "exact" })
+        .eq("trip_id", ctx.tripId!)
+        .eq("channel", "trip")
+        .eq("visibility", input.visibility);
+
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to clear chat: ${error.message}`,
+        });
+      }
+
+      try {
+        await postSystemMessage(admin, {
+          tripId: ctx.tripId!,
+          visibility: input.visibility,
+          text:
+            input.visibility === "crew"
+              ? "Crew chat history was cleared by the owner"
+              : "Organizers chat history was cleared by the owner",
+        });
+      } catch {
+        /* marker is best-effort — the delete already succeeded */
+      }
+
+      return { deleted: count ?? 0 };
     }),
 });

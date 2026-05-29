@@ -147,6 +147,53 @@ describe("messages router", () => {
     );
   });
 
+  // ── clearChannel — owner-only privacy wipe ─────────────────────────────
+
+  it("clearChannel — owner clears one channel without touching the other", async () => {
+    const trip = await ctx.createTrip("Clear Chat Trip");
+    await ctx.addTripMember(trip, "member", "Member");
+    const owner = ctx.caller();
+
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew one" });
+    await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew two" });
+    await owner.messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      visibility: "planning",
+      text: "org secret",
+    });
+
+    const res = await owner.messages.clearChannel({ tripId: trip, visibility: "crew" });
+    expect(res.deleted).toBe(2);
+
+    // Crew is wiped except the system "cleared" marker; planning is untouched.
+    const crew = await owner.messages.list({ tripId: trip, visibility: "crew" });
+    expect(crew.some((m) => m.text === "crew one")).toBe(false);
+    expect(crew.some((m) => m.text === "crew two")).toBe(false);
+    expect(crew.every((m) => m.message_type === "system")).toBe(true);
+
+    const planning = await owner.messages.list({ tripId: trip, visibility: "planning" });
+    expect(planning.some((m) => m.text === "org secret")).toBe(true);
+  });
+
+  it("clearChannel — non-owner is forbidden", async () => {
+    const trip = await ctx.createTrip("Clear Chat Guard Trip");
+    await ctx.addTripMember(trip, "member", "Member");
+    await ctx.callerAs("member").messages.send({
+      tripId: trip,
+      id: genId("msg"),
+      text: "do not delete me",
+    });
+
+    await expect(
+      ctx.callerAs("member").messages.clearChannel({ tripId: trip, visibility: "crew" })
+    ).rejects.toThrow(/Owner/i);
+
+    // Message survives the rejected wipe.
+    const crew = await ctx.caller().messages.list({ tripId: trip, visibility: "crew" });
+    expect(crew.some((m) => m.text === "do not delete me")).toBe(true);
+  });
+
   it("list — planning_visible_from floor hides Organizers history from before promotion", async () => {
     const floorTrip = await ctx.createTrip("Planning Floor Test");
     const owner = ctx.caller();
