@@ -367,7 +367,11 @@ function FloatingChatPanelInner({
     },
   });
 
-  const handleSend = useCallback(() => {
+  // Plain function, not useCallback: React Compiler memoizes it automatically.
+  // A manual dep array here conflicted with the compiler's inferred deps
+  // ("existing memoization could not be preserved"), which made it bail on the
+  // whole component. Letting the compiler own the memoization fixes that.
+  const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed || sendMessage.isPending || !currentUser?.id) return;
 
@@ -396,7 +400,7 @@ function FloatingChatPanelInner({
       visibility: activeChannel,
       text: trimmed,
     });
-  }, [text, sendMessage, currentUser, tripId, activeChannel]);
+  };
 
   // Active-channel accent — mirrors the CrewTab section headers: Organizers
   // takes the teal accent, Crew takes the planning-blue identity. (Highlights/
@@ -700,6 +704,15 @@ function ChatBody({
     setHasNew(false);
   }, []);
 
+  // Land on the "New" divider (channel-switch case). No setState here: the
+  // scrollIntoView moves the container's scrollTop, which fires handleScroll
+  // and mirrors the real position into isAtBottom. The synchronous ref write
+  // is what the append logic below reads.
+  const scrollToDivider = useCallback(() => {
+    dividerRef.current?.scrollIntoView({ block: "center" });
+    atBottomRef.current = false;
+  }, []);
+
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -730,6 +743,12 @@ function ChatBody({
   // Runs as a layout effect so the prepend anchor is applied before the browser
   // paints — no visible jump. prevChannelRef starts as "" so the first run
   // jumps instantly to the newest message on open.
+  //
+  // This is a genuine DOM-synchronization effect: it reconciles scroll position
+  // and the unread-pill flag against the message list (external data). React
+  // Compiler's set-state-in-effect rule fires on the scroll/flag writes here,
+  // but those are exactly the "update React state from an external system" case
+  // the rule's own docs allow — so the few writes below are disabled inline.
   const prevLenRef = useRef(0);
   const prevLastIdRef = useRef<string | null>(null);
   const prevChannelRef = useRef<string>("");
@@ -746,10 +765,9 @@ function ChatBody({
       // Land on the "New" divider if this channel has unread history, so you
       // start reading exactly where you left off; otherwise jump to the newest.
       if (dividerRef.current && el) {
-        dividerRef.current.scrollIntoView({ block: "center" });
-        atBottomRef.current = false;
-        setIsAtBottom(false);
+        scrollToDivider();
       } else {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM sync: mirrors scroll position into state
         scrollToBottom("auto");
       }
       return;
@@ -773,11 +791,13 @@ function ChatBody({
     const last = displayed[len - 1];
     const isMine = last?.user_id === currentUserId;
     if (isMine || atBottomRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM sync: mirrors scroll position into state
       scrollToBottom("smooth");
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- new-message pill flagged from external data
       setHasNew(true);
     }
-  }, [displayed, activeChannel, currentUserId, scrollToBottom]);
+  }, [displayed, activeChannel, currentUserId, scrollToBottom, scrollToDivider]);
 
   return (
     <>
