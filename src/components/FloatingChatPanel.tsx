@@ -495,6 +495,10 @@ function FloatingChatPanelInner({
         style={{
           background: "var(--color-bt-card)",
           borderLeft: "1px solid var(--color-bt-border)",
+          // Top edge butts against the app's top bar; without a border the
+          // panel bleeds into it. Mirrors the bottom edge, which reads as
+          // separated thanks to the bottom nav's own top border.
+          borderTop: "1px solid var(--color-bt-border)",
           width: panelWidth,
           // Sit above the trip bottom nav so the input isn't hidden behind it.
           // Resolves to 0px when no nav is mounted (runs to the screen bottom).
