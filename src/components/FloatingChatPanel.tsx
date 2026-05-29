@@ -195,6 +195,16 @@ function FloatingChatPanelInner({
     { enabled: canSeeOrganizers }
   );
 
+  // Roster of the people who can see the Organizers channel — Owner + Planners
+  // who are actually on the trip. Powers the explainer at the top of that tab.
+  const { data: allMembers = [] } = trpc.tripMembers.list.useQuery(
+    { tripId },
+    { enabled: canSeeOrganizers }
+  );
+  const organizers = allMembers.filter(
+    (m) => (m.role === "Owner" || m.role === "Planner") && m.status === "in"
+  );
+
   // Merge in any not-yet-confirmed optimistic messages for a channel.
   const buildDisplayed = useCallback(
     (real: ChatMessage[], visibility: Visibility): ChatMessage[] => {
@@ -348,17 +358,17 @@ function FloatingChatPanelInner({
     });
   }, [text, sendMessage, currentUser, tripId, activeChannel]);
 
-  // Active-channel accent — Organizers picks up the planning-blue identity,
-  // Crew uses the default teal accent. (Highlights/borders only, no fills
-  // outside the Primary send button per the style guide.)
+  // Active-channel accent — mirrors the CrewTab section headers: Organizers
+  // takes the teal accent, Crew takes the planning-blue identity. (Highlights/
+  // borders only, no fills outside the Primary send button per the style guide.)
   const isPlanningChannel = activeChannel === "planning";
-  const accentVar = isPlanningChannel ? "var(--color-bt-planning)" : "var(--color-bt-accent)";
+  const accentVar = isPlanningChannel ? "var(--color-bt-accent)" : "var(--color-bt-planning)";
   const accentFaint = isPlanningChannel
-    ? "var(--color-bt-planning-faint)"
-    : "var(--color-bt-accent-faint)";
+    ? "var(--color-bt-accent-faint)"
+    : "var(--color-bt-planning-faint)";
   const accentBorder = isPlanningChannel
-    ? "var(--color-bt-planning-border)"
-    : "var(--color-bt-accent-border)";
+    ? "var(--color-bt-accent-border)"
+    : "var(--color-bt-planning-border)";
 
   // Header — channel tabs for organizers, static label otherwise. Shared
   // between the desktop panel and the mobile sheet.
@@ -369,7 +379,12 @@ function FloatingChatPanelInner({
         { ch: "planning" as const, label: "Organizers", unread: planningUnread },
       ]).map(({ ch, label, unread }) => {
         const active = activeChannel === ch;
-        const planning = ch === "planning";
+        // Organizers = teal accent, Crew = planning-blue — same hues as the
+        // CrewTab section headers so the two surfaces feel like one system.
+        const org = ch === "planning";
+        const fg = org ? "var(--color-bt-accent)" : "var(--color-bt-planning)";
+        const faint = org ? "var(--color-bt-accent-faint)" : "var(--color-bt-planning-faint)";
+        const bdr = org ? "var(--color-bt-accent-border)" : "var(--color-bt-planning-border)";
         return (
           <button
             key={ch}
@@ -377,27 +392,14 @@ function FloatingChatPanelInner({
             onClick={() => setActiveChannel(ch)}
             className="relative flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors"
             style={{
-              color: active ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
-              background: active
-                ? planning
-                  ? "var(--color-bt-planning-faint)"
-                  : "var(--color-bt-accent-faint)"
-                : "transparent",
-              border: `1px solid ${
-                active
-                  ? planning
-                    ? "var(--color-bt-planning-border)"
-                    : "var(--color-bt-accent-border)"
-                  : "transparent"
-              }`,
+              color: active ? fg : "var(--color-bt-text-dim)",
+              background: active ? faint : "transparent",
+              border: `1px solid ${active ? bdr : "transparent"}`,
             }}
           >
             {label}
             {unread > 0 && !active && (
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ background: planning ? "var(--color-bt-planning)" : "var(--color-bt-accent)" }}
-              />
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: fg }} />
             )}
           </button>
         );
@@ -422,6 +424,35 @@ function FloatingChatPanelInner({
           style={{ background: "linear-gradient(to bottom, var(--color-bt-card), transparent)" }}
         />
         <div className="space-y-1.5 px-3 py-2">
+          {isPlanningChannel && (
+            <div
+              className="mb-1.5 rounded-xl px-3 py-2.5 text-[11px] leading-relaxed"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              <p
+                className="mb-1 text-[10px] font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                Organizers only
+              </p>
+              <p>
+                A private channel for the trip&rsquo;s owner and organizers to
+                sort out planning away from the full crew.
+              </p>
+              {organizers.length > 0 && (
+                <p className="mt-1.5">
+                  <span>In this chat: </span>
+                  <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
+                    {organizers.map((m) => m.displayName).join(", ")}
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
           {displayed.length === 0 && (
             <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
               {isPlanningChannel
