@@ -11,7 +11,7 @@ import {
   Lock,
   MapPin,
   Calendar,
-  MessageSquare,
+  MessageCircle,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -758,7 +758,7 @@ export function TripSettingsModal({
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
                     style={{ background: "rgba(248,113,113,0.12)" }}
                   >
-                    <MessageSquare size={16} style={{ color: "var(--color-bt-danger)" }} />
+                    <MessageCircle size={16} style={{ color: "var(--color-bt-danger)" }} />
                   </div>
                   <div className="min-w-0 flex-1 text-left">
                     <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
@@ -822,7 +822,7 @@ export function TripSettingsModal({
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
                     style={{ background: "rgba(248,113,113,0.12)" }}
                   >
-                    <MessageSquare size={16} style={{ color: "var(--color-bt-danger)" }} />
+                    <MessageCircle size={16} style={{ color: "var(--color-bt-danger)" }} />
                   </div>
                   <div className="min-w-0 flex-1 text-left">
                     <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
