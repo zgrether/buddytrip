@@ -6,6 +6,11 @@ import { Send, X } from "lucide-react";
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 720;
 const DEFAULT_WIDTH = 380;
+// Height of the trip bottom nav (its py-2 + icon + label + safe area). Both
+// the desktop panel and the mobile sheet anchor their bottom to this so the
+// nav stays visible and the input never hides behind it — same on every
+// viewport.
+const BOTTOM_NAV_OFFSET = "calc(3.5rem + env(safe-area-inset-bottom))";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -577,9 +582,7 @@ function FloatingChatPanelInner({
           width: panelWidth,
           // Sit above the trip bottom nav when it's present so the input
           // isn't hidden behind it; otherwise run to the screen bottom.
-          bottom: hasBottomNav
-            ? "calc(3.5rem + env(safe-area-inset-bottom))"
-            : 0,
+          bottom: hasBottomNav ? BOTTOM_NAV_OFFSET : 0,
         }}
       >
         {/* Drag handle — visible grip on the left edge */}
@@ -626,7 +629,13 @@ function FloatingChatPanelInner({
       {/* ── Mobile: bottom sheet ───────────────────────────────────────── */}
       <div
         className="lg:hidden fixed inset-0 z-50 flex items-end"
-        style={{ background: "var(--color-bt-overlay)" }}
+        style={{
+          background: "var(--color-bt-overlay)",
+          // Same as desktop: stop the sheet + backdrop at the top of the trip
+          // bottom nav so it stays visible/usable and the input never hides
+          // behind it. Without a nav, run to the screen bottom.
+          bottom: hasBottomNav ? BOTTOM_NAV_OFFSET : undefined,
+        }}
         onClick={onClose}
       >
         <div
