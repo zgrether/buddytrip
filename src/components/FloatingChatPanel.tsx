@@ -6,11 +6,12 @@ import { Send, X } from "lucide-react";
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 720;
 const DEFAULT_WIDTH = 380;
-// Height of the trip bottom nav (its py-2 + icon + label + safe area). Both
-// the desktop panel and the mobile sheet anchor their bottom to this so the
-// nav stays visible and the input never hides behind it — same on every
-// viewport.
-const BOTTOM_NAV_OFFSET = "calc(3.5rem + env(safe-area-inset-bottom))";
+// Live height of the trip bottom nav, published by BottomNav as a CSS var
+// (0px when no nav is mounted). Both the desktop panel and the mobile sheet
+// anchor their bottom to it so the nav stays visible and the input never hides
+// behind it — identically on every viewport, regardless of the nav's actual
+// measured height.
+const BOTTOM_NAV_OFFSET = "var(--bt-bottomnav-height, 0px)";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
@@ -37,9 +38,6 @@ interface FloatingChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   memberNames: Record<string, string>;
-  /** When the trip's bottom nav is showing, anchor the desktop panel's
-   *  bottom to the top of that nav so the input isn't hidden behind it. */
-  hasBottomNav?: boolean;
 }
 
 /**
@@ -65,14 +63,13 @@ const lastReadKey = (tripId: string, visibility: Visibility) =>
  *
  * Open state is owned by the page; this component only renders + reads.
  */
-export function FloatingChatPanel({ tripId, isOpen, onClose, memberNames, hasBottomNav }: FloatingChatPanelProps) {
+export function FloatingChatPanel({ tripId, isOpen, onClose, memberNames }: FloatingChatPanelProps) {
   if (!isOpen) return null;
   return (
     <FloatingChatPanelInner
       tripId={tripId}
       onClose={onClose}
       memberNames={memberNames}
-      hasBottomNav={hasBottomNav}
     />
   );
 }
@@ -81,12 +78,10 @@ function FloatingChatPanelInner({
   tripId,
   onClose,
   memberNames,
-  hasBottomNav,
 }: {
   tripId: string;
   onClose: () => void;
   memberNames: Record<string, string>;
-  hasBottomNav?: boolean;
 }) {
   const currentUser = useCurrentUser();
   const { role } = useTripRole(tripId);
@@ -580,9 +575,9 @@ function FloatingChatPanelInner({
           background: "var(--color-bt-card)",
           borderLeft: "1px solid var(--color-bt-border)",
           width: panelWidth,
-          // Sit above the trip bottom nav when it's present so the input
-          // isn't hidden behind it; otherwise run to the screen bottom.
-          bottom: hasBottomNav ? BOTTOM_NAV_OFFSET : 0,
+          // Sit above the trip bottom nav so the input isn't hidden behind it.
+          // Resolves to 0px when no nav is mounted (runs to the screen bottom).
+          bottom: BOTTOM_NAV_OFFSET,
         }}
       >
         {/* Drag handle — visible grip on the left edge */}
@@ -633,8 +628,8 @@ function FloatingChatPanelInner({
           background: "var(--color-bt-overlay)",
           // Same as desktop: stop the sheet + backdrop at the top of the trip
           // bottom nav so it stays visible/usable and the input never hides
-          // behind it. Without a nav, run to the screen bottom.
-          bottom: hasBottomNav ? BOTTOM_NAV_OFFSET : undefined,
+          // behind it. Resolves to 0px when no nav is mounted.
+          bottom: BOTTOM_NAV_OFFSET,
         }}
         onClick={onClose}
       >

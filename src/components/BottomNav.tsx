@@ -1,8 +1,34 @@
 "use client";
 
-import { type FC, useEffect } from "react";
+import { type FC, useEffect, useRef } from "react";
 import { Home, Plus, Activity, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
+
+// ── Publish the rendered nav height ────────────────────────────────────────
+// Any element that anchors to the bottom of the screen (the chat panel/sheet,
+// FAB offsets, etc.) reads `--bt-bottomnav-height` so it always sits above the
+// nav — on every viewport — regardless of the nav's actual measured height
+// (icon + label + safe-area inset). The variable is set while a nav is mounted
+// and removed on unmount, falling back to the 0px default in globals.css.
+function usePublishNavHeight() {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const update = () => {
+      root.style.setProperty("--bt-bottomnav-height", `${el.offsetHeight}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--bt-bottomnav-height");
+    };
+  }, []);
+  return ref;
+}
 
 // ── Trip tab bar (inline, not bottom nav) ─────────────────────────────────
 // This is the old "tab" concept — now handled by TripTabBar.tsx
@@ -29,6 +55,7 @@ interface GlobalBottomNavProps {
 export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
   const router = useRouter();
   const pathname = usePathname();
+  const navRef = usePublishNavHeight();
 
   const items: NavItem[] = [
     { id: "home", label: "Home", Icon: Home, href: "/dashboard" },
@@ -46,6 +73,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
 
   return (
     <nav
+      ref={navRef}
       className="fixed bottom-0 left-0 right-0 z-40"
       style={{
         background: "var(--color-bt-card)",
@@ -89,6 +117,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
 }) => {
   const router = useRouter();
   const pathname = usePathname();
+  const navRef = usePublishNavHeight();
 
   const items: NavItem[] = [
     { id: "trip-home", label: "Trip Home", Icon: Home, href: `/trips/${tripId}` },
@@ -111,6 +140,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
 
   return (
     <nav
+      ref={navRef}
       className="fixed bottom-0 left-0 right-0 z-40"
       style={{
         background: "var(--color-bt-card)",

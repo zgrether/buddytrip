@@ -582,7 +582,6 @@ export default function TripDetailPage() {
         tripId={tripId}
         isOpen={chatOpen}
         onClose={() => setChatOpen(false)}
-        hasBottomNav={competition?.status === "active"}
         memberNames={Object.fromEntries(
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
         )}
