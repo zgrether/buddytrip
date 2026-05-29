@@ -440,9 +440,15 @@ function FloatingChatPanelInner({
             </p>
             {organizers.length > 0 && (
               <p className="mt-1.5">
-                <span>In this chat: </span>
+                <span className="mr-1.5">In this chat:</span>
                 <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
-                  {organizers.map((m) => m.displayName).join(", ")}
+                  {organizers
+                    .map((m) =>
+                      m.user_id === currentUser?.id
+                        ? `${m.displayName} (you)`
+                        : m.displayName
+                    )
+                    .join(", ")}
                 </span>
               </p>
             )}
