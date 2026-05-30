@@ -442,19 +442,24 @@ function CompEventChip({
   onLinkToItem?: () => void;
 }) {
   const isGolf = event.type === "GOLF";
+  // Local drag feedback so the chip dims while in flight and restores when the
+  // gesture ends — including when released outside any drop target.
+  const [isDragging, setIsDragging] = useState(false);
   return (
     <div
       draggable={canEdit}
       onDragStart={canEdit ? (e) => {
         e.dataTransfer.setData(DND_EVENT_KEY, event.id);
         e.dataTransfer.effectAllowed = "move";
+        setIsDragging(true);
         onDragStarted?.(event.type);
       } : undefined}
-      onDragEnd={canEdit ? () => onDragEnded?.() : undefined}
-      className={`flex items-center gap-2 rounded-xl px-4 py-3 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
+      onDragEnd={canEdit ? () => { setIsDragging(false); onDragEnded?.(); } : undefined}
+      className={`flex items-center gap-2 rounded-xl px-4 py-3 transition-all ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
+        opacity: isDragging ? 0.4 : 1,
       }}
     >
       {canEdit && (
