@@ -11,6 +11,7 @@ import {
   IconArchive,
   IconLogout,
   IconTrash,
+  IconArrowLeft,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
@@ -124,6 +125,7 @@ export default function ProfilePage() {
         <DesktopSidebar
           activeTab={activeTab}
           onChangeTab={setActiveTab}
+          onBack={() => router.push("/dashboard")}
           onSignOut={() => handleSignOut(router)}
           onDelete={() => setOpenSheet("delete")}
         />
@@ -131,6 +133,21 @@ export default function ProfilePage() {
         {/* ── Main scroll container ───────────────────────────────────── */}
         <main className="w-full md:flex-1">
           <div className="mx-auto max-w-2xl pb-24 md:pt-8">
+            {/* Mobile back button — collapses the desktop sidebar's
+                "Back to dashboard" link into a single arrow in the
+                top-left of the title bar (Supabase-style). */}
+            <div className="px-2 pt-2 md:hidden">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                aria-label="Back to dashboard"
+                className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <IconArrowLeft size={20} stroke={1.75} />
+              </button>
+            </div>
+
             {/* Mobile shows everything stacked. Desktop renders only the
                 section matching the active sidebar tab. */}
 
@@ -521,11 +538,13 @@ function AvatarHero({
 function DesktopSidebar({
   activeTab,
   onChangeTab,
+  onBack,
   onSignOut,
   onDelete,
 }: {
   activeTab: SidebarTab;
   onChangeTab: (t: SidebarTab) => void;
+  onBack: () => void;
   onSignOut: () => void;
   onDelete: () => void;
 }) {
@@ -557,6 +576,19 @@ function DesktopSidebar({
         alignSelf: "flex-start",
       }}
     >
+      {/* Back to dashboard — sits above the section groups, mirroring
+          Supabase's left-column back link. Collapses to a single arrow
+          button in the mobile title bar (rendered in the main area). */}
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-2 flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]"
+        style={{ gap: 10, padding: "9px 16px", color: "var(--color-bt-text-dim)" }}
+      >
+        <IconArrowLeft size={16} stroke={1.75} />
+        <span style={{ fontSize: 13 }}>Back to dashboard</span>
+      </button>
+
       <SidebarGroup label="Account">
         {account.map((i) => (
           <SidebarItem
