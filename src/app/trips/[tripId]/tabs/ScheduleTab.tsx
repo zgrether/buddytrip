@@ -352,7 +352,7 @@ function ScheduleItemRow({
           round-7 item 4) since they're inherently unconfirmed. */}
       {!isOnDeck && (
         <span
-          className="mt-0.5 inline-flex flex-shrink-0 items-center gap-1 self-start rounded-full px-2.5 py-1 text-xs font-semibold"
+          className="inline-flex flex-shrink-0 items-center gap-1 self-center rounded-full px-2.5 py-1 text-xs font-semibold"
           style={
             item.is_confirmed
               ? {
@@ -376,7 +376,7 @@ function ScheduleItemRow({
         </span>
       )}
 
-      <div className="flex flex-shrink-0 items-center gap-1">
+      <div className="flex flex-shrink-0 items-center gap-1 self-center">
 
         {/* Mobile-only: schedule to a day via picker (replaces drag on touch).
             Shown as an icon button in the action column, before reorder arrows. */}
