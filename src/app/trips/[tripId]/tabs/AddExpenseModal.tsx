@@ -86,17 +86,16 @@ export function AddExpenseModal({
     }
   }
 
-  function switchToEven() {
-    setSplitMode("even");
-    setSplitAmong(members.map((m) => m.user_id));
-    setOverrides({});
+  function handleModeChange(next: "even" | "custom") {
+    if (next === "even") {
+      // Re-include everyone and clear overrides.
+      setSplitAmong(members.map((m) => m.user_id));
+      setOverrides({});
+    }
+    setSplitMode(next);
   }
 
   const amountNum = Number(amount) || 0;
-  const evenPerPerson =
-    amountNum > 0 && members.length > 0
-      ? amountNum / members.length
-      : 0;
 
   function handleCreate() {
     const splitData =
@@ -166,10 +165,11 @@ export function AddExpenseModal({
           </h2>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Close"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
@@ -178,18 +178,18 @@ export function AddExpenseModal({
           {/* Side-by-side Description + Amount */}
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Title</label>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>Title<span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--color-bt-danger)" }} aria-hidden /></label>
               <input
                 data-testid="expense-title-input"
                 placeholder="Description (e.g. Dinner)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               />
             </div>
             <div className="w-36 flex-shrink-0">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>Cost</label>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>Cost<span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--color-bt-danger)" }} aria-hidden /></label>
               <CurrencyInput
                 data-testid="expense-amount-input"
                 value={amount}
@@ -202,7 +202,7 @@ export function AddExpenseModal({
           {/* Paid by + Date on same line */}
           <div className="flex gap-3">
             <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
                 Paid by
               </label>
               <div className="relative">
@@ -211,7 +211,7 @@ export function AddExpenseModal({
                   value={paidByUserId}
                   onChange={(e) => setPaidByUserId(e.target.value)}
                   className="w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-sm outline-none"
-                  style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                  style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
                 >
                   {members.map((m) => (
                     <option key={m.user_id} value={m.user_id}>
@@ -225,67 +225,43 @@ export function AddExpenseModal({
               </div>
             </div>
             <div className="w-36 flex-shrink-0">
-              <label className="mb-1 block text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
                 Date (optional)
               </label>
               <input
-                type="date"
+                type={date ? "date" : "text"}
                 value={date}
+                onFocus={(e) => { e.currentTarget.type = "date"; }}
+                onBlur={(e) => { if (!date) e.currentTarget.type = "text"; }}
                 onChange={(e) => setDate(e.target.value)}
+                placeholder="Add a date"
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-                style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
               />
             </div>
           </div>
 
-          {/* Even / Custom toggle */}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={switchToEven}
-              className="flex-1 rounded-lg border px-3 py-2 text-sm"
-              style={{
-                background: splitMode === "even" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-                borderColor: splitMode === "even" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                color: splitMode === "even" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-              }}
-            >
-              Even split{evenPerPerson > 0 ? ` · $${evenPerPerson.toFixed(2)}` : ""}
-            </button>
-            <button
-              type="button"
-              onClick={() => setSplitMode("custom")}
-              className="flex-1 rounded-lg border px-3 py-2 text-sm"
-              style={{
-                background: splitMode === "custom" ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-                borderColor: splitMode === "custom" ? "var(--color-bt-accent)" : "var(--color-bt-border)",
-                color: splitMode === "custom" ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-              }}
-            >
-              Custom split
-            </button>
-          </div>
-
-          {/* Custom split panel */}
-          {splitMode === "custom" && (
-            <SplitPanel
-              members={members}
-              totalAmount={amountNum}
-              includedIds={splitAmong}
-              overrides={overrides}
-              onToggle={toggleSplit}
-              onOverrideChange={(uid, val) =>
-                setOverrides((prev) => ({ ...prev, [uid]: val }))
-              }
-              onResetOverride={(uid) =>
-                setOverrides((prev) => {
-                  const next = { ...prev };
-                  delete next[uid];
-                  return next;
-                })
-              }
-            />
-          )}
+          {/* Split panel — dark panel with even (simplified) / custom views */}
+          <SplitPanel
+            members={members}
+            totalAmount={amountNum}
+            includedIds={splitAmong}
+            overrides={overrides}
+            isOwnerEditing
+            mode={splitMode}
+            onModeChange={handleModeChange}
+            onToggle={toggleSplit}
+            onOverrideChange={(uid, val) =>
+              setOverrides((prev) => ({ ...prev, [uid]: val }))
+            }
+            onResetOverride={(uid) =>
+              setOverrides((prev) => {
+                const next = { ...prev };
+                delete next[uid];
+                return next;
+              })
+            }
+          />
 
         </div>
 
