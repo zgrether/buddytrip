@@ -583,10 +583,10 @@ function DesktopSidebar({
       <button
         type="button"
         onClick={onBack}
-        className="mb-2 flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]"
-        style={{ gap: 10, padding: "9px 16px", color: "var(--color-bt-text-dim)" }}
+        className="flex items-center transition-colors hover:text-[var(--color-bt-text)]"
+        style={{ gap: 6, padding: "0 16px 10px", color: "var(--color-bt-text-dim)" }}
       >
-        <IconArrowLeft size={16} stroke={1.75} />
+        <IconArrowLeft size={15} stroke={1.75} />
         <span style={{ fontSize: 13 }}>Back</span>
       </button>
 
