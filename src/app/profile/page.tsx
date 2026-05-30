@@ -125,7 +125,7 @@ export default function ProfilePage() {
         <DesktopSidebar
           activeTab={activeTab}
           onChangeTab={setActiveTab}
-          onBack={() => router.push("/dashboard")}
+          onBack={() => router.back()}
           onSignOut={() => handleSignOut(router)}
           onDelete={() => setOpenSheet("delete")}
         />
@@ -134,13 +134,13 @@ export default function ProfilePage() {
         <main className="w-full md:flex-1">
           <div className="mx-auto max-w-2xl pb-24 md:pt-8">
             {/* Mobile back button — collapses the desktop sidebar's
-                "Back to dashboard" link into a single arrow in the
-                top-left of the title bar (Supabase-style). */}
+                "Back" link into a single arrow in the top-left of the
+                title bar (Supabase-style). */}
             <div className="px-2 pt-2 md:hidden">
               <button
                 type="button"
-                onClick={() => router.push("/dashboard")}
-                aria-label="Back to dashboard"
+                onClick={() => router.back()}
+                aria-label="Back"
                 className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
                 style={{ color: "var(--color-bt-text-dim)" }}
               >
@@ -576,9 +576,10 @@ function DesktopSidebar({
         alignSelf: "flex-start",
       }}
     >
-      {/* Back to dashboard — sits above the section groups, mirroring
-          Supabase's left-column back link. Collapses to a single arrow
-          button in the mobile title bar (rendered in the main area). */}
+      {/* Back — sits above the section groups, mirroring Supabase's
+          left-column back link. Collapses to a single arrow button in
+          the mobile title bar (rendered in the main area). Returns to
+          the previous page rather than a fixed destination. */}
       <button
         type="button"
         onClick={onBack}
@@ -586,7 +587,7 @@ function DesktopSidebar({
         style={{ gap: 10, padding: "9px 16px", color: "var(--color-bt-text-dim)" }}
       >
         <IconArrowLeft size={16} stroke={1.75} />
-        <span style={{ fontSize: 13 }}>Back to dashboard</span>
+        <span style={{ fontSize: 13 }}>Back</span>
       </button>
 
       <SidebarGroup label="Account">
