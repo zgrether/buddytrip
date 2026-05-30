@@ -15,18 +15,28 @@ import { Avatar } from "@/components/Avatar";
 export function UserMenu() {
   const { data: me } = trpc.users.getMe.useQuery();
 
+  const displayName = me?.name ?? me?.email ?? null;
+
   return (
     <Link
       href="/profile"
       aria-label="Open profile"
       data-testid="user-menu-btn"
-      className="transition-opacity hover:opacity-80"
+      className="flex items-center gap-2 transition-opacity hover:opacity-80"
     >
       <Avatar
         name={me?.name ?? me?.email ?? "?"}
         avatarIcon={me?.avatar_icon ?? null}
         size="sm"
       />
+      {displayName && (
+        <span
+          className="hidden max-w-[120px] truncate text-sm font-medium sm:inline"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {displayName}
+        </span>
+      )}
     </Link>
   );
 }
