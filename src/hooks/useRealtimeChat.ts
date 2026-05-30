@@ -8,8 +8,16 @@ import { trpc } from "@/lib/trpc-client";
  * Subscribes to Supabase Realtime for live chat messages.
  *
  * Channels per REALTIME.md:
- *   - Trip chat: `trip-chat:{tripId}` → messages WHERE trip_id=eq.{tripId} AND channel=eq.trip
- *   - Team chat: `team-chat:{tripId}:{teamId}` → messages WHERE trip_id=eq.{tripId} AND channel=eq.team AND team_id=eq.{teamId}
+ *   - Trip chat: `trip-chat:{tripId}` → messages filtered by `trip_id=eq.{tripId}`
+ *   - Team chat: `team-chat:{tripId}:{teamId}` → messages filtered by `team_id=eq.{teamId}`
+ *
+ * Supabase Realtime `postgres_changes` only supports a SINGLE column
+ * predicate per subscription (no AND/`&` compound filters). So team chat
+ * filters on `team_id` alone — team_id is globally unique, so it fully
+ * scopes the subscription to that team's messages without also needing
+ * trip_id. The previous code filtered the team channel on `trip_id`,
+ * which leaked every other team's (and the trip channel's) inserts into
+ * the subscription, causing needless refetches.
  *
  * On INSERT events, invalidates the messages query to trigger a refetch.
  * This replaces the previous 3-second polling interval.
@@ -39,7 +47,7 @@ export function useRealtimeChat(
     } else {
       if (!teamId) return;
       channelName = `team-chat:${tripId}:${teamId}`;
-      filter = `trip_id=eq.${tripId}`;
+      filter = `team_id=eq.${teamId}`;
     }
 
     const realtimeChannel = supabase
