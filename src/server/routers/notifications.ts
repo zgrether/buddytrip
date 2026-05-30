@@ -57,7 +57,8 @@ export const notificationsRouter = router({
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
     .mutation(async ({ ctx }) => {
-      // Get all notification IDs for this trip addressed to the current user
+      // Get all notification IDs for this trip addressed to the current user.
+      // (Unavoidable — notification_reads keys off notification_id.)
       const { data: notifications } = await ctx.supabase
         .from("notification_events")
         .select("id")
@@ -68,29 +69,22 @@ export const notificationsRouter = router({
         return { marked: 0 };
       }
 
-      // Get already-read ones
-      const notifIds = notifications.map((n) => n.id);
-      const { data: existing } = await ctx.supabase
-        .from("notification_reads")
-        .select("notification_id")
-        .eq("user_id", ctx.user!.id)
-        .in("notification_id", notifIds);
-
-      const alreadyRead = new Set((existing ?? []).map((r) => r.notification_id));
-      const unread = notifIds.filter((id) => !alreadyRead.has(id));
-
-      if (unread.length === 0) {
-        return { marked: 0 };
-      }
-
-      const rows = unread.map((notificationId) => ({
-        notification_id: notificationId,
+      // Single upsert with ON CONFLICT DO NOTHING (ignoreDuplicates) replaces
+      // the prior read-existing / diff / insert dance. .select() after an
+      // ignoreDuplicates upsert returns only the rows actually inserted, so
+      // `marked` stays accurate (0 when everything was already read).
+      const rows = notifications.map((n) => ({
+        notification_id: n.id,
         user_id: ctx.user!.id,
       }));
 
-      const { error } = await ctx.supabase
+      const { data: inserted, error } = await ctx.supabase
         .from("notification_reads")
-        .insert(rows);
+        .upsert(rows, {
+          onConflict: "notification_id,user_id",
+          ignoreDuplicates: true,
+        })
+        .select("notification_id");
 
       if (error) {
         throw new TRPCError({
@@ -99,7 +93,7 @@ export const notificationsRouter = router({
         });
       }
 
-      return { marked: unread.length };
+      return { marked: inserted?.length ?? 0 };
     }),
 });
 
