@@ -103,7 +103,6 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
       currentTripId={currentTripId}
       onSelectTrip={(id) => handleNavigate(`/trips/${id}`)}
       onNewTrip={() => handleNavigate("/trips/new")}
-      onViewAll={() => handleNavigate("/dashboard")}
     />
   );
 
@@ -138,7 +137,7 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
         }}
       >
         <div
-          className="px-4 py-3"
+          className="flex items-center justify-between px-4 py-3"
           style={{ borderBottom: "0.5px solid var(--color-bt-border)" }}
         >
           <span
@@ -147,6 +146,14 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
           >
             My trips
           </span>
+          <button
+            type="button"
+            onClick={() => handleNavigate("/dashboard")}
+            className="text-xs transition-colors hover:opacity-80"
+            style={{ color: "var(--color-bt-accent)" }}
+          >
+            View all
+          </button>
         </div>
         <div style={{ maxHeight: "min(480px, calc(100vh - 80px))", overflowY: "auto" }}>
           {body}
@@ -164,14 +171,12 @@ function TripSwitcherBody({
   currentTripId,
   onSelectTrip,
   onNewTrip,
-  onViewAll,
 }: {
   activeTrips: SwitcherTrip[];
   pastTrips: SwitcherTrip[];
   currentTripId: string | null;
   onSelectTrip: (tripId: string) => void;
   onNewTrip: () => void;
-  onViewAll: () => void;
 }) {
   const showDividers = activeTrips.length > 0 && pastTrips.length > 0;
   const noTrips = activeTrips.length === 0 && pastTrips.length === 0;
@@ -242,20 +247,6 @@ function TripSwitcherBody({
         >
           New trip
         </span>
-      </button>
-
-      {/* View all trips */}
-      <button
-        type="button"
-        onClick={onViewAll}
-        className="block w-full text-center transition-opacity hover:opacity-80"
-        style={{
-          padding: "10px 16px",
-          fontSize: 12,
-          color: "var(--color-bt-text-dim)",
-        }}
-      >
-        View all trips →
       </button>
     </div>
   );

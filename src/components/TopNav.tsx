@@ -45,6 +45,11 @@ interface TopNavProps {
   /** Reflects whether the FloatingChatPanel is currently open — used to
    *  render the chat button in its active state. */
   chatOpen?: boolean;
+  /** Hide the trip-switcher grid button (e.g. on the profile page, which
+   *  isn't trip-scoped and doesn't need trip navigation). */
+  hideTripSwitcher?: boolean;
+  /** Hide the notifications bell (e.g. on the profile page). */
+  hideNotifications?: boolean;
 }
 
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
@@ -68,6 +73,8 @@ export const TopNav: FC<TopNavProps> = ({
   tripId,
   onOpenChat,
   chatOpen = false,
+  hideTripSwitcher = false,
+  hideNotifications = false,
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -78,8 +85,10 @@ export const TopNav: FC<TopNavProps> = ({
   // empty-state hero already exposes "New trip" as the primary CTA, so
   // an extra switcher button just opens an empty panel. TanStack Query
   // dedupes against the same query the page may already be running.
-  const { data: tripsForSwitcher } = trpc.trips.list.useQuery();
-  const showSwitcher = (tripsForSwitcher?.length ?? 0) > 0;
+  const { data: tripsForSwitcher } = trpc.trips.list.useQuery(undefined, {
+    enabled: !hideTripSwitcher,
+  });
+  const showSwitcher = !hideTripSwitcher && (tripsForSwitcher?.length ?? 0) > 0;
 
   // Close on outside click
   useEffect(() => {
@@ -155,35 +164,27 @@ export const TopNav: FC<TopNavProps> = ({
               data-testid="trip-switcher-trigger"
               data-trip-switcher-trigger="true"
               onClick={() => setSwitcherOpen((p) => !p)}
-              className="flex h-7 w-7 items-center justify-center rounded-md transition-colors md:h-8 md:w-8 md:rounded-lg"
-              style={
-                switcherOpen
-                  ? {
-                      background: "rgba(45, 212, 191, 0.12)",
-                      color: "var(--color-bt-accent)",
-                    }
-                  : {
-                      background: "transparent",
-                      color: "var(--color-bt-text-dim)",
-                    }
-              }
+              className="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                color: switcherOpen
+                  ? "var(--color-bt-accent)"
+                  : "var(--color-bt-text-dim)",
+              }}
             >
-              <IconLayoutGrid size={18} stroke={1.75} />
+              <IconLayoutGrid size={20} stroke={1.5} />
             </button>
             <TripSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
           </>
         )}
 
-        {tripId && onOpenChat && (
-          <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
-        )}
+        {!hideNotifications && (
         <div ref={ref} className="relative">
           <button
             aria-label="Notifications"
             data-testid="notification-bell"
             onClick={handleBellClick}
             className="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            style={{ color: open ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
           >
             <Bell size={20} strokeWidth={1.5} />
             {unreadCount > 0 && (
@@ -319,6 +320,11 @@ export const TopNav: FC<TopNavProps> = ({
             </>
           )}
         </div>
+        )}
+
+        {tripId && onOpenChat && (
+          <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />
+        )}
 
         <UserMenu />
       </div>

@@ -977,6 +977,12 @@ function ChatBody({
             background: "var(--color-bt-base)",
             borderColor: "var(--color-bt-border)",
             color: "var(--color-bt-text)",
+            // One-line floor. The auto-grow effect sets an inline height from
+            // scrollHeight; on a responsive layout switch the textarea can be
+            // measured with no layout (scrollHeight ≈ 0), leaving a stale ~few-px
+            // inline height. min-height wins over height, so the field can never
+            // collapse below a single row regardless of a bad measurement.
+            minHeight: "2.25rem", // leading-5 (20px) + py-1.5 (12px) + border (2px)
             maxHeight: "4.5rem", // ~3 lines (leading-5 = 20px × 3 + py-1.5), then scrolls
             overflowY: "auto",
           }}

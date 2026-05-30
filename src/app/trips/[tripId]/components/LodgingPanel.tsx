@@ -138,7 +138,7 @@ function LodgingCard({
           : ""
       }`}
       style={{
-        background: confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
+        background: confirmed ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
         border: `1px solid ${
           needsDates
             ? "var(--color-bt-warning)"

@@ -223,7 +223,12 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
         </div>
       )}
 
-      {showEmptyState && <EmptyArrivalsState onCancel={onCancel} />}
+      {showEmptyState && (
+        <EmptyArrivalsState
+          onCancel={onCancel}
+          onAdd={() => setExpanded(true)}
+        />
+      )}
 
       {showFilterPills && (
         <div className="flex flex-wrap items-center gap-2">
@@ -536,7 +541,15 @@ function OtherMemberTravelRow({
 // + centered icon/heading/description + faded skeleton preview of what
 // populated arrival rows will look like.
 
-function EmptyArrivalsState({ onCancel }: { onCancel?: () => void }) {
+function EmptyArrivalsState({
+  onCancel,
+  onAdd,
+}: {
+  onCancel?: () => void;
+  /** Opens the inline travel form so the viewer can share their plans —
+      without this the empty state is a dead end with no add affordance. */
+  onAdd: () => void;
+}) {
   return (
     // flex-1 = grow to fill the section's h-full container so the dashed
     // box matches the height of the Itinerary panel's empty state when
@@ -581,6 +594,14 @@ function EmptyArrivalsState({ onCancel }: { onCancel?: () => void }) {
           Share your travel and the crew can coordinate pickups, dinner
           times, and tee slots around real arrival times.
         </p>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="mt-4 flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+        >
+          <Plus size={15} /> Add your travel
+        </button>
       </div>
 
       {/* Skeleton arrivals — three faded rows mirroring the intro modal */}

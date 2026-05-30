@@ -11,6 +11,7 @@ import {
   IconArchive,
   IconLogout,
   IconTrash,
+  IconArrowLeft,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
@@ -20,7 +21,6 @@ import { Avatar } from "@/components/Avatar";
 import { AvatarIconPicker } from "@/components/AvatarIconPicker";
 import { NotificationsPanel } from "@/components/profile/NotificationsPanel";
 import { ArchivedIdeasPanel } from "@/components/profile/ArchivedIdeasPanel";
-import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -50,7 +50,6 @@ export default function ProfilePage() {
   const authLoaded = useAuthLoaded();
   const authUser = useAuthUser();
   const utils = trpc.useUtils();
-  const { notifications, unreadCount, markAllRead } = useGlobalNotifications();
 
   const { data: me, isLoading } = trpc.users.getMe.useQuery(undefined, {
     enabled: authLoaded && !!authUser,
@@ -101,11 +100,7 @@ export default function ProfilePage() {
   if (!authLoaded || isLoading || !me) {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)" }}>
-        <TopNav
-          notifications={notifications}
-          unreadCount={unreadCount}
-          onMarkAllRead={markAllRead}
-        />
+        <TopNav hideTripSwitcher hideNotifications />
         <div className="flex justify-center py-16">
           <div
             className="h-6 w-6 animate-spin rounded-full border-2"
@@ -123,17 +118,14 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onMarkAllRead={markAllRead}
-      />
+      <TopNav hideTripSwitcher hideNotifications />
 
       <div className="flex">
         {/* ── Desktop sidebar ─────────────────────────────────────────── */}
         <DesktopSidebar
           activeTab={activeTab}
           onChangeTab={setActiveTab}
+          onBack={() => router.back()}
           onSignOut={() => handleSignOut(router)}
           onDelete={() => setOpenSheet("delete")}
         />
@@ -141,6 +133,21 @@ export default function ProfilePage() {
         {/* ── Main scroll container ───────────────────────────────────── */}
         <main className="w-full md:flex-1">
           <div className="mx-auto max-w-2xl pb-24 md:pt-8">
+            {/* Mobile back button — collapses the desktop sidebar's
+                "Back" link into a single arrow in the top-left of the
+                title bar (Supabase-style). */}
+            <div className="px-2 pt-2 md:hidden">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                aria-label="Back"
+                className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                <IconArrowLeft size={20} stroke={1.75} />
+              </button>
+            </div>
+
             {/* Mobile shows everything stacked. Desktop renders only the
                 section matching the active sidebar tab. */}
 
@@ -531,11 +538,13 @@ function AvatarHero({
 function DesktopSidebar({
   activeTab,
   onChangeTab,
+  onBack,
   onSignOut,
   onDelete,
 }: {
   activeTab: SidebarTab;
   onChangeTab: (t: SidebarTab) => void;
+  onBack: () => void;
   onSignOut: () => void;
   onDelete: () => void;
 }) {
@@ -553,7 +562,7 @@ function DesktopSidebar({
       style={{
         background: "var(--color-bt-card)",
         borderRight: "0.5px solid var(--color-bt-border)",
-        padding: "20px 0",
+        padding: "10px 0 20px",
         // Stick to the viewport (below the 56px TopNav) and cap at one
         // viewport height so the bottom block (Sign out / Delete) stays
         // pinned to the bottom of the screen as the main panel scrolls.
@@ -567,6 +576,27 @@ function DesktopSidebar({
         alignSelf: "flex-start",
       }}
     >
+      {/* Back — sits above the section groups, mirroring Supabase's
+          left-column back link. Collapses to a single arrow button in
+          the mobile title bar (rendered in the main area). Returns to
+          the previous page rather than a fixed destination. */}
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center transition-colors hover:text-[var(--color-bt-text)]"
+        style={{ gap: 6, padding: "0 16px 10px", color: "var(--color-bt-text-dim)" }}
+      >
+        <IconArrowLeft size={15} stroke={1.75} />
+        <span style={{ fontSize: 13 }}>Back</span>
+      </button>
+
+      <div
+        style={{
+          borderBottom: "0.5px solid var(--color-bt-border)",
+          marginBottom: 12,
+        }}
+      />
+
       <SidebarGroup label="Account">
         {account.map((i) => (
           <SidebarItem
