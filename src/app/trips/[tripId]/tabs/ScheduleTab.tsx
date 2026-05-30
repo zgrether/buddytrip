@@ -215,19 +215,23 @@ function ScheduleItemRow({
           opacity: isDragging ? 0.4 : 1,
         }}
       >
+      {/* Left group — icon stays on the title's line (items-start) while the
+          whole group is centered within the row (row is items-center) so a
+          title-only item has no empty space beneath it. */}
+      <div className="flex min-w-0 flex-1 items-start gap-2">
       {movable && (
         <GripVertical
           size={16}
-          className="hidden flex-shrink-0 cursor-grab lg:block"
+          className="mt-0.5 hidden flex-shrink-0 cursor-grab lg:block"
           style={{ color: "var(--color-bt-text-dim)" }}
         />
       )}
 
       {/* Type icon — always present so text aligns across item types */}
       {item.item_type === "golf" ? (
-        <Flag size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+        <Flag size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
       ) : (
-        <Calendar size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+        <Calendar size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
       )}
 
       <div className="min-w-0 flex-1">
@@ -345,6 +349,7 @@ function ScheduleItemRow({
             Add tee time(s) or walk on
           </button>
         )}
+      </div>
       </div>
 
       {/* DRAFT / CONFIRMED status pill — only meaningful for items that
