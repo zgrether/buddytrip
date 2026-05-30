@@ -143,7 +143,7 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
         {!alreadyGoing && (!hasLockedDate || !hasDestination) && (
           <div
             className="mt-2 flex items-start gap-3 rounded-xl px-4 py-3"
-            style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+            style={{ background: "var(--color-bt-warning-faint)" }}
           >
             <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-warning)" }} />
             <p className="text-sm" style={{ color: "var(--color-bt-warning)" }}>
@@ -194,7 +194,7 @@ export function TripSummaryModal({ tripId, trip, onClose, onAdvanced }: TripSumm
             disabled={advance.isPending || !hasLockedDate}
             data-testid="trip-summary-send-btn"
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
           >
             <Send size={15} />
             {advance.isPending ? "Sending..." : "View Itinerary →"}
@@ -229,7 +229,7 @@ function SummaryRow({
         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
         style={{
           background: needsAttention
-            ? "var(--color-bt-warning-bg, rgba(217,119,6,0.15))"
+            ? "var(--color-bt-warning-faint)"
             : "var(--color-bt-card)",
           color: needsAttention ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
         }}

@@ -3,10 +3,6 @@
 import { useState } from "react";
 import {
   DollarSign,
-  Pencil,
-  Plus,
-  Receipt,
-  Trash2,
   UserMinus,
   UserPlus,
 } from "lucide-react";
@@ -73,21 +69,27 @@ export function CurrencyInput({
   onChange,
   placeholder = "0.00",
   className = "",
+  disabled = false,
   "data-testid": testId,
 }: {
   value: string;
   onChange: (val: string) => void;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
   "data-testid"?: string;
 }) {
   return (
     <div
       className={`relative flex items-center rounded-lg border ${className}`}
-      style={{ background: "var(--color-bt-base)", borderColor: "var(--color-bt-border)" }}
+      style={{
+        background: "var(--color-bt-card)",
+        borderColor: "var(--color-bt-border)",
+        opacity: disabled ? 0.6 : 1,
+      }}
     >
       <span
-        className="pointer-events-none pl-3 text-sm"
+        className="pointer-events-none pl-3 font-mono text-sm"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         $
@@ -100,7 +102,8 @@ export function CurrencyInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="min-w-0 flex-1 bg-transparent py-2 pl-1 pr-3 text-right text-sm outline-none"
+        disabled={disabled}
+        className="min-w-0 flex-1 bg-transparent py-2 pl-1 pr-3 text-right font-mono text-sm outline-none disabled:cursor-not-allowed"
         style={{ color: "var(--color-bt-text)" }}
       />
     </div>
@@ -160,17 +163,12 @@ function ReceiptExample() {
         $480.00
       </span>
 
-      {/* Trailing icon trio — match the populated state's action set
-          so the EXAMPLE faithfully previews what a real row looks like. */}
-      <div className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)" }}>
-        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md">
-          <UserMinus size={14} />
-        </span>
-        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md">
-          <Pencil size={14} />
-        </span>
-        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md">
-          <Trash2 size={14} />
+      {/* Trailing action — faithfully previews a real row, which now
+          exposes just the opt-in/out control inline. Edit and delete
+          moved into the tap-to-open editor, so the sample drops them too. */}
+      <div className="flex items-center" style={{ color: "var(--color-bt-text-dim)" }}>
+        <span className="flex h-6 w-6 items-center justify-center rounded-full">
+          <UserMinus size={13} />
         </span>
       </div>
     </div>
@@ -589,13 +587,15 @@ export function ExpensesSection({
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
 
   // ── Queries ──
-  const { data: expenses = [] } = trpc.expenses.list.useQuery({ tripId });
+  // `isLoading` is true only on the very first fetch with no cached data;
+  // revisiting the tab reads from cache and renders instantly. We gate the
+  // empty/populated decision on it so the empty state never flashes before
+  // the receipts arrive (the list isn't prefetched at the page level).
+  const { data: expenses = [], isLoading } = trpc.expenses.list.useQuery({ tripId });
 
   // ── Mutations ──
-  const removeExpense = trpc.expenses.remove.useMutation({
-    onSuccess: () => utils.expenses.list.invalidate({ tripId }),
-  });
-
+  // Deleting a receipt now lives inside EditExpenseModal (tap a row to
+  // open it), so the section itself no longer needs a remove mutation.
   const optOutMutation = trpc.expenses.optOut.useMutation({
     async onMutate(vars) {
       await utils.expenses.list.cancel({ tripId });
@@ -660,6 +660,27 @@ export function ExpensesSection({
     if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
     return memberName(members, a.user_id).localeCompare(memberName(members, b.user_id));
   });
+
+  // While the first fetch is in flight we can't yet tell empty from
+  // populated, so show a couple of faded placeholder rows instead of
+  // flashing the empty-state composer (which then snaps to the real
+  // list a beat later).
+  if (isLoading) {
+    return (
+      <div className="space-y-2" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="h-[58px] animate-pulse rounded-xl"
+            style={{
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -741,7 +762,30 @@ export function ExpensesSection({
                   <div
                     key={expense.id}
                     data-testid={`expense-row-${expense.id}`}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                    // Whole row is the edit affordance (canEdit = Owner or
+                    // Planner). Tap opens the editor where splits/fields are
+                    // changed and the receipt can be deleted — no inline
+                    // pencil/trash clutter. A native drag never fires click,
+                    // and the opt-out button stops propagation, so neither
+                    // collides with the row tap.
+                    onClick={canEdit ? () => setEditingExpense(expense) : undefined}
+                    role={canEdit ? "button" : undefined}
+                    tabIndex={canEdit ? 0 : undefined}
+                    onKeyDown={
+                      canEdit
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setEditingExpense(expense);
+                            }
+                          }
+                        : undefined
+                    }
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${
+                      canEdit
+                        ? "cursor-pointer transition-shadow hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
+                        : ""
+                    }`}
                     style={{
                       background: isOptedOut ? "var(--color-bt-base)" : "var(--color-bt-card)",
                       border: "1px solid var(--color-bt-border)",
@@ -802,13 +846,16 @@ export function ExpensesSection({
                     </div>
                     {userSplit && (
                       <button
-                        onClick={() =>
+                        onClick={(e) => {
+                          // Keep the opt-out tap from bubbling to the row's
+                          // edit handler.
+                          e.stopPropagation();
                           optOutMutation.mutate({
                             tripId,
                             expenseId: expense.id,
                             optOut: !isOptedOut,
-                          })
-                        }
+                          });
+                        }}
                         disabled={optOutMutation.isPending}
                         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70 disabled:opacity-40"
                         // Opt out (you're in) reads as a quiet gray action;
@@ -818,29 +865,6 @@ export function ExpensesSection({
                         title={isOptedOut ? "Rejoin" : "Opt out"}
                       >
                         {isOptedOut ? <UserPlus size={13} /> : <UserMinus size={13} />}
-                      </button>
-                    )}
-                    {isOwner && (
-                      <button
-                        data-testid={`edit-splits-${expense.id}`}
-                        onClick={() => setEditingExpense(expense)}
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                    )}
-                    {canEdit && (
-                      <button
-                        data-testid={`remove-expense-${expense.id}`}
-                        onClick={() =>
-                          removeExpense.mutate({ tripId, expenseId: expense.id })
-                        }
-                        disabled={removeExpense.isPending}
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full disabled:opacity-40"
-                        style={{ color: "var(--color-bt-text-dim)" }}
-                      >
-                        <Trash2 size={13} />
                       </button>
                     )}
                   </div>
@@ -973,6 +997,8 @@ export function ExpensesSection({
           expense={editingExpense}
           members={members}
           tripId={tripId}
+          isOwner={isOwner}
+          canDelete={canEdit}
           onClose={() => setEditingExpense(null)}
         />
       )}

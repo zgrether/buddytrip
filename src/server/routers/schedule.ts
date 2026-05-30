@@ -132,6 +132,7 @@ export const scheduleRouter = router({
         scheduledTime: z.string().nullable().optional(),
         sortOrder: z.number().int().optional(),
         isConfirmed: z.boolean().optional(),
+        courseId: z.string().nullable().optional(),
         courseName: z.string().max(200).nullable().optional(),
         courseLocation: z.string().max(500).nullable().optional(),
         teeTimes: z.array(z.string()).nullable().optional(),
@@ -160,6 +161,7 @@ export const scheduleRouter = router({
           update.confirmed_by = null;
         }
       }
+      if (input.courseId !== undefined) update.course_id = input.courseId;
       if (input.courseName !== undefined) update.course_name = input.courseName;
       if (input.courseLocation !== undefined) update.course_location = input.courseLocation;
       if (input.teeTimes !== undefined) update.tee_times = input.teeTimes;

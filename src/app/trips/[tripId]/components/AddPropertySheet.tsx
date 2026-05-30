@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Globe, Hotel, Link, MapPin } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Hotel, Link, MapPin, ImagePlus, X } from "lucide-react";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { createClient } from "@/lib/supabase";
 
 // ── Platform detection (exported so parents can use it) ───────────────────
 
@@ -58,9 +60,12 @@ export interface PropertyFormValues {
   checkOut: string;  // planning only — YYYY-MM-DD
   checkInTimeOfDay: string;  // planning only — HH:MM, optional
   checkOutTimeOfDay: string; // planning only — HH:MM, optional
-  /** og:image fetched from /api/lodging-meta when the URL is pasted. */
-  imageUrl: string;
+  /** Up to 3 photo URLs (public Storage URLs and/or an og:image). The
+   *  first entry is the cover the LodgingCard renders. */
+  imageUrls: string[];
 }
+
+const MAX_PHOTOS = 3;
 
 // ── Props ─────────────────────────────────────────────────────────────────
 
@@ -72,6 +77,8 @@ export interface AddPropertySheetProps {
   isPending: boolean;
   onSubmit: (values: PropertyFormValues) => void;
   onClose: () => void;
+  /** When editing, wires the footer "Remove property" danger button. */
+  onRemove?: () => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -93,7 +100,7 @@ interface PlacePrediction {
 
 const inputCls = "w-full rounded-xl border px-3 py-2.5 text-sm outline-none";
 const inputStyle = {
-  background: "var(--color-bt-card-raised)",
+  background: "var(--color-bt-card)",
   borderColor: "var(--color-bt-border)",
   color: "var(--color-bt-text)",
 };
@@ -101,121 +108,32 @@ const inputStyle = {
 function Field({
   label,
   hint,
+  required,
   children,
 }: {
   label: string;
   hint?: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="mb-1 block text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
+      <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
         {label}
+        {required && (
+          <span
+            className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
+            style={{ background: "var(--color-bt-danger)" }}
+            aria-hidden
+          />
+        )}
         {hint && (
-          <span className="ml-1.5 font-normal" style={{ opacity: 0.75 }}>
+          <span className="ml-1.5 font-medium normal-case tracking-normal" style={{ opacity: 0.75 }}>
             ({hint})
           </span>
         )}
       </label>
       {children}
-    </div>
-  );
-}
-
-// ── Link preview card ─────────────────────────────────────────────────────
-
-function LinkPreviewCard({
-  url,
-  name,
-  imageUrl,
-  loading,
-}: {
-  url: string;
-  name: string;
-  /** og:image fetched from /api/lodging-meta. Renders as the preview
-   *  photo strip when present; falls back to the placeholder gradient
-   *  while loading or when the host doesn't expose an og:image. */
-  imageUrl?: string | null;
-  /** True while /api/lodging-meta is in flight for this URL. */
-  loading?: boolean;
-}) {
-  const platform = detectPlatform(url);
-  const domain = extractDomain(url);
-  const label = PLATFORM_LABEL[platform];
-
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{ border: "1px solid var(--color-bt-accent-border)" }}
-    >
-      {/* Photo strip — real listing image if fetched, placeholder
-          gradient + generic-property icon otherwise. Matches the
-          LodgingCard photo strip so the preview reads like what the
-          saved card will look like (no blank panel). */}
-      <div
-        className="relative h-32 w-full"
-        style={{
-          backgroundImage: imageUrl
-            ? `url("${imageUrl}")`
-            : "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
-        {!imageUrl && !loading && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
-            <Hotel size={44} strokeWidth={1.5} style={{ color: "rgba(255,255,255,0.22)" }} />
-          </div>
-        )}
-        {loading && !imageUrl && (
-          <div
-            className="absolute inset-0 flex items-center justify-center text-[11px] font-medium"
-            style={{ color: "#e2e8f0" }}
-          >
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1"
-              style={{ background: "rgba(0,0,0,0.45)" }}
-            >
-              <span
-                className="inline-block h-2 w-2 animate-pulse rounded-full"
-                style={{ background: "var(--color-bt-accent)" }}
-                aria-hidden
-              />
-              Fetching listing…
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div
-        className="flex items-center gap-1.5 px-3 py-2"
-        style={{ background: "var(--color-bt-tag-bg)" }}
-      >
-        <Globe size={11} style={{ color: "var(--color-bt-accent)" }} />
-        <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-accent)" }}>
-          {domain}
-        </span>
-        <span
-          className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-        >
-          {label}
-        </span>
-      </div>
-      <div className="px-3 py-2.5" style={{ background: "var(--color-bt-card-raised)" }}>
-        {name ? (
-          <p className="text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>{name}</p>
-        ) : (
-          <p className="text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-            {loading
-              ? "Pulling the title from the listing…"
-              : "Add a nickname in the fields below"}
-          </p>
-        )}
-        <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          {url.length > 55 ? url.slice(0, 52) + "…" : url}
-        </p>
-      </div>
     </div>
   );
 }
@@ -229,6 +147,7 @@ export function AddPropertySheet({
   isPending,
   onSubmit,
   onClose,
+  onRemove,
 }: AddPropertySheetProps) {
   useModalBackButton(onClose);
 
@@ -242,10 +161,71 @@ export function AddPropertySheet({
   const [checkOut, setCheckOut] = useState(initialValues.checkOut ?? "");
   const [checkInTimeOfDay, setCheckInTimeOfDay] = useState(initialValues.checkInTimeOfDay ?? "");
   const [checkOutTimeOfDay, setCheckOutTimeOfDay] = useState(initialValues.checkOutTimeOfDay ?? "");
-  const [imageUrl, setImageUrl] = useState(initialValues.imageUrl ?? "");
+  const [imageUrls, setImageUrls] = useState<string[]>(initialValues.imageUrls ?? []);
 
-  // Manual mode — expand the form without requiring a valid URL
-  const [manualMode, setManualMode] = useState(isEditing && !(initialValues.url ?? ""));
+  // ── Photo upload (3 square slots) ──────────────────────────────────
+  // Uploads the chosen image(s) to the public `lodging-photos` storage
+  // bucket and appends their public URLs to imageUrls (capped at
+  // MAX_PHOTOS). The first entry is the cover the LodgingCard renders.
+  // A user-uploaded photo always wins over the og:image scraped from
+  // the listing.
+  const supabase = useMemo(() => createClient(), []);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [uploadError, setUploadError] = useState("");
+
+  const uploadOne = async (file: File): Promise<string | null> => {
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Please choose an image file.");
+      return null;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setUploadError("Image must be under 8 MB.");
+      return null;
+    }
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage
+      .from("lodging-photos")
+      .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+    if (error) throw error;
+    const { data } = supabase.storage.from("lodging-photos").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // allow re-selecting the same file later
+    if (files.length === 0) return;
+
+    // Only take as many as remaining slots allow.
+    const remaining = MAX_PHOTOS - imageUrls.length;
+    if (remaining <= 0) return;
+    const toUpload = files.slice(0, remaining);
+
+    setUploadError("");
+    setUploadingCount(toUpload.length);
+    try {
+      const urls: string[] = [];
+      for (const file of toUpload) {
+        const u = await uploadOne(file);
+        if (u) urls.push(u);
+      }
+      if (urls.length > 0) {
+        setImageUrls((prev) => [...prev, ...urls].slice(0, MAX_PHOTOS));
+        // Stop the listing-meta effect from re-filling the cover photo.
+        setMetaFetchedFor(url.trim());
+      }
+    } catch {
+      setUploadError("Upload failed. Try again.");
+    } finally {
+      setUploadingCount(0);
+    }
+  };
+
+  const removePhoto = (idx: number) => {
+    setImageUrls((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   // ── Listing-metadata fetch (Task 68) ──────────────────────────────
   //
@@ -294,7 +274,7 @@ export function AddPropertySheet({
                 : data.description;
             setNotes(trimmedDesc);
           }
-          if (data.image && !imageUrl) setImageUrl(data.image);
+          if (data.image && imageUrls.length === 0) setImageUrls([data.image]);
         }
         setMetaFetchedFor(trimmed);
       } catch {
@@ -307,7 +287,7 @@ export function AddPropertySheet({
     return () => {
       if (metaTimer.current) clearTimeout(metaTimer.current);
     };
-    // We intentionally don't depend on name/notes/imageUrl — those
+    // We intentionally don't depend on name/notes/imageUrls — those
     // can be set by this very effect, which would re-trigger. The
     // metaFetchedFor guard handles "URL hasn't changed, skip."
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -346,13 +326,27 @@ export function AddPropertySheet({
     }
   };
 
-  // Derived
+  // Derived — a property needs at minimum a title or a valid link.
   const validUrl = isValidUrl(url);
-  const showExpanded = validUrl || manualMode || isEditing;
-  const canSubmit =
-    showExpanded &&
-    (validUrl || manualMode) &&
-    (!manualMode || name.trim().length > 0);
+  const hasContent = name.trim().length > 0 || validUrl;
+
+  // When editing, Save stays disabled until something actually changes —
+  // opening the drawer shouldn't present an active Save. Compared against
+  // the same defaults the state was seeded with.
+  const isDirty =
+    url !== (initialValues.url ?? "") ||
+    name !== (initialValues.name ?? "") ||
+    sleeps !== (initialValues.sleeps ?? "") ||
+    price !== (initialValues.price ?? "") ||
+    notes !== (initialValues.notes ?? "") ||
+    address !== (initialValues.address ?? "") ||
+    checkIn !== (initialValues.checkIn ?? "") ||
+    checkOut !== (initialValues.checkOut ?? "") ||
+    checkInTimeOfDay !== (initialValues.checkInTimeOfDay ?? "") ||
+    checkOutTimeOfDay !== (initialValues.checkOutTimeOfDay ?? "") ||
+    JSON.stringify(imageUrls) !== JSON.stringify(initialValues.imageUrls ?? []);
+
+  const canSubmit = hasContent && (!isEditing || isDirty);
 
   const handleUrlBlur = () => {
     const prefixed = ensureProtocol(url);
@@ -372,7 +366,7 @@ export function AddPropertySheet({
       checkOut,
       checkInTimeOfDay,
       checkOutTimeOfDay,
-      imageUrl,
+      imageUrls,
     });
   };
 
@@ -423,31 +417,170 @@ export function AddPropertySheet({
 
         {/* Header — sticky top */}
         <div
-          className="flex-shrink-0 px-5 pb-3 pt-4"
+          className="flex flex-shrink-0 items-center justify-between gap-3 px-5 pb-3 pt-4"
           style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
-          <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            {isEditing ? "Edit property" : "Add a property"}
-          </h2>
+          {isEditing ? (
+            <div className="min-w-0">
+              <div
+                className="text-[10px] font-bold uppercase tracking-[0.12em]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Lodging
+              </div>
+              <div
+                className="mt-0.5 truncate text-[15px] font-bold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                {name || "Untitled property"}
+              </div>
+            </div>
+          ) : (
+            <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Add a property
+            </h2>
+          )}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+          >
+            <X size={16} />
+          </button>
         </div>
 
-        {/* Body — scrollable */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-        {!isEditing && !manualMode && (
-          <p className="mt-0.5 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-            Paste a listing link, or{" "}
-            <button
-              onClick={() => setManualMode(true)}
-              className="underline"
-              style={{ color: "var(--color-bt-accent)" }}
-            >
-              enter manually
-            </button>
-          </p>
-        )}
+        {/* Body — scrollable. Field order: photo, title, link, location,
+            sleeps+cost, check-in/out, notes — then Remove (when editing). */}
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {/* Photos — up to 3 square slots. Filled slots show the image
+              with a remove control; the first empty slot is the add
+              button (the others render as quiet placeholders so an empty
+              row reads as "optional" rather than broken). The cover the
+              LodgingCard renders is always the first photo. */}
+          <Field label="Photos" hint="optional">
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: MAX_PHOTOS }).map((_, i) => {
+                const src = imageUrls[i];
+                const isFirstEmpty = !src && i === imageUrls.length;
+                const isUploadingSlot =
+                  !src && uploadingCount > 0 && i >= imageUrls.length && i < imageUrls.length + uploadingCount;
 
-        {/* URL field */}
-        <div className="mt-4">
+                // Filled slot — image with remove + cover badge.
+                if (src) {
+                  return (
+                    <div
+                      key={i}
+                      className="group relative aspect-square overflow-hidden rounded-xl"
+                      style={{
+                        backgroundImage: `url("${src}")`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      {i === 0 && (
+                        <span
+                          className="absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.06em]"
+                          style={{ background: "rgba(0,0,0,0.55)", color: "#e2e8f0" }}
+                        >
+                          Cover
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(i)}
+                        aria-label="Remove photo"
+                        className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-opacity hover:opacity-90"
+                        style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Uploading placeholder.
+                if (isUploadingSlot) {
+                  return (
+                    <div
+                      key={i}
+                      className="flex aspect-square items-center justify-center rounded-xl"
+                      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+                    >
+                      <span
+                        className="inline-block h-3 w-3 animate-pulse rounded-full"
+                        style={{ background: "var(--color-bt-accent)" }}
+                        aria-hidden
+                      />
+                    </div>
+                  );
+                }
+
+                // First empty slot = the add button; the rest are quiet
+                // placeholders so the empty state still looks intentional.
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={isFirstEmpty ? () => fileInputRef.current?.click() : undefined}
+                    disabled={!isFirstEmpty}
+                    aria-label={isFirstEmpty ? "Add photo" : undefined}
+                    className="flex aspect-square items-center justify-center rounded-xl transition-colors disabled:cursor-default"
+                    style={{
+                      background: "var(--color-bt-card)",
+                      border: isFirstEmpty
+                        ? "1.5px dashed var(--color-bt-border)"
+                        : "1px dashed var(--color-bt-subtle-border)",
+                      color: "var(--color-bt-text-dim)",
+                      opacity: isFirstEmpty ? 1 : 0.5,
+                    }}
+                  >
+                    {isFirstEmpty ? (
+                      <ImagePlus size={20} strokeWidth={1.75} />
+                    ) : (
+                      <Hotel size={18} strokeWidth={1.5} style={{ opacity: 0.6 }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handlePhotoSelected}
+            />
+            {metaLoading && imageUrls.length === 0 && (
+              <p className="mt-1.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Fetching listing photo…
+              </p>
+            )}
+            {uploadError && (
+              <p className="mt-1.5 text-[11px]" style={{ color: "var(--color-bt-danger)" }}>
+                {uploadError}
+              </p>
+            )}
+          </Field>
+
+          {/* Title */}
+          <Field label="Title" required>
+            <input
+              type="text"
+              placeholder="e.g. Beach House, The Lodge"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={inputCls}
+              style={{
+                ...inputStyle,
+                borderColor: name.trim() ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
+              }}
+            />
+          </Field>
+
+          {/* Link */}
           <Field label="Link" hint="opens externally">
             <div className="relative">
               <Link
@@ -461,8 +594,6 @@ export function AddPropertySheet({
                 value={url}
                 onChange={(e) => setUrl(e.target.value.trim())}
                 onBlur={handleUrlBlur}
-                // eslint-disable-next-line jsx-a11y/no-autofocus
-                autoFocus={!isEditing && !manualMode}
                 className={`${inputCls} pl-9`}
                 style={{
                   ...inputStyle,
@@ -471,199 +602,164 @@ export function AddPropertySheet({
               />
             </div>
           </Field>
-        </div>
 
-        {/* Link preview */}
-        {validUrl && (
-          <div className="mt-3">
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-              Preview
-            </p>
-            <LinkPreviewCard url={url} name={name} imageUrl={imageUrl} loading={metaLoading} />
-          </div>
-        )}
+          {/* Location — planning only */}
+          {showAddressAndDates && (
+            <Field label="Location" hint="optional">
+              <div className="relative">
+                <MapPin
+                  size={14}
+                  className="absolute left-3 top-3.5"
+                  style={{ color: address ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+                />
+                <input
+                  type="text"
+                  placeholder="Search for an address"
+                  value={address}
+                  onChange={(e) => handleAddressChange(e.target.value)}
+                  className={`${inputCls} pl-9`}
+                  style={{
+                    ...inputStyle,
+                    borderColor: address ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
+                  }}
+                />
+                {addressDropdown.length > 0 && (
+                  <div
+                    className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl shadow-lg"
+                    style={{
+                      background: "var(--color-bt-card-raised)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    {addressDropdown.map((p) => (
+                      <button
+                        key={p.placeId}
+                        onClick={() => selectAddress(p)}
+                        className="w-full px-3 py-2 text-left text-sm transition-opacity hover:opacity-70"
+                        style={{ color: "var(--color-bt-text)" }}
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        {p.description && (
+                          <span className="ml-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                            {p.description}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Field>
+          )}
 
-        {/* Name / Nickname — shown as soon as the form expands, above Optional divider */}
-        {showExpanded && (
-          <div className="mt-3">
-            <Field label={manualMode && !isEditing ? "Title *" : "Title"}>
+          {/* Sleeps + Cost */}
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Sleeps">
               <input
-                type="text"
-                placeholder="e.g. Beach House, The Lodge"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                // eslint-disable-next-line jsx-a11y/no-autofocus
-                autoFocus={manualMode && !isEditing}
-                className={inputCls}
-                style={{
-                  ...inputStyle,
-                  borderColor: manualMode && !isEditing && name.trim()
-                    ? "var(--color-bt-accent-border)"
-                    : "var(--color-bt-border)",
-                }}
+                type="number"
+                placeholder="e.g. 8"
+                min={1}
+                max={99}
+                value={sleeps}
+                onChange={(e) => setSleeps(e.target.value)}
+                className={`${inputCls} font-mono tabular-nums`}
+                style={inputStyle}
               />
             </Field>
-          </div>
-        )}
-
-        {/* Optional fields — sleeps, price, thoughts, address, dates */}
-        {showExpanded && (
-          <>
-            {/* Divider */}
-            <div className="mt-4 mb-3 flex items-center gap-2">
-              <div className="flex-1 border-t" style={{ borderColor: "var(--color-bt-border)" }} />
-              <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                Optional
-              </span>
-              <div className="flex-1 border-t" style={{ borderColor: "var(--color-bt-border)" }} />
-            </div>
-
-            <div className="space-y-3">
-              {/* Sleeps + Price */}
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Sleeps">
-                  <input
-                    type="number"
-                    placeholder="e.g. 8"
-                    min={1}
-                    max={99}
-                    value={sleeps}
-                    onChange={(e) => setSleeps(e.target.value)}
-                    className={inputCls}
-                    style={inputStyle}
-                  />
-                </Field>
-                <Field label="Cost">
-                  <div className="relative">
-                    <span
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      $
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="2,400"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      className={`${inputCls} pl-7 text-right font-mono`}
-                      style={inputStyle}
-                    />
-                  </div>
-                </Field>
+            <Field label="Cost">
+              <div className="relative">
+                <span
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  $
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="2,400"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className={`${inputCls} pl-7 text-right font-mono tabular-nums`}
+                  style={inputStyle}
+                />
               </div>
+            </Field>
+          </div>
 
-              {/* Notes */}
-              <Field label="Notes" hint="optional">
-                <textarea
-                  placeholder="e.g. great pool, tons of space, perfect grilling deck"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
+          {/* Check-in / Check-out — planning only */}
+          {showAddressAndDates && (
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Check-in">
+                <input
+                  type="date"
+                  value={checkIn}
+                  onChange={(e) => setCheckIn(e.target.value)}
+                  className={inputCls}
                   style={inputStyle}
                 />
               </Field>
-
-              {/* Address + Dates — planning only */}
-              {showAddressAndDates && (
-                <>
-                  <Field label="Location" hint="optional">
-                    <div className="relative">
-                      <MapPin
-                        size={14}
-                        className="absolute left-3 top-3.5"
-                        style={{ color: address ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Search for an address"
-                        value={address}
-                        onChange={(e) => handleAddressChange(e.target.value)}
-                        className={`${inputCls} pl-9`}
-                        style={{
-                          ...inputStyle,
-                          borderColor: address ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
-                        }}
-                      />
-                      {addressDropdown.length > 0 && (
-                        <div
-                          className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl shadow-lg"
-                          style={{
-                            background: "var(--color-bt-card-raised)",
-                            border: "1px solid var(--color-bt-border)",
-                          }}
-                        >
-                          {addressDropdown.map((p) => (
-                            <button
-                              key={p.placeId}
-                              onClick={() => selectAddress(p)}
-                              className="w-full px-3 py-2 text-left text-sm transition-opacity hover:opacity-70"
-                              style={{ color: "var(--color-bt-text)" }}
-                            >
-                              <span className="font-medium">{p.name}</span>
-                              {p.description && (
-                                <span className="ml-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                                  {p.description}
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </Field>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <Field label="Check-in">
-                      <input
-                        type="date"
-                        value={checkIn}
-                        onChange={(e) => setCheckIn(e.target.value)}
-                        className={inputCls}
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Check-out">
-                      <input
-                        type="date"
-                        value={checkOut}
-                        onChange={(e) => setCheckOut(e.target.value)}
-                        className={inputCls}
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Check-in time">
-                      <input
-                        type="time"
-                        value={checkInTimeOfDay}
-                        onChange={(e) => setCheckInTimeOfDay(e.target.value)}
-                        className={inputCls}
-                        style={inputStyle}
-                      />
-                    </Field>
-                    <Field label="Check-out time">
-                      <input
-                        type="time"
-                        value={checkOutTimeOfDay}
-                        onChange={(e) => setCheckOutTimeOfDay(e.target.value)}
-                        className={inputCls}
-                        style={inputStyle}
-                      />
-                    </Field>
-                  </div>
-                </>
-              )}
+              <Field label="Check-out">
+                <input
+                  type="date"
+                  value={checkOut}
+                  onChange={(e) => setCheckOut(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Check-in time">
+                <input
+                  type="time"
+                  value={checkInTimeOfDay}
+                  onChange={(e) => setCheckInTimeOfDay(e.target.value)}
+                  onClick={(e) => e.currentTarget.showPicker?.()}
+                  className={`${inputCls} font-mono tabular-nums`}
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Check-out time">
+                <input
+                  type="time"
+                  value={checkOutTimeOfDay}
+                  onChange={(e) => setCheckOutTimeOfDay(e.target.value)}
+                  onClick={(e) => e.currentTarget.showPicker?.()}
+                  className={`${inputCls} font-mono tabular-nums`}
+                  style={inputStyle}
+                />
+              </Field>
             </div>
-          </>
-        )}
+          )}
 
+          {/* Notes */}
+          <Field label="Notes" hint="optional">
+            <textarea
+              placeholder="e.g. great pool, tons of space, perfect grilling deck"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={inputStyle}
+            />
+          </Field>
+
+          {/* Remove property — at the end of the body, matching the
+              Receipt/Agenda edit modals (danger action above the footer). */}
+          {isEditing && onRemove && (
+            <div className="pt-1">
+              <ConfirmDeleteButton
+                label="Remove property"
+                confirmLabel="Remove"
+                prompt="Remove this property?"
+                pending={isPending}
+                testId="remove-property-btn"
+                onConfirm={onRemove}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Footer — sticky bottom. Cancel + Save side-by-side, matching
-            the MemberEditor pattern so every drawer's commit point
-            lives in the same spot. */}
+        {/* Footer — sticky bottom */}
         <div
           className="flex flex-shrink-0 gap-2 px-5 py-3"
           style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}

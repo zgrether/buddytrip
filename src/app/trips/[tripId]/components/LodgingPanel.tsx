@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, MapPin, Trash2, Hotel, Pencil, Clock, Plus, Check, Link2 } from "lucide-react";
+import { ExternalLink, MapPin, Hotel, Clock, Check, Link2, AlertTriangle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { EmptyState } from "@/components/EmptyState";
 import { SampleHeader, SampleCard, RailComposer } from "@/components/SampleSection";
@@ -66,6 +66,8 @@ interface LodgingItemFull {
    *  When set, surfaces as the LodgingCard photo strip instead of the
    *  placeholder gradient. */
   image_url?: string | null;
+  /** Up to 3 photos; image_url stays synced to the first as the cover. */
+  image_urls?: string[] | null;
 }
 
 // ── LodgingCard ───────────────────────────────────────────────────────────
@@ -74,16 +76,12 @@ function LodgingCard({
   item,
   canEdit,
   onEdit,
-  onRemove,
   onConfirmToggle,
-  removing,
 }: {
   item: LodgingItemFull;
   canEdit: boolean;
   onEdit: () => void;
-  onRemove: () => void;
   onConfirmToggle: () => void;
-  removing: boolean;
 }) {
   const platform = getPlatform(item.transport_type);
   const url = isHttpUrl(item.detail) ? item.detail! : null;
@@ -99,16 +97,55 @@ function LodgingCard({
 
   const confirmed = !!item.is_confirmed;
 
+  // A confirmed property with no check-in *and* no check-out date can't
+  // land on the itinerary — the itinerary keys off dates, so "confirmed
+  // but undated" is a dead end. Flag it so the user knows to add dates.
+  // Dates needn't fall inside the trip range (pre/post-trip stays still
+  // show up); they just have to exist.
+  const needsDates = confirmed && !item.check_in_time && !item.check_out_time;
+
   const price = item.total_price
     ? (/^[$€£¥]/.test(item.total_price) ? item.total_price : `$${item.total_price}`)
     : null;
 
+  // Photos — image_urls is the source of truth; fall back to the legacy
+  // single image_url for rows created before multi-photo. Rendered as up
+  // to three square slots, mirroring AddPropertySheet.
+  const photos = item.image_urls?.length
+    ? item.image_urls
+    : item.image_url
+      ? [item.image_url]
+      : [];
+
   return (
     <div
-      className="flex flex-col gap-2 rounded-xl p-3 transition-all"
+      onClick={canEdit ? onEdit : undefined}
+      role={canEdit ? "button" : undefined}
+      tabIndex={canEdit ? 0 : undefined}
+      onKeyDown={
+        canEdit
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onEdit();
+              }
+            }
+          : undefined
+      }
+      className={`flex flex-col gap-2 rounded-xl p-3 transition-all ${
+        canEdit
+          ? "cursor-pointer hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
+          : ""
+      }`}
       style={{
         background: confirmed ? "var(--color-bt-tag-bg)" : "var(--color-bt-card)",
-        border: `1px solid ${confirmed ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+        border: `1px solid ${
+          needsDates
+            ? "var(--color-bt-warning)"
+            : confirmed
+              ? "var(--color-bt-accent-border)"
+              : "var(--color-bt-border)"
+        }`,
       }}
     >
       {/* Photo strip — real listing photo (og:image) when we have one,
@@ -117,99 +154,99 @@ function LodgingCard({
           Carries the Confirmed pill / Confirm button bottom-right and
           the edit/delete actions top-right when canEdit. Gradient hex
           literals are spec-explicit (HANDOFF rule 4 exception). */}
-      <div
-        className="relative flex items-end justify-end rounded-lg p-2"
-        style={{
-          height: 80,
-          backgroundImage: item.image_url
-            ? `url("${item.image_url}")`
-            : "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
-        {/* Generic-property placeholder icon — centered, low opacity.
-            Shows only when we don't have a real listing photo, so the
-            tile never reads as a blank panel waiting to load. */}
-        {!item.image_url && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
-            <Hotel size={36} strokeWidth={1.5} style={{ color: "rgba(255,255,255,0.22)" }} />
-          </div>
-        )}
-
-        {/* Edit / delete — top-right overlay on the photo strip */}
-        {canEdit && (
-          <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
-            <button
-              onClick={onEdit}
-              aria-label="Edit property"
-              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-black/30"
-              style={{ background: "rgba(0,0,0,0.35)", color: "#e2e8f0" }}
-            >
-              <Pencil size={12} strokeWidth={2.25} />
-            </button>
-            <button
-              onClick={onRemove}
-              disabled={removing}
-              aria-label="Remove property"
-              className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-black/30 disabled:opacity-40"
-              style={{ background: "rgba(0,0,0,0.35)", color: "#e2e8f0" }}
-            >
-              <Trash2 size={12} strokeWidth={2.25} />
-            </button>
-          </div>
-        )}
-
-        {/* Confirmed / Confirm — bottom-right matches PropertyExample */}
-        {confirmed ? (
-          <button
-            onClick={onConfirmToggle}
-            disabled={!canEdit}
-            aria-label={canEdit ? "Mark as not confirmed" : undefined}
-            className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] transition-opacity hover:opacity-85 disabled:cursor-default"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-on-accent)",
-            }}
-          >
-            <Check size={9} strokeWidth={3.5} />
-            Confirmed
-          </button>
-        ) : canEdit ? (
-          <button
-            onClick={onConfirmToggle}
-            className="inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] transition-opacity hover:opacity-85"
-            style={{
-              background: "rgba(0,0,0,0.45)",
-              color: "#e2e8f0",
-              border: "1px solid rgba(255,255,255,0.18)",
-            }}
-          >
-            Confirm
-          </button>
-        ) : null}
+      <div className="relative">
+        {/* Three square photo slots — mirrors AddPropertySheet so the
+            card reads the same as the editor. Filled slots show the
+            photo; empty slots fall back to the placeholder gradient +
+            generic-property icon. Gradient hex literals are
+            spec-explicit (HANDOFF rule 4 exception). */}
+        <div className="grid grid-cols-3 gap-1.5">
+          {Array.from({ length: 3 }).map((_, i) => {
+            const src = photos[i];
+            return (
+              <div
+                key={i}
+                className="relative aspect-square overflow-hidden rounded-lg"
+                style={{
+                  backgroundImage: src
+                    ? `url("${src}")`
+                    : "linear-gradient(135deg, #0d2c3a 0%, #0d3a4f 100%)",
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              >
+                {!src && (
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+                    <Hotel size={26} strokeWidth={1.5} style={{ color: "rgba(255,255,255,0.18)" }} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Name + monospace meta line — same hierarchy as PropertyExample */}
+      {/* Name + monospace meta line — same hierarchy as PropertyExample.
+          The Confirm/Confirmed control sits inline with the title as a
+          pill toggle, matching the Receipts even-split "Customize…"
+          pattern. */}
       <div className="flex flex-col gap-0.5">
-        <div
-          className="truncate text-sm font-semibold"
-          style={{ color: "var(--color-bt-text)" }}
-          title={name}
-        >
-          {name}
+        <div className="flex items-center justify-between gap-2">
+          <div
+            className="min-w-0 flex-1 truncate text-sm font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+            title={name}
+          >
+            {name}
+          </div>
+          {confirmed ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canEdit) onConfirmToggle();
+              }}
+              disabled={!canEdit}
+              aria-label={canEdit ? "Mark as not confirmed" : undefined}
+              className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-85 disabled:cursor-default disabled:hover:opacity-100"
+              style={{
+                background: "var(--color-bt-accent)",
+                borderColor: "var(--color-bt-accent)",
+                color: "var(--color-bt-on-accent)",
+              }}
+            >
+              <Check size={12} strokeWidth={3} />
+              Confirmed
+            </button>
+          ) : canEdit ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onConfirmToggle();
+              }}
+              className="inline-flex flex-shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-80"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                borderColor: "var(--color-bt-accent-border)",
+                color: "var(--color-bt-accent)",
+              }}
+            >
+              Confirm
+            </button>
+          ) : null}
         </div>
-        <div
-          className="font-mono text-[11px]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {[
-            price ? price : null,
-            item.property_name ? `sleeps ${item.property_name}` : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || "—"}
-        </div>
+        {(price || item.property_name) && (
+          <div
+            className="font-mono text-[11px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {[
+              price ? price : null,
+              item.property_name ? `sleeps ${item.property_name}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        )}
       </div>
 
       {/* Notes — italic, smaller */}
@@ -243,8 +280,9 @@ function LodgingCard({
         </div>
       )}
 
-      {/* Date range */}
-      {dateRange && (
+      {/* Date range — or, when confirmed without any dates, a warning
+          chip since the property can't reach the itinerary undated. */}
+      {dateRange ? (
         <div
           className="inline-flex items-center gap-1 text-[11px]"
           style={{ color: "var(--color-bt-text-dim)" }}
@@ -252,7 +290,18 @@ function LodgingCard({
           <Clock size={10} />
           {dateRange}
         </div>
-      )}
+      ) : needsDates ? (
+        <div
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium"
+          style={{
+            background: "var(--color-bt-warning-faint)",
+            color: "var(--color-bt-warning)",
+          }}
+        >
+          <AlertTriangle size={10} />
+          Add dates to show on the itinerary
+        </div>
+      ) : null}
 
       {/* Listing link — anchored to the tile's bottom row */}
       {url && (
@@ -260,6 +309,7 @@ function LodgingCard({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           className="mt-auto inline-flex items-center gap-0.5 self-start pt-1 no-underline"
           style={{ color: "var(--color-bt-accent)" }}
         >
@@ -479,7 +529,7 @@ export function LodgingPanel({
       checkInTimeOfDay: values.checkInTimeOfDay || undefined,
       checkOutTimeOfDay: values.checkOutTimeOfDay || undefined,
       transportType: platform,
-      imageUrl: values.imageUrl || undefined,
+      imageUrls: values.imageUrls,
     });
   };
 
@@ -501,11 +551,17 @@ export function LodgingPanel({
       checkInTimeOfDay: values.checkInTimeOfDay || null,
       checkOutTimeOfDay: values.checkOutTimeOfDay || null,
       transportType: platform,
-      imageUrl: values.imageUrl || null,
+      imageUrls: values.imageUrls,
     });
   };
 
   const confirmedCount = lodgingItems.filter((i) => i.is_confirmed).length;
+  // A property is "on the itinerary" only when it's confirmed AND dated
+  // (the itinerary keys off dates). Confirmed-but-undated still counts as
+  // an open action item, so it gates the nudge below.
+  const confirmedDatedCount = lodgingItems.filter(
+    (i) => i.is_confirmed && (i.check_in_time || i.check_out_time)
+  ).length;
   const totalCount = lodgingItems.length;
 
   // Lodging items where check-in or check-out date falls outside the trip
@@ -564,17 +620,19 @@ export function LodgingPanel({
             </div>
           </div>
         )}
-        {/* Unconfirmed-properties nudge — only fires when nothing has
-            been confirmed yet (Task 70). Once at least one property is
-            locked in, the rest can sit unconfirmed as "considered but
-            not booked" without nagging. Also suppressed when the
-            warning nudge above is showing so two cards don't stack on
-            the same tab. Pairs with lodgingUnconfirmed in page.tsx,
-            which uses the same `confirmedCount === 0` test for the
-            info dot. */}
+        {/* Lodging action nudge — fires until at least one property is
+            both confirmed AND dated (i.e. actually on the itinerary).
+            Two phases:
+              • Nothing confirmed → "still being considered / tap Confirm."
+              • Confirmed but undated → "add dates so it reaches the
+                itinerary" (warning tier — the property looks decided but
+                won't show up anywhere).
+            Suppressed when the out-of-range warning above is showing so
+            two cards don't stack. Pairs with lodgingUnconfirmed in
+            page.tsx, which uses the same confirmed-AND-dated test. */}
         {canEdit &&
           outOfRangeCount === 0 &&
-          confirmedCount === 0 &&
+          confirmedDatedCount === 0 &&
           totalCount > 0 && (
             <div
               className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3"
@@ -585,30 +643,51 @@ export function LodgingPanel({
             >
               <span
                 className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{
-                  background: "var(--color-bt-accent-faint)",
-                  color: "var(--color-bt-accent)",
-                }}
+                style={
+                  confirmedCount > 0
+                    ? { background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }
+                    : { background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }
+                }
               >
                 <Hotel size={14} />
               </span>
-              <div>
-                <p
-                  className="text-[13px] font-semibold leading-tight"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {totalCount}{" "}
-                  {totalCount === 1 ? "property is" : "properties are"} still
-                  being considered
-                </p>
-                <p
-                  className="mt-0.5 text-[11px] leading-snug"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Tap Confirm on any once they&apos;re booked so the crew sees the
-                  official lodging.
-                </p>
-              </div>
+              {confirmedCount > 0 ? (
+                <div>
+                  <p
+                    className="text-[13px] font-semibold leading-tight"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {confirmedCount === 1
+                      ? "A confirmed property has no dates"
+                      : "Confirmed properties have no dates"}
+                  </p>
+                  <p
+                    className="mt-0.5 text-[11px] leading-snug"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Add a check-in / check-out so confirmed lodging shows up on
+                    the itinerary.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p
+                    className="text-[13px] font-semibold leading-tight"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {totalCount}{" "}
+                    {totalCount === 1 ? "property is" : "properties are"} still
+                    being considered
+                  </p>
+                  <p
+                    className="mt-0.5 text-[11px] leading-snug"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Tap Confirm on any once they&apos;re booked so the crew sees the
+                    official lodging.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -760,13 +839,11 @@ export function LodgingPanel({
                   item={item}
                   canEdit={canEdit}
                   onEdit={() => setEditingItem(item)}
-                  onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
                   onConfirmToggle={() =>
                     item.is_confirmed
                       ? unconfirmItem.mutate({ tripId, itemId: item.id })
                       : confirmItem.mutate({ tripId, itemId: item.id })
                   }
-                  removing={removeItem.isPending}
                 />
               ))}
             </div>
@@ -804,11 +881,19 @@ export function LodgingPanel({
               checkOut: editingItem.check_out_time ?? "",
               checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
               checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
-              imageUrl: editingItem.image_url ?? "",
+              imageUrls: editingItem.image_urls?.length
+                ? editingItem.image_urls
+                : editingItem.image_url
+                  ? [editingItem.image_url]
+                  : [],
             }}
             isPending={updateItem.isPending}
             onSubmit={handleUpdate}
             onClose={() => setEditingItem(null)}
+            onRemove={() => {
+              removeItem.mutate({ tripId, itemId: editingItem.id });
+              setEditingItem(null);
+            }}
           />
         )}
       </>
@@ -902,13 +987,11 @@ export function LodgingPanel({
                 item={item}
                 canEdit={canEdit}
                 onEdit={() => setEditingItem(item)}
-                onRemove={() => removeItem.mutate({ tripId, itemId: item.id })}
                 onConfirmToggle={() =>
                   item.is_confirmed
                     ? unconfirmItem.mutate({ tripId, itemId: item.id })
                     : confirmItem.mutate({ tripId, itemId: item.id })
                 }
-                removing={removeItem.isPending}
               />
             ))}
           </div>
@@ -959,11 +1042,19 @@ export function LodgingPanel({
             checkOut: editingItem.check_out_time ?? "",
             checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
             checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
-            imageUrl: editingItem.image_url ?? "",
+            imageUrls: editingItem.image_urls?.length
+              ? editingItem.image_urls
+              : editingItem.image_url
+                ? [editingItem.image_url]
+                : [],
           }}
           isPending={updateItem.isPending}
           onSubmit={handleUpdate}
           onClose={() => setEditingItem(null)}
+          onRemove={() => {
+            removeItem.mutate({ tripId, itemId: editingItem.id });
+            setEditingItem(null);
+          }}
         />
       )}
     </>

@@ -136,7 +136,7 @@ export function TripInvitationModal({ tripId, trip, onClose }: TripInvitationMod
             className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
             style={{
               background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
+              color: "var(--color-bt-on-accent)",
               border: "1px solid var(--color-bt-accent)",
             }}
           >

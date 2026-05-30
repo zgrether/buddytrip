@@ -256,7 +256,7 @@ export function TripSettingsModal({
                 className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                 style={{
                   background: "var(--color-bt-accent)",
-                  color: "var(--color-bt-base)",
+                  color: "var(--color-bt-on-accent)",
                 }}
               >
                 {renameMutation.isPending ? "Saving…" : "Rename"}
@@ -338,7 +338,7 @@ export function TripSettingsModal({
                     >
                       <div
                         className="flex items-start gap-2 rounded-lg px-3 py-2"
-                        style={{ background: "var(--color-bt-warning-bg, rgba(217,119,6,0.1))" }}
+                        style={{ background: "var(--color-bt-warning-faint)" }}
                       >
                         <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
                         <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
@@ -369,7 +369,7 @@ export function TripSettingsModal({
                         className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                         style={{
                           background: "var(--color-bt-accent)",
-                          color: "var(--color-bt-base)",
+                          color: "var(--color-bt-on-accent)",
                         }}
                       >
                         {changeDestinationMutation.isPending ? "Updating…" : "Update destination"}
@@ -492,7 +492,7 @@ export function TripSettingsModal({
                             className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                             style={{
                               background: "var(--color-bt-accent)",
-                              color: "var(--color-bt-base)",
+                              color: "var(--color-bt-on-accent)",
                             }}
                           >
                             {lockDatesMutation.isPending ? "Updating…" : "Update dates"}
@@ -644,7 +644,7 @@ export function TripSettingsModal({
                     className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
                     style={{
                       background: "var(--color-bt-accent)",
-                      color: "var(--color-bt-base)",
+                      color: "var(--color-bt-on-accent)",
                     }}
                   >
                     {selectedNewOwner
@@ -772,33 +772,40 @@ export function TripSettingsModal({
 
                 {clearCrewConfirming && (
                   <div
-                    className="mt-2 space-y-2 rounded-xl border p-3"
-                    style={{ borderColor: "var(--color-bt-border)" }}
+                    className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2"
+                    style={{
+                      background: "var(--color-bt-danger-faint)",
+                      border: "1px solid var(--color-bt-danger-border)",
+                    }}
                   >
-                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Permanently deletes all Crew chat messages for everyone on the
-                      trip. This cannot be undone.
-                    </p>
+                    <span
+                      className="min-w-0 flex-1 truncate text-sm font-medium"
+                      style={{ color: "var(--color-bt-danger)" }}
+                    >
+                      Clear all crew chat? Can&apos;t be undone.
+                    </span>
+                    <button
+                      onClick={() => setClearCrewConfirming(false)}
+                      disabled={clearChatMutation.isPending}
+                      className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+                      style={{
+                        background: "transparent",
+                        color: "var(--color-bt-text-dim)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      Cancel
+                    </button>
                     <button
                       data-testid="settings-confirm-clear-crew-btn"
                       disabled={clearChatMutation.isPending}
                       onClick={() =>
                         clearChatMutation.mutate({ tripId, visibility: "crew" })
                       }
-                      className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-                      style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                      className="rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                      style={{ background: "var(--color-bt-danger)", color: "white" }}
                     >
-                      {clearingVisibility === "crew" ? "Clearing…" : "Clear crew chat"}
-                    </button>
-                    <button
-                      onClick={() => setClearCrewConfirming(false)}
-                      className="w-full rounded-xl border py-2 text-sm"
-                      style={{
-                        borderColor: "var(--color-bt-border)",
-                        color: "var(--color-bt-text-dim)",
-                      }}
-                    >
-                      Cancel
+                      {clearingVisibility === "crew" ? "Clearing…" : "Clear"}
                     </button>
                   </div>
                 )}
@@ -836,35 +843,40 @@ export function TripSettingsModal({
 
                 {clearOrgConfirming && (
                   <div
-                    className="mt-2 space-y-2 rounded-xl border p-3"
-                    style={{ borderColor: "var(--color-bt-border)" }}
+                    className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2"
+                    style={{
+                      background: "var(--color-bt-danger-faint)",
+                      border: "1px solid var(--color-bt-danger-border)",
+                    }}
                   >
-                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Permanently deletes all Organizers chat messages for every owner
-                      and organizer. This cannot be undone.
-                    </p>
+                    <span
+                      className="min-w-0 flex-1 truncate text-sm font-medium"
+                      style={{ color: "var(--color-bt-danger)" }}
+                    >
+                      Clear all organizer chat? Can&apos;t be undone.
+                    </span>
+                    <button
+                      onClick={() => setClearOrgConfirming(false)}
+                      disabled={clearChatMutation.isPending}
+                      className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+                      style={{
+                        background: "transparent",
+                        color: "var(--color-bt-text-dim)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
+                    >
+                      Cancel
+                    </button>
                     <button
                       data-testid="settings-confirm-clear-org-btn"
                       disabled={clearChatMutation.isPending}
                       onClick={() =>
                         clearChatMutation.mutate({ tripId, visibility: "planning" })
                       }
-                      className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-                      style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                      className="rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                      style={{ background: "var(--color-bt-danger)", color: "white" }}
                     >
-                      {clearingVisibility === "planning"
-                        ? "Clearing…"
-                        : "Clear organizer chat"}
-                    </button>
-                    <button
-                      onClick={() => setClearOrgConfirming(false)}
-                      className="w-full rounded-xl border py-2 text-sm"
-                      style={{
-                        borderColor: "var(--color-bt-border)",
-                        color: "var(--color-bt-text-dim)",
-                      }}
-                    >
-                      Cancel
+                      {clearingVisibility === "planning" ? "Clearing…" : "Clear"}
                     </button>
                   </div>
                 )}
@@ -898,32 +910,39 @@ export function TripSettingsModal({
               </button>
 
               {deleteConfirming && (
-                <div className="mt-2 space-y-2 rounded-xl border p-3" style={{ borderColor: "var(--color-bt-border)" }}>
-                  <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                    Delete <strong>{tripName}</strong>?
-                  </p>
-                  <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    This will permanently delete the trip and remove it for all crew members.
-                    This cannot be undone.
-                  </p>
+                <div
+                  className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2"
+                  style={{
+                    background: "var(--color-bt-danger-faint)",
+                    border: "1px solid var(--color-bt-danger-border)",
+                  }}
+                >
+                  <span
+                    className="min-w-0 flex-1 truncate text-sm font-medium"
+                    style={{ color: "var(--color-bt-danger)" }}
+                  >
+                    Delete {tripName}? Can&apos;t be undone.
+                  </span>
+                  <button
+                    onClick={() => setDeleteConfirming(false)}
+                    disabled={deleteMutation.isPending}
+                    className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+                    style={{
+                      background: "transparent",
+                      color: "var(--color-bt-text-dim)",
+                      border: "1px solid var(--color-bt-border)",
+                    }}
+                  >
+                    Cancel
+                  </button>
                   <button
                     data-testid="settings-confirm-delete-btn"
                     disabled={deleteMutation.isPending}
                     onClick={() => deleteMutation.mutate({ tripId })}
-                    className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+                    className="rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                    style={{ background: "var(--color-bt-danger)", color: "white" }}
                   >
-                    {deleteMutation.isPending ? "Deleting…" : "Delete trip"}
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirming(false)}
-                    className="w-full rounded-xl border py-2 text-sm"
-                    style={{
-                      borderColor: "var(--color-bt-border)",
-                      color: "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    Cancel
+                    {deleteMutation.isPending ? "Deleting…" : "Delete"}
                   </button>
                 </div>
               )}
