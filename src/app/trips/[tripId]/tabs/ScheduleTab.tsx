@@ -525,6 +525,11 @@ export function ScheduleTab({
   const [dayPickerItem, setDayPickerItem] = useState<ScheduleItem | null>(null);
   const [linkCompEvent, setLinkCompEvent] = useState<EventRow | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
+  // Mirrors "a row is being dragged" as real state. dragState is a ref (so the
+  // drop handlers can read it synchronously), but isDragging must re-render
+  // reliably on drag end — even when the dragOver states are already at their
+  // defaults (e.g. released in empty space after a dragLeave reset them).
+  const [draggingActive, setDraggingActive] = useState(false);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
   // Type of competition event currently being dragged (null when no comp drag).
@@ -799,6 +804,7 @@ export function ScheduleTab({
   // the dimmed "dragging" opacity because isDragging reads from dragState.
   const handleDragEnd = () => {
     dragState.current = null;
+    setDraggingActive(false);
     setDragOverGroup(false);
     setDragOverIdx(null);
   };
@@ -807,6 +813,7 @@ export function ScheduleTab({
     if (!dragState.current) return;
     const { groupDate: sourceDate, idx: fromIdx, item: draggedItem } = dragState.current;
     dragState.current = null;
+    setDraggingActive(false);
     setDragOverGroup(false);
     setDragOverIdx(null);
 
@@ -1114,6 +1121,7 @@ export function ScheduleTab({
                           isFirst={idx === 0}
                           isLast={idx === unscheduledItems.length - 1}
                           isDragging={
+                            draggingActive &&
                             !!dragState.current &&
                             dragState.current.groupDate === null &&
                             dragState.current.idx === idx
@@ -1126,6 +1134,7 @@ export function ScheduleTab({
                           }
                           onDragStart={() => {
                             dragState.current = { groupDate: null, idx, item };
+                            setDraggingActive(true);
                           }}
                           onDragEnd={handleDragEnd}
                           onDragOver={(e) => {
@@ -1370,6 +1379,7 @@ export function ScheduleTab({
                               isFirst={idx === 0}
                               isLast={idx === group.items.length - 1}
                               isDragging={
+                                draggingActive &&
                                 !!dragState.current &&
                                 dragState.current.groupDate === group.date &&
                                 dragState.current.idx === idx
@@ -1380,7 +1390,7 @@ export function ScheduleTab({
                                 dragOverIdx.idx === idx &&
                                 dragState.current?.idx !== idx
                               }
-                              onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
+                              onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; setDraggingActive(true); }}
                               onDragEnd={handleDragEnd}
                               onDragOver={(e) => {
                                 e.preventDefault();
