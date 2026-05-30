@@ -848,6 +848,13 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   const restCrew = sortedAll.filter((m) => m.role === "Member");
   const totalCount = members.length;
 
+  // Email-the-crew is available whenever at least one *other* member has an
+  // email on file (the current user can't email themselves). Drives the
+  // header-corner button below.
+  const hasEmailableCrew = members.some(
+    (m) => m.user_id !== currentUser?.id && !!m.user?.email
+  );
+
   // ── Read-only roster view: Owner gets the management chrome below;
   // everyone else (including Planner/Organizer) sees this read-only
   // list. We gate on isOwner rather than the broader canEdit because
@@ -942,11 +949,29 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             </>
           )
         }
-        // The previous header-corner email button has been retired —
-        // its job moved into the Pending Invite / Invited nudges below,
-        // where the action sits next to the count it acts on. Keeping
-        // a duplicate in the corner was redundant and didn't read as
-        // related to either nudge.
+        // Header-corner "Email the crew" button — visible/enabled whenever
+        // any other crew member has an email on file. Stays visible at
+        // every viewport (actionAlwaysVisible) since the FAB only
+        // substitutes for the *add* CTA, not this secondary action.
+        desktopAction={
+          hasEmailableCrew ? (
+            <button
+              type="button"
+              onClick={() => setShowEmailModal(true)}
+              data-testid="email-crew-btn"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Mail size={13} />
+              Email the crew
+            </button>
+          ) : undefined
+        }
+        actionAlwaysVisible
       />
 
       {/* Two crew nudges — only fire for Owner.
