@@ -5,6 +5,7 @@ import {
   Calendar,
   CalendarDays,
   CalendarPlus,
+  Check,
   Clock,
   Flag,
   MapPin,
@@ -351,21 +352,22 @@ function ScheduleItemRow({
           round-7 item 4) since they're inherently unconfirmed. */}
       {!isOnDeck && (
         <span
-          className="mt-0.5 flex-shrink-0 self-start rounded-[4px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+          className="mt-0.5 inline-flex flex-shrink-0 items-center gap-1 self-start rounded-full px-2.5 py-1 text-xs font-semibold"
           style={
             item.is_confirmed
               ? {
-                  background: "var(--color-bt-accent-faint)",
-                  color: "var(--color-bt-accent)",
-                  border: "0.5px solid var(--color-bt-accent-border)",
+                  background: "var(--color-bt-accent)",
+                  border: "1px solid var(--color-bt-accent)",
+                  color: "var(--color-bt-on-accent)",
                 }
               : {
                   background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text-dim)",
-                  border: "0.5px dashed var(--color-bt-border)",
+                  border: "1px solid var(--color-bt-accent-border)",
+                  color: "var(--color-bt-accent)",
                 }
           }
         >
+          {item.is_confirmed && <Check size={12} strokeWidth={3} />}
           {item.is_confirmed ? "Confirmed" : "Draft"}
         </span>
       )}
