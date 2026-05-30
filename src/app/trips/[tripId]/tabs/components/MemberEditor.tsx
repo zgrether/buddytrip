@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpCircle, Check, Crown, Loader2, Mail, Send, Trash2, X } from "lucide-react";
+import { ArrowUpCircle, Check, Crown, Loader2, Mail, Send, X } from "lucide-react";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { Avatar } from "@/components/Avatar";
@@ -288,8 +289,9 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
         aria-label={`Edit ${member.displayName}`}
         className={[
           "fixed z-50 flex flex-col",
-          // Mobile (<640): bottom-anchored sheet, ~82% height
-          "inset-x-0 bottom-0 h-[82vh] rounded-t-2xl",
+          // Mobile (<640): bottom-anchored sheet that sizes to content
+          // (capped at 90vh), matching the other edit sheets.
+          "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
           // Tablet + desktop (≥640): right-anchored drawer, full height,
           // 440px wide per the canonical edit-drawer spec.
           "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:w-[440px] sm:rounded-none",
@@ -515,21 +517,18 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             />
           </div>
 
-          {/* Danger — remove from trip */}
+          {/* Remove from trip — at the end of the body, matching the
+              other edit modals (danger action above the footer). */}
           {!isOwnerRow && (
-            <button
-              onClick={handleRemove}
-              disabled={removeMember.isPending || removeGuest.isPending}
-              className="mt-2 inline-flex items-center justify-center gap-1.5 self-start rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40"
-              style={{
-                background: "transparent",
-                color: "var(--color-bt-danger)",
-                border: "1px solid var(--color-bt-danger-border)",
-              }}
-            >
-              <Trash2 size={13} />
-              Remove from trip
-            </button>
+            <div className="pt-1">
+              <ConfirmDeleteButton
+                label="Remove from trip"
+                confirmLabel="Remove"
+                prompt="Remove this person from the trip?"
+                pending={removeMember.isPending || removeGuest.isPending}
+                onConfirm={handleRemove}
+              />
+            </div>
           )}
         </div>
 
@@ -577,7 +576,9 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           </div>
         )}
 
-        {/* Footer — Save / Cancel */}
+        {/* Footer — Cancel/Save row. The destructive "Remove from trip"
+            action lives at the end of the scrollable body (danger-above
+            pattern), matching the other edit modals. */}
         <div
           className="flex gap-2 px-4 py-3"
           style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
