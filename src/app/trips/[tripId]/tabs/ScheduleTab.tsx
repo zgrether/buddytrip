@@ -294,7 +294,13 @@ function ScheduleItemRow({
               border: "1px solid var(--color-bt-border)",
             }}
           >
-            <Trophy size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+            {/* Competition-event icons are gray; golf events use a flag,
+                everything else uses a star (matching the events panel). */}
+            {ce.type === "GOLF" ? (
+              <Flag size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+            ) : (
+              <Star size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+            )}
             <p className="min-w-0 flex-1 truncate text-[12px] font-medium" style={{ color: "var(--color-bt-text)" }}>
               {ce.title}
             </p>
@@ -1007,7 +1013,7 @@ export function ScheduleTab({
                     className="text-[11px] font-bold uppercase tracking-[0.12em]"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    On Deck
+                    Not scheduled yet
                   </h4>
                 </div>
                 {canEdit && (
@@ -1285,7 +1291,7 @@ export function ScheduleTab({
                   style={{ color: "var(--color-bt-text-dim)" }}
                 >
                   {trip.start_date
-                    ? "Nothing on the schedule yet — drag from On Deck onto a day."
+                    ? "Nothing on the schedule yet — drag an item onto a day."
                     : "Set trip dates to see the day-by-day schedule."}
                 </p>
               ) : (
@@ -1605,7 +1611,7 @@ export function ScheduleTab({
                     background: "transparent",
                   }}
                 >
-                  Return to On Deck
+                  Return to Not Scheduled Yet
                 </button>
               )}
               <button
