@@ -26,6 +26,12 @@ interface AvatarProps {
   teamColor?: string | null;
   /** sm=24px, md=36px, lg=72px */
   size?: "sm" | "md" | "lg";
+  /**
+   * Renders the initials/icon in muted grey instead of teal. Use for
+   * placeholder identities (e.g. crew with no email yet) so the teal
+   * foreground stays reserved for "real"/actionable members.
+   */
+  muted?: boolean;
   className?: string;
 }
 
@@ -69,6 +75,7 @@ export function Avatar({
   avatarIcon,
   teamColor,
   size = "md",
+  muted = false,
   className,
 }: AvatarProps) {
   const { circle, icon: iconSize, initials: initialsSize } = SIZE_MAP[size];
@@ -77,7 +84,11 @@ export function Avatar({
   // Competition context (team color set) → white foreground on team-color bg
   const competitionMode = !!teamColor;
   const background = competitionMode ? (teamColor as string) : "var(--color-bt-card-raised)";
-  const foreground = competitionMode ? "#ffffff" : "var(--color-bt-accent)";
+  const foreground = competitionMode
+    ? "#ffffff"
+    : muted
+      ? "var(--color-bt-text-dim)"
+      : "var(--color-bt-accent)";
   const border = competitionMode ? "none" : "1.5px solid var(--color-bt-border)";
 
   // Look up the icon component. If avatarIcon is set but unknown (e.g. an

@@ -359,7 +359,7 @@ export function CrewEmailPanel({ trip, isOwner, onClose }: CrewEmailPanelProps) 
                     color: "var(--color-bt-text)",
                   }}
                 >
-                  <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" />
+                  <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" muted />
                   <span className="text-xs font-medium">{m.displayName}</span>
                 </span>
               ))}

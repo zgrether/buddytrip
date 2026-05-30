@@ -1203,7 +1203,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           <div
             className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl"
             style={{
-              background: "var(--color-bt-base)",
+              background: "var(--color-bt-card)",
               maxHeight: "90dvh",
             }}
           >
