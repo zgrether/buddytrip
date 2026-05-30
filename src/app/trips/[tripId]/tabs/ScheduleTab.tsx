@@ -194,7 +194,7 @@ function ScheduleItemRow({
               }
             : undefined
         }
-        className={`mb-2 flex ${isOnDeck ? "items-center" : "items-start"} gap-2 rounded-xl px-4 py-3 transition-all ${
+        className={`mb-2 flex items-center gap-2 rounded-xl px-4 py-3 transition-all ${
           canEdit
             ? "cursor-pointer hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
             : ""
@@ -218,16 +218,16 @@ function ScheduleItemRow({
       {movable && (
         <GripVertical
           size={16}
-          className={`${isOnDeck ? "" : "mt-0.5"} hidden flex-shrink-0 cursor-grab lg:block`}
+          className="hidden flex-shrink-0 cursor-grab lg:block"
           style={{ color: "var(--color-bt-text-dim)" }}
         />
       )}
 
       {/* Type icon — always present so text aligns across item types */}
       {item.item_type === "golf" ? (
-        <Flag size={14} className={`${isOnDeck ? "" : "mt-0.5"} flex-shrink-0`} style={{ color: "var(--color-bt-accent)" }} />
+        <Flag size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
       ) : (
-        <Calendar size={14} className={`${isOnDeck ? "" : "mt-0.5"} flex-shrink-0`} style={{ color: "var(--color-bt-text-dim)" }} />
+        <Calendar size={14} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
       )}
 
       <div className="min-w-0 flex-1">
