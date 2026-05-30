@@ -112,6 +112,7 @@ function ScheduleItemRow({
   isDragging,
   showDropIndicator,
   onDragStart,
+  onDragEnd,
   onDragOver,
   onDrop,
   onCompEventDrop,
@@ -130,6 +131,9 @@ function ScheduleItemRow({
   isDragging: boolean;
   showDropIndicator: boolean;
   onDragStart: () => void;
+  /** Fires when the drag gesture ends, including when the item is released
+   *  outside any drop target. Clears drag state so the row returns to normal. */
+  onDragEnd?: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
@@ -171,6 +175,7 @@ function ScheduleItemRow({
       <div
         draggable={movable}
         onDragStart={movable ? onDragStart : undefined}
+        onDragEnd={movable ? onDragEnd : undefined}
         onDragOver={canEdit ? onDragOver : undefined}
         onDrop={canEdit ? (e) => {
           const compEventId = e.dataTransfer.getData(DND_EVENT_KEY);
@@ -784,6 +789,15 @@ export function ScheduleTab({
     reorderInGroup(groupDate, newItems);
   };
 
+  // Resets drag state when a gesture ends without a successful drop (e.g. the
+  // user releases outside any target). Without this the source row stays at
+  // the dimmed "dragging" opacity because isDragging reads from dragState.
+  const handleDragEnd = () => {
+    dragState.current = null;
+    setDragOverGroup(false);
+    setDragOverIdx(null);
+  };
+
   const handleDragDrop = (targetGroupDate: string | null, targetItems: ScheduleItem[], toIdx: number) => {
     if (!dragState.current) return;
     const { groupDate: sourceDate, idx: fromIdx, item: draggedItem } = dragState.current;
@@ -1108,6 +1122,7 @@ export function ScheduleTab({
                           onDragStart={() => {
                             dragState.current = { groupDate: null, idx, item };
                           }}
+                          onDragEnd={handleDragEnd}
                           onDragOver={(e) => {
                             // The panel only accepts reordering of items already
                             // here — scheduled items leave the agenda via the X,
@@ -1361,6 +1376,7 @@ export function ScheduleTab({
                                 dragState.current?.idx !== idx
                               }
                               onDragStart={() => { dragState.current = { groupDate: group.date, idx, item }; }}
+                              onDragEnd={handleDragEnd}
                               onDragOver={(e) => {
                                 e.preventDefault();
                                 setDragOverIdx({ groupDate: group.date, idx });
