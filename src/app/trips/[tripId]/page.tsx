@@ -220,10 +220,11 @@ export default function TripDetailPage() {
   // tab via a stale `?tab=comp` URL (from browser-back to a previous
   // owner-side URL state) and see CompTab render even though the tab
   // button itself is hidden in their tab bar.
-  // Comp tab is default-visible for editors (matches TripTabBar). The
-  // invitation card has moved inside the tab, so showing the tab itself
-  // is what gives the owner an entry point. Members still gate on showComp.
-  const canShowCompTab = effectiveCanEdit || showComp;
+  // Competition is an owner/organizer-only authoring surface (matches
+  // TripTabBar). Members never see the tab — they follow a live competition
+  // through the bottom-nav "Live" entry / leaderboard route instead. This
+  // also snaps a member back to "home" if they land on a stale ?tab=comp URL.
+  const canShowCompTab = effectiveCanEdit;
   const canShowLodgingTab =
     stage !== "idea" && effectiveCanEdit;
   const canShowScheduleTab = effectiveCanEdit;
@@ -461,7 +462,6 @@ export default function TripDetailPage() {
               <TripTabBar
                 activeTab={activeTab}
                 onTabChange={(tab) => setActiveTab(tab)}
-                showComp={showComp}
                 canEdit={canEdit}
                 stage={stage}
                 badges={tabBadges}

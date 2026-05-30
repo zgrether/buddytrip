@@ -22,7 +22,6 @@ const ALL_TABS: TabDef[] = [
 interface TripTabBarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
-  showComp?: boolean;
   canEdit?: boolean;
   /** Trip stage — used to disable Expenses in PLANNING and hide Competition */
   stage?: string;
@@ -40,7 +39,6 @@ interface TripTabBarProps {
 export const TripTabBar: FC<TripTabBarProps> = ({
   activeTab,
   onTabChange,
-  showComp = false,
   canEdit = false,
   stage,
   badges,
@@ -50,13 +48,10 @@ export const TripTabBar: FC<TripTabBarProps> = ({
 
   const tabs = ALL_TABS.filter((t) => {
     if (t.id === "comp") {
-      // Comp tab is now an editor surface by default — owners/planners see
-      // the tab from PLANNING onwards and the invitation-card lives inside
-      // the tab itself. Members continue to access competition via the
-      // bottom nav once the comp is active (showComp is still consulted
-      // for the member-facing path, but it doesn't gate the editor tab).
-      if (canEdit) return true;
-      return showComp;
+      // Competition is an owner/organizer-only authoring surface. Members
+      // never see the tab — they follow a *live* competition through the
+      // bottom nav's "Live" entry (the leaderboard route) instead.
+      return canEdit;
     }
     // Lodging and Expenses are only meaningful once a destination is locked in —
     // keep them out of the IDEA stage. PLANNING and GOING both show all five

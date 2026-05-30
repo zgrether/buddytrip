@@ -106,29 +106,30 @@ describe("Stage-gated bottom nav visibility", () => {
 describe("Stage-gated tab bar — tab filtering", () => {
   const ALL_TAB_IDS = ["home", "crew", "schedule", "expenses", "comp"];
 
-  function getVisibleTabs(stage: string, canEdit: boolean, showComp: boolean) {
+  // Competition is an owner/organizer-only authoring surface: the tab shows
+  // iff the viewer can edit (Owner or Planner), independent of stage or
+  // whether a competition row exists. Members reach a live competition via
+  // the bottom-nav "Live" entry instead.
+  function getVisibleTabs(canEdit: boolean) {
     return ALL_TAB_IDS.filter((id) => {
-      if (id === "comp") {
-        if (stage === "planning") return false;
-        return canEdit && showComp;
-      }
+      if (id === "comp") return canEdit;
       return true;
     });
   }
 
-  it("PLANNING stage hides Competition tab even when comp exists", () => {
-    const tabs = getVisibleTabs("planning", true, true);
+  it("hides Competition tab from members (non-editors)", () => {
+    const tabs = getVisibleTabs(false);
     expect(tabs).not.toContain("comp");
     expect(tabs).toEqual(["home", "crew", "schedule", "expenses"]);
   });
 
-  it("READY stage shows Competition tab when comp exists", () => {
-    const tabs = getVisibleTabs("going", true, true);
+  it("shows Competition tab for owners/organizers (editors)", () => {
+    const tabs = getVisibleTabs(true);
     expect(tabs).toContain("comp");
   });
 
   it("Expenses tab is always present in tab list (disabled state handled at click level)", () => {
-    const tabs = getVisibleTabs("planning", true, false);
+    const tabs = getVisibleTabs(true);
     expect(tabs).toContain("expenses");
   });
 });
