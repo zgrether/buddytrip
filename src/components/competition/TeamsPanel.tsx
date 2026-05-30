@@ -978,15 +978,15 @@ function TeamSheet({
     : 0;
 
   const create = trpc.teams.create.useMutation({
-    onSettled: () => utils.teams.list.invalidate(),
+    onSettled: () => utils.teams.list.invalidate({ tripId, competitionId }),
   });
   const update = trpc.teams.update.useMutation({
-    onSettled: () => utils.teams.list.invalidate(),
+    onSettled: () => utils.teams.list.invalidate({ tripId, competitionId }),
   });
   const deleteTeam = trpc.teams.delete.useMutation({
     onSettled: () => {
-      utils.teams.list.invalidate();
-      utils.teamAssignments.list.invalidate();
+      utils.teams.list.invalidate({ tripId, competitionId });
+      utils.teamAssignments.list.invalidate({ tripId, competitionId });
     },
     onSuccess: () => {
       setConfirmingDelete(false);
