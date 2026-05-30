@@ -397,7 +397,7 @@ function ScheduleItemRow({
           </button>
         )}
 
-        {movable && (
+        {movable && !(isFirst && isLast) && (
           <div className="flex flex-col lg:hidden">
             <button
               onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
