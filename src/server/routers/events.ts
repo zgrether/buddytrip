@@ -202,20 +202,25 @@ export const eventsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      // One UPDATE per row keeps things simple and stays within RLS scope.
-      for (let i = 0; i < input.orderedIds.length; i++) {
-        const id = input.orderedIds[i];
-        const { error } = await ctx.supabase
-          .from("events")
-          .update({ sort_order: i, updated_at: new Date().toISOString() })
-          .eq("id", id)
-          .eq("competition_id", input.competitionId);
-        if (error) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to reorder events: ${error.message}`,
-          });
-        }
+      // One UPDATE per row (stays within RLS scope), but fired in parallel so
+      // reordering N events costs one round-trip instead of N sequential ones.
+      const now = new Date().toISOString();
+      const results = await Promise.all(
+        input.orderedIds.map((id, i) =>
+          ctx.supabase
+            .from("events")
+            .update({ sort_order: i, updated_at: now })
+            .eq("id", id)
+            .eq("competition_id", input.competitionId)
+        )
+      );
+
+      const failure = results.find((r) => r.error);
+      if (failure?.error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reorder events: ${failure.error.message}`,
+        });
       }
 
       return { success: true };

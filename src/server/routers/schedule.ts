@@ -258,20 +258,25 @@ export const scheduleRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      // Batch update sort_order based on position in the array
-      for (let i = 0; i < input.itemIds.length; i++) {
-        const { error } = await ctx.supabase
-          .from("schedule_items")
-          .update({ sort_order: i })
-          .eq("id", input.itemIds[i])
-          .eq("trip_id", ctx.tripId);
+      // Update sort_order from array position. Fire all updates in parallel —
+      // a drag of N items was N sequential round-trips; Promise.all collapses
+      // the wall-clock cost to a single round-trip's worth.
+      const results = await Promise.all(
+        input.itemIds.map((id, i) =>
+          ctx.supabase
+            .from("schedule_items")
+            .update({ sort_order: i })
+            .eq("id", id)
+            .eq("trip_id", ctx.tripId)
+        )
+      );
 
-        if (error) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to reorder item ${input.itemIds[i]}`,
-          });
-        }
+      const failed = results.findIndex((r) => r.error);
+      if (failed !== -1) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reorder item ${input.itemIds[failed]}`,
+        });
       }
 
       return { success: true };
