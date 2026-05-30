@@ -1176,63 +1176,17 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           }}
         >
           <div
-            className="relative w-full max-w-lg overflow-hidden rounded-t-2xl sm:rounded-2xl"
+            className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl"
             style={{
               background: "var(--color-bt-base)",
               maxHeight: "90dvh",
-              display: "flex",
-              flexDirection: "column",
             }}
           >
-            <div
-              className="flex flex-shrink-0 items-center gap-3 px-4 py-3"
-              style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-            >
-              <span
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{
-                  background: "var(--color-bt-accent-faint)",
-                  color: "var(--color-bt-accent)",
-                }}
-              >
-                <Mail size={15} />
-              </span>
-              <span
-                className="flex-1 text-sm font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                Email the Crew
-              </span>
-              <button
-                onClick={() => setShowEmailModal(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg transition-opacity hover:opacity-70"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-                aria-label="Close"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="overflow-y-auto p-4">
-              <CrewEmailPanel trip={trip} isOwner={isOwner} />
-            </div>
-            <div
-              className="flex flex-shrink-0 justify-end px-4 py-3"
-              style={{ borderTop: "1px solid var(--color-bt-border)" }}
-            >
-              <button
-                onClick={() => setShowEmailModal(false)}
-                className="rounded-xl px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text)",
-                }}
-              >
-                Cancel
-              </button>
-            </div>
+            <CrewEmailPanel
+              trip={trip}
+              isOwner={isOwner}
+              onClose={() => setShowEmailModal(false)}
+            />
           </div>
         </div>
       )}
