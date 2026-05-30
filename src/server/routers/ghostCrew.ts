@@ -25,12 +25,18 @@ export const ghostCrewRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Normalize email to lowercase so storage + lookups stay consistent
+      // with inviteByEmail (which already lowercases) and the lower-email
+      // index. Without this, "Bob@x.com" and "bob@x.com" produce duplicate
+      // accounts and miss each other on lookup.
+      const email = input.email?.trim().toLowerCase() || null;
+
       // If email provided, check it against existing accounts
-      if (input.email) {
+      if (email) {
         const { data: existingUser } = await ctx.supabase
           .from("users")
           .select("id, is_guest")
-          .eq("email", input.email)
+          .eq("email", email)
           .maybeSingle();
 
         if (existingUser && !existingUser.is_guest) {
@@ -87,7 +93,7 @@ export const ghostCrewRouter = router({
           return {
             id: existingUser.id,
             name: input.name,
-            email: input.email ?? null,
+            email,
             is_guest: false,
             created_by: null,
             created_at: null,
@@ -142,7 +148,7 @@ export const ghostCrewRouter = router({
             /* never block the add on a failed system message */
           }
 
-          return { id: existingUser.id, name: input.name, email: input.email ?? null, is_guest: true, created_by: null, created_at: null, role: input.role };
+          return { id: existingUser.id, name: input.name, email, is_guest: true, created_by: null, created_at: null, role: input.role };
         }
       }
 
@@ -153,7 +159,7 @@ export const ghostCrewRouter = router({
         .insert({
           id: guestId,
           name: input.name,
-          email: input.email ?? null,
+          email,
           is_guest: true,
           created_by: ctx.user!.id,
         })
@@ -227,6 +233,10 @@ export const ghostCrewRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
+      // Normalize to lowercase, preserving null (clear) vs undefined (no change).
+      const email =
+        input.email == null ? input.email : input.email.trim().toLowerCase();
+
       // Verify this guest is a member of this trip
       const { data: membership } = await ctx.supabase
         .from("trip_members")
@@ -243,11 +253,11 @@ export const ghostCrewRouter = router({
       }
 
       // ── Auto-link branch: email matches an existing real BT account ───
-      if (input.email) {
+      if (email) {
         const { data: existingUser } = await ctx.supabase
           .from("users")
           .select("id, name, email, is_guest, created_at")
-          .eq("email", input.email)
+          .eq("email", email)
           .maybeSingle();
 
         if (existingUser && !existingUser.is_guest) {
@@ -289,7 +299,7 @@ export const ghostCrewRouter = router({
       // ── Plain ghost update ────────────────────────────────────────────
       const update: Record<string, unknown> = {};
       if (input.name !== undefined) update.name = input.name;
-      if (input.email !== undefined) update.email = input.email;
+      if (input.email !== undefined) update.email = email;
 
       if (Object.keys(update).length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });

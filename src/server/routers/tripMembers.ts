@@ -116,10 +116,12 @@ export const tripMembersRouter = router({
       const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       if (!ok) return { result: "invalid" as const };
 
+      // Exact match on the normalized (lowercased) email. inviteByEmail
+      // already does this; ilike couldn't use a btree and seq-scanned users.
       const { data, error } = await ctx.supabase
         .from("users")
         .select("id, is_guest")
-        .ilike("email", email)
+        .eq("email", email)
         .maybeSingle();
 
       if (error) {
