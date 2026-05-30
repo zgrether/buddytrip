@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, X, Search, MapPin } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 
 const GOLF_TYPES = ["golf_course"];
@@ -43,6 +44,10 @@ interface AddScheduleItemSheetProps {
   itemType: "general" | "golf";
   editItem?: ScheduleItemData | null;
   onClose: () => void;
+  /** When editing, wires the footer "Remove from agenda" danger button. */
+  onRemove?: () => void;
+  /** Whether the remove mutation is in flight (disables the button). */
+  removing?: boolean;
 }
 
 // ── Places Autocomplete Hook ─────────────────────────────────────────────
@@ -93,6 +98,8 @@ export function AddScheduleItemSheet({
   itemType,
   editItem,
   onClose,
+  onRemove,
+  removing,
 }: AddScheduleItemSheetProps) {
   useModalBackButton(onClose);
   const utils = trpc.useUtils();
@@ -298,6 +305,7 @@ export function AddScheduleItemSheet({
           // Golf: confirmed as soon as tee times or walk-on are set,
           // regardless of whether the round is on a day yet.
           isConfirmed: golfConfirmed,
+          courseId: course.id,
           courseName: selectedCourse.name,
           courseLocation: selectedCourse.address || null,
           teeTimes: golfTeeTimes,
@@ -352,12 +360,46 @@ export function AddScheduleItemSheet({
     setTeeTimes((prev) => prev.map((t, i) => (i === idx ? val : t)));
 
   const inputStyle = {
-    background: "var(--color-bt-card-raised)",
+    background: "var(--color-bt-card)",
     borderColor: "var(--color-bt-border)",
     color: "var(--color-bt-text)",
   };
 
-  const canSubmit = isGolf ? !!selectedCourse : !!title.trim();
+  // Dirty check — in edit mode the Save button stays disabled until the user
+  // actually changes a field, mirroring the lodging/receipts sheets.
+  const isDirty = (() => {
+    if (!isEditing) return true;
+    if (isGolf) {
+      const initialCourseName = editItem?.course?.name ?? editItem?.course_name ?? "";
+      const initialCourseAddr =
+        editItem?.course?.address ?? editItem?.course_location ?? "";
+      const initialWalkOn =
+        !!editItem &&
+        editItem.item_type === "golf" &&
+        Array.isArray(editItem.tee_times) &&
+        editItem.tee_times.length === 0;
+      const initialTeeTimes = editItem?.tee_times ?? [];
+      const currentTeeTimes = isWalkOn ? [] : teeTimes.filter((t) => t.trim());
+      return (
+        (selectedCourse?.name ?? "") !== initialCourseName ||
+        (selectedCourse?.address ?? "") !== initialCourseAddr ||
+        scheduledDate !== (editItem?.scheduled_date ?? "") ||
+        isWalkOn !== initialWalkOn ||
+        JSON.stringify(currentTeeTimes) !== JSON.stringify(initialTeeTimes)
+      );
+    }
+    return (
+      title !== (editItem?.title ?? "") ||
+      detail !== (editItem?.detail ?? "") ||
+      scheduledDate !== (editItem?.scheduled_date ?? "") ||
+      scheduledTime !== (editItem?.scheduled_time ?? "") ||
+      (selectedLocation?.name ?? "") !== (editItem?.course_name ?? "") ||
+      (selectedLocation?.address ?? "") !== (editItem?.course_location ?? "")
+    );
+  })();
+
+  const canSubmit =
+    (isGolf ? !!selectedCourse : !!title.trim()) && isDirty;
 
   return (
     <>
@@ -398,37 +440,49 @@ export function AddScheduleItemSheet({
       >
         {/* Header — sticky top */}
         <div
-          className="flex-shrink-0 px-5 pb-3 pt-4"
+          className="flex flex-shrink-0 items-center justify-between gap-3 px-5 pb-3 pt-4"
           style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
-          <h2
-            className="text-lg font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
+          {isEditing ? (
+            <div className="min-w-0">
+              <div
+                className="text-[10px] font-bold uppercase tracking-[0.12em]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Agenda
+              </div>
+              <div
+                className="mt-0.5 truncate text-[15px] font-bold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                {title || (isGolf ? "Golf round" : "Untitled activity")}
+              </div>
+            </div>
+          ) : (
+            <h2
+              className="text-base font-semibold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              Add to Agenda
+            </h2>
+          )}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
           >
-            {isEditing
-              ? isGolf ? "Edit Golf Round" : "Edit Activity"
-              : "Add to Agenda"}
-          </h2>
+            <X size={16} />
+          </button>
         </div>
 
         {/* Body — scrollable */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
 
-        {/* Helper caption per round-4 item 7 — sets expectations for
-            the type-selector + form below. */}
-        {!isEditing && (
-          <p
-            className="mt-1 text-[12px] leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Pick a type, then fill in the basics.
-          </p>
-        )}
-
         {/* ── Type selector (add mode only) ────────────────────────────── */}
         {!isEditing && (
           <div
-            className="mt-3 inline-flex rounded-xl p-1"
+            className="mb-2 inline-flex rounded-xl p-1"
             style={{
               background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
@@ -470,10 +524,15 @@ export function AddScheduleItemSheet({
         {/* ── Golf: course search ──────────────────────────────────────── */}
         {isGolf && (
           <>
+            {!manualMode && (
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Golf Course Location<span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--color-bt-danger)" }} aria-hidden />
+              </p>
+            )}
             {selectedCourse && !showSearch ? (
               /* ── Selected course card ── */
               <div
-                className="mt-3 flex items-center gap-3 rounded-xl px-3 py-2.5"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5"
                 style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-accent-border)" }}
               >
                 <MapPin size={14} style={{ color: "var(--color-bt-accent)" }} />
@@ -503,7 +562,10 @@ export function AddScheduleItemSheet({
               </div>
             ) : manualMode ? (
               /* ── Manual entry fallback ── */
-              <div className="mt-3 space-y-2">
+              <div className="space-y-2">
+                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Name<span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--color-bt-danger)" }} aria-hidden />
+                </p>
                 <input
                   type="text"
                   placeholder="Course name"
@@ -521,6 +583,9 @@ export function AddScheduleItemSheet({
                   style={inputStyle}
                   autoFocus
                 />
+                <p className="mb-1.5 mt-3 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Location <span className="font-medium normal-case tracking-normal">(optional)</span>
+                </p>
                 <input
                   type="text"
                   placeholder="Location (optional)"
@@ -553,7 +618,7 @@ export function AddScheduleItemSheet({
               </div>
             ) : (
               /* ── Places autocomplete search ── */
-              <div className="mt-3 relative">
+              <div className="relative">
                 <div className="relative">
                   <Search
                     size={14}
@@ -634,24 +699,27 @@ export function AddScheduleItemSheet({
                 rounds can be assigned to a day directly from the
                 drawer instead of via On Deck drag. */}
             <p
-              className="mt-3 mb-1.5 text-xs font-medium"
+              className="mt-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
-              Date <span className="font-normal">(optional)</span>
+              Date <span className="font-medium normal-case tracking-normal">(optional)</span>
             </p>
             <input
-              type="date"
+              type={scheduledDate ? "date" : "text"}
               value={scheduledDate}
               min={tripStart}
               max={tripEnd}
+              onFocus={(e) => { e.currentTarget.type = "date"; }}
+              onBlur={(e) => { if (!scheduledDate) e.currentTarget.type = "text"; }}
               onChange={(e) => setScheduledDate(e.target.value)}
+              placeholder="Add a date"
               className="rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
 
             {/* Tee times */}
             <p
-              className="mt-3 mb-1.5 text-xs font-medium"
+              className="mt-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
               Tee times
@@ -665,7 +733,8 @@ export function AddScheduleItemSheet({
                         type="time"
                         value={t}
                         onChange={(e) => updateTeeTime(idx, e.target.value)}
-                        className="flex-1 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                        onClick={(e) => e.currentTarget.showPicker?.()}
+                        className="flex-1 rounded-xl border px-3 py-2.5 text-sm font-mono tabular-nums outline-none"
                         style={inputStyle}
                       />
                       {teeTimes.length > 1 && (
@@ -690,8 +759,10 @@ export function AddScheduleItemSheet({
                 </button>
               </>
             )}
-            {/* Walk on option — confirmed without a specific tee time */}
-            <label className="mt-2.5 flex cursor-pointer items-center gap-2">
+            {/* Walk on option — confirmed without a specific tee time.
+                Extra top spacing keeps it clear of "Add tee time" so it's
+                not accidentally toggled after entering times. */}
+            <label className="mt-6 flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={isWalkOn}
@@ -699,7 +770,7 @@ export function AddScheduleItemSheet({
                   setIsWalkOn(e.target.checked);
                   if (e.target.checked) setTeeTimes([""]);
                 }}
-                className="h-4 w-4 rounded"
+                className="flex-shrink-0 cursor-pointer accent-bt-accent"
               />
               <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
                 Walk on — no specific tee time
@@ -711,26 +782,32 @@ export function AddScheduleItemSheet({
         {/* ── General: title + detail ──────────────────────────────────── */}
         {!isGolf && (
           <>
+            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Title<span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: "var(--color-bt-danger)" }} aria-hidden />
+            </p>
             <input
               type="text"
               placeholder="Title (e.g. Dinner at The Grill)"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="mt-3 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
+            <p className="mt-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Detail <span className="font-medium normal-case tracking-normal">(optional)</span>
+            </p>
             <textarea
               placeholder="Detail (optional)"
               value={detail}
               onChange={(e) => setDetail(e.target.value)}
               rows={2}
-              className="mt-2 w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
+              className="w-full resize-none rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={inputStyle}
             />
 
             {/* Location search (optional) */}
-            <p className="mt-3 mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-              Location <span className="font-normal">(optional)</span>
+            <p className="mt-3 mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+              Location <span className="font-medium normal-case tracking-normal">(optional)</span>
             </p>
             {selectedLocation && !showLocationSearch ? (
               <div
@@ -820,28 +897,32 @@ export function AddScheduleItemSheet({
                 range keeps users from assigning items outside it. */}
             <div className="mt-3 flex gap-3">
               <div>
-                <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Date <span className="font-normal">(optional)</span>
+                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Date <span className="font-medium normal-case tracking-normal">(optional)</span>
                 </p>
                 <input
-                  type="date"
+                  type={scheduledDate ? "date" : "text"}
                   value={scheduledDate}
                   min={tripStart}
                   max={tripEnd}
+                  onFocus={(e) => { e.currentTarget.type = "date"; }}
+                  onBlur={(e) => { if (!scheduledDate) e.currentTarget.type = "text"; }}
                   onChange={(e) => setScheduledDate(e.target.value)}
+                  placeholder="Add a date"
                   className="rounded-xl border px-3 py-2.5 text-sm outline-none"
                   style={inputStyle}
                 />
               </div>
               <div>
-                <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Time <span className="font-normal">(optional)</span>
+                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Time <span className="font-medium normal-case tracking-normal">(optional)</span>
                 </p>
                 <input
                   type="time"
                   value={scheduledTime}
                   onChange={(e) => setScheduledTime(e.target.value)}
-                  className="w-32 rounded-xl border px-3 py-2.5 text-sm outline-none"
+                  onClick={(e) => e.currentTarget.showPicker?.()}
+                  className="w-32 rounded-xl border px-3 py-2.5 text-sm font-mono tabular-nums outline-none"
                   style={inputStyle}
                 />
               </div>
@@ -849,9 +930,25 @@ export function AddScheduleItemSheet({
           </>
         )}
 
+        {/* Destructive "Remove from agenda" sits at the end of the body —
+            above the footer divider and the Cancel/Save row. */}
+        {isEditing && onRemove && (
+          <div className="mt-4">
+            <ConfirmDeleteButton
+              label="Remove from agenda"
+              confirmLabel="Remove"
+              pendingLabel="Removing…"
+              prompt="Remove this from the agenda?"
+              pending={removing}
+              testId="remove-agenda-item-btn"
+              onConfirm={onRemove}
+            />
+          </div>
+        )}
+
         </div>
 
-        {/* Footer — sticky bottom */}
+        {/* Footer — sticky bottom: Cancel + Save row. */}
         <div
           className="flex flex-shrink-0 gap-2 px-5 py-3"
           style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}

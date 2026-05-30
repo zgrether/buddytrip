@@ -15,8 +15,6 @@ import {
   GripVertical,
   ChevronUp,
   ChevronDown,
-  Pencil,
-  Trash2,
 } from "lucide-react";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
@@ -105,7 +103,6 @@ function ScheduleItemRow({
   item,
   canEdit,
   onEdit,
-  onRemove,
   onMoveUp,
   onMoveDown,
   isFirst,
@@ -124,7 +121,6 @@ function ScheduleItemRow({
   item: ScheduleItem;
   canEdit: boolean;
   onEdit: () => void;
-  onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   isFirst: boolean;
@@ -184,7 +180,24 @@ function ScheduleItemRow({
           }
           onDrop();
         } : undefined}
-        className="mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all"
+        onClick={canEdit ? onEdit : undefined}
+        role={canEdit ? "button" : undefined}
+        tabIndex={canEdit ? 0 : undefined}
+        onKeyDown={
+          canEdit
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onEdit();
+                }
+              }
+            : undefined
+        }
+        className={`mb-2 flex items-start gap-2 rounded-xl px-4 py-3 transition-all ${
+          canEdit
+            ? "cursor-pointer hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
+            : ""
+        }`}
         style={{
           // Teal highlight = "locked in":
           //   non-golf → has a scheduled date
@@ -376,7 +389,7 @@ function ScheduleItemRow({
         {movable && (
           <div className="flex flex-col lg:hidden">
             <button
-              onClick={onMoveUp}
+              onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
               disabled={isFirst}
               className="flex h-5 w-5 items-center justify-center transition-opacity disabled:opacity-20"
               style={{ color: "var(--color-bt-text-dim)" }}
@@ -385,7 +398,7 @@ function ScheduleItemRow({
               <ChevronUp size={14} />
             </button>
             <button
-              onClick={onMoveDown}
+              onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
               disabled={isLast}
               className="flex h-5 w-5 items-center justify-center transition-opacity disabled:opacity-20"
               style={{ color: "var(--color-bt-text-dim)" }}
@@ -396,41 +409,18 @@ function ScheduleItemRow({
           </div>
         )}
 
-        {canEdit && (
-          <button
-            onClick={onEdit}
-            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Edit item"
-          >
-            <Pencil size={12} />
-          </button>
-        )}
-
+        {/* Send back to On Deck — Day-by-Day rows only. Delete now lives in
+            the edit drawer footer ("Remove from agenda"); the row itself is
+            tappable to open that drawer. */}
         {canEdit && onUnschedule && (
           <button
-            onClick={onUnschedule}
+            onClick={(e) => { e.stopPropagation(); onUnschedule(); }}
             className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
             style={{ color: "var(--color-bt-text-dim)" }}
             aria-label="Send back to On Deck"
             title="Send back to On Deck"
           >
             <X size={14} />
-          </button>
-        )}
-        {/* Trash: shown for all On Deck items (onUnschedule absent) regardless of
-            confirmation status. Confirmed golf rounds in On Deck have no X button
-            (they're not on a day) so without this they'd be impossible to remove.
-            Day-by-Day items use the X-to-unschedule flow instead. */}
-        {canEdit && !onUnschedule && (
-          <button
-            onClick={onRemove}
-            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Delete item"
-            title="Delete item"
-          >
-            <Trash2 size={13} />
           </button>
         )}
       </div>
@@ -521,7 +511,6 @@ export function ScheduleTab({
   const utils = trpc.useUtils();
   const [addMode, setAddMode] = useState<AddMode>(null);
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<ScheduleItem | null>(null);
   const [dayPickerItem, setDayPickerItem] = useState<ScheduleItem | null>(null);
   const [linkCompEvent, setLinkCompEvent] = useState<EventRow | null>(null);
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
@@ -1103,7 +1092,6 @@ export function ScheduleTab({
                           item={item}
                           canEdit={canEdit}
                           onEdit={() => setEditItem(item)}
-                          onRemove={() => setConfirmDelete(item)}
                           onMoveUp={() => handleMove(null, unscheduledItems, idx, "up")}
                           onMoveDown={() => handleMove(null, unscheduledItems, idx, "down")}
                           isFirst={idx === 0}
@@ -1342,7 +1330,6 @@ export function ScheduleTab({
                               item={item}
                               canEdit={canEdit}
                               onEdit={() => setEditItem(item)}
-                              onRemove={() => setConfirmDelete(item)}
                               onMoveUp={() => handleMove(group.date, group.items, idx, "up")}
                               onMoveDown={() => handleMove(group.date, group.items, idx, "down")}
                               isFirst={idx === 0}
@@ -1448,6 +1435,11 @@ export function ScheduleTab({
           itemType={editItem.item_type ?? "general"}
           editItem={editItem}
           onClose={() => setEditItem(null)}
+          onRemove={() => {
+            removeItem.mutate({ tripId, itemId: editItem.id });
+            setEditItem(null);
+          }}
+          removing={removeItem.isPending}
         />
       )}
 
@@ -1600,56 +1592,6 @@ export function ScheduleTab({
       )}
 
       {/* Delete confirmation dialog */}
-      {confirmDelete && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-6"
-          style={{ background: "var(--color-bt-overlay)" }}
-          onClick={() => setConfirmDelete(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl p-5"
-            style={{ background: "var(--color-bt-card)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p
-              className="text-base font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              Remove from agenda?
-            </p>
-            <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              &ldquo;{confirmDelete.title}&rdquo; will be permanently removed.
-            </p>
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={() => setConfirmDelete(null)}
-                className="flex-1 rounded-xl py-2.5 text-sm font-medium"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text)",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  removeItem.mutate({ tripId, itemId: confirmDelete.id });
-                  setConfirmDelete(null);
-                }}
-                disabled={removeItem.isPending}
-                className="flex-1 rounded-xl py-2.5 text-sm font-semibold transition-opacity disabled:opacity-40"
-                style={{
-                  background: "var(--color-bt-danger)",
-                  color: "#fff",
-                }}
-              >
-                {removeItem.isPending ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Mobile-only FAB — mirrors the header's "Add to agenda". canEdit-only
           since members can't author schedule items. */}
       {canEdit && (
