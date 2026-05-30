@@ -132,7 +132,7 @@ function LodgingCard({
             }
           : undefined
       }
-      className={`@container flex flex-col gap-2 rounded-xl p-3 transition-all ${
+      className={`flex flex-col gap-2 rounded-xl p-3 transition-all ${
         canEdit
           ? "cursor-pointer hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
           : ""
@@ -215,7 +215,7 @@ function LodgingCard({
               }}
             >
               <Check size={12} strokeWidth={3} />
-              <span className="hidden @[240px]:inline">Confirmed</span>
+              <span className="hidden sm:inline">Confirmed</span>
             </button>
           ) : canEdit ? (
             <button
