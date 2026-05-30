@@ -132,7 +132,7 @@ function LodgingCard({
             }
           : undefined
       }
-      className={`flex flex-col gap-2 rounded-xl p-3 transition-all ${
+      className={`@container flex flex-col gap-2 rounded-xl p-3 transition-all ${
         canEdit
           ? "cursor-pointer hover:shadow-[0_0_0_1px_var(--color-bt-accent-border)]"
           : ""
@@ -206,7 +206,7 @@ function LodgingCard({
                 if (canEdit) onConfirmToggle();
               }}
               disabled={!canEdit}
-              aria-label={canEdit ? "Mark as not confirmed" : undefined}
+              aria-label={canEdit ? "Mark as not confirmed" : "Confirmed"}
               className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-85 disabled:cursor-default disabled:hover:opacity-100"
               style={{
                 background: "var(--color-bt-accent)",
@@ -215,7 +215,7 @@ function LodgingCard({
               }}
             >
               <Check size={12} strokeWidth={3} />
-              Confirmed
+              <span className="hidden @[240px]:inline">Confirmed</span>
             </button>
           ) : canEdit ? (
             <button
