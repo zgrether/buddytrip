@@ -127,3 +127,35 @@ export async function createNotification(
   });
   return id;
 }
+
+// ---------------------------------------------------------------------------
+// Helper: create the SAME notification for many recipients in ONE insert.
+//
+// Replaces `for (member) { await createNotification(...) }` fan-out loops,
+// which fired one round-trip per recipient (O(N) — felt immediately on
+// 6-16 member trips). A single bulk insert is one round-trip regardless of
+// crew size. Each row still gets a unique id (random suffix differentiates
+// rows that share the same Date.now() millisecond).
+// ---------------------------------------------------------------------------
+export async function createNotifications(
+  supabase: SupabaseClient,
+  params: {
+    tripId: string;
+    actorId: string;
+    recipientIds: string[];
+    type: string;
+    payload: Record<string, unknown>;
+  }
+) {
+  if (params.recipientIds.length === 0) return [];
+  const rows = params.recipientIds.map((recipientId) => ({
+    id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    trip_id: params.tripId,
+    actor_id: params.actorId,
+    recipient_id: recipientId,
+    type: params.type,
+    payload: params.payload,
+  }));
+  await supabase.from("notification_events").insert(rows);
+  return rows.map((r) => r.id);
+}
