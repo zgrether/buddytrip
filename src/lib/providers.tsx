@@ -21,7 +21,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 60_000,
-            refetchOnWindowFocus: true,
+            // Supabase Realtime is the freshness source for live data —
+            // window-focus refetch re-fired every stale shared query on each
+            // tab return, duplicating coverage Realtime already provides.
+            refetchOnWindowFocus: false,
             retry: 1,
           },
         },

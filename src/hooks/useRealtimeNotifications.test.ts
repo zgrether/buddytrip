@@ -21,6 +21,10 @@ vi.mock("@/lib/supabase", () => ({
     channel: mockChannelFn,
     removeChannel: mockRemoveChannel,
   }),
+  getRealtimeClient: () => ({
+    channel: mockChannelFn,
+    removeChannel: mockRemoveChannel,
+  }),
 }));
 
 const mockInvalidate = vi.fn();

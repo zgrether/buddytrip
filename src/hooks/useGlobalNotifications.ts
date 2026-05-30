@@ -16,6 +16,18 @@ import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
  * Use this on app-level pages (dashboard, profile, new-trip, archived
  * ideas) where we want the bell wired without duplicating the
  * aggregation logic.
+ *
+ * NOTE: Three notification subscriptions exist across the app, and that is
+ * INTENTIONAL — not a leak to dedupe:
+ *   - trip page (`trips/[tripId]/page.tsx`): the current trip only.
+ *   - dashboard (`DashboardClient`): all trips, because it drives the
+ *     per-trip unread badge counts on the trip cards (unreadByTrip).
+ *   - useGlobalNotifications (here): all trips, for the global nav bell.
+ * They're never mounted on the same page, and since Fix 2.1 they all share
+ * the singleton Supabase client — i.e. ONE WebSocket. A prior audit flagged
+ * the three `createClient()` call sites as duplicate connections; the
+ * singleton resolved that. Consolidating these would broaden the trip page's
+ * subscription to every trip (a regression), so the split stays.
  */
 
 export interface GlobalNotification {

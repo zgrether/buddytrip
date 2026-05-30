@@ -76,9 +76,13 @@ export default function TripDetailPage() {
   // they fire on first render alongside trips.getById. We track their loading
   // states so the page waits for ALL data before rendering — no 2-phase pop-in.
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
-  const { data: poll, isLoading: pollLoading } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
-  const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
+  // datePoll.get and quickInfoTiles.list fire here in parallel but are NOT
+  // gated in dataLoading — datePoll feeds one owner-only "votes in" pill and
+  // tiles aren't read in this file, so blocking first paint on the slowest of
+  // them just delayed TTFB. They populate in the background; the pill pops in.
+  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
+  trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
   // The new schema (migration 062) tracks this via `competitions` rather
@@ -92,6 +96,10 @@ export default function TripDetailPage() {
   // Not added to dataLoading — loads in parallel, dot appears when ready.
   const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
   const { data: prefetchedLogistics = [] } = trpc.logistics.list.useQuery({ tripId });
+  // Background prefetch for receipts so the Expenses tab reads from cache
+  // instead of flashing its loading skeleton for 1–2s on first open. Same
+  // queryKey as ExpensesSection's own useQuery, so it hydrates instantly.
+  trpc.expenses.list.useQuery({ tripId });
   // Background prefetch for competition events — drives the comp tab warning badge.
   const { data: prefetchedCompEvents = [] } = trpc.events.list.useQuery(
     { tripId, competitionId: competition?.id ?? "" },
@@ -108,8 +116,8 @@ export default function TripDetailPage() {
     { enabled: !!competition?.id }
   );
 
-  const dataLoading = isLoading || ideasLoading || pollLoading || membersLoading
-    || tilesLoading || competitionLoading;
+  const dataLoading = isLoading || ideasLoading || membersLoading
+    || competitionLoading;
 
   // ── Notifications ─────────────────────────────────────────────────────────
   useRealtimeNotifications([tripId]);

@@ -1012,14 +1012,34 @@ export function useChatUnreadCount(tripId: string): number {
   // when the panel is closed. The panel deliberately does NOT also subscribe.
   useRealtimeChat(tripId, "trip");
 
-  const { data: crewMessages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel: "trip", visibility: "crew", limit: 50 },
-    { enabled: !!tripId }
+  // Share the panel's infinite-query cache EXACTLY (same input + query type)
+  // so the always-mounted badge and an open FloatingChatPanel resolve to ONE
+  // query, not two. Previously this used a separate flat useQuery(limit:50);
+  // TanStack keys an infinite query distinctly from a flat one, so whenever the
+  // panel was open the same messages were fetched twice. We only read the
+  // already-loaded pages here — pagination stays the panel's responsibility.
+  const { data: crewData } = trpc.messages.list.useInfiniteQuery(
+    { tripId, channel: "trip", visibility: "crew", limit: CHAT_PAGE_SIZE },
+    {
+      enabled: !!tripId,
+      getNextPageParam: (lastPage) =>
+        lastPage.length === CHAT_PAGE_SIZE
+          ? lastPage[lastPage.length - 1].created_at
+          : undefined,
+    }
   );
-  const { data: planningMessages = [] } = trpc.messages.list.useQuery(
-    { tripId, channel: "trip", visibility: "planning", limit: 50 },
-    { enabled: !!tripId && canSeeOrganizers }
+  const { data: planningData } = trpc.messages.list.useInfiniteQuery(
+    { tripId, channel: "trip", visibility: "planning", limit: CHAT_PAGE_SIZE },
+    {
+      enabled: !!tripId && canSeeOrganizers,
+      getNextPageParam: (lastPage) =>
+        lastPage.length === CHAT_PAGE_SIZE
+          ? lastPage[lastPage.length - 1].created_at
+          : undefined,
+    }
   );
+  const crewMessages = crewData?.pages.flat() ?? [];
+  const planningMessages = planningData?.pages.flat() ?? [];
 
   // Server-backed read state (shared with FloatingChatPanel via the query
   // cache). markRead in the panel invalidates this query, so the badge reacts

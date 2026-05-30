@@ -266,21 +266,19 @@ export const tripsRouter = router({
           .eq("trip_id", ctx.tripId)
           .neq("user_id", ctx.user!.id);
 
-        const { createNotification } = await import("./notifications");
+        const { createNotifications } = await import("./notifications");
         const notifType = isChange ? "destination_changed" : "destination_locked";
-        for (const member of members ?? []) {
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: member.user_id,
-            type: notifType,
-            payload: {
-              destination_name: input.title,
-              trip_name: data.title,
-              trip_id: ctx.tripId,
-            },
-          });
-        }
+        await createNotifications(ctx.supabase, {
+          tripId: ctx.tripId,
+          actorId: ctx.user!.id,
+          recipientIds: (members ?? []).map((m) => m.user_id),
+          type: notifType,
+          payload: {
+            destination_name: input.title,
+            trip_name: data.title,
+            trip_id: ctx.tripId,
+          },
+        });
       } catch {
         // Notification failure shouldn't block the mutation
       }
@@ -518,20 +516,18 @@ export const tripsRouter = router({
           .neq("user_id", ctx.user!.id);
 
         const { formatDateRange } = await import("@/lib/dates");
-        const { createNotification } = await import("./notifications");
-        for (const member of members ?? []) {
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: member.user_id,
-            type: "dates_locked",
-            payload: {
-              date_range: formatDateRange(input.startDate, input.endDate),
-              trip_name: tripData?.title ?? "the trip",
-              trip_id: ctx.tripId,
-            },
-          });
-        }
+        const { createNotifications } = await import("./notifications");
+        await createNotifications(ctx.supabase, {
+          tripId: ctx.tripId,
+          actorId: ctx.user!.id,
+          recipientIds: (members ?? []).map((m) => m.user_id),
+          type: "dates_locked",
+          payload: {
+            date_range: formatDateRange(input.startDate, input.endDate),
+            trip_name: tripData?.title ?? "the trip",
+            trip_id: ctx.tripId,
+          },
+        });
       } catch {
         // Notification failure shouldn't block the mutation
       }
@@ -879,20 +875,18 @@ export const tripsRouter = router({
           .eq("id", ctx.tripId)
           .single();
 
-        const { createNotification } = await import("./notifications");
-        for (const member of stageMembers ?? []) {
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: member.user_id,
-            type: "stage_advanced",
-            payload: {
-              trip_name: tripForNotif?.title ?? "the trip",
-              trip_id: ctx.tripId,
-              owner_name: ownerData?.name ?? "The organizer",
-            },
-          });
-        }
+        const { createNotifications } = await import("./notifications");
+        await createNotifications(ctx.supabase, {
+          tripId: ctx.tripId,
+          actorId: ctx.user!.id,
+          recipientIds: (stageMembers ?? []).map((m) => m.user_id),
+          type: "stage_advanced",
+          payload: {
+            trip_name: tripForNotif?.title ?? "the trip",
+            trip_id: ctx.tripId,
+            owner_name: ownerData?.name ?? "The organizer",
+          },
+        });
       } catch {
         // Notification failure shouldn't block the mutation
       }
@@ -1022,20 +1016,18 @@ export const tripsRouter = router({
           .eq("trip_id", ctx.tripId)
           .neq("user_id", ctx.user!.id);
 
-        const { createNotification } = await import("./notifications");
-        for (const member of members ?? []) {
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: member.user_id,
-            type: "destination_changed",
-            payload: {
-              destination_name: dest,
-              trip_name: tripData?.title ?? "the trip",
-              trip_id: ctx.tripId,
-            },
-          });
-        }
+        const { createNotifications } = await import("./notifications");
+        await createNotifications(ctx.supabase, {
+          tripId: ctx.tripId,
+          actorId: ctx.user!.id,
+          recipientIds: (members ?? []).map((m) => m.user_id),
+          type: "destination_changed",
+          payload: {
+            destination_name: dest,
+            trip_name: tripData?.title ?? "the trip",
+            trip_id: ctx.tripId,
+          },
+        });
       } catch {
         // Notification failure shouldn't block the mutation
       }

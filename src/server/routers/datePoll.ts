@@ -673,20 +673,18 @@ export const datePollRouter = router({
           .eq("trip_id", ctx.tripId)
           .neq("user_id", ctx.user!.id);
 
-        const { createNotification } = await import("./notifications");
-        for (const member of members ?? []) {
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: member.user_id,
-            type: "date_poll_started",
-            payload: {
-              owner_name: actorData?.name ?? "The organizer",
-              trip_name: tripData?.title ?? "the trip",
-              trip_id: ctx.tripId,
-            },
-          });
-        }
+        const { createNotifications } = await import("./notifications");
+        await createNotifications(ctx.supabase, {
+          tripId: ctx.tripId,
+          actorId: ctx.user!.id,
+          recipientIds: (members ?? []).map((m) => m.user_id),
+          type: "date_poll_started",
+          payload: {
+            owner_name: actorData?.name ?? "The organizer",
+            trip_name: tripData?.title ?? "the trip",
+            trip_id: ctx.tripId,
+          },
+        });
       } catch {
         // Notification failure shouldn't block the flag flip
       }
@@ -730,22 +728,19 @@ export const datePollRouter = router({
           .eq("id", ctx.user!.id)
           .single();
 
-        const { createNotification } = await import("./notifications");
-        for (const userId of input.userIds) {
-          // Skip the actor themselves just in case
-          if (userId === ctx.user!.id) continue;
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: userId,
-            type: "date_poll_started",
-            payload: {
-              owner_name: actorData?.name ?? "The organizer",
-              trip_name: tripData?.title ?? "the trip",
-              trip_id: ctx.tripId,
-            },
-          });
-        }
+        const { createNotifications } = await import("./notifications");
+        await createNotifications(ctx.supabase, {
+          tripId: ctx.tripId,
+          actorId: ctx.user!.id,
+          // Skip the actor themselves just in case.
+          recipientIds: input.userIds.filter((id) => id !== ctx.user!.id),
+          type: "date_poll_started",
+          payload: {
+            owner_name: actorData?.name ?? "The organizer",
+            trip_name: tripData?.title ?? "the trip",
+            trip_id: ctx.tripId,
+          },
+        });
       } catch {
         // Notification failure shouldn't block the response
       }

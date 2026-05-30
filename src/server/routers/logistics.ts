@@ -13,6 +13,13 @@ export const logisticsRouter = router({
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx }) => {
+      // `select("*")` is intentional here: logistics_items is a narrow table
+      // (~22 columns) and the lodging/transport UI consumes essentially all of
+      // them — label, detail, property_name, address, check_in/out_time(_of_day),
+      // transport_type, pickup_location/time, is_confirmed, total_price, notes,
+      // and the image_url/image_urls cover photos. An explicit column list would
+      // enumerate nearly the whole table for no payload saving while risking a
+      // silent break whenever a new column is added and the list isn't updated.
       const { data, error } = await ctx.supabase
         .from("logistics_items")
         .select("*")
