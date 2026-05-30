@@ -1021,7 +1021,7 @@ export function ScheduleTab({
                     className="mt-1 text-[11px] italic leading-snug"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Drag these to a day...
+                    Drag these onto a day
                   </p>
                 )}
               </div>
@@ -1280,7 +1280,9 @@ export function ScheduleTab({
                     className="mt-1 text-[11px] italic leading-snug"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Drop an item onto a day to schedule it
+                    {competition
+                      ? "Drop an item onto a day to schedule it, drop an event onto an item to give it a place and time"
+                      : "Drop an item onto a day to schedule it"}
                   </p>
                 )}
               </div>
