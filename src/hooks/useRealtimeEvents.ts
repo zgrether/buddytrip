@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { createClient } from "@/lib/supabase";
+import { useEffect } from "react";
+import { getRealtimeClient } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc-client";
 
 /**
@@ -26,12 +26,11 @@ export function useRealtimeEvents(
   competitionId: string | null | undefined
 ) {
   const utils = trpc.useUtils();
-  const supabaseRef = useRef(createClient());
 
   useEffect(() => {
     if (!tripId || !competitionId) return;
 
-    const supabase = supabaseRef.current;
+    const supabase = getRealtimeClient();
     const channel = supabase
       .channel(`events:${competitionId}`)
       .on(
