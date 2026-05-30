@@ -224,11 +224,12 @@ function ScheduleItemRow({
         />
       )}
 
-      {/* Type icon — always present so text aligns across item types */}
+      {/* Type icon — always present so text aligns across item types.
+          Agenda-item icons are teal (vs gray competition-event icons). */}
       {item.item_type === "golf" ? (
         <Flag size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
       ) : (
-        <Calendar size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
+        <Calendar size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--color-bt-accent)" }} />
       )}
 
       <div className="min-w-0 flex-1">
@@ -421,7 +422,7 @@ function CompEventChip({
         onDragStarted?.(event.type);
       } : undefined}
       onDragEnd={canEdit ? () => onDragEnded?.() : undefined}
-      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={`flex items-center gap-2 rounded-xl px-4 py-3 ${canEdit ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{
         background: "var(--color-bt-card-raised)",
         border: "1px solid var(--color-bt-border)",
@@ -434,10 +435,11 @@ function CompEventChip({
           style={{ color: "var(--color-bt-text-dim)" }}
         />
       )}
-      <span style={{ color: isGolf ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+      {/* Competition-event icons are gray (vs teal agenda-item icons). */}
+      <span style={{ color: "var(--color-bt-text-dim)" }}>
         {isGolf ? <Flag size={12} /> : <Star size={12} />}
       </span>
-      <p className="min-w-0 flex-1 truncate text-[12px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+      <p className="min-w-0 flex-1 truncate text-[12px] font-medium leading-5" style={{ color: "var(--color-bt-text)" }}>
         {event.title}
       </p>
       {event.scoring_format && (
@@ -1013,9 +1015,7 @@ export function ScheduleTab({
                     className="mt-1 text-[11px] italic leading-snug"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    {unscheduledItems.length === 0
-                      ? "Unscheduled items live here. Drag onto a day when ready."
-                      : "Drag these to a day to add it to the agenda"}
+                    Drag these to a day...
                   </p>
                 )}
               </div>
@@ -1231,7 +1231,7 @@ export function ScheduleTab({
                     </h4>
                   </div>
                   <p className="mb-2 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {canEdit ? "Drag onto an agenda item to add it to the schedule, or keep it unscheduled and complete it at any time" : "Competition events for this trip"}
+                    {canEdit ? "Drag these onto an item" : "Competition events for this trip"}
                   </p>
                   <div className="space-y-1.5">
                     {unlinkedCompEvents.map((event) => (
