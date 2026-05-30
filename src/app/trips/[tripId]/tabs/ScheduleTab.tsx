@@ -301,7 +301,7 @@ function ScheduleItemRow({
             ) : (
               <Star size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
             )}
-            <p className="min-w-0 flex-1 truncate text-[12px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+            <p className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
               {ce.title}
             </p>
             {canEdit && onUnlinkCompEvent && (
@@ -445,7 +445,7 @@ function CompEventChip({
       <span style={{ color: "var(--color-bt-text-dim)" }}>
         {isGolf ? <Flag size={12} /> : <Star size={12} />}
       </span>
-      <p className="min-w-0 flex-1 truncate text-[12px] font-medium leading-5" style={{ color: "var(--color-bt-text)" }}>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
         {event.title}
       </p>
       {event.scoring_format && (
@@ -1193,7 +1193,7 @@ export function ScheduleTab({
                   <div className="flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
                     <h4
-                      className="text-[11px] font-semibold uppercase tracking-wider"
+                      className="text-[11px] font-bold uppercase tracking-[0.12em]"
                       style={{ color: "var(--color-bt-text-dim)" }}
                     >
                       Competition Events
@@ -1232,11 +1232,11 @@ export function ScheduleTab({
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
-                    <h4 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+                    <h4 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--color-bt-text-dim)" }}>
                       Competition Events
                     </h4>
                   </div>
-                  <p className="mb-2 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
+                  <p className="mb-2 text-[11px] italic leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
                     {canEdit ? "Drag these onto an item" : "Competition events for this trip"}
                   </p>
                   <div className="space-y-1.5">
@@ -1272,7 +1272,7 @@ export function ScheduleTab({
                     className="text-[11px] font-bold uppercase tracking-[0.12em]"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    Day-by-Day
+                    Day-by-Day Agenda
                   </h4>
                 </div>
                 {canEdit && (
