@@ -8,6 +8,7 @@ import {
   Check,
   Clock,
   Flag,
+  Inbox,
   MapPin,
   Plus,
   Star,
@@ -351,12 +352,12 @@ function ScheduleItemRow({
       <div className="flex flex-shrink-0 items-center gap-1 self-center">
 
         {/* Schedule via the day picker — opens a modal to pick a day (and,
-            for already-scheduled items, return to On Deck). Replaces drag on
-            touch and is the single move/unschedule affordance on every tile. */}
+            for already-scheduled items, return to On Deck). Touch-only: on
+            desktop (lg+) drag-and-drop is the move/unschedule affordance. */}
         {canEdit && onAddToDay && (
           <button
             onClick={(e) => { e.stopPropagation(); onAddToDay(); }}
-            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
             style={{ color: "var(--color-bt-accent)" }}
             aria-label={isOnDeck ? "Add to a day" : "Move to another day"}
             title={isOnDeck ? "Add to a day" : "Move to another day"}
@@ -983,7 +984,9 @@ export function ScheduleTab({
                   the same y-coordinate. */}
               <div className="mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 flex-shrink-0" aria-hidden />
+                  <span className="flex h-3 w-3 flex-shrink-0 items-center justify-center" style={{ color: "var(--color-bt-text-dim)" }}>
+                    <Inbox size={12} />
+                  </span>
                   <h4
                     className="text-[11px] font-bold uppercase tracking-[0.12em]"
                     style={{ color: "var(--color-bt-text-dim)" }}
@@ -1056,7 +1059,41 @@ export function ScheduleTab({
                     All items have been scheduled.
                   </p>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div
+                    className="space-y-1.5 rounded-xl transition-colors"
+                    // Landing area for items dragged off a day. The list itself
+                    // is the drop target (no permanent dashed chrome) — it only
+                    // lights up while a scheduled item is dragged over it. Rows
+                    // handle their own drops first; this catches releases in the
+                    // gaps, and the bubbled second drop no-ops (handleDragDrop
+                    // clears dragState on its first call).
+                    onDragOver={canEdit ? (e) => {
+                      if (dragState.current && dragState.current.groupDate !== null) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        setUnscheduledDragOver(true);
+                      }
+                    } : undefined}
+                    onDragLeave={canEdit ? (e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setUnscheduledDragOver(false);
+                      }
+                    } : undefined}
+                    onDrop={canEdit ? (e) => {
+                      if (dragState.current && dragState.current.groupDate !== null) {
+                        e.preventDefault();
+                        setUnscheduledDragOver(false);
+                        handleDragDrop(null, unscheduledItems, unscheduledItems.length);
+                      }
+                    } : undefined}
+                    style={{
+                      outline: unscheduledDragOver ? "1.5px dashed var(--color-bt-accent)" : "none",
+                      outlineOffset: "4px",
+                      background: unscheduledDragOver
+                        ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
+                        : "transparent",
+                    }}
+                  >
                       {/* eslint-disable react-hooks/refs */}
                       {unscheduledItems.map((item, idx) => (
                         <ScheduleItemRow
