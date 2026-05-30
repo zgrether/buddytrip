@@ -45,6 +45,11 @@ interface TopNavProps {
   /** Reflects whether the FloatingChatPanel is currently open — used to
    *  render the chat button in its active state. */
   chatOpen?: boolean;
+  /** Hide the trip-switcher grid button (e.g. on the profile page, which
+   *  isn't trip-scoped and doesn't need trip navigation). */
+  hideTripSwitcher?: boolean;
+  /** Hide the notifications bell (e.g. on the profile page). */
+  hideNotifications?: boolean;
 }
 
 const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
@@ -68,6 +73,8 @@ export const TopNav: FC<TopNavProps> = ({
   tripId,
   onOpenChat,
   chatOpen = false,
+  hideTripSwitcher = false,
+  hideNotifications = false,
 }) => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -78,8 +85,10 @@ export const TopNav: FC<TopNavProps> = ({
   // empty-state hero already exposes "New trip" as the primary CTA, so
   // an extra switcher button just opens an empty panel. TanStack Query
   // dedupes against the same query the page may already be running.
-  const { data: tripsForSwitcher } = trpc.trips.list.useQuery();
-  const showSwitcher = (tripsForSwitcher?.length ?? 0) > 0;
+  const { data: tripsForSwitcher } = trpc.trips.list.useQuery(undefined, {
+    enabled: !hideTripSwitcher,
+  });
+  const showSwitcher = !hideTripSwitcher && (tripsForSwitcher?.length ?? 0) > 0;
 
   // Close on outside click
   useEffect(() => {
@@ -168,6 +177,7 @@ export const TopNav: FC<TopNavProps> = ({
           </>
         )}
 
+        {!hideNotifications && (
         <div ref={ref} className="relative">
           <button
             aria-label="Notifications"
@@ -310,6 +320,7 @@ export const TopNav: FC<TopNavProps> = ({
             </>
           )}
         </div>
+        )}
 
         {tripId && onOpenChat && (
           <ChatButton tripId={tripId} onClick={onOpenChat} isOpen={chatOpen} />

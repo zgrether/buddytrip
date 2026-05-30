@@ -20,7 +20,6 @@ import { Avatar } from "@/components/Avatar";
 import { AvatarIconPicker } from "@/components/AvatarIconPicker";
 import { NotificationsPanel } from "@/components/profile/NotificationsPanel";
 import { ArchivedIdeasPanel } from "@/components/profile/ArchivedIdeasPanel";
-import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -50,7 +49,6 @@ export default function ProfilePage() {
   const authLoaded = useAuthLoaded();
   const authUser = useAuthUser();
   const utils = trpc.useUtils();
-  const { notifications, unreadCount, markAllRead } = useGlobalNotifications();
 
   const { data: me, isLoading } = trpc.users.getMe.useQuery(undefined, {
     enabled: authLoaded && !!authUser,
@@ -101,11 +99,7 @@ export default function ProfilePage() {
   if (!authLoaded || isLoading || !me) {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)" }}>
-        <TopNav
-          notifications={notifications}
-          unreadCount={unreadCount}
-          onMarkAllRead={markAllRead}
-        />
+        <TopNav hideTripSwitcher hideNotifications />
         <div className="flex justify-center py-16">
           <div
             className="h-6 w-6 animate-spin rounded-full border-2"
@@ -123,11 +117,7 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onMarkAllRead={markAllRead}
-      />
+      <TopNav hideTripSwitcher hideNotifications />
 
       <div className="flex">
         {/* ── Desktop sidebar ─────────────────────────────────────────── */}
