@@ -259,10 +259,8 @@ export default function TripDetailPage() {
   const scheduleItems = prefetchedSchedule as Array<{
     is_confirmed: boolean;
     scheduled_date?: string | null;
+    item_type?: string | null;
   }>;
-  const scheduleDot =
-    effectiveCanEdit &&
-    scheduleItems.some((item) => !item.scheduled_date || !item.is_confirmed);
   // lodging badge: two tiers.
   //  "warning" — one or more lodging properties have check-in/out dates
   //              that fall outside the trip date range (likely a typo).
@@ -304,6 +302,21 @@ export default function TripDetailPage() {
       const d = item.scheduled_date ?? null;
       return d && (d < tripStart || d > tripEnd);
     });
+  // Agenda info dot — mirror the in-tab nudges so the tab badge never
+  // promises an action item the user can't find. The only actionable
+  // states that surface a nudge in ScheduleTab are:
+  //   1. items exist but trip dates aren't set ("Set dates to schedule"), or
+  //   2. a golf round is on a day but still needs a tee time / walk-on.
+  // On-deck (unscheduled) items are a normal parking state, not an action
+  // item, so they no longer light the dot on their own.
+  const scheduleNeedsDates =
+    effectiveCanEdit && !tripStart && scheduleItems.length > 0;
+  const scheduleUnconfirmedGolf =
+    effectiveCanEdit &&
+    scheduleItems.some(
+      (item) =>
+        item.item_type === "golf" && !item.is_confirmed && !!item.scheduled_date
+    );
   // compDot: warning when any scored GOLF event has no agenda item linked.
   const compDot =
     !!competition &&
@@ -317,7 +330,7 @@ export default function TripDetailPage() {
   // for a softer feel but the dot blended in; amber stands out.
   if (crewDot) tabBadges.crew = "warning";
   if (scheduleOutOfRange) tabBadges.schedule = "warning";
-  else if (scheduleDot) tabBadges.schedule = "info";
+  else if (scheduleNeedsDates || scheduleUnconfirmedGolf) tabBadges.schedule = "info";
   if (lodgingOutOfRange) tabBadges.lodging = "warning";
   else if (lodgingUnconfirmed) tabBadges.lodging = "info";
   if (compDot) tabBadges.comp = "warning";
