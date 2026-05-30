@@ -450,10 +450,12 @@ function CompEventChip({
           onClick={(e) => { e.stopPropagation(); onLinkToItem(); }}
           className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
           style={{ color: "var(--color-bt-accent)" }}
-          aria-label="Add to an agenda item"
-          title="Add to an agenda item"
+          aria-label={isGolf ? "Add to a golf round" : "Add to an agenda item"}
+          title={isGolf ? "Add to a golf round" : "Add to an agenda item"}
         >
-          <CalendarDays size={14} />
+          {/* Golf events only attach to a golf round → flag icon; everything
+              else attaches to any agenda item → agenda (calendar) icon. */}
+          {isGolf ? <Flag size={14} /> : <CalendarDays size={14} />}
         </button>
       )}
     </div>
