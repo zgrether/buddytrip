@@ -115,7 +115,6 @@ function ScheduleItemRow({
   onDrop,
   onCompEventDrop,
   onUnlinkCompEvent,
-  onUnschedule,
   compDragType,
   onAddToDay,
 }: {
@@ -133,14 +132,11 @@ function ScheduleItemRow({
   onDrop: () => void;
   onCompEventDrop?: (eventId: string, itemType: string) => void;
   onUnlinkCompEvent?: (eventId: string) => void;
-  /** Day-by-Day rows pass this — the trailing button becomes an X that
-   *  sends the item back to On Deck (clears its date). When omitted, the
-   *  trailing button is a trash can wired to onRemove (delete). */
-  onUnschedule?: () => void;
   /** When non-null, a competition event is being dragged. The row computes
    *  whether it's a valid target and highlights itself accordingly. */
   compDragType?: "GOLF" | "GENERIC" | null;
-  /** Mobile-only: open day-picker sheet to schedule this On Deck item. */
+  /** Opens the day-picker sheet to (re)schedule this item — pick a day, or
+   *  return a scheduled item to On Deck. Replaces drag on touch. */
   onAddToDay?: () => void;
 }) {
   const movable = canEdit;
@@ -207,7 +203,7 @@ function ScheduleItemRow({
           background: isValidCompTarget
             ? "var(--color-bt-accent-faint)"
             : (!!item.scheduled_date && (item.item_type !== "golf" || item.is_confirmed))
-            ? "var(--color-bt-tag-bg)"
+            ? "var(--color-bt-accent-faint)"
             : "var(--color-bt-card)",
           border: isValidCompTarget
             ? "1.5px solid var(--color-bt-accent)"
@@ -352,46 +348,18 @@ function ScheduleItemRow({
       </div>
       </div>
 
-      {/* DRAFT / CONFIRMED status pill — only meaningful for items that
-          are actually on a day. On Deck rows hide it entirely (per
-          round-7 item 4) since they're inherently unconfirmed. */}
-      {!isOnDeck && (
-        <span
-          className="inline-flex flex-shrink-0 items-center gap-1 self-center rounded-full px-2.5 py-1 text-xs font-semibold"
-          style={
-            item.is_confirmed
-              ? {
-                  background: "var(--color-bt-accent)",
-                  border: "1px solid var(--color-bt-accent)",
-                  color: "var(--color-bt-on-accent)",
-                }
-              : {
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-accent-border)",
-                  color: "var(--color-bt-accent)",
-                }
-          }
-        >
-          {item.is_confirmed && <Check size={12} strokeWidth={3} />}
-          {item.is_confirmed ? (
-            <span className="hidden sm:inline">Confirmed</span>
-          ) : (
-            "Draft"
-          )}
-        </span>
-      )}
-
       <div className="flex flex-shrink-0 items-center gap-1 self-center">
 
-        {/* Mobile-only: schedule to a day via picker (replaces drag on touch).
-            Shown as an icon button in the action column, before reorder arrows. */}
+        {/* Schedule via the day picker — opens a modal to pick a day (and,
+            for already-scheduled items, return to On Deck). Replaces drag on
+            touch and is the single move/unschedule affordance on every tile. */}
         {canEdit && onAddToDay && (
           <button
             onClick={(e) => { e.stopPropagation(); onAddToDay(); }}
-            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80 lg:hidden"
+            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
             style={{ color: "var(--color-bt-accent)" }}
-            aria-label="Add to a day"
-            title="Add to a day"
+            aria-label={isOnDeck ? "Add to a day" : "Move to another day"}
+            title={isOnDeck ? "Add to a day" : "Move to another day"}
           >
             <CalendarDays size={14} />
           </button>
@@ -420,20 +388,6 @@ function ScheduleItemRow({
           </div>
         )}
 
-        {/* Send back to On Deck — Day-by-Day rows only. Delete now lives in
-            the edit drawer footer ("Remove from agenda"); the row itself is
-            tappable to open that drawer. */}
-        {canEdit && onUnschedule && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onUnschedule(); }}
-            className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-80"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Send back to On Deck"
-            title="Send back to On Deck"
-          >
-            <X size={14} />
-          </button>
-        )}
       </div>
     </div>
     </>
@@ -1389,16 +1343,7 @@ export function ScheduleTab({
                                 linkToAgendaItem.mutate({ tripId, eventId, agendaItemId: null });
                               } : undefined}
                               compDragType={compDragType}
-                              onUnschedule={() => {
-                                updateItem.mutate({
-                                  tripId,
-                                  itemId: item.id,
-                                  scheduledDate: null,
-                                  // Non-golf: unconfirmed when sent back to On Deck.
-                                  // Golf: keeps its confirmed status (tee times / walk-on drive it).
-                                  ...(item.item_type !== "golf" && { isConfirmed: false }),
-                                });
-                              }}
+                              onAddToDay={trip.start_date && trip.end_date ? () => setDayPickerItem(item) : undefined}
                             />
                           ))}
                           {/* Bottom drop zone — append to end of day */}
@@ -1579,14 +1524,36 @@ export function ScheduleTab({
               </div>
             </div>
 
-            {/* Footer — sticky bottom: Cancel. */}
+            {/* Footer — sticky bottom: return-to-On-Deck (scheduled items only) + Cancel. */}
             <div
-              className="flex flex-shrink-0 gap-2 px-5 py-3"
+              className="flex flex-shrink-0 flex-col gap-2 px-5 py-3"
               style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
             >
+              {dayPickerItem.scheduled_date && (
+                <button
+                  onClick={() => {
+                    updateItem.mutate({
+                      tripId,
+                      itemId: dayPickerItem.id,
+                      scheduledDate: null,
+                      // Non-golf: leaving the agenda clears confirmation.
+                      ...(dayPickerItem.item_type !== "golf" && { isConfirmed: false }),
+                    });
+                    setDayPickerItem(null);
+                  }}
+                  className="w-full rounded-lg border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                  style={{
+                    borderColor: "var(--color-bt-border)",
+                    color: "var(--color-bt-text)",
+                    background: "transparent",
+                  }}
+                >
+                  Return to On Deck
+                </button>
+              )}
               <button
                 onClick={() => setDayPickerItem(null)}
-                className="flex-1 rounded-lg border px-4 py-2 text-sm font-medium"
+                className="w-full rounded-lg border px-4 py-2 text-sm font-medium"
                 style={{
                   borderColor: "var(--color-bt-border)",
                   color: "var(--color-bt-text-dim)",
