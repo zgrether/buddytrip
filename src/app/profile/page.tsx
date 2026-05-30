@@ -590,6 +590,13 @@ function DesktopSidebar({
         <span style={{ fontSize: 13 }}>Back</span>
       </button>
 
+      <div
+        style={{
+          borderBottom: "0.5px solid var(--color-bt-border)",
+          marginBottom: 12,
+        }}
+      />
+
       <SidebarGroup label="Account">
         {account.map((i) => (
           <SidebarItem
