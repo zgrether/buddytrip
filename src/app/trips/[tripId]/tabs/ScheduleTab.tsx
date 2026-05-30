@@ -461,6 +461,13 @@ function CompEventChip({
         border: "1px solid var(--color-bt-border)",
       }}
     >
+      {canEdit && (
+        <GripVertical
+          size={14}
+          className="hidden flex-shrink-0 cursor-grab lg:block"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        />
+      )}
       <span style={{ color: isGolf ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
         {isGolf ? <Flag size={12} /> : <Star size={12} />}
       </span>
@@ -1206,13 +1213,7 @@ export function ScheduleTab({
                   <p className="mb-2 text-[10px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
                     {canEdit ? "Drag onto an agenda item to add it to the schedule, or keep it unscheduled and complete it at any time" : "Competition events for this trip"}
                   </p>
-                  <div
-                    className="rounded-xl p-3 transition-colors space-y-1.5"
-                    style={{
-                      border: "1px dashed var(--color-bt-border)",
-                      background: "transparent",
-                    }}
-                  >
+                  <div className="space-y-1.5">
                     {unlinkedCompEvents.map((event) => (
                       <CompEventChip
                         key={event.id}
@@ -1305,14 +1306,25 @@ export function ScheduleTab({
                             handleDragDrop(group.date, group.items, group.items.length);
                           }
                         } : undefined}
-                        className="rounded-xl px-3 pt-3 pb-1 transition-colors"
+                        className="rounded-xl transition-colors"
                         style={{
+                          // Once a day has items it reads as content, not a
+                          // drop target — drop the dashed panel chrome and
+                          // its padding. The panel only returns when the day
+                          // is empty (a teaching hint) or is being dragged
+                          // over (an active drop affordance).
+                          padding:
+                            group.items.length === 0 || dragOverGroup === group.date
+                              ? "12px 12px 4px"
+                              : "0",
                           background: dragOverGroup === group.date
                             ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
                             : "transparent",
                           border: dragOverGroup === group.date
                             ? "1.5px dashed var(--color-bt-accent)"
-                            : "1px dashed var(--color-bt-border)",
+                            : group.items.length === 0
+                            ? "1px dashed var(--color-bt-border)"
+                            : "none",
                         }}
                       >
                       {group.items.length === 0 ? (
