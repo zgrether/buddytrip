@@ -331,7 +331,7 @@ function ScheduleItemRow({
         {!isOnDeck && item.item_type !== "golf" && item.scheduled_time && (
           <div className="mt-1 flex items-center gap-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
             <Clock size={10} />
-            {item.scheduled_time}
+            {fmtTime12(item.scheduled_time)}
           </div>
         )}
         {/* Golf: prompt to add tee time when unconfirmed — placed in the content
