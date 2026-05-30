@@ -79,6 +79,9 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
 
   const [nickname, setNickname] = useState(initialNickname);
   const [email, setEmail] = useState(initialEmail);
+  // Surfaces a failed save (e.g. the email collides with another member)
+  // so the drawer explains itself instead of silently refusing to close.
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // ── Live email validation (debounced) ──────────────────────────────────
   const formatOk = useMemo(() => {
@@ -158,6 +161,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
       return;
     }
 
+    setSaveError(null);
     const nameChanged = nickname.trim() !== initialNickname.trim();
     const emailChanged = email.trim() !== (member.user?.email ?? "");
     const tasks: Promise<unknown>[] = [];
@@ -204,10 +208,17 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
       }
     }
 
-    if (tasks.length > 0) {
-      await Promise.all(tasks);
+    try {
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
+      onClose();
+    } catch (err) {
+      // Keep the drawer open and explain why instead of silently failing.
+      setSaveError(
+        err instanceof Error ? err.message : "Couldn't save your changes. Please try again."
+      );
     }
-    onClose();
   };
 
   const handleRemove = () => {
@@ -579,6 +590,26 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
         {/* Footer — Cancel/Save row. The destructive "Remove from trip"
             action lives at the end of the scrollable body (danger-above
             pattern), matching the other edit modals. */}
+        {saveError && (
+          <div
+            className="mx-4 mt-3 flex items-start gap-2.5 rounded-lg px-3 py-2"
+            style={{
+              background: "var(--color-bt-danger-faint)",
+              border: "1px solid var(--color-bt-danger-border)",
+            }}
+          >
+            <span
+              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+              style={{ background: "var(--color-bt-danger)", color: "var(--color-bt-on-accent)" }}
+            >
+              <X size={12} strokeWidth={3} />
+            </span>
+            <div className="min-w-0 text-[12px] font-medium" style={{ color: "var(--color-bt-danger)" }}>
+              {saveError}
+            </div>
+          </div>
+        )}
+
         <div
           className="flex gap-2 px-4 py-3"
           style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
@@ -695,8 +726,8 @@ function ValidationFeedback({ state, email }: { state: ValidationState; email: s
           ? {
               tone: "warning",
               icon: "send",
-              title: "We'll send an invite",
-              body: `No account at ${email}. We'll email an invite link when you save; they become Active once they sign up.`,
+              title: "No account yet",
+              body: `No account at ${email}. You can send an invite after you save your changes.`,
             }
           : {
               tone: "danger",

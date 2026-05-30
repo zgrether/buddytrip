@@ -244,6 +244,42 @@ describe("ghostCrew router", () => {
     expect(result.is_guest).toBe(true);
   });
 
+  it("update — links to existing guest when email matches another guest row", async () => {
+    // Regression: typing an email that already belongs to *another guest*
+    // row used to throw a users_email_key UNIQUE violation (surfacing as a
+    // 500 the editor couldn't recover from). Now it re-points the membership
+    // at the existing guest instead, mirroring the real-account auto-link.
+    const owner = ctx.caller();
+
+    // Guest A lives on a *different* trip and owns the email.
+    const otherTripId = await ctx.createTrip("Ghost Guest-Link Other Trip");
+    const sharedEmail = `shared-guest-${RUN_ID}@example.com`;
+    const guestA = await owner.ghostCrew.create({
+      tripId: otherTripId,
+      name: "GuestA",
+      email: sharedEmail,
+    });
+    guestUserIds.push(guestA.id);
+
+    // Guest B on the main trip, no email yet.
+    const guestB = await owner.ghostCrew.create({ tripId, name: "GuestB" });
+    guestUserIds.push(guestB.id);
+
+    const result = await owner.ghostCrew.update({
+      tripId,
+      guestUserId: guestB.id,
+      email: sharedEmail,
+    });
+
+    expect(result.linked).toBe(true);
+    expect(result.id).toBe(guestA.id);
+
+    // trip_members now points at the existing guest, not the throwaway B row.
+    const members = await owner.tripMembers.list({ tripId });
+    expect(members.find((m) => m.user_id === guestA.id)).toBeTruthy();
+    expect(members.find((m) => m.user_id === guestB.id)).toBeFalsy();
+  });
+
   // ── remove ────────────────────────────────────────────────────────────────
 
   it("remove — owner can remove a guest from the trip", async () => {

@@ -252,7 +252,19 @@ export const ghostCrewRouter = router({
         });
       }
 
-      // ── Auto-link branch: email matches an existing real BT account ───
+      // ── Auto-link branch: email matches an existing account ───────────
+      //
+      // The email may already belong to *another* users row — either a real
+      // BT account or another guest record (e.g. a guest the owner created on
+      // a different trip). users.email is UNIQUE, so a plain UPDATE that sets
+      // this ghost's email to a value another row owns throws a 23505
+      // violation (surfacing as a 500 the editor couldn't recover from).
+      //
+      // Instead, when the email belongs to a different existing user we
+      // re-point this trip's membership at that user — mirroring
+      // ghostCrew.create's "reuse the existing record" path — rather than
+      // minting a duplicate email. (When existingUser is this same ghost,
+      // the email is unchanged and the plain update below is a safe no-op.)
       if (email) {
         const { data: existingUser } = await ctx.supabase
           .from("users")
@@ -260,8 +272,8 @@ export const ghostCrewRouter = router({
           .eq("email", email)
           .maybeSingle();
 
-        if (existingUser && !existingUser.is_guest) {
-          // Reject if the real user is already a member of this trip.
+        if (existingUser && existingUser.id !== input.guestUserId) {
+          // Reject if that user is already a member of this trip.
           const { data: alreadyMember } = await ctx.supabase
             .from("trip_members")
             .select("id")
@@ -272,13 +284,15 @@ export const ghostCrewRouter = router({
           if (alreadyMember) {
             throw new TRPCError({
               code: "CONFLICT",
-              message: "A user with this email is already a member of this trip.",
+              message: existingUser.is_guest
+                ? "A crew member with this email already exists."
+                : "A user with this email is already a member of this trip.",
             });
           }
 
-          // Swap the trip_members row to point at the real account. We
-          // preserve the ghost's role and flip status to 'in' since they
-          // now have a real account.
+          // Swap the trip_members row to point at the existing account. We
+          // preserve the ghost's role and flip status to 'in' (a real
+          // account is Active; guests are always "in" anyway).
           const { error: linkErr } = await ctx.supabase
             .from("trip_members")
             .update({ user_id: existingUser.id, status: "in" })
