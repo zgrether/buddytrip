@@ -562,7 +562,7 @@ function DesktopSidebar({
       style={{
         background: "var(--color-bt-card)",
         borderRight: "0.5px solid var(--color-bt-border)",
-        padding: "20px 0",
+        padding: "10px 0 20px",
         // Stick to the viewport (below the 56px TopNav) and cap at one
         // viewport height so the bottom block (Sign out / Delete) stays
         // pinned to the bottom of the screen as the main panel scrolls.
