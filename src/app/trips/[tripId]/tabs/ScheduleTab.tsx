@@ -118,6 +118,7 @@ function ScheduleItemRow({
   onUnlinkCompEvent,
   compDragType,
   onAddToDay,
+  onUnschedule,
 }: {
   item: ScheduleItem;
   canEdit: boolean;
@@ -136,9 +137,12 @@ function ScheduleItemRow({
   /** When non-null, a competition event is being dragged. The row computes
    *  whether it's a valid target and highlights itself accordingly. */
   compDragType?: "GOLF" | "GENERIC" | null;
-  /** Opens the day-picker sheet to (re)schedule this item — pick a day, or
-   *  return a scheduled item to On Deck. Replaces drag on touch. */
+  /** Opens the day-picker sheet to (re)schedule this item — pick a day to
+   *  move it to. Replaces drag on touch. */
   onAddToDay?: () => void;
+  /** Removes a scheduled item from the agenda (back to "Not scheduled yet").
+   *  Rendered as the X on the title line of a scheduled row. */
+  onUnschedule?: () => void;
 }) {
   const movable = canEdit;
   // GOLF events can only land on golf items; non-GOLF events land on anything.
@@ -397,6 +401,20 @@ function ScheduleItemRow({
         )}
 
       </div>
+
+      {/* Remove from agenda — scheduled items only. Sits on the title line at
+          the far right (self-start), matching the linked competition-event X. */}
+      {!isOnDeck && canEdit && onUnschedule && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onUnschedule(); }}
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center self-start rounded-full transition-opacity hover:opacity-70"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          title="Remove from agenda"
+          aria-label="Remove from agenda"
+        >
+          <X size={12} />
+        </button>
+      )}
     </div>
     </>
   );
@@ -499,7 +517,6 @@ export function ScheduleTab({
   const dragState = useRef<{ groupDate: string | null; idx: number; item: ScheduleItem } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null | false>(false);
   const [dragOverIdx, setDragOverIdx] = useState<{ groupDate: string | null; idx: number } | null>(null);
-  const [unscheduledDragOver, setUnscheduledDragOver] = useState(false);
   // Type of competition event currently being dragged (null when no comp drag).
   // Drives per-item highlighting on Day-by-Day rows.
   const [compDragType, setCompDragType] = useState<"GOLF" | "GENERIC" | null>(null);
@@ -774,6 +791,10 @@ export function ScheduleTab({
     setDragOverGroup(false);
     setDragOverIdx(null);
 
+    // Removal from the agenda is X-only — a scheduled item can never be
+    // unscheduled by dragging it back into "Not scheduled yet".
+    if (targetGroupDate === null && sourceDate !== null) return;
+
     // Same group — simple reorder
     if (sourceDate === targetGroupDate) {
       if (fromIdx === toIdx) return;
@@ -1016,7 +1037,7 @@ export function ScheduleTab({
                     Not scheduled yet
                   </h4>
                 </div>
-                {canEdit && (
+                {canEdit && unscheduledItems.length > 0 && (
                   <p
                     className="mt-1 text-[11px] italic leading-snug"
                     style={{ color: "var(--color-bt-text-dim)" }}
@@ -1032,33 +1053,15 @@ export function ScheduleTab({
 
               {unscheduledItems.length === 0 && canEdit ? (
                 /* Round 2 A3: thin one-line dashed teal button replaces
-                   the old 100px invitation block. Doubles as the drop
-                   target so items dragged back from Day-by-Day still
-                   have somewhere to land. */
+                   the old 100px invitation block. Items leave the agenda
+                   via the X on a scheduled row, not by dragging back here. */
                 <button
                   type="button"
                   onClick={() => setAddMode("general")}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    setUnscheduledDragOver(true);
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setUnscheduledDragOver(false);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setUnscheduledDragOver(false);
-                    if (dragState.current && dragState.current.groupDate !== null) {
-                      handleDragDrop(null, unscheduledItems, unscheduledItems.length);
-                    }
-                  }}
                   className="mt-3 flex w-full items-center justify-center gap-1 rounded-[10px] py-3 text-xs font-semibold transition-colors"
                   style={{
                     background: "var(--color-bt-accent-faint)",
-                    border: `1px dashed ${unscheduledDragOver ? "var(--color-bt-accent)" : "var(--color-bt-accent)"}`,
+                    border: "1px dashed var(--color-bt-accent)",
                     color: "var(--color-bt-accent)",
                   }}
                 >
@@ -1079,41 +1082,7 @@ export function ScheduleTab({
                     All items have been scheduled.
                   </p>
                 ) : (
-                  <div
-                    className="space-y-1.5 rounded-xl transition-colors"
-                    // Landing area for items dragged off a day. The list itself
-                    // is the drop target (no permanent dashed chrome) — it only
-                    // lights up while a scheduled item is dragged over it. Rows
-                    // handle their own drops first; this catches releases in the
-                    // gaps, and the bubbled second drop no-ops (handleDragDrop
-                    // clears dragState on its first call).
-                    onDragOver={canEdit ? (e) => {
-                      if (dragState.current && dragState.current.groupDate !== null) {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = "move";
-                        setUnscheduledDragOver(true);
-                      }
-                    } : undefined}
-                    onDragLeave={canEdit ? (e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        setUnscheduledDragOver(false);
-                      }
-                    } : undefined}
-                    onDrop={canEdit ? (e) => {
-                      if (dragState.current && dragState.current.groupDate !== null) {
-                        e.preventDefault();
-                        setUnscheduledDragOver(false);
-                        handleDragDrop(null, unscheduledItems, unscheduledItems.length);
-                      }
-                    } : undefined}
-                    style={{
-                      outline: unscheduledDragOver ? "1.5px dashed var(--color-bt-accent)" : "none",
-                      outlineOffset: "4px",
-                      background: unscheduledDragOver
-                        ? "var(--color-bt-accent-faint, rgba(13,148,136,0.06))"
-                        : "transparent",
-                    }}
-                  >
+                  <div className="space-y-1.5">
                       {/* eslint-disable react-hooks/refs */}
                       {unscheduledItems.map((item, idx) => (
                         <ScheduleItemRow
@@ -1140,6 +1109,10 @@ export function ScheduleTab({
                             dragState.current = { groupDate: null, idx, item };
                           }}
                           onDragOver={(e) => {
+                            // The panel only accepts reordering of items already
+                            // here — scheduled items leave the agenda via the X,
+                            // not by dragging back. Reject day-sourced drags.
+                            if (dragState.current?.groupDate !== null) return;
                             e.preventDefault();
                             setDragOverIdx({ groupDate: null, idx });
                           }}
@@ -1409,6 +1382,14 @@ export function ScheduleTab({
                               } : undefined}
                               compDragType={compDragType}
                               onAddToDay={trip.start_date && trip.end_date ? () => setDayPickerItem(item) : undefined}
+                              onUnschedule={() => {
+                                updateItem.mutate({
+                                  tripId,
+                                  itemId: item.id,
+                                  scheduledDate: null,
+                                  ...(item.item_type !== "golf" && { isConfirmed: false }),
+                                });
+                              }}
                             />
                           ))}
                           {/* Bottom drop zone — append to end of day */}
@@ -1594,28 +1575,6 @@ export function ScheduleTab({
               className="flex flex-shrink-0 flex-col gap-2 px-5 py-3"
               style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
             >
-              {dayPickerItem.scheduled_date && (
-                <button
-                  onClick={() => {
-                    updateItem.mutate({
-                      tripId,
-                      itemId: dayPickerItem.id,
-                      scheduledDate: null,
-                      // Non-golf: leaving the agenda clears confirmation.
-                      ...(dayPickerItem.item_type !== "golf" && { isConfirmed: false }),
-                    });
-                    setDayPickerItem(null);
-                  }}
-                  className="w-full rounded-lg border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-                  style={{
-                    borderColor: "var(--color-bt-border)",
-                    color: "var(--color-bt-text)",
-                    background: "transparent",
-                  }}
-                >
-                  Return to Not Scheduled Yet
-                </button>
-              )}
               <button
                 onClick={() => setDayPickerItem(null)}
                 className="w-full rounded-lg border px-4 py-2 text-sm font-medium"
