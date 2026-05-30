@@ -277,14 +277,17 @@ export default function TripDetailPage() {
       return (ci && (ci < tripStart || ci > tripEnd)) ||
              (co && (co < tripStart || co > tripEnd));
     });
-  // Task 70: the dot fires only when NOTHING is confirmed yet. Once at
-  // least one property is locked in we consider the lodging decided —
-  // any leftover unconfirmed entries are "considered but not booked"
-  // (parallel options the crew can still browse), not a nag.
+  // Task 70: the dot fires until the lodging is actually "decided." A
+  // property only counts as decided when it's confirmed AND has a date —
+  // confirming without a check-in/out leaves it off the itinerary (the
+  // itinerary keys off dates), so confirmed-but-undated is still an
+  // action item. Dates needn't be in-range (pre/post-trip stays are
+  // fine); they just have to exist. Leftover unconfirmed entries beyond
+  // that are "considered but not booked" and don't nag.
   const lodgingUnconfirmed =
     effectiveCanEdit &&
     lodgingItems.length > 0 &&
-    !lodgingItems.some((i) => i.is_confirmed);
+    !lodgingItems.some((i) => i.is_confirmed && (i.check_in_time || i.check_out_time));
   const scheduleOutOfRange =
     effectiveCanEdit &&
     tripStart && tripEnd &&

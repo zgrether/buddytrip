@@ -55,6 +55,9 @@ export const logisticsRouter = router({
         pickupTime: z.string().max(50).optional(),
         // Lodging photo URL (og:image fetched in AddPropertySheet).
         imageUrl: z.string().url().max(2048).optional(),
+        // Up to 3 lodging photos. image_url is kept in sync with the
+        // first element as the cover the LodgingCard renders.
+        imageUrls: z.array(z.string().url().max(2048)).max(3).optional(),
         // Ordering
         sortOrder: z.number().int().default(0),
       })
@@ -80,7 +83,11 @@ export const logisticsRouter = router({
           transport_type: input.transportType ?? null,
           pickup_location: input.pickupLocation ?? null,
           pickup_time: input.pickupTime ?? null,
-          image_url: input.imageUrl ?? null,
+          // image_urls is the source of truth; image_url stays in sync
+          // with the first element as the cover. Fall back to the
+          // legacy single imageUrl when imageUrls isn't provided.
+          image_urls: input.imageUrls ?? (input.imageUrl ? [input.imageUrl] : []),
+          image_url: input.imageUrls?.[0] ?? input.imageUrl ?? null,
           sort_order: input.sortOrder,
           created_by: ctx.user!.id,
         })
@@ -120,6 +127,7 @@ export const logisticsRouter = router({
         pickupLocation: z.string().max(500).nullable().optional(),
         pickupTime: z.string().max(50).nullable().optional(),
         imageUrl: z.string().url().max(2048).nullable().optional(),
+        imageUrls: z.array(z.string().url().max(2048)).max(3).nullable().optional(),
         sortOrder: z.number().int().optional(),
       })
     )
@@ -140,7 +148,16 @@ export const logisticsRouter = router({
       if (input.transportType !== undefined) update.transport_type = input.transportType;
       if (input.pickupLocation !== undefined) update.pickup_location = input.pickupLocation;
       if (input.pickupTime !== undefined) update.pickup_time = input.pickupTime;
-      if (input.imageUrl !== undefined) update.image_url = input.imageUrl;
+      // imageUrls is the source of truth when provided; keep image_url
+      // synced to the cover (first element). When only the legacy
+      // imageUrl is sent, update image_url alone.
+      if (input.imageUrls !== undefined) {
+        const urls = input.imageUrls ?? [];
+        update.image_urls = urls;
+        update.image_url = urls[0] ?? null;
+      } else if (input.imageUrl !== undefined) {
+        update.image_url = input.imageUrl;
+      }
       if (input.sortOrder !== undefined) update.sort_order = input.sortOrder;
 
       if (Object.keys(update).length === 0) {
