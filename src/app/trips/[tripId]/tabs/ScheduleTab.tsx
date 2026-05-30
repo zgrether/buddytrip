@@ -368,7 +368,11 @@ function ScheduleItemRow({
           }
         >
           {item.is_confirmed && <Check size={12} strokeWidth={3} />}
-          {item.is_confirmed ? "Confirmed" : "Draft"}
+          {item.is_confirmed ? (
+            <span className="hidden sm:inline">Confirmed</span>
+          ) : (
+            "Draft"
+          )}
         </span>
       )}
 

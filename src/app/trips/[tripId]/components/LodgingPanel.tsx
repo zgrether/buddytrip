@@ -206,7 +206,7 @@ function LodgingCard({
                 if (canEdit) onConfirmToggle();
               }}
               disabled={!canEdit}
-              aria-label={canEdit ? "Mark as not confirmed" : "Confirmed"}
+              aria-label={canEdit ? "Mark as not confirmed" : undefined}
               className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-85 disabled:cursor-default disabled:hover:opacity-100"
               style={{
                 background: "var(--color-bt-accent)",
@@ -215,7 +215,7 @@ function LodgingCard({
               }}
             >
               <Check size={12} strokeWidth={3} />
-              <span className="hidden sm:inline">Confirmed</span>
+              Confirmed
             </button>
           ) : canEdit ? (
             <button
