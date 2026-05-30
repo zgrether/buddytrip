@@ -18,6 +18,15 @@ import { trpc } from "@/lib/trpc-client";
  * Channel: `events:{competitionId}` — listens to *all* postgres_changes
  * (INSERT/UPDATE/DELETE) and invalidates the events.list query.
  *
+ * NOTE: this handler deliberately stays on invalidate (refetch) rather than
+ * patching the cache via setQueryData like the chat/notification hooks do.
+ * `events.list` selects `*` PLUS server-side embeds —
+ * `point_distributions:event_point_distributions(*)` and the joined
+ * `agenda_item` — that the raw `events` postgres_changes payload does NOT
+ * carry. Writing the bare row into the cache would drop those nested
+ * relations and corrupt the leaderboard/scoreboard until the next refetch, so
+ * the only correct option here is to refetch.
+ *
  * Mirrors the shape of `useRealtimeNotifications` /
  * `useRealtimeCompetition`.
  */
