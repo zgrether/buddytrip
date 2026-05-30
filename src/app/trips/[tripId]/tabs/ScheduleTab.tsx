@@ -974,6 +974,18 @@ export function ScheduleTab({
 
             {/* ── Column 1: Unscheduled Items ──────────────────────── */}
             <section style={{ alignSelf: "start" }}>
+              {/* When the main layout collapses to a single column (below lg),
+                  On Deck and Competition Events sit side-by-side as two columns
+                  so the rail's vertical content doesn't stack into a tall strip.
+                  At lg+ they restack inside the narrow 320px rail. The 2-col
+                  split only kicks in when there's a competition cell to show. */}
+              <div
+                className={`grid grid-cols-1 gap-6 lg:grid-cols-1 ${
+                  !competition || unlinkedCompEvents.length > 0 ? "sm:grid-cols-2" : ""
+                }`}
+              >
+              {/* ── On Deck cell ── */}
+              <div>
               {/* Eyebrow + caption — text-only per HANDOFF round 2 A1
                   (no icon prefix). Wrapped with mb-3 so there's
                   breathing room between the caption and the content
@@ -1155,12 +1167,16 @@ export function ScheduleTab({
                   </div>
                 )
               )}
+              </div>
+              {/* ── Competition cell — sits beside On Deck below lg, beneath it
+                  at lg+. The grid gap handles spacing, so no top margins here. ── */}
+              <div>
               {/* Competition-off nudge — replaces the live competition-events
                   list when there's no competition for this trip yet. Per
                   HANDOFF-gaps-agenda-empty.md §2b. */}
               {!competition && (
                 <div
-                  className="mt-6 rounded-xl p-3.5"
+                  className="rounded-xl p-3.5"
                   style={{
                     background: "var(--color-bt-card)",
                     border: "1px dashed var(--color-bt-border)",
@@ -1205,7 +1221,7 @@ export function ScheduleTab({
                   Drag a competition event onto a Day-by-Day agenda item to link it.
                   Linked events disappear from here (they belong to the agenda item). */}
               {competition && unlinkedCompEvents.length > 0 && (
-                <div className="mt-8">
+                <div>
                   <div className="mb-2 flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
                     <h4 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1229,6 +1245,8 @@ export function ScheduleTab({
                   </div>
                 </div>
               )}
+              </div>
+              </div>
             </section>
 
             {/* ── Column 2: Schedule (day groups only) ─────────────── */}
