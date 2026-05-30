@@ -294,7 +294,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           "inset-x-0 bottom-0 max-h-[90vh] rounded-t-2xl",
           // Tablet + desktop (≥640): right-anchored drawer, full height,
           // 440px wide per the canonical edit-drawer spec.
-          "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:w-[440px] sm:rounded-none",
+          "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:max-h-screen sm:w-[440px] sm:rounded-none",
         ].join(" ")}
         style={{
           background: "var(--color-bt-card-float)",
