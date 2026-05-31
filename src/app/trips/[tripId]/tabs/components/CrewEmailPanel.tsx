@@ -78,6 +78,13 @@ export interface CrewEmailPanelProps {
    * land in the modal with the right people already selected.
    */
   preselectMemberIds?: string[];
+  /**
+   * Overrides the default message used to seed the draft (and the Reset
+   * target) when the owner hasn't saved a custom message. The idea zone
+   * passes a planning-vibe invitation here; left undefined, the panel falls
+   * back to buildCannedInvitation (the going-stage "it's on" copy).
+   */
+  defaultMessage?: string;
   /** Closes the host modal (Cancel button + header X). */
   onClose: () => void;
 }
@@ -94,6 +101,7 @@ export function CrewEmailPanel({
   trip,
   isOwner,
   preselectMemberIds,
+  defaultMessage,
   onClose,
 }: CrewEmailPanelProps) {
   const tripId = trip.id;
@@ -101,8 +109,9 @@ export function CrewEmailPanel({
   const utils = trpc.useUtils();
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
 
-  // Editable message (autosaves on blur)
-  const cannedInvitation = buildCannedInvitation(trip);
+  // Editable message (autosaves on blur). The caller can override the
+  // default seed/reset copy (e.g. the idea zone's planning-vibe invite).
+  const cannedInvitation = defaultMessage ?? buildCannedInvitation(trip);
   const savedMessage = trip.about_message?.trim() || "";
   const [messageDraft, setMessageDraft] = useState(savedMessage || cannedInvitation);
 

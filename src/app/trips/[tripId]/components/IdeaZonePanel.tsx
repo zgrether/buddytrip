@@ -18,6 +18,7 @@ import {
   ExternalLink,
   LayoutGrid,
   Columns2,
+  Mail,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -27,7 +28,11 @@ import { CatalogBrowser } from "./CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
-import { PlannersPanel, AddOrganizerComposer } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
+import { AddOrganizerComposer } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
+import { type Member, deriveStatus as deriveStatusIZ, CrewSection } from "@/app/trips/[tripId]/tabs/components/CrewRoster";
+import { MemberEditor } from "@/app/trips/[tripId]/tabs/components/MemberEditor";
+import { CrewEmailPanel } from "@/app/trips/[tripId]/tabs/components/CrewEmailPanel";
+import { buildPlanningInvitation } from "@/lib/invitationDefault";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1889,6 +1894,16 @@ export default function IdeaZonePanel({
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [setDestinationIdea, setSetDestinationIdea] = useState<Idea | null>(null);
   const [isCompact, setIsCompact] = useState(false);
+  // Crew roster (idea-zone twin of the Crew tab): tap-to-edit member drawer
+  // + the "Email the crew" modal. emailPreselectIds pre-checks recipients
+  // when the modal opens (always [] here — the idea zone has no nudges).
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailPreselectIds, setEmailPreselectIds] = useState<string[]>([]);
+  const openEmailModal = (memberIds: string[] = []) => {
+    setEmailPreselectIds(memberIds);
+    setShowEmailModal(true);
+  };
 
   useEffect(() => {
     if (showAddModal) {
@@ -1939,22 +1954,36 @@ export default function IdeaZonePanel({
 
   const handleVote = (ideaId: string) => voteMutation.mutate({ tripId, ideaId });
 
-  // All user IDs who have voted on any idea in this trip
-  const allVoterIds = new Set(ideasTyped.flatMap((i) => i.votes.map((v) => v.user_id)));
+  // Crew roster — the idea-zone reuses the Crew tab's CrewSection/CrewRow
+  // building blocks. `members` from tripMembers.list already matches the
+  // shared Member shape, so we sort + split by role exactly like CrewTab.
+  const statusOrderIZ: Record<string, number> = { active: 0, invited: 1, placeholder: 2 };
+  const roleOrderIZ: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+  const membersTyped = members as Member[];
+  const sortedRoster = [...membersTyped].sort((a, b) => {
+    const aRole = roleOrderIZ[a.role] ?? 2;
+    const bRole = roleOrderIZ[b.role] ?? 2;
+    if (aRole !== bRole) return aRole - bRole;
+    const aStatus = statusOrderIZ[deriveStatusIZ(a)] ?? 2;
+    const bStatus = statusOrderIZ[deriveStatusIZ(b)] ?? 2;
+    if (aStatus !== bStatus) return aStatus - bStatus;
+    return a.displayName.localeCompare(b.displayName);
+  });
+  const organizers = sortedRoster.filter((m) => m.role === "Owner" || m.role === "Planner");
+  // Crew = members who aren't an organizer or the owner. Empty by default in
+  // the idea stage (everyone added here is an Organizer) — the CREW section
+  // only appears once the owner demotes someone, so a demoted-but-kept member
+  // doesn't have to be deleted and re-added.
+  const ideaCrew = sortedRoster.filter((m) => m.role === "Member");
+  // "Email the crew" is available when any *other* member has an email on
+  // file (you can't email yourself). Owner-only, mirroring the Crew tab.
+  const hasEmailableCrew = membersTyped.some(
+    (m) => m.user_id !== currentUser?.id && !!m.user?.email
+  );
 
-  // Planners list for PlannersPanel
-  const plannersList = members
-    .filter((m) => m.role.toLowerCase() === "owner" || m.role.toLowerCase() === "planner")
-    .map((m) => ({
-      userId: m.user_id,
-      name: m.displayName,
-      avatarIcon: (m as { user?: { avatar_icon?: string | null } | null }).user?.avatar_icon ?? null,
-      email: (m as { user?: { email?: string | null } | null }).user?.email ?? null,
-      role: m.role.toLowerCase() as "owner" | "planner",
-      hasVoted: allVoterIds.has(m.user_id),
-      isMe: m.user_id === currentUser?.id,
-      isGuest: !!(m as { isGuest?: boolean }).isGuest,
-    }));
+  // Planning-vibe default for the email modal — "I'm starting to plan a
+  // trip and could use your help" rather than the going-stage "it's on".
+  const planningInvitation = buildPlanningInvitation(trip);
 
   if (ideasTyped.length === 0) {
     if (!isOwner) {
@@ -1982,32 +2011,92 @@ export default function IdeaZonePanel({
     <div>
       {/* ── Single column layout ──────────────────────────────────────── */}
       <div className="px-4 py-4 space-y-4">
-        {/* Organizers — roster (main) + add composer (right rail).
+        {/* ── Crew roster (idea-zone twin of the Crew tab) ─────────────
+            "Need help deciding?" header + description, then the
+            ORGANIZERS / CREW sections (headers live OUTSIDE the cards, via
+            CrewSection) with the add-organizer composer in the right rail.
             Mirrors the Crew tab's responsive two-column grid: the rail sits
-            beside the roster at ≥900px and stacks below it under 900px
-            (same minmax(280px,320px) right track). Only the owner gets the
-            composer, so the grid is owner-only; organizers see the roster
-            on its own. */}
+            beside the roster at ≥900px and stacks below under 900px (same
+            minmax(280px,320px) right track). */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <h2 className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              Need help deciding?
+            </h2>
+            <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              {isOwner
+                ? "Invite people who want to help shape the trip. They can add ideas, vote, and weigh in before the trip is officially on — everyone else gets added when you're ready to go."
+                : "You're an organizer on this trip. Add your input on the ideas below and vote for your favorite — your voice helps decide where the crew lands."}
+            </p>
+          </div>
+          {/* Email-the-crew — owner-only, shown whenever any other member
+              has an email on file. Mirrors the Crew tab's header action. */}
+          {isOwner && hasEmailableCrew && (
+            <button
+              type="button"
+              onClick={() => openEmailModal()}
+              data-testid="email-crew-btn"
+              className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Mail size={13} />
+              Email the crew
+            </button>
+          )}
+        </div>
+
         {isOwner && canEdit ? (
           <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] min-[900px]:gap-5">
-            <div>
-              <PlannersPanel
-                tripId={tripId}
-                planners={plannersList}
-                isOwner={isOwner}
+            <div className="flex flex-col gap-5">
+              <CrewSection
+                title="Organizers"
+                tone="accent"
+                members={organizers}
+                isOwnerView={isOwner}
+                currentUserId={currentUser?.id}
+                onEditMember={(m) => setEditingMemberId(m.memberId)}
+                emptyHint="Just you so far — add an organizer to share planning work."
               />
+              {/* CREW section appears only once a non-organizer member
+                  exists (owner demoted someone but kept them on the trip).
+                  By default no one is here in the idea stage. */}
+              {ideaCrew.length > 0 && (
+                <CrewSection
+                  title="Crew"
+                  tone="planning"
+                  members={ideaCrew}
+                  isOwnerView={isOwner}
+                  currentUserId={currentUser?.id}
+                  onEditMember={(m) => setEditingMemberId(m.memberId)}
+                />
+              )}
             </div>
             <aside>
               <AddOrganizerComposer tripId={tripId} />
             </aside>
           </div>
         ) : (
-          <div className="max-w-2xl">
-            <PlannersPanel
-              tripId={tripId}
-              planners={plannersList}
-              isOwner={isOwner}
+          <div className="flex max-w-2xl flex-col gap-5">
+            <CrewSection
+              title="Organizers"
+              tone="accent"
+              members={organizers}
+              isOwnerView={isOwner}
+              currentUserId={currentUser?.id}
             />
+            {ideaCrew.length > 0 && (
+              <CrewSection
+                title="Crew"
+                tone="planning"
+                members={ideaCrew}
+                isOwnerView={isOwner}
+                currentUserId={currentUser?.id}
+              />
+            )}
           </div>
         )}
 
@@ -2090,6 +2179,49 @@ export default function IdeaZonePanel({
           onClose={() => setSetDestinationIdea(null)}
         />
       )}
+
+      {/* Crew Email modal — owner-only. Seeds the draft with a planning-vibe
+          invitation ("I'm starting to plan a trip and could use your help")
+          rather than the going-stage "it's on" copy. */}
+      {showEmailModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowEmailModal(false);
+          }}
+        >
+          <div
+            className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl"
+            style={{ background: "var(--color-bt-card)", maxHeight: "90dvh" }}
+          >
+            <CrewEmailPanel
+              trip={trip}
+              isOwner={isOwner}
+              preselectMemberIds={emailPreselectIds}
+              defaultMessage={planningInvitation}
+              onClose={() => setShowEmailModal(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Member editor — drawer on desktop, bottom sheet on mobile (the
+          editor handles its own responsive presentation, so it works at
+          every size). Opens when an editable crew/organizer row is tapped. */}
+      {editingMemberId &&
+        (() => {
+          const target = membersTyped.find((m) => m.memberId === editingMemberId);
+          if (!target) return null;
+          return (
+            <MemberEditor
+              tripId={tripId}
+              member={target}
+              canManageRoles={isOwner}
+              onClose={() => setEditingMemberId(null)}
+            />
+          );
+        })()}
 
     </div>
   );
