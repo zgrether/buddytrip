@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUpCircle, Check, Mail, Plane, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
@@ -12,13 +12,12 @@ import {
   ValidationFeedback,
   type ValidationState,
 } from "@/components/emailValidation";
-import { Plus } from "lucide-react";
 import {
-  TravelEditor,
-  TravelModePill,
-  summarizeTravel,
-  formatArrivalLabel,
-  type TravelMode,
+  TravelFields,
+  travelMemberToForm,
+  travelFormToPayload,
+  travelFormsEqual,
+  type TravelFormValue,
 } from "./TravelControls";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -110,9 +109,12 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   // Surfaces a failed save (e.g. the email collides with another member)
   // so the drawer explains itself instead of silently refusing to close.
   const [saveError, setSaveError] = useState<string | null>(null);
-  // Travel sub-editor reveal — the owner edits this member's travel inline
-  // within the drawer (between Permissions and Remove).
-  const [editingTravel, setEditingTravel] = useState(false);
+  // Travel — this is an edit drawer, so the fields are always present (no
+  // add/edit toggle). State lives here and is persisted by the drawer's own
+  // Save button rather than an inner Save/Cancel.
+  const initialTravelForm = useMemo(() => travelMemberToForm(member), [member]);
+  const [travelForm, setTravelForm] = useState<TravelFormValue>(initialTravelForm);
+  const travelDirty = !travelFormsEqual(travelForm, initialTravelForm);
 
   // ── Live email validation (debounced) ──────────────────────────────────
   const validation: ValidationState = useEmailValidation(tripId, email);
@@ -124,6 +126,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   // Trip-scoped nickname update — works for guest AND active members alike,
   // because the nickname now lives on trip_members rather than users.
   const updateNickname = trpc.tripMembers.updateNickname.useMutation({
+    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
+  // Owner-edits-anyone travel write (works for placeholders too). Fired as
+  // part of handleSave when the travel fields are dirty.
+  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({
     onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
   });
   const removeMember = trpc.tripMembers.remove.useMutation({
@@ -209,6 +216,17 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           })
         );
       }
+    }
+
+    // Travel — persist alongside name/email when the always-on fields changed.
+    if (travelDirty) {
+      tasks.push(
+        updateMemberTravel.mutateAsync({
+          tripId,
+          targetUserId: member.user_id,
+          ...travelFormToPayload(travelForm),
+        })
+      );
     }
 
     try {
@@ -532,9 +550,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           </div>
 
           {/* Travel — owner logs/edits any member's travel here (incl.
-              placeholders, who can't log it themselves). Rendered as a
-              plain <div> (not <Field>) because it contains buttons/inputs
-              that a wrapping <label> would proxy clicks to. */}
+              placeholders, who can't log it themselves). This is an edit
+              drawer, so the fields are always present (no add/edit toggle)
+              and saved by the drawer's own footer Save — no inner buttons.
+              Rendered as a plain <div> (not <Field>) because it contains
+              inputs that a wrapping <label> would proxy clicks to. */}
           {member.user_id && (
             <div className="flex flex-col gap-2">
               <div className="flex flex-col gap-1">
@@ -553,78 +573,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
                   into the itinerary on arrival day.
                 </p>
               </div>
-              {(() => {
-                const mode = (member.travel_mode as TravelMode | null) ?? null;
-                const detail = summarizeTravel(member);
-                const arrivalLabel = formatArrivalLabel(member.flight_arrival_time);
-                const hasTravel = !!mode;
-
-                if (editingTravel) {
-                  return (
-                    <TravelEditor
-                      tripId={tripId}
-                      member={member}
-                      targetUserId={member.user_id!}
-                      surface="recessed"
-                      onSaved={() => setEditingTravel(false)}
-                      onCancel={() => setEditingTravel(false)}
-                    />
-                  );
-                }
-
-                if (hasTravel) {
-                  return (
-                    <div className="flex items-center gap-3">
-                      <TravelModePill mode={mode} withLabel />
-                      <div className="min-w-0 flex-1">
-                        {detail && (
-                          <p
-                            className="truncate text-sm"
-                            style={{ color: "var(--color-bt-text)" }}
-                          >
-                            {detail}
-                          </p>
-                        )}
-                        {arrivalLabel && (
-                          <p
-                            className="truncate text-[11px]"
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                          >
-                            Arriving {arrivalLabel}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setEditingTravel(true)}
-                        className="flex-shrink-0 text-xs font-medium hover:underline"
-                        style={{ color: "var(--color-bt-accent)" }}
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  );
-                }
-
-                // Empty state — copy differs by whether they can log it
-                // themselves. Placeholders (no email/app access) get
-                // "Log arrival"; app-users get "Add" (they could also do
-                // it from their own YOU tile).
-                return (
-                  <button
-                    type="button"
-                    onClick={() => setEditingTravel(true)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 py-2.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-                    style={{
-                      borderColor: "var(--color-bt-border)",
-                      color: "var(--color-bt-accent)",
-                    }}
-                  >
-                    <Plus size={14} strokeWidth={2.5} />
-                    {member.isGuest ? "Log arrival" : "Add travel"}
-                  </button>
-                );
-              })()}
+              <TravelFields
+                value={travelForm}
+                onChange={setTravelForm}
+                surface="recessed"
+              />
             </div>
           )}
 
@@ -737,8 +690,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             const nicknameDirty = nickname.trim() !== initialNickname.trim();
             const emailDirty =
               member.isGuest && email.trim() !== (member.user?.email ?? "");
-            const canSave = nicknameDirty || emailDirty;
-            const isPending = updateNickname.isPending || updateGuest.isPending;
+            const canSave = nicknameDirty || emailDirty || travelDirty;
+            const isPending =
+              updateNickname.isPending ||
+              updateGuest.isPending ||
+              updateMemberTravel.isPending;
             return (
               <button
                 onClick={handleSave}

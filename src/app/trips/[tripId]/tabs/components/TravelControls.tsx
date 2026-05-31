@@ -150,92 +150,84 @@ function parseArrivalTime(iso: string | null | undefined): string {
   return `${hh}:${mm}`;
 }
 
-// ── TravelEditor — segmented mode + detail + arriving date/time ────────────
+// ── Travel form state (shared by TravelFields, TravelEditor, MemberEditor) ──
 //
-// Self-edit (member's own travel) when `targetUserId` is omitted → writes via
-// tripMembers.updateTravel. Owner editing someone else → pass `targetUserId`
-// → writes via tripMembers.updateMemberTravel (works for placeholders too).
+// The travel inputs collapse to four controlled values. Both the standalone
+// TravelEditor (YOU tile, owns its own Save) and the MemberEditor crew drawer
+// (always-on fields, saved by the drawer's own footer) drive the same
+// `TravelFields` presentational component off this shape.
 
-export function TravelEditor({
-  tripId,
-  member,
-  targetUserId,
+export interface TravelFormValue {
+  mode: TravelMode;
+  detail: string;
+  arrivalDate: string;
+  arrivalTime: string;
+}
+
+/** Build the initial form value from a member's saved travel (with legacy
+ *  flight-field fallback for older flying rows). */
+export function travelMemberToForm(member: TravelMember): TravelFormValue {
+  return {
+    mode: (member.travel_mode as TravelMode) ?? "flying",
+    detail: summarizeTravel(member) ?? "",
+    arrivalDate: parseArrivalDate(member.flight_arrival_time),
+    arrivalTime: parseArrivalTime(member.flight_arrival_time),
+  };
+}
+
+/** Convert form state into the mutation payload. Clears the legacy structured
+ *  flight columns on every save so the single detail string stays
+ *  authoritative. */
+export function travelFormToPayload(value: TravelFormValue) {
+  let arrivalISO: string | null = null;
+  if (value.arrivalDate) {
+    arrivalISO = value.arrivalTime
+      ? `${value.arrivalDate}T${value.arrivalTime}:00`
+      : `${value.arrivalDate}T00:00:00`;
+  }
+  return {
+    travelMode: value.mode,
+    travelDetail: value.detail.trim() || null,
+    flightAirline: null,
+    flightNumber: null,
+    flightArrivalTime: arrivalISO,
+    flightAirport: null,
+  };
+}
+
+/** Field-by-field equality so callers can tell whether the form is dirty. */
+export function travelFormsEqual(a: TravelFormValue, b: TravelFormValue): boolean {
+  return (
+    a.mode === b.mode &&
+    a.detail.trim() === b.detail.trim() &&
+    a.arrivalDate === b.arrivalDate &&
+    a.arrivalTime === b.arrivalTime
+  );
+}
+
+// ── TravelFields — presentational, footerless travel inputs ────────────────
+//
+// Controlled segmented mode + detail + arriving date/time. No Save/Cancel —
+// the host decides how/when to persist. Used directly by the MemberEditor
+// drawer (the drawer's own footer saves) and wrapped by TravelEditor (which
+// adds a Save/Cancel footer for the YOU tile's add/edit toggle).
+
+export function TravelFields({
+  value,
+  onChange,
   tripStartDate,
   surface = "card",
-  onSaved,
-  onCancel,
 }: {
-  tripId: string;
-  member: TravelMember;
-  /** Omit for self-edit; set to edit another member as owner. */
-  targetUserId?: string;
+  value: TravelFormValue;
+  onChange: (next: TravelFormValue) => void;
   /** Optional — flags arrivals entered before the trip starts. */
   tripStartDate?: string | null;
   /** "card" = sits on a card surface (YOU tile); "recessed" = sits inside a
    *  drawer, so inputs use the recessed base background. */
   surface?: "card" | "recessed";
-  onSaved: () => void;
-  onCancel: () => void;
 }) {
-  const utils = trpc.useUtils();
-  const [mode, setMode] = useState<TravelMode>(
-    (member.travel_mode as TravelMode) ?? "flying"
-  );
-  // Single detail string for every mode. Prefill from travel_detail, falling
-  // back to the legacy structured flight fields for older flying rows.
-  const [detail, setDetail] = useState(
-    () => summarizeTravel(member) ?? ""
-  );
-  const [arrivalDate, setArrivalDate] = useState(() =>
-    parseArrivalDate(member.flight_arrival_time)
-  );
-  const [arrivalTime, setArrivalTime] = useState(() =>
-    parseArrivalTime(member.flight_arrival_time)
-  );
-
-  const invalidate = () => {
-    utils.tripMembers.list.invalidate({ tripId });
-    onSaved();
-  };
-  const updateTravel = trpc.tripMembers.updateTravel.useMutation({ onSuccess: invalidate });
-  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({
-    onSuccess: invalidate,
-  });
-  const isPending = targetUserId
-    ? updateMemberTravel.isPending
-    : updateTravel.isPending;
-
-  const handleSave = () => {
-    // Combine arrival date + time into a local ISO timestamp (no TZ suffix;
-    // the itinerary builder parses via new Date(...), honouring local TZ).
-    let arrivalISO: string | null = null;
-    if (arrivalDate) {
-      arrivalISO = arrivalTime
-        ? `${arrivalDate}T${arrivalTime}:00`
-        : `${arrivalDate}T00:00:00`;
-    }
-    const travelDetail = detail.trim() || null;
-
-    // Clear the legacy structured flight columns on every save so the single
-    // detail string stays the source of truth.
-    const common = {
-      travelMode: mode,
-      travelDetail,
-      flightAirline: null,
-      flightNumber: null,
-      flightArrivalTime: arrivalISO,
-      flightAirport: null,
-    };
-
-    if (targetUserId) {
-      updateMemberTravel.mutate({ tripId, targetUserId, ...common });
-    } else {
-      updateTravel.mutate({ tripId, ...common, travelShared: true });
-    }
-  };
-
   const arrivalBeforeTrip =
-    !!arrivalDate && !!tripStartDate && arrivalDate < tripStartDate;
+    !!value.arrivalDate && !!tripStartDate && value.arrivalDate < tripStartDate;
   const inputBg =
     surface === "recessed" ? "var(--color-bt-base)" : "var(--color-bt-card-raised)";
 
@@ -270,15 +262,15 @@ export function TravelEditor({
           border: "1px solid var(--color-bt-border)",
         }}
       >
-        {MODE_ORDER.map((value) => {
-          const meta = TRAVEL_MODE_META[value];
+        {MODE_ORDER.map((m) => {
+          const meta = TRAVEL_MODE_META[m];
           const Icon = meta.Icon;
-          const active = mode === value;
+          const active = value.mode === m;
           return (
             <button
-              key={value}
+              key={m}
               type="button"
-              onClick={() => setMode(value)}
+              onClick={() => onChange({ ...value, mode: m })}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
               style={
                 active
@@ -307,9 +299,9 @@ export function TravelEditor({
         </label>
         <input
           type="text"
-          value={detail}
-          onChange={(e) => setDetail(e.target.value)}
-          placeholder={TRAVEL_MODE_META[mode].placeholder}
+          value={value.detail}
+          onChange={(e) => onChange({ ...value, detail: e.target.value })}
+          placeholder={TRAVEL_MODE_META[value.mode].placeholder}
           className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
           style={{
             background: inputBg,
@@ -330,8 +322,8 @@ export function TravelEditor({
           </label>
           <input
             type="date"
-            value={arrivalDate}
-            onChange={(e) => setArrivalDate(e.target.value)}
+            value={value.arrivalDate}
+            onChange={(e) => onChange({ ...value, arrivalDate: e.target.value })}
             className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
             style={{
               background: inputBg,
@@ -349,8 +341,8 @@ export function TravelEditor({
           </label>
           <input
             type="time"
-            value={arrivalTime}
-            onChange={(e) => setArrivalTime(e.target.value)}
+            value={value.arrivalTime}
+            onChange={(e) => onChange({ ...value, arrivalTime: e.target.value })}
             className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
             style={{
               background: inputBg,
@@ -360,6 +352,70 @@ export function TravelEditor({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── TravelEditor — segmented mode + detail + arriving date/time + footer ────
+//
+// The YOU tile's add/edit toggle: TravelFields plus its own Save/Cancel.
+// Self-edit (member's own travel) when `targetUserId` is omitted → writes via
+// tripMembers.updateTravel. Owner editing someone else → pass `targetUserId`
+// → writes via tripMembers.updateMemberTravel (works for placeholders too).
+
+export function TravelEditor({
+  tripId,
+  member,
+  targetUserId,
+  tripStartDate,
+  surface = "card",
+  onSaved,
+  onCancel,
+}: {
+  tripId: string;
+  member: TravelMember;
+  /** Omit for self-edit; set to edit another member as owner. */
+  targetUserId?: string;
+  /** Optional — flags arrivals entered before the trip starts. */
+  tripStartDate?: string | null;
+  /** "card" = sits on a card surface (YOU tile); "recessed" = sits inside a
+   *  drawer, so inputs use the recessed base background. */
+  surface?: "card" | "recessed";
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [form, setForm] = useState<TravelFormValue>(() => travelMemberToForm(member));
+
+  const invalidate = () => {
+    utils.tripMembers.list.invalidate({ tripId });
+    onSaved();
+  };
+  const updateTravel = trpc.tripMembers.updateTravel.useMutation({ onSuccess: invalidate });
+  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({
+    onSuccess: invalidate,
+  });
+  const isPending = targetUserId
+    ? updateMemberTravel.isPending
+    : updateTravel.isPending;
+
+  const handleSave = () => {
+    const common = travelFormToPayload(form);
+    if (targetUserId) {
+      updateMemberTravel.mutate({ tripId, targetUserId, ...common });
+    } else {
+      updateTravel.mutate({ tripId, ...common, travelShared: true });
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <TravelFields
+        value={form}
+        onChange={setForm}
+        tripStartDate={tripStartDate}
+        surface={surface}
+      />
 
       {/* Footer actions. */}
       <div className="flex items-center justify-end gap-2 pt-1">
