@@ -351,11 +351,11 @@ export function CrewEmailPanel({
                         }}
                       >
                         {m.last_emailed_at
-                          ? `Invited · ${parseLocalDate(m.last_emailed_at).toLocaleDateString(
+                          ? `Last sent · ${parseLocalDate(m.last_emailed_at).toLocaleDateString(
                               "en-US",
                               { month: "short", day: "numeric" }
                             )}`
-                          : "Invited"}
+                          : "Last sent"}
                       </span>
                     )}
                   </button>
@@ -365,8 +365,10 @@ export function CrewEmailPanel({
           </section>
         )}
 
-        {/* No email yet — display-only chips. Adding emails happens on the
-            crew tab, so these are not selectable here. */}
+        {/* No email yet — an informational list, not selectable chips.
+            Adding emails happens on the crew tab. Rendered as a uniform
+            avatar + name grid (no capsule) so widths line up and it doesn't
+            mimic the selectable recipient cards above. */}
         {withoutEmail.length > 0 && (
           <section>
             <div className="mb-2 flex items-center gap-2">
@@ -382,19 +384,36 @@ export function CrewEmailPanel({
             <p className="mb-3 text-center text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Add an email on the crew tab to invite them.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(132px, 1fr))",
+                gap: "8px 10px",
+              }}
+            >
               {withoutEmail.map((m) => (
                 <span
                   key={m.memberId}
-                  className="flex items-center gap-2 rounded-full py-1 pl-1 pr-3"
                   style={{
-                    background: "var(--color-bt-card-raised)",
-                    border: "1px solid var(--color-bt-border)",
-                    color: "var(--color-bt-text)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    minWidth: 0,
                   }}
                 >
                   <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" muted />
-                  <span className="text-xs font-medium">{m.displayName}</span>
+                  <span
+                    style={{
+                      fontSize: "12.5px",
+                      fontWeight: 500,
+                      color: "var(--color-bt-text-dim)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {m.displayName}
+                  </span>
                 </span>
               ))}
             </div>
