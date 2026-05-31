@@ -23,9 +23,8 @@ export interface TripData {
   stage_advanced_to_planning_at?: string | null;
   stage_advanced_to_going_at?: string | null;
   about_message?: string | null;
-  /** Panel activation flags — owner taps the invitation card to flip these on. */
+  /** Panel activation flag — owner taps the invitation card to flip this on. */
   itinerary_enabled?: boolean | null;
-  quick_info_enabled?: boolean | null;
   /** @deprecated — Travel Plans moved to the Crew tab. Columns kept in DB but
    *  no longer read; travel surfaces on Home only as woven itinerary arrivals. */
   getting_there_enabled?: boolean | null;

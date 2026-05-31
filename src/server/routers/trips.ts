@@ -599,55 +599,6 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // enableQuickInfoTiles — Owner or Planner activates the Quick Info panel
-  // via QuickInfoIntroModal. Flipping this flag surfaces the rich skeleton
-  // mock-up on the home tab; the standard InvitationCard hides.
-  // Idempotent: re-calling on an already-enabled trip is a no-op.
-  // -----------------------------------------------------------------------
-  enableQuickInfoTiles: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({ quick_info_enabled: true })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to enable quick info tiles: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // disableQuickInfoTiles — inverse of enableQuickInfoTiles. Used if/when
-  // the owner backs out of the activated empty state (parallel with
-  // disableItinerary).
-  // -----------------------------------------------------------------------
-  disableQuickInfoTiles: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({ quick_info_enabled: false })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to disable quick info tiles: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
   // advanceToGoing — Owner advances trip from PLANNING → GOING
   // Requires: at least one date is locked. aboutMessage is optional — when
   // supplied, it's saved to trip.about_message; no email blast is sent.
