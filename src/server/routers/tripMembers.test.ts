@@ -360,23 +360,52 @@ describe("tripMembers router — sendInvitationBlast", () => {
     expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalled();
   });
 
-  it("sendInvitationBlast — updates last_blast_sent_at on the trip", async () => {
-    const admin = ctx.admin;
+  it("sendInvitationBlast — sends the explicit message body verbatim", async () => {
+    vi.mocked(sendInvitationBlast).mockClear();
     const caller = ctx.caller();
-    const planner = ctx.getUser("planner");
+    const member = ctx.getUser("member");
+    const body = "Hey! I'm starting to plan a trip and could use your help.";
 
     await caller.tripMembers.sendInvitationBlast({
       tripId,
-      memberUserIds: [planner.id],
+      memberUserIds: [member.id],
+      message: body,
     });
 
-    const { data: trip } = await admin
-      .from("trips")
-      .select("last_blast_sent_at")
-      .eq("id", tripId)
+    expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalledWith(
+      expect.objectContaining({ invitationMessage: body })
+    );
+  });
+
+  it("sendInvitationBlast — stamps last_emailed_at and bumps email_count", async () => {
+    const admin = ctx.admin;
+    const caller = ctx.caller();
+    const member = ctx.getUser("member");
+
+    // Read the starting count so we assert a real increment regardless of
+    // how many prior blast tests already touched this member.
+    const { data: before } = await admin
+      .from("trip_members")
+      .select("email_count")
+      .eq("trip_id", tripId)
+      .eq("user_id", member.id)
+      .single();
+    const startCount = before?.email_count ?? 0;
+
+    await caller.tripMembers.sendInvitationBlast({
+      tripId,
+      memberUserIds: [member.id],
+    });
+
+    const { data: after } = await admin
+      .from("trip_members")
+      .select("last_emailed_at, email_count")
+      .eq("trip_id", tripId)
+      .eq("user_id", member.id)
       .single();
 
-    expect(trip?.last_blast_sent_at).toBeTruthy();
+    expect(after?.last_emailed_at).toBeTruthy();
+    expect(after?.email_count).toBe(startCount + 1);
   });
 
   it("sendInvitationBlast — member cannot blast", async () => {

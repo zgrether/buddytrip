@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import { TeamMemberChip } from "./TeamMemberChip";
 
 interface Props {
@@ -47,7 +47,7 @@ interface Member {
   memberId: string;
   displayName: string;
   isGuest?: boolean;
-  user?: { avatar_url?: string | null } | null;
+  user?: { avatar_icon?: string | null } | null;
 }
 
 // ── Team color palette (intentional team identity hex per STYLE_GUIDE §7) ───
@@ -549,7 +549,7 @@ function TeamCard({
             <TeamMemberChip
               key={id}
               displayName={m.displayName}
-              avatarUrl={m.user?.avatar_url}
+              avatarIcon={m.user?.avatar_icon}
               isGuest={m.isGuest}
               teamColor={team.color}
               draggable={canEdit}
@@ -824,10 +824,9 @@ function CrewRoster({
                     className="flex-shrink-0"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   />
-                  <UserAvatar
+                  <Avatar
                     name={m.displayName}
-                    avatarUrl={m.user?.avatar_url ?? null}
-                    isGuest={m.isGuest}
+                    avatarIcon={m.user?.avatar_icon ?? null}
                     size="md"
                   />
                   <span
@@ -885,10 +884,9 @@ function CrewRoster({
                       border: "1px solid var(--color-bt-border)",
                     }}
                   >
-                    <UserAvatar
+                    <Avatar
                       name={m.displayName}
-                      avatarUrl={m.user?.avatar_url ?? null}
-                      isGuest={m.isGuest}
+                      avatarIcon={m.user?.avatar_icon ?? null}
                       size="md"
                     />
                     <span

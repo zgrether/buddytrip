@@ -119,7 +119,7 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
       members.map((m) => ({
         user_id: m.user_id,
         displayName: m.displayName,
-        avatarUrl: null,
+        avatarIcon: (m as { user?: { avatar_icon?: string | null } | null }).user?.avatar_icon ?? null,
       })),
     [members]
   );

@@ -77,7 +77,13 @@ export default function ProfilePage() {
     onError: (_err, _input, ctx) => {
       if (ctx?.prev) utils.users.getMe.setData(undefined, ctx.prev);
     },
-    onSettled: () => utils.users.getMe.invalidate(),
+    onSettled: () => {
+      utils.users.getMe.invalidate();
+      // Avatar shows up on every trip's crew/itinerary/teams surfaces, which
+      // read from tripMembers.list. Refresh those so the new icon propagates
+      // without a full reload.
+      utils.tripMembers.list.invalidate();
+    },
     onSuccess: () => {
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
@@ -759,6 +765,9 @@ function NameSheet({ currentName, onClose }: { currentName: string; onClose: () 
   const updateMe = trpc.users.updateMe.useMutation({
     onSuccess: () => {
       utils.users.getMe.invalidate();
+      // Name drives the initials fallback (and displayName) on every trip's
+      // crew/itinerary/teams surfaces, which read from tripMembers.list.
+      utils.tripMembers.list.invalidate();
       onClose();
     },
   });

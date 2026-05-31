@@ -35,7 +35,7 @@ export async function listMembers(
   const { data, error } = await ctx.supabase
     .from("trip_members")
     .select(
-      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at",
+      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_emailed_at, email_count",
     )
     .eq("trip_id", tripId)
     .order("joined_at", { ascending: true });
@@ -726,14 +726,24 @@ export const tripMembersRouter = router({
 
   // -----------------------------------------------------------------------
   // sendInvitationBlast — Owner sends the trip invitation email to a
-  // selected subset of crew members. Updates last_invited_at per recipient
-  // and last_blast_sent_at on the trip.
+  // selected subset of crew members. Stamps last_emailed_at and bumps
+  // email_count per recipient (email_count distinguishes a first-contact
+  // invite from a follow-up).
   // -----------------------------------------------------------------------
   sendInvitationBlast: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         memberUserIds: z.array(z.string()).min(1),
+        /**
+         * The exact invitation body to send, as shown in the email panel.
+         * Passed explicitly so the sent email always matches what the owner
+         * saw — the panel's default varies by stage (planning vs. going) and
+         * isn't always persisted to about_message. Falls back to
+         * about_message, then the canned default, for any caller that omits
+         * it.
+         */
+        message: z.string().optional(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -773,9 +783,13 @@ export const tripMembersRouter = router({
         .select("id, name, email")
         .in("id", verifiedIds);
 
-      // Build invitation message (custom or canned default)
+      // Build invitation message. Prefer the explicit body the panel sent
+      // (so the email matches what the owner saw, including the idea-zone
+      // planning-vibe default), then the saved about_message, then the
+      // canned default as a last resort.
       const { buildCannedInvitation } = await import("@/lib/invitationDefault");
-      const invitationMessage = trip.about_message?.trim() || buildCannedInvitation(trip);
+      const invitationMessage =
+        input.message?.trim() || trip.about_message?.trim() || buildCannedInvitation(trip);
 
       const { sendInvitationBlast: sendBlast } = await import("@/lib/email");
       const now = new Date().toISOString();
@@ -798,20 +812,22 @@ export const tripMembersRouter = router({
         }
       }
 
-      // Update last_invited_at for each successfully sent recipient
+      // Stamp last_emailed_at ("when last sent") for each recipient, then
+      // atomically bump email_count (0→1 makes the first send an invite;
+      // any later send a follow-up). The increment is a SQL function because
+      // supabase-js can't express `email_count = email_count + 1`.
       if (sentIds.length > 0) {
         await ctx.supabase
           .from("trip_members")
-          .update({ last_invited_at: now })
+          .update({ last_emailed_at: now })
           .eq("trip_id", ctx.tripId)
           .in("user_id", sentIds);
-      }
 
-      // Update trip.last_blast_sent_at
-      await ctx.supabase
-        .from("trips")
-        .update({ last_blast_sent_at: now })
-        .eq("id", ctx.tripId);
+        await ctx.supabase.rpc("increment_member_email_count", {
+          p_trip_id: ctx.tripId,
+          p_user_ids: sentIds,
+        });
+      }
 
       return { sent: sentIds.length };
     }),

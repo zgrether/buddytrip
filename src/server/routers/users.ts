@@ -106,7 +106,7 @@ export const usersRouter = router({
 
       const { data, error } = await ctx.supabase
         .from("users")
-        .select("id, name, email, is_guest")
+        .select("id, name, email, is_guest, avatar_icon")
         .eq("email", query)
         .neq("id", ctx.user.id)
         .eq("is_guest", false)

@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowUpCircle, Check, Crown, Loader2, Mail, Send, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpCircle, Check, Mail, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { Avatar } from "@/components/Avatar";
+import {
+  useEmailValidation,
+  validationBorder,
+  ValidationFeedback,
+  type ValidationState,
+} from "@/components/emailValidation";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -21,6 +27,9 @@ export type MemberEditorTarget = {
    * tripMembers.updateNickname.
    */
   nickname?: string | null;
+  /** Times this member has been emailed. 0 = not invited yet → reads as
+   *  Pending even for a real account; >0 = contacted. Mirrors CrewTab. */
+  email_count?: number | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -33,13 +42,16 @@ export type MemberEditorTarget = {
   } | null;
 };
 
-type ValidationState = "idle" | "checking" | "match" | "invite" | "invalid";
-
 // Mirror of CrewTab's deriveStatus — kept inline to avoid a circular import.
 function deriveStatus(m: MemberEditorTarget): "active" | "invited" | "placeholder" {
-  if (!m.isGuest) return "active";
-  if (m.user?.email) return "invited";
-  return "placeholder";
+  // Owner is inherently on the trip — always active.
+  if (m.role === "Owner") return "active";
+  // Guest with no email = name-only stand-in.
+  if (m.isGuest && !m.user?.email) return "placeholder";
+  // Never emailed (guest OR real account) = not officially invited yet.
+  if ((m.email_count ?? 0) === 0) return "invited";
+  // Emailed: guest still waiting to sign up (invited); real account = active.
+  return m.isGuest ? "invited" : "active";
 }
 
 function statusLabel(s: ReturnType<typeof deriveStatus>) {
@@ -79,37 +91,12 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
 
   const [nickname, setNickname] = useState(initialNickname);
   const [email, setEmail] = useState(initialEmail);
+  // Surfaces a failed save (e.g. the email collides with another member)
+  // so the drawer explains itself instead of silently refusing to close.
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // ── Live email validation (debounced) ──────────────────────────────────
-  const formatOk = useMemo(() => {
-    if (!email.trim()) return null; // empty → no card
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  }, [email]);
-
-  const [debounced, setDebounced] = useState(email);
-  useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(email), 400);
-    return () => window.clearTimeout(id);
-  }, [email]);
-
-  const checkQuery = trpc.tripMembers.checkEmail.useQuery(
-    { tripId, email: debounced.trim() },
-    {
-      enabled: !!debounced.trim() && formatOk === true,
-      staleTime: 30_000,
-    }
-  );
-
-  const validation: ValidationState = useMemo(() => {
-    if (!email.trim()) return "idle";
-    if (formatOk === false) return "invalid";
-    // Format-valid but query hasn't settled (or is in-flight).
-    if (debounced !== email || checkQuery.isFetching) return "checking";
-    if (checkQuery.data?.result === "match") return "match";
-    if (checkQuery.data?.result === "invalid") return "invalid";
-    if (checkQuery.data?.result === "invite") return "invite";
-    return "checking";
-  }, [email, debounced, formatOk, checkQuery.data, checkQuery.isFetching]);
+  const validation: ValidationState = useEmailValidation(tripId, email);
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const updateGuest = trpc.ghostCrew.update.useMutation({
@@ -158,6 +145,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
       return;
     }
 
+    setSaveError(null);
     const nameChanged = nickname.trim() !== initialNickname.trim();
     const emailChanged = email.trim() !== (member.user?.email ?? "");
     const tasks: Promise<unknown>[] = [];
@@ -204,10 +192,17 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
       }
     }
 
-    if (tasks.length > 0) {
-      await Promise.all(tasks);
+    try {
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
+      onClose();
+    } catch (err) {
+      // Keep the drawer open and explain why instead of silently failing.
+      setSaveError(
+        err instanceof Error ? err.message : "Couldn't save your changes. Please try again."
+      );
     }
-    onClose();
   };
 
   const handleRemove = () => {
@@ -579,6 +574,26 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
         {/* Footer — Cancel/Save row. The destructive "Remove from trip"
             action lives at the end of the scrollable body (danger-above
             pattern), matching the other edit modals. */}
+        {saveError && (
+          <div
+            className="mx-4 mt-3 flex items-start gap-2.5 rounded-lg px-3 py-2"
+            style={{
+              background: "var(--color-bt-danger-faint)",
+              border: "1px solid var(--color-bt-danger-border)",
+            }}
+          >
+            <span
+              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
+              style={{ background: "var(--color-bt-danger)", color: "var(--color-bt-on-accent)" }}
+            >
+              <X size={12} strokeWidth={3} />
+            </span>
+            <div className="min-w-0 text-[12px] font-medium" style={{ color: "var(--color-bt-danger)" }}>
+              {saveError}
+            </div>
+          </div>
+        )}
+
         <div
           className="flex gap-2 px-4 py-3"
           style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
@@ -661,104 +676,6 @@ function Field({
   );
 }
 
-// ── ValidationFeedback — the four-state helper card ───────────────────────
-
-function validationBorder(state: ValidationState) {
-  switch (state) {
-    case "checking":
-    case "invite":
-      return "var(--color-bt-warning)";
-    case "match":
-      return "var(--color-bt-accent)";
-    case "invalid":
-      return "var(--color-bt-danger)";
-    default:
-      return "var(--color-bt-border)";
-  }
-}
-
-function ValidationFeedback({ state, email }: { state: ValidationState; email: string }) {
-  if (state === "idle") return null;
-
-  type Tone = "accent" | "warning" | "danger";
-  const copy: { tone: Tone; icon: "check" | "send" | "x" | "spin"; title: string; body: string | null } =
-    state === "checking"
-      ? { tone: "warning", icon: "spin", title: "Checking BuddyTrip…", body: null }
-      : state === "match"
-        ? {
-            tone: "accent",
-            icon: "check",
-            title: "Already on BuddyTrip",
-            body: `${email} is an active account — they'll be in the trip the moment you save.`,
-          }
-        : state === "invite"
-          ? {
-              tone: "warning",
-              icon: "send",
-              title: "We'll send an invite",
-              body: `No account at ${email}. We'll email an invite link when you save; they become Active once they sign up.`,
-            }
-          : {
-              tone: "danger",
-              icon: "x",
-              title: "That email doesn't look right",
-              body: "Or leave it blank — they'll be a placeholder.",
-            };
-
-  const tones: Record<Tone, { fg: string; bg: string; border: string }> = {
-    accent: {
-      fg: "var(--color-bt-accent)",
-      bg: "var(--color-bt-accent-faint)",
-      border: "var(--color-bt-accent-border)",
-    },
-    warning: {
-      fg: "var(--color-bt-warning)",
-      bg: "var(--color-bt-warning-faint)",
-      border: "var(--color-bt-warning-border)",
-    },
-    danger: {
-      fg: "var(--color-bt-danger)",
-      bg: "var(--color-bt-danger-faint)",
-      border: "var(--color-bt-danger-border)",
-    },
-  };
-  const t = tones[copy.tone];
-
-  return (
-    <div
-      className="mt-1 flex items-start gap-2.5 rounded-lg px-3 py-2"
-      style={{ background: t.bg, border: `1px solid ${t.border}` }}
-    >
-      <span
-        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-        style={{
-          background: copy.icon === "spin" ? "transparent" : t.fg,
-          color: "var(--color-bt-on-accent)",
-          border: copy.icon === "spin" ? `2px solid ${t.fg}` : undefined,
-        }}
-      >
-        {copy.icon === "check" && <Check size={12} strokeWidth={3} />}
-        {copy.icon === "send" && <Send size={11} strokeWidth={2.5} />}
-        {copy.icon === "x" && <X size={12} strokeWidth={3} />}
-        {copy.icon === "spin" && <Loader2 size={11} className="animate-spin" style={{ color: t.fg }} />}
-      </span>
-      <div className="min-w-0">
-        <div className="text-[12px] font-semibold" style={{ color: t.fg }}>
-          {copy.title}
-        </div>
-        {copy.body && (
-          <div
-            className="mt-0.5 text-[11px] leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {copy.body}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── RoleControl — contextual permission control per spec ──────────────────
 
 function RoleControl({
@@ -786,13 +703,12 @@ function RoleControl({
         }}
       >
         <span
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
           style={{
             color: "var(--color-bt-owner)",
             border: "1px solid var(--color-bt-owner)",
           }}
         >
-          <Crown size={9} />
           Owner
         </span>
         <span className="text-[12px]" style={{ color: "var(--color-bt-text)" }}>

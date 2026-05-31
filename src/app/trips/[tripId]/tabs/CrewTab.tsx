@@ -1,350 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { Crown, Mail, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { Mail, Plus, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
-import { parseLocalDate } from "@/lib/dates";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
 import type { TabProps } from "./types";
 import { CrewEmailPanel } from "./components/CrewEmailPanel";
 import { MemberEditor } from "./components/MemberEditor";
-
-// ── Types ─────────────────────────────────────────────────────────────────
-//
-// `status` (RSVP) is intentionally ignored — the spec replaces "Going /
-// Maybe / Can't / Pending" with a status derived from email validity.
-// We keep the field in the type so the DB query continues to work, but
-// nothing in this file consumes it.
-
-type Member = {
-  memberId: string;
-  user_id: string | null;
-  role: string;
-  status: string | null;
-  displayName: string;
-  isGuest: boolean;
-  /** When the trip invite email was last sent to this member. Null until
-   *  the first send; updated by sendInvitationBlast. Surfaced in the
-   *  invited subline so organizers know how stale the invite is. */
-  last_invited_at?: string | null;
-  user: {
-    name?: string | null;
-    email: string | null;
-    is_guest?: boolean;
-    /** Tabler icon id the user chose in /profile (e.g. "flag-2") — the
-     *  in-app profile avatar. We surface this, NOT users.avatar_url
-     *  (the Google / OAuth-supplied photo), so crew rows reflect what
-     *  the user explicitly picked as their identity in this app. */
-    avatar_icon?: string | null;
-  } | null;
-};
-
-/** Three derived crew states. Status is computed, not chosen. */
-type DerivedStatus = "active" | "invited" | "placeholder";
-
-function deriveStatus(m: Member): DerivedStatus {
-  // Real BT account (non-guest) = active.
-  if (!m.isGuest) return "active";
-  // Guest with an email = waiting on signup = invited.
-  if (m.user?.email) return "invited";
-  // Guest without email = name-only stand-in = placeholder.
-  return "placeholder";
-}
-
-// ── Role pill (Owner amber · Organizer teal · Member: no pill) ────────────
-
-function RolePill({ role }: { role: string }) {
-  if (role === "Owner") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-        style={{
-          background: "var(--color-bt-warning-faint)",
-          color: "var(--color-bt-owner)",
-          border: "1px solid var(--color-bt-warning-border)",
-        }}
-      >
-        <Crown size={10} />
-        Owner
-      </span>
-    );
-  }
-  // DB stores 'Planner'; displays as 'Organizer' per CLAUDE.md rule 7.
-  if (role === "Planner") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-        style={{
-          background: "var(--color-bt-accent-faint)",
-          color: "var(--color-bt-accent)",
-          border: "1px solid var(--color-bt-accent-border)",
-        }}
-      >
-        Organizer
-      </span>
-    );
-  }
-  return null;
-}
-
-// ── PlaceholderAvatar — neutral square instead of the old Ghost icon ──────
-
-function PlaceholderAvatar({ name }: { name: string }) {
-  const initials =
-    name
-      .split(/\s+/)
-      .map((w) => w[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase() || "?";
-  return (
-    <div
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
-      style={{
-        background: "var(--color-bt-card-raised)",
-        border: "1px solid var(--color-bt-border)",
-        color: "var(--color-bt-text-dim)",
-      }}
-      aria-label="Placeholder crew member"
-    >
-      {initials}
-    </div>
-  );
-}
-
-// ── InvitedAvatar — team-color circle + amber ✉ corner badge ──────────────
-
-function InvitedAvatar({ name, avatarIcon }: { name: string; avatarIcon?: string | null }) {
-  return (
-    <div className="relative h-8 w-8 flex-shrink-0">
-      <Avatar name={name} avatarIcon={avatarIcon ?? null} size="md" />
-      <span
-        className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full"
-        style={{
-          // Pending status uses --color-bt-warning (amber). Task 61
-          // briefly tried planning-blue for "softer" treatment but the
-          // blue washed out against everything else; Task 62 reverted —
-          // amber stands out and reads as "needs your attention" which
-          // matches what the Pending state actually means.
-          background: "var(--color-bt-warning)",
-          color: "var(--color-bt-on-accent)",
-          border: "1.5px solid var(--color-bt-card)",
-        }}
-        aria-label="Invited"
-      >
-        <Mail size={7} strokeWidth={3} />
-      </span>
-    </div>
-  );
-}
-
-// ── CrewRow ───────────────────────────────────────────────────────────────
-//
-// Row is a single tap target. In organizer view, tapping opens the
-// MemberEditor drawer/sheet (managed by the parent CrewTab via
-// `onEdit`). All edit affordances live there — no inline expand.
-
-function CrewRow({
-  member: m,
-  isOwnerView,
-  isMe,
-  onEdit,
-}: {
-  member: Member;
-  isOwnerView: boolean;
-  isMe: boolean;
-  onEdit?: (m: Member) => void;
-}) {
-  const status = deriveStatus(m);
-  const isOwnerRow = m.role === "Owner";
-  const editable = isOwnerView && !isOwnerRow && !!onEdit;
-
-  return (
-    <div
-      className="border-b last:border-b-0"
-      style={{ borderColor: "var(--color-bt-subtle-border)" }}
-    >
-      <button
-        type="button"
-        disabled={!editable}
-        onClick={editable ? () => onEdit!(m) : undefined}
-        className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors disabled:cursor-default"
-        style={{ background: "transparent" }}
-      >
-        {/* Avatar — three variants per derived status. Surfaces the
-            user's in-app profile avatar (users.avatar_icon, the Tabler
-            icon they picked in /profile) with users.name as the
-            initials fallback. Trip-scoped nickname does NOT drive the
-            avatar — Guthridge stays a "ZG" / chosen-icon for the
-            zgrethphoto account. We deliberately ignore users.avatar_url
-            (the Google/OAuth profile photo) so the avatar reflects an
-            in-app identity choice, not the third-party login picture. */}
-        {status === "placeholder" ? (
-          <PlaceholderAvatar name={m.user?.name ?? m.displayName} />
-        ) : status === "invited" ? (
-          <InvitedAvatar
-            name={m.user?.name ?? m.displayName}
-            avatarIcon={m.user?.avatar_icon ?? null}
-          />
-        ) : (
-          <Avatar
-            name={m.user?.name ?? m.displayName}
-            avatarIcon={m.user?.avatar_icon ?? null}
-            size="md"
-          />
-        )}
-
-        {/* Nickname + subline */}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            {m.displayName}
-            {isMe && (
-              <span className="ml-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                (you)
-              </span>
-            )}
-          </p>
-          {/* Subline rules: email mono for active/invited, plus
-              "Invited" suffix for invited. Placeholders have NO subline. */}
-          {status === "active" && m.user?.email && (
-            <p
-              className="truncate font-mono text-[11px]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              {m.user.email}
-            </p>
-          )}
-          {status === "invited" && (
-            <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              <span className="font-mono">{m.user?.email}</span>
-              <span className="ml-1" style={{ color: "var(--color-bt-warning)" }}>
-                {/* Two sub-states:
-                    - last_invited_at set → "· invited Mar 5" (sent but
-                      the user hasn't signed up yet)
-                    - last_invited_at null → "· pending invite" (added
-                      with an email but the invite blast hasn't gone
-                      out yet — the nudge above prompts the Owner to
-                      send it). */}
-                {m.last_invited_at
-                  ? `· invited ${parseLocalDate(m.last_invited_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}`
-                  : "· pending invite"}
-              </span>
-            </p>
-          )}
-        </div>
-
-        {/* Role pill (Owner / Organizer; Member renders nothing) */}
-        <div className="flex flex-shrink-0 items-center gap-1.5">
-          <RolePill role={m.role} />
-        </div>
-      </button>
-
-    </div>
-  );
-}
-
-// ── CrewSection — Organizers / Crew with header + count ───────────────────
-
-function CrewSection({
-  title,
-  members,
-  isOwnerView,
-  currentUserId,
-  onEditMember,
-  emptyHint,
-  tone = "dim",
-}: {
-  title: string;
-  members: Member[];
-  isOwnerView: boolean;
-  currentUserId: string | undefined;
-  onEditMember?: (m: Member) => void;
-  emptyHint?: string;
-  /** Section title color. 'accent' for Organizers, 'planning' (blue)
-   *  for Crew, 'dim' for the member-view's neutral single list. */
-  tone?: "accent" | "planning" | "dim";
-}) {
-  const TONE_STYLE: Record<
-    "accent" | "planning" | "dim",
-    { fg: string; bg: string; border: string }
-  > = {
-    accent: {
-      fg: "var(--color-bt-accent)",
-      bg: "var(--color-bt-accent-faint)",
-      border: "var(--color-bt-accent-border)",
-    },
-    planning: {
-      fg: "var(--color-bt-planning)",
-      bg: "var(--color-bt-planning-faint)",
-      border: "var(--color-bt-planning-border)",
-    },
-    dim: {
-      fg: "var(--color-bt-text-dim)",
-      bg: "transparent",
-      border: "transparent",
-    },
-  };
-  const t = TONE_STYLE[tone];
-
-  return (
-    <section>
-      <h2
-        className={[
-          "mb-2 flex items-baseline justify-between gap-2 text-xs font-semibold uppercase tracking-wider",
-          tone === "dim" ? "" : "rounded-lg px-3 py-1.5",
-        ].join(" ")}
-        style={{
-          color: t.fg,
-          background: t.bg,
-        }}
-      >
-        <span>{title}</span>
-        <span
-          className="font-mono"
-          style={{ color: t.fg, opacity: 0.75 }}
-        >
-          {members.length}
-        </span>
-      </h2>
-      {members.length === 0 ? (
-        <p
-          className="rounded-xl px-4 py-5 text-center text-xs italic"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px dashed var(--color-bt-border)",
-            color: "var(--color-bt-text-dim)",
-          }}
-        >
-          {emptyHint ?? "Nobody here yet."}
-        </p>
-      ) : (
-        <div
-          className="overflow-hidden rounded-xl"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          {members.map((m) => (
-            <CrewRow
-              key={m.memberId}
-              member={m}
-              isOwnerView={isOwnerView}
-              isMe={m.user_id === currentUserId}
-              onEdit={onEditMember}
-            />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+import {
+  type Member,
+  type DerivedStatus,
+  deriveStatus,
+  InvitedAvatar,
+  PlaceholderAvatar,
+  CrewRow,
+  CrewSection,
+} from "./components/CrewRoster";
 
 // ── StatusLegend (right rail, always visible) ─────────────────────────────
 
@@ -383,7 +57,7 @@ function StatusLegend({ members }: { members: Member[] }) {
       // sublines + Owner nudges carry the finer distinction.
       key: "invited",
       label: "Pending",
-      body: "Has an email but no BuddyTrip account yet — they're waiting on an invite, or already got one and haven't signed up. They become Active once they sign in.",
+      body: "Has an email but hasn't been invited yet — a guest waiting to sign up, or a BuddyTrip user you haven't emailed about this trip. Send the invite to bring them in; they turn Active once they're emailed and signed in.",
       avatar: <InvitedAvatar name="P" />,
     },
     {
@@ -826,6 +500,15 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showMobileAdd, setShowMobileAdd] = useState(false);
+  // Recipients to pre-check when the email modal opens. The nudges populate
+  // this so "Send invites" / "Resend invites" land on the modal with exactly
+  // the people that nudge is about already selected; opening the modal from
+  // the header button passes [] (nothing pre-selected).
+  const [emailPreselectIds, setEmailPreselectIds] = useState<string[]>([]);
+  const openEmailModal = (memberIds: string[] = []) => {
+    setEmailPreselectIds(memberIds);
+    setShowEmailModal(true);
+  };
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -847,6 +530,13 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   const organizers = sortedAll.filter((m) => m.role === "Owner" || m.role === "Planner");
   const restCrew = sortedAll.filter((m) => m.role === "Member");
   const totalCount = members.length;
+
+  // Email-the-crew is available whenever at least one *other* member has an
+  // email on file (the current user can't email themselves). Drives the
+  // header-corner button below.
+  const hasEmailableCrew = members.some(
+    (m) => m.user_id !== currentUser?.id && !!m.user?.email
+  );
 
   // ── Read-only roster view: Owner gets the management chrome below;
   // everyone else (including Planner/Organizer) sees this read-only
@@ -942,19 +632,37 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             </>
           )
         }
-        // The previous header-corner email button has been retired —
-        // its job moved into the Pending Invite / Invited nudges below,
-        // where the action sits next to the count it acts on. Keeping
-        // a duplicate in the corner was redundant and didn't read as
-        // related to either nudge.
+        // Header-corner "Email the crew" button — visible/enabled whenever
+        // any other crew member has an email on file. Stays visible at
+        // every viewport (actionAlwaysVisible) since the FAB only
+        // substitutes for the *add* CTA, not this secondary action.
+        desktopAction={
+          hasEmailableCrew ? (
+            <button
+              type="button"
+              onClick={() => openEmailModal()}
+              data-testid="email-crew-btn"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+            >
+              <Mail size={13} />
+              Email the crew
+            </button>
+          ) : undefined
+        }
+        actionAlwaysVisible
       />
 
       {/* Two crew nudges — only fire for Owner.
           - Pending: invite-eligible (guest + email) rows where the blast
-            has never been sent (last_invited_at is null). The Owner
+            has never been sent (last_emailed_at is null). The Owner
             added them but never hit "send invites" — the nudge prompts
             that send.
-          - Invited: blast has gone out (last_invited_at set) but the
+          - Invited: blast has gone out (last_emailed_at set) but the
             recipient hasn't signed up yet. Resend nudge.
           Each carries a right-justified Send/Resend email button that
           opens the blast modal — the previously-redundant header-corner
@@ -962,10 +670,10 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
       {isOwner &&
         (() => {
           const pending = members.filter(
-            (m) => deriveStatus(m) === "invited" && !m.last_invited_at
+            (m) => deriveStatus(m) === "invited" && !m.last_emailed_at
           );
           const invited = members.filter(
-            (m) => deriveStatus(m) === "invited" && !!m.last_invited_at
+            (m) => deriveStatus(m) === "invited" && !!m.last_emailed_at
           );
           if (pending.length === 0 && invited.length === 0) return null;
           return (
@@ -974,24 +682,24 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                 <CrewNudge
                   title={
                     pending.length === 1
-                      ? "1 member waiting on an invite"
-                      : `${pending.length} members waiting on an invite`
+                      ? "1 person is ready to invite"
+                      : `${pending.length} people are ready to invite`
                   }
-                  body="They were added with an email but haven't been invited yet — send the blast to give them access."
+                  body="You haven't emailed them yet — send them a link to join the trip."
                   ctaLabel="Send invites"
-                  onCta={() => setShowEmailModal(true)}
+                  onCta={() => openEmailModal(pending.map((m) => m.memberId))}
                 />
               )}
               {invited.length > 0 && (
                 <CrewNudge
                   title={
                     invited.length === 1
-                      ? "1 person hasn't signed up yet"
-                      : `${invited.length} people haven't signed up yet`
+                      ? "1 person hasn't joined yet"
+                      : `${invited.length} people haven't joined yet`
                   }
-                  body="They got the invite but haven't created an account — resend to nudge them along."
-                  ctaLabel="Resend invites"
-                  onCta={() => setShowEmailModal(true)}
+                  body="They got an invite but haven't created an account — send a follow-up."
+                  ctaLabel="Follow up"
+                  onCta={() => openEmailModal(invited.map((m) => m.memberId))}
                 />
               )}
             </div>
@@ -1176,63 +884,18 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           }}
         >
           <div
-            className="relative w-full max-w-lg overflow-hidden rounded-t-2xl sm:rounded-2xl"
+            className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl"
             style={{
-              background: "var(--color-bt-base)",
+              background: "var(--color-bt-card)",
               maxHeight: "90dvh",
-              display: "flex",
-              flexDirection: "column",
             }}
           >
-            <div
-              className="flex flex-shrink-0 items-center gap-3 px-4 py-3"
-              style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-            >
-              <span
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{
-                  background: "var(--color-bt-accent-faint)",
-                  color: "var(--color-bt-accent)",
-                }}
-              >
-                <Mail size={15} />
-              </span>
-              <span
-                className="flex-1 text-sm font-semibold"
-                style={{ color: "var(--color-bt-text)" }}
-              >
-                Email the Crew
-              </span>
-              <button
-                onClick={() => setShowEmailModal(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg transition-opacity hover:opacity-70"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-                aria-label="Close"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="overflow-y-auto p-4">
-              <CrewEmailPanel trip={trip} isOwner={isOwner} />
-            </div>
-            <div
-              className="flex flex-shrink-0 justify-end px-4 py-3"
-              style={{ borderTop: "1px solid var(--color-bt-border)" }}
-            >
-              <button
-                onClick={() => setShowEmailModal(false)}
-                className="rounded-xl px-4 py-2 text-sm font-medium transition-opacity hover:opacity-70"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text)",
-                }}
-              >
-                Cancel
-              </button>
-            </div>
+            <CrewEmailPanel
+              trip={trip}
+              isOwner={isOwner}
+              preselectMemberIds={emailPreselectIds}
+              onClose={() => setShowEmailModal(false)}
+            />
           </div>
         </div>
       )}

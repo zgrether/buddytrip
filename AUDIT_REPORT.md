@@ -152,7 +152,7 @@ The DB `stage` column has three values: `idea`, `planning`, `going`. The compute
 | Column | Table | Migration | Used in queries (src/) | Notes |
 |--------|-------|-----------|----------------------|-------|
 | `invited_at` | `guest_crew` | `012_ghost_crew.sql` | None found (ghost crew uses its own email flow) | ⚠️ Potentially dormant. `guest_crew.invited_at` is defined but no src/ code reads or writes it. Different from `trip_members.last_invited_at`. |
-| `last_invited_at` | `trip_members` | `054_invitation_blast_tracking.sql` — `ADD COLUMN IF NOT EXISTS last_invited_at timestamptz` | Yes — `tripMembers.ts` selects it (line 19), updates it (line 545); `CrewEmailPanel.tsx` displays it | Active |
+| `last_emailed_at` | `trip_members` | `054_invitation_blast_tracking.sql` (as `last_invited_at`); renamed by `015_rename_last_invited_to_last_emailed.sql` | Yes — `tripMembers.ts` selects/updates it; `CrewEmailPanel.tsx` and `CrewTab.tsx` display it | Active. Stamps "when last emailed" on every send (invite or follow-up); pair with `email_count` to tell them apart. |
 | `last_blast_sent_at` | `trips` | `054_invitation_blast_tracking.sql` — `ADD COLUMN IF NOT EXISTS last_blast_sent_at timestamptz` | Yes — `tripMembers.ts` updates it (line 553); `CrewEmailPanel.tsx` and `InvitationCard.tsx` read it | Active |
 
 ### Date poll column

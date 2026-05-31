@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Ghost,
   HelpCircle,
   Plane,
   Plus,
@@ -16,7 +15,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 
 type TravelMode = "driving" | "flying" | "other";
 type TravelFilterKey = "all" | "driving" | "flying" | "other";
@@ -26,6 +25,7 @@ interface TripMemberLite {
   user_id: string | null;
   displayName: string;
   isGuest?: boolean;
+  user?: { avatar_icon?: string | null } | null;
   travel_mode?: string | null;
   travel_detail?: string | null;
   flight_airline?: string | null;
@@ -380,15 +380,16 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 // without the chevron / expand affordance.
 
 function CrewTravelRow({ member, showBorderTop = true }: { member: TripMemberLite; showBorderTop?: boolean }) {
-  const avatar = member.isGuest ? (
-    <div
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-    >
-      <Ghost size={14} />
-    </div>
-  ) : (
-    <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+  // Guests carry no profile avatar_icon, so Avatar falls back to their
+  // name initials — `muted` keeps the teal foreground reserved for real
+  // accounts (matches the avatar treatment across the app). No ghost glyph.
+  const avatar = (
+    <Avatar
+      name={member.displayName}
+      avatarIcon={member.user?.avatar_icon ?? null}
+      size="md"
+      muted={member.isGuest}
+    />
   );
 
   return (
@@ -420,7 +421,7 @@ function CrewTravelRow({ member, showBorderTop = true }: { member: TripMemberLit
 // ── OtherMemberTravelRow ──────────────────────────────────────────────────
 // Owner-expandable row for every other crew member (real and ghost alike).
 // Same expand/collapse pattern as YourTravelRow but uses updateMemberTravel.
-// Ghost members get a Ghost avatar; real members get UserAvatar.
+// Everyone gets the profile Avatar; guests fall back to muted name initials.
 
 function OtherMemberTravelRow({
   tripId,
@@ -438,15 +439,15 @@ function OtherMemberTravelRow({
   const [expanded, setExpanded] = useState(false);
   const hasTravel = !!m.travel_mode;
 
-  const avatar = m.isGuest ? (
-    <div
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-    >
-      <Ghost size={14} />
-    </div>
-  ) : (
-    <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
+  // Guests have no profile avatar_icon → Avatar shows their name initials.
+  // `muted` distinguishes placeholder/guest identities from real accounts.
+  const avatar = (
+    <Avatar
+      name={m.displayName}
+      avatarIcon={m.user?.avatar_icon ?? null}
+      size="md"
+      muted={m.isGuest}
+    />
   );
 
   const borderStyle: React.CSSProperties = showBorderTop
@@ -744,7 +745,7 @@ function YourTravelRow({
         onClick={onToggleExpanded}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
       >
-        <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+        <Avatar name={member.displayName} avatarIcon={member.user?.avatar_icon ?? null} size="md" />
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>

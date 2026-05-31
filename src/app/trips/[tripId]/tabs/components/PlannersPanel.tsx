@@ -1,432 +1,137 @@
 "use client";
 
 import { useState } from "react";
-import { Users, ChevronDown, ChevronUp, Check, X, Crown, Trash2, Plus } from "lucide-react";
-import { CrewSearchInput } from "@/components/CrewSearchInput";
-import { UserAvatar } from "@/components/UserAvatar";
+import {
+  useEmailValidation,
+  validationBorder,
+  ValidationFeedback,
+} from "@/components/emailValidation";
 import { trpc } from "@/lib/trpc-client";
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── AddOrganizerComposer ──────────────────────────────────────────────────
+// Mirrors CrewTab's AddCrewComposer chrome exactly, with two differences:
+// email is REQUIRED (with the same live validation as the edit-crew drawer),
+// and anyone added here lands as an Organizer (role: "Planner") rather than a
+// plain Member. Owner-only — gated by the caller.
 
-export interface PlannerWithVoteStatus {
-  userId: string;
-  name: string;
-  email?: string | null;
-  role: "owner" | "planner";
-  hasVoted: boolean;
-  isMe: boolean;
-  /** True when added by email but no BuddyTrip account exists yet */
-  isGuest: boolean;
-}
-
-interface PlannersPanelProps {
-  tripId: string;
-  planners: PlannerWithVoteStatus[];
-  isOwner: boolean;
-  canEdit: boolean;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
-}
-
-// ── PlannerRow ────────────────────────────────────────────────────────────
-
-function PlannerRow({
-  planner,
-  tripId,
-  isOwner,
-}: {
-  planner: PlannerWithVoteStatus;
-  tripId: string;
-  isOwner: boolean;
-}) {
+export function AddOrganizerComposer({ tripId }: { tripId: string }) {
   const utils = trpc.useUtils();
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const removeMember = trpc.tripMembers.remove.useMutation({
+  const validation = useEmailValidation(tripId, email);
+
+  const createGuest = trpc.ghostCrew.create.useMutation({
+    onMutate() {
+      setErrorMsg(null);
+    },
     onSuccess() {
+      setName("");
+      setEmail("");
       utils.tripMembers.list.invalidate({ tripId });
+    },
+    onError(err) {
+      setErrorMsg(err.message);
     },
   });
 
-  const isOwnerRow = planner.role === "owner";
-  const expandable = isOwner && !planner.isMe && !isOwnerRow;
+  // Email is required here, so derive the name from the email's local-part
+  // when the name field is blank ("alice@x.com" → "alice").
+  const trimmedName = name.trim();
+  const trimmedEmail = email.trim();
+  const derivedName =
+    trimmedName || trimmedEmail.split("@")[0]?.replace(/[._-]+/g, " ").trim();
+
+  // Only an address that resolves (existing account → "match", or a valid
+  // address with no account yet → "invite") may be submitted. "invalid",
+  // "idle", and the in-flight "checking" state all hold the button.
+  const emailOk = validation === "match" || validation === "invite";
+  const canSubmit = !!derivedName && emailOk && !createGuest.isPending;
+
+  const handleSubmit = () => {
+    if (!canSubmit || !derivedName) return;
+    createGuest.mutate({
+      tripId,
+      name: derivedName,
+      email: trimmedEmail,
+      role: "Planner",
+    });
+  };
+
+  const inputBase = {
+    background: "var(--color-bt-card-raised)",
+    borderColor: "var(--color-bt-border)",
+    color: "var(--color-bt-text)",
+  };
 
   return (
     <div
-      className="border-b last:border-b-0"
-      style={{
-        borderColor: "var(--color-bt-border)",
-        background: isExpanded
-          ? "var(--color-bt-card-raised)"
-          : "color-mix(in srgb, var(--color-bt-accent) 5%, transparent)",
-      }}
-    >
-      {/* Main row */}
-      <div
-        className="flex items-center gap-3 py-2.5 px-3"
-        style={{ cursor: expandable ? "pointer" : undefined }}
-        onClick={
-          expandable
-            ? () => { setIsExpanded((e) => !e); setConfirmRemove(false); }
-            : undefined
-        }
-      >
-        <UserAvatar name={planner.name} avatarUrl={null} sizePx={32} />
-
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-            {planner.name}
-            {planner.isMe && (
-              <span className="ml-1 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>(you)</span>
-            )}
-          </p>
-          {planner.email && (
-            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              {planner.email}
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-shrink-0 items-center gap-1.5">
-          {/* Pending badge — guest planners without a BT account */}
-          {planner.isGuest && (
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-              style={{
-                background: "color-mix(in srgb, var(--color-bt-warning) 12%, transparent)",
-                color: "var(--color-bt-warning)",
-                border: "1px solid color-mix(in srgb, var(--color-bt-warning) 25%, transparent)",
-              }}
-            >
-              Pending
-            </span>
-          )}
-
-          {/* Owner badge */}
-          {isOwnerRow && (
-            <span
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-              style={{
-                background: "color-mix(in srgb, var(--color-bt-warning) 15%, transparent)",
-                color: "var(--color-bt-warning)",
-                border: "1px solid color-mix(in srgb, var(--color-bt-warning) 30%, transparent)",
-              }}
-            >
-              <Crown size={10} />
-              Owner
-            </span>
-          )}
-
-          {/* Planner badge — no × button */}
-          {!isOwnerRow && (
-            <span
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-              style={{
-                background: "var(--color-bt-accent-faint)",
-                color: "var(--color-bt-accent)",
-                border: "1px solid var(--color-bt-accent-border)",
-              }}
-            >
-              Organizer
-            </span>
-          )}
-
-          {expandable && (
-            <ChevronDown
-              size={16}
-              className="transition-transform duration-150"
-              style={{
-                color: "var(--color-bt-text-dim)",
-                transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-              }}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Expanded panel */}
-      {isExpanded && expandable && (
-        <div className="flex gap-3 px-3 pb-3">
-          <div className="w-8 flex-shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              {confirmRemove ? (
-                <>
-                  <span className="text-xs font-medium" style={{ color: "var(--color-bt-danger)" }}>
-                    Remove {planner.name}?
-                  </span>
-                  <button
-                    onClick={() => removeMember.mutate({ tripId, userId: planner.userId })}
-                    disabled={removeMember.isPending}
-                    className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-danger)", color: "white" }}
-                  >
-                    Yes, remove
-                  </button>
-                  <button
-                    onClick={() => setConfirmRemove(false)}
-                    className="rounded-lg border px-2.5 py-1 text-xs"
-                    style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setConfirmRemove(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
-                  style={{ color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger)", opacity: 0.75 }}
-                >
-                  <Trash2 size={12} />
-                  Remove {planner.name} from trip
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── AddPlannerRow ─────────────────────────────────────────────────────────
-
-function AddPlannerRow({ tripId }: { tripId: string }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  if (!isExpanded) {
-    return (
-      <button
-        onClick={() => setIsExpanded(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-medium transition-all"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          color: "var(--color-bt-text)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <Users size={15} />
-        <Plus size={12} />
-        Add organizer
-      </button>
-    );
-  }
-
-  return (
-    <div
-      className="rounded-xl px-3 py-2.5"
-      style={{ background: "color-mix(in srgb, var(--color-bt-accent) 6%, var(--color-bt-base))" }}
-    >
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <CrewSearchInput
-            tripId={tripId}
-            defaultRole="Planner"
-            defaultStatus="draft"
-            allowGhost={false}
-            allowInvite
-            showSearchIcon
-            placeholder="Search by email..."
-          />
-        </div>
-        <button
-          onClick={() => setIsExpanded(false)}
-          className="rounded-lg border px-3 py-1.5 text-xs flex-shrink-0"
-          style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── PlannersPanel ─────────────────────────────────────────────────────────
-
-export function PlannersPanel({
-  tripId,
-  planners,
-  isOwner,
-  canEdit,
-  isCollapsed,
-  onToggleCollapse,
-}: PlannersPanelProps) {
-  const hasMultiplePlanners = planners.length > 1;
-
-  // ── Collapsed (single line, same height as expanded header) ──────────────
-  if (isCollapsed) {
-    return (
-      <div
-        className="rounded-xl overflow-hidden cursor-pointer"
-        style={{
-          border: "1px solid var(--color-bt-border)",
-          background: "var(--color-bt-card)",
-        }}
-        onClick={onToggleCollapse}
-      >
-        <div className="flex items-center gap-2.5 px-4 py-3">
-          {/* 32px icon — matches expanded header */}
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              background: "var(--color-bt-accent-faint)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Users size={16} style={{ color: "var(--color-bt-accent)" }} />
-          </div>
-
-          {/* Label — text-sm matches expanded header */}
-          <span className="text-sm font-semibold flex-shrink-0" style={{ color: "var(--color-bt-text)" }}>
-            Organizers
-          </span>
-
-          {/* Avatar strip with vote pips */}
-          <div style={{ display: "flex", gap: 4, alignItems: "center", flex: 1, flexWrap: "wrap" }}>
-            {planners.map((p) => (
-              <div key={p.userId} style={{ position: "relative", width: 22, height: 22 }}>
-                <UserAvatar name={p.name} avatarUrl={null} sizePx={22} />
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: -1,
-                    right: -1,
-                    width: 9,
-                    height: 9,
-                    borderRadius: "50%",
-                    border: "1.5px solid var(--color-bt-card)",
-                    background: p.hasVoted ? "var(--color-bt-accent)" : "var(--color-bt-warning)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {p.hasVoted ? (
-                    <Check size={5} color="#0d1f1a" strokeWidth={3} />
-                  ) : (
-                    <X size={5} color="#0d1f1a" strokeWidth={3} />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Expand button */}
-          <button
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 7,
-              border: "none",
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text-dim)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
-            onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
-            aria-label="Expand organizers"
-          >
-            <ChevronDown size={13} />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Expanded ──────────────────────────────────────────────────────────────
-  return (
-    <div
-      className="rounded-xl overflow-hidden"
+      className="flex flex-col gap-2 rounded-xl p-3.5"
       style={{
         background: "var(--color-bt-card)",
-        border: hasMultiplePlanners
-          ? "1px solid var(--color-bt-border)"
-          : "1.5px dashed var(--color-bt-border)",
+        border: "1px solid var(--color-bt-border)",
       }}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3">
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            background: "var(--color-bt-accent-faint)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Users size={16} style={{ color: "var(--color-bt-accent)" }} />
-        </div>
-        <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          {hasMultiplePlanners
-            ? `Organizers · ${planners.length} ${planners.length === 1 ? "person" : "people"}`
-            : "Organizers"}
-        </span>
-        <button
-          onClick={onToggleCollapse}
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            border: "none",
-            background: "var(--color-bt-card-raised)",
-            color: "var(--color-bt-text-dim)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
-          aria-label="Collapse organizers"
-        >
-          <ChevronUp size={13} />
-        </button>
+      <div
+        className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em]"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Add an organizer
       </div>
 
-      {/* Description — always visible when expanded */}
-      <p
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSubmit();
+        }}
+        placeholder="Name (optional)"
+        className="w-full rounded-lg border px-2.5 py-2 text-[13px] outline-none"
+        style={inputBase}
+      />
+
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSubmit();
+        }}
+        placeholder="email@example.com"
+        className="w-full rounded-lg border px-2.5 py-2 font-mono text-[13px] outline-none"
+        style={{ ...inputBase, borderColor: validationBorder(validation) }}
+      />
+
+      <ValidationFeedback state={validation} email={email} allowBlank={false} />
+
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={!canSubmit}
+        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity enabled:hover:opacity-90 disabled:opacity-40"
         style={{
-          fontSize: 12,
-          color: "var(--color-bt-text-dim)",
-          lineHeight: 1.5,
-          padding: "0 16px 12px",
-          borderBottom: "1px solid var(--color-bt-border)",
+          background: "var(--color-bt-accent)",
+          color: "var(--color-bt-on-accent)",
+          cursor: canSubmit ? "pointer" : "not-allowed",
         }}
       >
-        Invite people who want to help shape the trip. They can add ideas, vote, and weigh
-        in before the trip is officially on. Everyone else gets added when you&apos;re ready to go.
+        {createGuest.isPending ? "Adding…" : "Add organizer"}
+      </button>
+
+      {errorMsg && (
+        <p className="text-[11px] leading-snug" style={{ color: "var(--color-bt-danger)" }}>
+          {errorMsg}
+        </p>
+      )}
+
+      <p className="mt-1 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+        Organizers help shape the trip — they can add ideas, vote, and weigh in.{" "}
+        <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          An email is required
+        </strong>{" "}
+        so they can sign in and join the conversation.
       </p>
-
-      {/* Planner rows */}
-      {planners.length > 0 && (
-        <div>
-          {planners.map((p) => (
-            <PlannerRow key={p.userId} planner={p} tripId={tripId} isOwner={isOwner} />
-          ))}
-        </div>
-      )}
-
-      {/* Add planner affordance — canEdit only */}
-      {canEdit && (
-        <div
-          className="px-4 py-3"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-        >
-          <AddPlannerRow tripId={tripId} />
-        </div>
-      )}
     </div>
   );
 }

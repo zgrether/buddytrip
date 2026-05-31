@@ -35,7 +35,6 @@ export interface TripData {
   trip_status_override?: string | null;
   series_id?: string | null;
   created_at?: string | null;
-  last_blast_sent_at?: string | null;
 }
 
 export interface TabProps {

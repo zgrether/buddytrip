@@ -38,6 +38,9 @@ interface ChatMessage {
 interface FloatingChatPanelProps {
   tripId: string;
   isOpen: boolean;
+  /** IDEA stage: everyone on the trip is an Owner/Organizer, so the Crew
+   *  channel is redundant — collapse to a single Organizers channel. */
+  ideaStage?: boolean;
   onClose: () => void;
   memberNames: Record<string, string>;
 }
@@ -56,11 +59,12 @@ interface FloatingChatPanelProps {
  *
  * Open state is owned by the page; this component only renders + reads.
  */
-export function FloatingChatPanel({ tripId, isOpen, onClose, memberNames }: FloatingChatPanelProps) {
+export function FloatingChatPanel({ tripId, isOpen, ideaStage, onClose, memberNames }: FloatingChatPanelProps) {
   if (!isOpen) return null;
   return (
     <FloatingChatPanelInner
       tripId={tripId}
+      ideaStage={ideaStage}
       onClose={onClose}
       memberNames={memberNames}
     />
@@ -69,16 +73,22 @@ export function FloatingChatPanel({ tripId, isOpen, onClose, memberNames }: Floa
 
 function FloatingChatPanelInner({
   tripId,
+  ideaStage = false,
   onClose,
   memberNames,
 }: {
   tripId: string;
+  ideaStage?: boolean;
   onClose: () => void;
   memberNames: Record<string, string>;
 }) {
   const currentUser = useCurrentUser();
   const { role } = useTripRole(tripId);
   const canSeeOrganizers = role === "Owner" || role === "Planner";
+  // IDEA stage collapses to a single Organizers channel: every member is an
+  // Owner/Organizer, so the Crew channel would just duplicate it. The tab
+  // toggle is hidden and the channel is pinned to 'planning'.
+  const ideaSolo = ideaStage && canSeeOrganizers;
 
   const utils = trpc.useUtils();
   // Drafts are kept per channel so an unsent message stays with the tab it was
@@ -96,7 +106,11 @@ function FloatingChatPanelInner({
   // channel even if they were demoted mid-session with the panel open. The
   // channel tabs (the only caller of setSelectedChannel) only render for
   // organizers, so this guard is the single source of truth.
-  const activeChannel: Visibility = canSeeOrganizers ? selectedChannel : "crew";
+  const activeChannel: Visibility = ideaSolo
+    ? "planning"
+    : canSeeOrganizers
+      ? selectedChannel
+      : "crew";
   const setActiveChannel = setSelectedChannel;
 
   // The visible draft + writer for the active channel.
@@ -414,9 +428,18 @@ function FloatingChatPanelInner({
     ? "var(--color-bt-accent-border)"
     : "var(--color-bt-planning-border)";
 
-  // Header — channel tabs for organizers, static label otherwise. Shared
-  // between the desktop panel and the mobile sheet.
-  const header = canSeeOrganizers ? (
+  // Header — channel tabs for organizers, static label otherwise. In the
+  // IDEA stage the Crew channel is hidden (everyone is an organizer), so the
+  // toggle collapses to a single "Organizers" label. Shared between the
+  // desktop panel and the mobile sheet.
+  const header = ideaSolo ? (
+    <p
+      className="text-[11px] font-semibold uppercase tracking-wider"
+      style={{ color: "var(--color-bt-accent)" }}
+    >
+      Organizers
+    </p>
+  ) : canSeeOrganizers ? (
     <div className="flex items-center gap-1">
       {([
         { ch: "crew" as const, label: "Crew", unread: crewUnread },

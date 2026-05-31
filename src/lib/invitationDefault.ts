@@ -32,3 +32,19 @@ export function buildCannedInvitation(trip: {
   }
   return `${headline}${where}${when}. Let me know if you're in.`;
 }
+
+/**
+ * Planning-stage invitation — used in the idea zone when the owner is still
+ * deciding where to go and wants help shaping the trip. Unlike
+ * buildCannedInvitation (a "it's on, are you in?" confirmation vibe), this
+ * reads as "I'm starting to plan a trip and could use your help" so invitees
+ * understand they're being pulled in to brainstorm and vote, not RSVP to a
+ * settled plan.
+ */
+export function buildPlanningInvitation(trip: {
+  title?: string | null;
+}): string {
+  const title = trip.title?.trim() || "";
+  const tripName = title || "a trip";
+  return `Hey! I'm starting to plan ${tripName} and could use your help deciding where we should go. Jump in to add ideas, vote on your favorites, and help shape the trip before we lock it in.`;
+}

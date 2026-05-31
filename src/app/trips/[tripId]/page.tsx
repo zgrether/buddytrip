@@ -15,6 +15,7 @@ import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeEvents } from "@/hooks/useRealtimeEvents";
+import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { HomeTab } from "./tabs/HomeTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
 import { CrewTab } from "./tabs/CrewTab";
@@ -128,6 +129,11 @@ export default function TripDetailPage() {
   // Same for events (placements, edits, reorders) so the scoreboard
   // reflects scoring updates the moment the owner makes them.
   useRealtimeEvents(tripId, competition?.id);
+  // Push membership changes (role promote/demote, add, remove) live so a
+  // member's tab visibility + edit permissions re-resolve immediately —
+  // without this a just-demoted organizer keeps seeing organizer-only tabs
+  // until their tripMembers.list cache goes stale or they reload.
+  useRealtimeMembers(tripId);
 
   const { data: notifications = [] } = trpc.notifications.list.useQuery(
     { tripId, limit: 20 },
@@ -605,6 +611,7 @@ export default function TripDetailPage() {
       <FloatingChatPanel
         tripId={tripId}
         isOpen={chatOpen}
+        ideaStage={stage === "idea"}
         onClose={() => setChatOpen(false)}
         memberNames={Object.fromEntries(
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])

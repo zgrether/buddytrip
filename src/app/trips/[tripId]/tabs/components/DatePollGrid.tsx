@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, CalendarPlus, Check, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { parseLocalDate } from "@/lib/dates";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
 
 export type VoteAnswer = "yes" | "maybe" | "no" | null;
@@ -27,7 +27,7 @@ export interface PollWindow {
 export interface PollMember {
   user_id: string | null;
   displayName: string;
-  avatarUrl?: string | null;
+  avatarIcon?: string | null;
 }
 
 export interface DatePollGridProps {
@@ -282,7 +282,7 @@ export function DatePollGrid({
                 className="sticky left-0 z-[2] flex items-center gap-2 whitespace-nowrap px-3 py-2"
                 style={{ background: rowBg }}
               >
-                <UserAvatar name={m.displayName} avatarUrl={m.avatarUrl ?? null} size="sm" />
+                <Avatar name={m.displayName} avatarIcon={m.avatarIcon ?? null} size="sm" />
                 <span
                   className="text-[13px]"
                   style={{ color: "var(--color-bt-text)" }}

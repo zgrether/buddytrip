@@ -252,7 +252,19 @@ export const ghostCrewRouter = router({
         });
       }
 
-      // ── Auto-link branch: email matches an existing real BT account ───
+      // ── Auto-link branch: email matches an existing account ───────────
+      //
+      // The email may already belong to *another* users row — either a real
+      // BT account or another guest record (e.g. a guest the owner created on
+      // a different trip). users.email is UNIQUE, so a plain UPDATE that sets
+      // this ghost's email to a value another row owns throws a 23505
+      // violation (surfacing as a 500 the editor couldn't recover from).
+      //
+      // Instead, when the email belongs to a different existing user we
+      // re-point this trip's membership at that user — mirroring
+      // ghostCrew.create's "reuse the existing record" path — rather than
+      // minting a duplicate email. (When existingUser is this same ghost,
+      // the email is unchanged and the plain update below is a safe no-op.)
       if (email) {
         const { data: existingUser } = await ctx.supabase
           .from("users")
@@ -260,8 +272,8 @@ export const ghostCrewRouter = router({
           .eq("email", email)
           .maybeSingle();
 
-        if (existingUser && !existingUser.is_guest) {
-          // Reject if the real user is already a member of this trip.
+        if (existingUser && existingUser.id !== input.guestUserId) {
+          // Reject if that user is already a member of this trip.
           const { data: alreadyMember } = await ctx.supabase
             .from("trip_members")
             .select("id")
@@ -272,13 +284,15 @@ export const ghostCrewRouter = router({
           if (alreadyMember) {
             throw new TRPCError({
               code: "CONFLICT",
-              message: "A user with this email is already a member of this trip.",
+              message: existingUser.is_guest
+                ? "A crew member with this email already exists."
+                : "A user with this email is already a member of this trip.",
             });
           }
 
-          // Swap the trip_members row to point at the real account. We
-          // preserve the ghost's role and flip status to 'in' since they
-          // now have a real account.
+          // Swap the trip_members row to point at the existing account. We
+          // preserve the ghost's role and flip status to 'in' (a real
+          // account is Active; guests are always "in" anyway).
           const { error: linkErr } = await ctx.supabase
             .from("trip_members")
             .update({ user_id: existingUser.id, status: "in" })
@@ -326,8 +340,25 @@ export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
   // remove — remove a guest from a trip (Owner only)
   //
-  // Deletes the trip_members row. The guest users row is kept so that
-  // historical data (expenses, scores) is preserved across trips.
+  // Deletes the trip_members row. Then, if this guest is no longer a member
+  // of *any* trip, we delete the guest users row entirely so its email is
+  // freed for reuse.
+  //
+  // Why this matters: a guest is just a trip-scoped placeholder. The old
+  // behavior kept the orphaned users row around forever, so re-adding the
+  // same email later silently resolved back to the stale guest (with its old
+  // name) instead of honoring the freshly-typed name — the "ghost name comes
+  // back from the dead" bug. Deleting the now-unreferenced guest fixes that.
+  //
+  // The cleanup is intentionally best-effort and guarded:
+  //   • Only guests (is_guest = true) are ever deleted — real BT accounts
+  //     are never touched here.
+  //   • Only when the guest has zero remaining trip_members rows — a guest
+  //     shared across trips stays put.
+  //   • Expense/score rows reference users with ON DELETE RESTRICT, so a
+  //     guest who actually participated can't be hard-deleted; that delete
+  //     errors and we simply leave the row in place. The trip removal itself
+  //     still succeeds.
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(
@@ -350,6 +381,16 @@ export const ghostCrewRouter = router({
           message: "Failed to remove guest",
         });
       }
+
+      // Free the email: if this guest is now on no trip, hard-delete the
+      // users row. RLS blocks the user-scoped client from deleting users, so
+      // this runs through a SECURITY DEFINER function that re-checks is_guest
+      // and the orphan condition atomically, and no-ops for guests with
+      // expense/score history (ON DELETE RESTRICT). Best-effort — a failure
+      // here must not fail the removal the owner already saw succeed.
+      await ctx.supabase.rpc("delete_orphan_guest_user", {
+        p_user_id: input.guestUserId,
+      });
 
       return { success: true };
     }),
