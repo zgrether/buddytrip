@@ -101,7 +101,7 @@ export const TopNav: FC<TopNavProps> = ({
         {/* Home anchor — flag + wordmark navigate to the dashboard. */}
         <button
           type="button"
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/dashboard")}
           aria-label="Go to dashboard"
           className="flex items-center gap-[7px] rounded-[9px] px-2 py-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
         >
