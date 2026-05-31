@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Ghost,
   HelpCircle,
   Plane,
   Plus,
@@ -381,15 +380,16 @@ export function GettingThereSection({ tripId, isOwner, onCancel }: GettingThereS
 // without the chevron / expand affordance.
 
 function CrewTravelRow({ member, showBorderTop = true }: { member: TripMemberLite; showBorderTop?: boolean }) {
-  const avatar = member.isGuest ? (
-    <div
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-    >
-      <Ghost size={14} />
-    </div>
-  ) : (
-    <Avatar name={member.displayName} avatarIcon={member.user?.avatar_icon ?? null} size="md" />
+  // Guests carry no profile avatar_icon, so Avatar falls back to their
+  // name initials — `muted` keeps the teal foreground reserved for real
+  // accounts (matches the avatar treatment across the app). No ghost glyph.
+  const avatar = (
+    <Avatar
+      name={member.displayName}
+      avatarIcon={member.user?.avatar_icon ?? null}
+      size="md"
+      muted={member.isGuest}
+    />
   );
 
   return (
@@ -439,15 +439,15 @@ function OtherMemberTravelRow({
   const [expanded, setExpanded] = useState(false);
   const hasTravel = !!m.travel_mode;
 
-  const avatar = m.isGuest ? (
-    <div
-      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-      style={{ background: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-    >
-      <Ghost size={14} />
-    </div>
-  ) : (
-    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
+  // Guests have no profile avatar_icon → Avatar shows their name initials.
+  // `muted` distinguishes placeholder/guest identities from real accounts.
+  const avatar = (
+    <Avatar
+      name={m.displayName}
+      avatarIcon={m.user?.avatar_icon ?? null}
+      size="md"
+      muted={m.isGuest}
+    />
   );
 
   const borderStyle: React.CSSProperties = showBorderTop
