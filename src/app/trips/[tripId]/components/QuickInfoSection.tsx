@@ -22,30 +22,35 @@ export interface QuickTile {
 // one from the label so common entries (door code, WiFi, lockbox, address)
 // get a recognizable icon without the owner having to pick one. Falls back to
 // a neutral hash for anything unmatched.
-function tileIconFor(tile: QuickTile, size = 18): React.ReactNode {
+function tileIconFor(tile: QuickTile, className: string): React.ReactNode {
   const explicit: Record<string, React.ReactNode> = {
-    hotel: <Hotel size={size} />,
-    golf: <Flag size={size} />,
-    zap: <Zap size={size} />,
-    file: <FileText size={size} />,
-    wifi: <Wifi size={size} />,
-    lock: <Lock size={size} />,
-    key: <KeyRound size={size} />,
-    building: <Building2 size={size} />,
-    clock: <Clock size={size} />,
-    pin: <MapPin size={size} />,
+    hotel: <Hotel className={className} />,
+    golf: <Flag className={className} />,
+    zap: <Zap className={className} />,
+    file: <FileText className={className} />,
+    wifi: <Wifi className={className} />,
+    lock: <Lock className={className} />,
+    key: <KeyRound className={className} />,
+    building: <Building2 className={className} />,
+    clock: <Clock className={className} />,
+    pin: <MapPin className={className} />,
   };
   if (tile.icon && explicit[tile.icon]) return explicit[tile.icon];
 
   const l = tile.label.toLowerCase();
-  if (/wi-?fi|network|password|ssid/.test(l)) return <Wifi size={size} />;
-  if (/lockbox|key/.test(l)) return <KeyRound size={size} />;
-  if (/door|code|gate|garage|pin/.test(l)) return <Lock size={size} />;
-  if (/house|unit|room|suite|villa|condo|address|street|apt/.test(l)) return <Building2 size={size} />;
-  if (/check|time|hour|arriv|depart/.test(l)) return <Clock size={size} />;
-  if (/map|location|where|direction|parking/.test(l)) return <MapPin size={size} />;
-  return <Hash size={size} />;
+  if (/wi-?fi|network|password|ssid/.test(l)) return <Wifi className={className} />;
+  if (/lockbox|key/.test(l)) return <KeyRound className={className} />;
+  if (/door|code|gate|garage|pin/.test(l)) return <Lock className={className} />;
+  if (/house|unit|room|suite|villa|condo|address|street|apt/.test(l)) return <Building2 className={className} />;
+  if (/check|time|hour|arriv|depart/.test(l)) return <Clock className={className} />;
+  if (/map|location|where|direction|parking/.test(l)) return <MapPin className={className} />;
+  return <Hash className={className} />;
 }
+
+// Icon-chip + glyph sizes scale with the viewport so the chips don't eat
+// horizontal space in the narrow mobile grid.
+const TILE_CHIP_CLASS = "h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10";
+const TILE_ICON_CLASS = "h-4 w-4 sm:h-[17px] sm:w-[17px] md:h-[18px] md:w-[18px]";
 
 // ── AlertToggle ──────────────────────────────────────────────────────────
 // Shared control for "mark this as a crew alert" in Add/Edit modals. When
@@ -396,7 +401,7 @@ export function QuickInfoSection({
               <div
                 key={tile.id}
                 data-testid={`tile-${tile.id}`}
-                className="group relative flex items-center gap-3 rounded-xl p-3"
+                className="group relative flex items-center gap-2.5 rounded-xl p-3 md:gap-3"
                 style={
                   alert
                     ? {
@@ -411,13 +416,13 @@ export function QuickInfoSection({
                 }
               >
                 <span
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+                  className={`flex flex-shrink-0 items-center justify-center rounded-xl ${TILE_CHIP_CLASS}`}
                   style={{
                     background: alert ? "var(--color-bt-warning-faint)" : "var(--color-bt-accent-faint)",
                     color: alert ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
                   }}
                 >
-                  {alert ? <Bell size={18} /> : tileIconFor(tile)}
+                  {alert ? <Bell className={TILE_ICON_CLASS} /> : tileIconFor(tile, TILE_ICON_CLASS)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p
