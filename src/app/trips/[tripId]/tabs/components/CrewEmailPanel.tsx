@@ -327,10 +327,9 @@ export function CrewEmailPanel({
                         {m.user?.email}
                       </div>
                     </div>
-                    {/* Invite vs follow-up label, driven by email_count.
-                        0 → never contacted, this send is their first invite
-                        (muted chip). >0 → already contacted, so it's a
-                        follow-up; show when we last reached them. */}
+                    {/* State label (not an action), driven by email_count.
+                        0 → we've never emailed them yet (muted chip).
+                        >0 → already invited; show when we last reached them. */}
                     {(m.email_count ?? 0) === 0 ? (
                       <span
                         className="flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
@@ -340,7 +339,7 @@ export function CrewEmailPanel({
                           border: "1px solid var(--color-bt-border)",
                         }}
                       >
-                        Invite
+                        Not invited
                       </span>
                     ) : (
                       <span
@@ -352,11 +351,11 @@ export function CrewEmailPanel({
                         }}
                       >
                         {m.last_emailed_at
-                          ? `Follow-up · ${parseLocalDate(m.last_emailed_at).toLocaleDateString(
+                          ? `Invited · ${parseLocalDate(m.last_emailed_at).toLocaleDateString(
                               "en-US",
                               { month: "short", day: "numeric" }
                             )}`
-                          : "Follow-up"}
+                          : "Invited"}
                       </span>
                     )}
                   </button>

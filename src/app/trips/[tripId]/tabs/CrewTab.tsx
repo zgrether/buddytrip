@@ -1019,10 +1019,10 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                 <CrewNudge
                   title={
                     pending.length === 1
-                      ? "1 member waiting on an invite"
-                      : `${pending.length} members waiting on an invite`
+                      ? "1 person is ready to invite"
+                      : `${pending.length} people are ready to invite`
                   }
-                  body="They have an email but haven't been invited yet — send the blast to officially bring them in."
+                  body="You haven't emailed them yet — send them a link to join the trip."
                   ctaLabel="Send invites"
                   onCta={() => openEmailModal(pending.map((m) => m.memberId))}
                 />
@@ -1031,11 +1031,11 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                 <CrewNudge
                   title={
                     invited.length === 1
-                      ? "1 person hasn't signed up yet"
-                      : `${invited.length} people haven't signed up yet`
+                      ? "1 person hasn't joined yet"
+                      : `${invited.length} people haven't joined yet`
                   }
-                  body="They got the invite but haven't created an account — resend to nudge them along."
-                  ctaLabel="Resend invites"
+                  body="They got an invite but haven't created an account — send a follow-up."
+                  ctaLabel="Follow up"
                   onCta={() => openEmailModal(invited.map((m) => m.memberId))}
                 />
               )}
