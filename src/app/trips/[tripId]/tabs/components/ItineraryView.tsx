@@ -58,18 +58,15 @@ export interface ItineraryViewProps {
  *   1. ITINERARY section header (sits at the top of the view, mirroring
  *      Schedule / Crew tab headers).
  *   2. Filter pills: All / Lodging / Travel / Events. Each non-All pill
- *      only renders when that category has at least one event AND, for
- *      Travel, when getting_there_enabled is on (don't tease a filter
- *      for a feature the owner hasn't activated).
+ *      only renders when that category has at least one event. The Travel
+ *      pill shows whenever member arrivals exist — travel is entered per
+ *      crew member on the Crew tab, so there's no owner activation gate.
  *   3. Day-by-day timeline from trip start through trip end, pulling from
- *      confirmed schedule items, lodging check-in/out, and shared travel
- *      arrivals.
+ *      confirmed schedule items, lodging check-in/out, and crew members'
+ *      travel arrivals.
  *   4. When activated but no content exists, a visually appealing empty
  *      state mirrors the intro modal preview. Owners get an X button
  *      that backs out of the activation entirely.
- *
- * Getting There used to render here too — it now lives in its own panel
- * (GettingTherePanel), so it's no longer included.
  */
 export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryViewProps) {
   const tripId = trip.id;
@@ -155,11 +152,12 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
   const hasLodging = events.some((e) => categoryOf(e) === "lodging");
   const hasTravel = events.some((e) => categoryOf(e) === "travel");
   const hasEvents = events.some((e) => categoryOf(e) === "event");
-  const gettingThereEnabled = !!trip.getting_there_enabled;
 
-  // Show pill row only if there's >1 category to filter between
+  // Show pill row only if there's >1 category to filter between. Travel
+  // arrivals weave in from crew members' own travel plans (Crew tab), so the
+  // Travel pill shows whenever arrivals exist — no separate enable gate.
   const visibleCategoryCount =
-    (hasLodging ? 1 : 0) + (hasTravel && gettingThereEnabled ? 1 : 0) + (hasEvents ? 1 : 0);
+    (hasLodging ? 1 : 0) + (hasTravel ? 1 : 0) + (hasEvents ? 1 : 0);
   const showFilterPills = visibleCategoryCount > 1;
 
   const isEmpty = days.length === 0 || events.length === 0;
@@ -168,10 +166,10 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
   // Header only appears once there's content — when the panel is showing
   // its empty-state mock-up, the dashed card stands on its own.
   return (
-    // flex+h-full chain lets the empty-state mock-up grow to match the
-    // height of the Travel Plans panel when both are rendered in the home-
-    // tab 2-column grid. h-full collapses harmlessly to auto in single-
-    // column contexts where the parent has no defined height.
+    // flex+h-full chain keeps the empty-state mock-up filling its column.
+    // h-full collapses harmlessly to auto in single-column contexts where
+    // the parent has no defined height (the Home tab now renders the
+    // itinerary full-width — Travel Plans moved to the Crew tab).
     <div className="flex h-full flex-col space-y-3">
       {!isEmpty && (
         <h2
@@ -198,7 +196,7 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
               onClick={() => toggleFilter("lodging")}
             />
           )}
-          {hasTravel && gettingThereEnabled && (
+          {hasTravel && (
             <FilterPill
               label="Travel"
               tone="travel"

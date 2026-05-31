@@ -23,7 +23,7 @@ interface QuickInfoPanelProps {
  * QuickInfoPanel — home tab panel for owner-curated tiles (door codes,
  * check-in times, WiFi passwords, etc.).
  *
- * State machine — mirrors GettingTherePanel / ItineraryPanel:
+ * State machine — mirrors ItineraryPanel:
  *   1. Member, not activated  → render nothing (Quick Info is owner-curated)
  *   2. Owner, not activated   → standard InvitationCard ("Enable Quick Info
  *                               Tiles"). Tap → QuickInfoIntroModal →
