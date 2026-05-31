@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Ghost, Link, Loader2, Plus, Search, UserPlus } from "lucide-react";
+import { Loader2, Search, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
 
@@ -11,8 +11,6 @@ export interface CrewSearchInputProps {
   tripId: string;
   defaultRole?: "Planner" | "Member";
   defaultStatus?: "draft" | "in" | "likely" | "maybe" | "out" | "invited";
-  /** Show "Add as guest (no account)" path */
-  allowGhost?: boolean;
   /** Show "Send invite" path when no account found */
   allowInvite?: boolean;
   placeholder?: string;
@@ -32,17 +30,13 @@ export function CrewSearchInput({
   tripId,
   defaultRole = "Member",
   defaultStatus = "draft",
-  allowGhost = false,
   allowInvite = true,
   showSearchIcon = false,
   placeholder = "email@example.com",
   onAdded,
 }: CrewSearchInputProps) {
   const [email, setEmail] = useState("");
-  const [guestName, setGuestName] = useState("");
   const [search, setSearch] = useState<SearchState>({ kind: "idle" });
-  const [showNameOnly, setShowNameOnly] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [alreadyMemberName, setAlreadyMemberName] = useState<string | null>(null);
   const utils = trpc.useUtils();
@@ -73,21 +67,11 @@ export function CrewSearchInput({
 
   const inviteByEmail = trpc.tripMembers.inviteByEmail.useMutation();
 
-  const createGuest = trpc.ghostCrew.create.useMutation({
-    onSuccess() {
-      resetAll();
-      utils.tripMembers.list.invalidate({ tripId });
-      onAdded?.();
-    },
-  });
-
   // ── Handlers ───────────────────────────────────────────────────────────
 
   function resetAll() {
     setEmail("");
-    setGuestName("");
     setSearch({ kind: "idle" });
-    setShowNameOnly(false);
     setInviteError(null);
     setAlreadyMemberName(null);
   }
@@ -127,64 +111,6 @@ export function CrewSearchInput({
     }
   }
 
-  function handleAddAsGuest() {
-    const nameVal = guestName.trim() || email.trim().split("@")[0];
-    createGuest.mutate({
-      tripId,
-      name: nameVal,
-      email: email.trim() || undefined,
-      role: defaultRole,
-    });
-  }
-
-  function handleAddNameOnlyGuest() {
-    if (!guestName.trim()) return;
-    createGuest.mutate({
-      tripId,
-      name: guestName.trim(),
-      role: defaultRole,
-    });
-  }
-
-  function handleCopyInvite() {
-    const inviteUrl = `${window.location.origin}/invite?trip=${tripId}`;
-
-    const fallback = () => {
-      const textarea = document.createElement("textarea");
-      textarea.value = inviteUrl;
-      textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      try { document.execCommand("copy"); } catch { /* best effort */ }
-      document.body.removeChild(textarea);
-    };
-
-    const markCopied = () => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    };
-
-    // `.then().catch()` rather than try/await so the rejection is
-    // attached to the promise chain and never surfaces as an
-    // "unhandled" rejection in the Next.js dev overlay. Some browsers
-    // (and any non-secure context) reject writeText with NotAllowedError
-    // even from a real user gesture — fall through to the textarea
-    // fallback in that case.
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(inviteUrl)
-        .then(markCopied)
-        .catch(() => {
-          fallback();
-          markCopied();
-        });
-    } else {
-      fallback();
-      markCopied();
-    }
-  }
-
   const displayName = (u: { name: string | null; email: string }) =>
     u.name ?? u.email;
 
@@ -210,7 +136,6 @@ export function CrewSearchInput({
               setSearch({ kind: "idle" });
               setInviteError(null);
               setAlreadyMemberName(null);
-              setShowNameOnly(false);
             }}
             onKeyDown={(e) => { if (e.key === "Enter") handleLookup(); }}
             placeholder={placeholder}
@@ -295,84 +220,6 @@ export function CrewSearchInput({
               </button>
             </>
           )}
-
-          {/* Ghost path (with email) */}
-          {allowGhost && (
-            <div className="space-y-1.5">
-              <input
-                type="text"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                placeholder="Name for guest"
-                className="w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-                style={{
-                  background: "var(--color-bt-base)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                }}
-              />
-              <button
-                onClick={handleAddAsGuest}
-                disabled={createGuest.isPending}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
-                style={{
-                  background: "var(--color-bt-accent-faint)",
-                  color: "var(--color-bt-accent)",
-                  border: "1px solid var(--color-bt-accent-border)",
-                }}
-              >
-                <Ghost size={11} />
-                {createGuest.isPending ? "Adding…" : "Add as guest"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Name-only ghost path (no @ in input) */}
-      {allowGhost && !email.includes("@") && search.kind === "idle" && !showNameOnly && (
-        <button
-          onClick={() => setShowNameOnly(true)}
-          className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          <Plus size={11} />
-          Add someone without an account
-        </button>
-      )}
-
-      {showNameOnly && (
-        <div
-          className="space-y-1.5 rounded-lg px-3 py-2.5"
-          style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <input
-            autoFocus
-            type="text"
-            value={guestName}
-            onChange={(e) => setGuestName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleAddNameOnlyGuest(); }}
-            placeholder="Guest name"
-            className="w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none"
-            style={{
-              background: "var(--color-bt-base)",
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
-          />
-          <button
-            onClick={handleAddNameOnlyGuest}
-            disabled={!guestName.trim() || createGuest.isPending}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-accent-faint)",
-              color: "var(--color-bt-accent)",
-              border: "1px solid var(--color-bt-accent-border)",
-            }}
-          >
-            <Ghost size={11} />
-            {createGuest.isPending ? "Adding…" : "Add as guest"}
-          </button>
         </div>
       )}
     </div>

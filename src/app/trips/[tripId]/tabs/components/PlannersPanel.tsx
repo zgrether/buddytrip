@@ -225,7 +225,6 @@ function AddPlannerRow({ tripId }: { tripId: string }) {
             tripId={tripId}
             defaultRole="Planner"
             defaultStatus="draft"
-            allowGhost={false}
             allowInvite
             showSearchIcon
             placeholder="Search by email..."

@@ -1707,7 +1707,6 @@ export function CoPlannerPanel({
             tripId={tripId}
             defaultRole="Planner"
             defaultStatus="draft"
-            allowGhost={false}
             allowInvite
             showSearchIcon
             placeholder="Search by email..."
@@ -1818,7 +1817,6 @@ function MobileCoPlannerSheet({
                 tripId={tripId}
                 defaultRole="Planner"
                 defaultStatus="draft"
-                allowGhost={false}
                 allowInvite
                 showSearchIcon
                 placeholder="Search by email..."
