@@ -74,7 +74,7 @@ export function UserMenu() {
         <Avatar
           name={me?.name ?? me?.email ?? "?"}
           avatarIcon={me?.avatar_icon ?? null}
-          size="sm"
+          sizePx={32}
         />
       </button>
 

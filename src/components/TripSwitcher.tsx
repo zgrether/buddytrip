@@ -129,7 +129,7 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
         ref={dropdownRef}
         role="dialog"
         aria-label="My trips"
-        className="fixed right-4 top-14 z-50 w-[calc(100vw-32px)] max-w-[320px] overflow-hidden rounded-xl shadow-2xl sm:absolute sm:right-0 sm:top-full sm:mt-1 sm:w-[280px] sm:rounded-[14px] sm:shadow-none"
+        className="fixed left-4 top-14 z-50 w-[calc(100vw-32px)] max-w-[320px] overflow-hidden rounded-xl shadow-2xl sm:absolute sm:left-0 sm:top-full sm:mt-1 sm:w-[280px] sm:rounded-[14px] sm:shadow-none"
         style={{
           background: "var(--color-bt-card)",
           border: "0.5px solid var(--color-bt-border)",
