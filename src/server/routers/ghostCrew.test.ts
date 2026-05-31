@@ -303,6 +303,73 @@ describe("ghostCrew router", () => {
     expect(ghosts.find((g) => g.id === ghost.id)).toBeUndefined();
   });
 
+  it("remove — deletes the orphaned guest users row so the email frees up", async () => {
+    // Regression: a removed guest used to leave its users row behind forever,
+    // so re-adding the same email resolved back to the stale guest (old name).
+    // Now removing a guest who's on no other trip hard-deletes the users row,
+    // and re-adding the email creates a fresh guest with the new name.
+    const owner = ctx.caller();
+    const orphanEmail = `orphan-${RUN_ID}@example.com`;
+
+    const first = await owner.ghostCrew.create({
+      tripId,
+      name: "OldName",
+      email: orphanEmail,
+    });
+
+    await owner.ghostCrew.remove({ tripId, guestUserId: first.id });
+
+    // The users row is gone entirely.
+    const { data: stillThere } = await ctx.admin
+      .from("users")
+      .select("id")
+      .eq("id", first.id)
+      .maybeSingle();
+    expect(stillThere).toBeNull();
+
+    // Re-adding the same email mints a brand-new guest with the NEW name.
+    const second = await owner.ghostCrew.create({
+      tripId,
+      name: "NewName",
+      email: orphanEmail,
+    });
+    guestUserIds.push(second.id);
+    expect(second.id).not.toBe(first.id);
+    expect(second.name).toBe("NewName");
+    expect(second.is_guest).toBe(true);
+  });
+
+  it("remove — keeps the guest users row when they're still on another trip", async () => {
+    // A guest shared across trips must survive removal from one of them.
+    const owner = ctx.caller();
+    const sharedEmail = `shared-remove-${RUN_ID}@example.com`;
+
+    const guest = await owner.ghostCrew.create({
+      tripId,
+      name: "SharedGuest",
+      email: sharedEmail,
+    });
+    guestUserIds.push(guest.id);
+
+    // Add the same guest to a second trip (reuse path keeps the same id).
+    const otherTripId = await ctx.createTrip("Ghost Shared-Remove Trip");
+    const reused = await owner.ghostCrew.create({
+      tripId: otherTripId,
+      name: "SharedGuest",
+      email: sharedEmail,
+    });
+    expect(reused.id).toBe(guest.id);
+
+    // Remove from the first trip — the users row must persist (still on trip 2).
+    await owner.ghostCrew.remove({ tripId, guestUserId: guest.id });
+    const { data: stillThere } = await ctx.admin
+      .from("users")
+      .select("id")
+      .eq("id", guest.id)
+      .maybeSingle();
+    expect(stillThere?.id).toBe(guest.id);
+  });
+
   it("remove — planner cannot remove guest (Owner only)", async () => {
     const plannerCaller = ctx.callerAs("planner");
     const members = await plannerCaller.tripMembers.list({ tripId });
