@@ -175,6 +175,18 @@ export function travelMemberToForm(member: TravelMember): TravelFormValue {
   };
 }
 
+/** Payload that wipes a member's travel entirely — no mode (so the row reads
+ *  as "no travel"), no detail, no arrival, and the legacy flight columns
+ *  cleared too. Used by the Clear / reset action on both travel surfaces. */
+export const TRAVEL_CLEAR_PAYLOAD = {
+  travelMode: null,
+  travelDetail: null,
+  flightAirline: null,
+  flightNumber: null,
+  flightArrivalTime: null,
+  flightAirport: null,
+} as const;
+
 /** Convert form state into the mutation payload. Clears the legacy structured
  *  flight columns on every save so the single detail string stays
  *  authoritative. */
@@ -411,6 +423,18 @@ export function TravelEditor({
     }
   };
 
+  // Clear / reset — wipes the saved travel entirely and closes the editor
+  // (onSuccess → invalidate → onSaved). Only offered when there's something
+  // to reset; adding fresh travel has nothing to clear.
+  const handleClear = () => {
+    if (targetUserId) {
+      updateMemberTravel.mutate({ tripId, targetUserId, ...TRAVEL_CLEAR_PAYLOAD });
+    } else {
+      updateTravel.mutate({ tripId, ...TRAVEL_CLEAR_PAYLOAD, travelShared: true });
+    }
+  };
+  const hasSavedTravel = !!member.travel_mode;
+
   return (
     <div className="space-y-3">
       <TravelFields
@@ -420,13 +444,25 @@ export function TravelEditor({
         surface={surface}
       />
 
-      {/* Footer actions. */}
-      <div className="flex items-center justify-end gap-2 pt-1">
+      {/* Footer actions. Clear (left) only shows when there's saved travel to
+          reset; Cancel/Save stay right-aligned. */}
+      <div className="flex items-center gap-2 pt-1">
+        {hasSavedTravel && (
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={isPending}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-danger-faint)] disabled:opacity-40"
+            style={{ color: "var(--color-bt-danger)", background: "transparent" }}
+          >
+            Clear
+          </button>
+        )}
         <button
           type="button"
           onClick={onCancel}
           disabled={isPending}
-          className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+          className="ml-auto rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
           style={{
             borderColor: "var(--color-bt-border)",
             color: "var(--color-bt-text-dim)",

@@ -17,6 +17,7 @@ import {
   travelMemberToForm,
   travelFormToPayload,
   travelFormsEqual,
+  TRAVEL_CLEAR_PAYLOAD,
   type TravelFormValue,
 } from "./TravelControls";
 
@@ -114,7 +115,20 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   // Save button rather than an inner Save/Cancel.
   const initialTravelForm = useMemo(() => travelMemberToForm(member), [member]);
   const [travelForm, setTravelForm] = useState<TravelFormValue>(initialTravelForm);
-  const travelDirty = !travelFormsEqual(travelForm, initialTravelForm);
+  // Clear/reset flag — set by the "Clear" button, which empties the fields and
+  // marks travel for removal. Persisted on the drawer's Save as travelMode:null
+  // (so the row reads "no travel"). Editing any field re-engages → flag clears.
+  const [travelCleared, setTravelCleared] = useState(false);
+  const handleTravelChange = (next: TravelFormValue) => {
+    setTravelCleared(false);
+    setTravelForm(next);
+  };
+  const hadSavedTravel = !!member.travel_mode;
+  const travelFormNonEmpty =
+    travelForm.detail.trim() !== "" || travelForm.arrivalDate !== "";
+  const travelDirty = travelCleared
+    ? hadSavedTravel
+    : !travelFormsEqual(travelForm, initialTravelForm);
 
   // ── Live email validation (debounced) ──────────────────────────────────
   const validation: ValidationState = useEmailValidation(tripId, email);
@@ -219,12 +233,14 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
     }
 
     // Travel — persist alongside name/email when the always-on fields changed.
+    // A cleared form sends the wipe payload (travelMode:null) so the row reads
+    // "no travel"; otherwise send the form's current values.
     if (travelDirty) {
       tasks.push(
         updateMemberTravel.mutateAsync({
           tripId,
           targetUserId: member.user_id,
-          ...travelFormToPayload(travelForm),
+          ...(travelCleared ? TRAVEL_CLEAR_PAYLOAD : travelFormToPayload(travelForm)),
         })
       );
     }
@@ -557,27 +573,51 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               inputs that a wrapping <label> would proxy clicks to. */}
           {member.user_id && (
             <div className="flex flex-col gap-2">
-              <div className="flex flex-col gap-1">
-                <span
-                  className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <Plane size={11} strokeWidth={2.5} />
-                  Travel
-                </span>
-                <p
-                  className="text-[11px] leading-snug"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  How they&rsquo;re getting in. Shows on the crew roster and weaves
-                  into the itinerary on arrival day.
-                </p>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-col gap-1">
+                  <span
+                    className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    <Plane size={11} strokeWidth={2.5} />
+                    Travel
+                  </span>
+                  <p
+                    className="text-[11px] leading-snug"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    How they&rsquo;re getting in. Shows on the crew roster and weaves
+                    into the itinerary on arrival day.
+                  </p>
+                </div>
+                {/* Clear / reset — empties the fields and flags travel for
+                    removal on Save. Only offered when there's something to
+                    reset (saved travel or in-progress input) and not already
+                    cleared. */}
+                {(hadSavedTravel || travelFormNonEmpty) && !travelCleared && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTravelForm(travelMemberToForm({}));
+                      setTravelCleared(true);
+                    }}
+                    className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-danger-faint)]"
+                    style={{ color: "var(--color-bt-danger)", background: "transparent" }}
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
               <TravelFields
                 value={travelForm}
-                onChange={setTravelForm}
+                onChange={handleTravelChange}
                 surface="recessed"
               />
+              {travelCleared && hadSavedTravel && (
+                <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Travel will be removed when you save.
+                </p>
+              )}
             </div>
           )}
 
