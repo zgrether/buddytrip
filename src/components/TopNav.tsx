@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Megaphone, MessageCircle, ChevronDown } from "lucide-react";
+import { Pin, MessageCircle, ChevronDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
@@ -19,16 +19,16 @@ import { useChatUnreadCount } from "./FloatingChatPanel";
  * collapse below 600px keys off the bar's OWN width — not the viewport —
  * which keeps it correct inside any future split/columned layout.
  *
- * Notifications were removed entirely; "Board" occupies that slot
+ * Notifications were removed entirely; "News" occupies that slot
  * conceptually but is a persistent broadcast surface, not a notification
  * stream.
  */
 
-// Board has no backing feature yet (no board/broadcast surface exists). The
+// News has no backing feature yet (no news/broadcast surface exists). The
 // button is rendered to spec but inert, and its unread badge is driven by this
 // placeholder count — 0 keeps the badge hidden until the feature ships. Flip
-// this to a real selector once Board exists.
-const BOARD_PLACEHOLDER_COUNT = 0;
+// this to a real selector once News exists.
+const NEWS_PLACEHOLDER_COUNT = 0;
 
 interface TopNavProps {
   /** Wordmark next to the flag. Always "BuddyTrip" per the design; kept as a
@@ -45,9 +45,9 @@ interface TopNavProps {
   /** Hide the trip-breadcrumb switcher (e.g. on the profile page, which
    *  isn't trip-scoped). */
   hideTripSwitcher?: boolean;
-  /** Hide the Board tool (e.g. on the profile page, where the global
+  /** Hide the News tool (e.g. on the profile page, where the global
    *  broadcast surface isn't relevant). */
-  hideBoard?: boolean;
+  hideNews?: boolean;
 }
 
 // Minimal shape we read off trips.list for the breadcrumb.
@@ -63,7 +63,7 @@ export const TopNav: FC<TopNavProps> = ({
   onOpenChat,
   chatOpen = false,
   hideTripSwitcher = false,
-  hideBoard = false,
+  hideNews = false,
 }) => {
   const router = useRouter();
   const params = useParams<{ tripId?: string }>();
@@ -192,15 +192,15 @@ export const TopNav: FC<TopNavProps> = ({
 
       {/* ── RIGHT: global tools + me ───────────────────────────────────── */}
       <div className="flex flex-shrink-0 items-center gap-1">
-        {/* Board — inert placeholder; persistent broadcast surface (TBD). */}
-        {!hideBoard && (
+        {/* News — inert placeholder; persistent broadcast surface (TBD). */}
+        {!hideNews && (
           <ToolButton
-            icon={Megaphone}
-            label="Board"
-            count={BOARD_PLACEHOLDER_COUNT}
+            icon={Pin}
+            label="News"
+            count={NEWS_PLACEHOLDER_COUNT}
             badgeBg="var(--color-bt-accent)"
-            ariaLabel="Board"
-            testId="board-button"
+            ariaLabel="News"
+            testId="news-button"
           />
         )}
 
