@@ -242,7 +242,7 @@ async function setupIdeaZoneMocks(
       return;
     }
 
-    if (url.includes("notifications.") || url.includes("datePoll.") || url.includes("schedule.") || url.includes("logistics.")) {
+    if (url.includes("datePoll.") || url.includes("schedule.") || url.includes("logistics.")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",

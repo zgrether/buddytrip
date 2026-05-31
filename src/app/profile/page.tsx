@@ -7,7 +7,6 @@ import {
   IconUser,
   IconMail,
   IconLock,
-  IconBell,
   IconArchive,
   IconLogout,
   IconTrash,
@@ -19,7 +18,6 @@ import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
 import { TopNav } from "@/components/TopNav";
 import { Avatar } from "@/components/Avatar";
 import { AvatarIconPicker } from "@/components/AvatarIconPicker";
-import { NotificationsPanel } from "@/components/profile/NotificationsPanel";
 import { ArchivedIdeasPanel } from "@/components/profile/ArchivedIdeasPanel";
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -41,7 +39,7 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
   marginBottom: 6,
 };
 
-type SidebarTab = "profile" | "notifications" | "ideas";
+type SidebarTab = "profile" | "ideas";
 
 // ── Page ──────────────────────────────────────────────────────────────────
 
@@ -106,7 +104,7 @@ export default function ProfilePage() {
   if (!authLoaded || isLoading || !me) {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)" }}>
-        <TopNav hideTripSwitcher hideNotifications />
+        <TopNav hideTripSwitcher />
         <div className="flex justify-center py-16">
           <div
             className="h-6 w-6 animate-spin rounded-full border-2"
@@ -124,7 +122,7 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav hideTripSwitcher hideNotifications />
+      <TopNav hideTripSwitcher />
 
       <div className="flex">
         {/* ── Desktop sidebar ─────────────────────────────────────────── */}
@@ -277,14 +275,8 @@ export default function ProfilePage() {
 
             {/* Desktop-only inline panels — render the actual page content
                 inside the main area when its sidebar tab is active.
-                Mobile path still navigates to dedicated /profile/notifications
-                and /profile/archived-ideas routes via the Preferences card
-                below. */}
-            {activeTab === "notifications" && (
-              <div className="hidden px-4 md:block">
-                <NotificationsPanel />
-              </div>
-            )}
+                Mobile path still navigates to the dedicated
+                /profile/archived-ideas route via the Preferences card below. */}
             {activeTab === "ideas" && (
               <div className="hidden px-4 md:block">
                 <ArchivedIdeasPanel />
@@ -300,12 +292,6 @@ export default function ProfilePage() {
                     border: "1px solid var(--color-bt-border)",
                   }}
                 >
-                  <SettingsRow
-                    icon={<IconBell size={16} stroke={1.75} />}
-                    label="Notifications"
-                    sub="Manage what alerts you receive"
-                    onClick={() => router.push("/profile/notifications")}
-                  />
                   <SettingsRow
                     icon={<IconArchive size={16} stroke={1.75} />}
                     label="Idea archive"
@@ -556,7 +542,6 @@ function DesktopSidebar({
 }) {
   const items: { id: SidebarTab; label: string; icon: React.ReactNode; group: "account" | "library" }[] = [
     { id: "profile", label: "Profile", icon: <IconUser size={16} stroke={1.75} />, group: "account" },
-    { id: "notifications", label: "Notifications", icon: <IconBell size={16} stroke={1.75} />, group: "account" },
     { id: "ideas", label: "Idea archive", icon: <IconArchive size={16} stroke={1.75} />, group: "library" },
   ];
   const account = items.filter((i) => i.group === "account");
@@ -708,9 +693,9 @@ function SidebarItem({
 }
 
 // (PreferencesPanel removed — desktop now renders the full
-// NotificationsPanel / ArchivedIdeasPanel inline in the main area when
-// their sidebar tab is active. Mobile still uses the Preferences card
-// with rows that navigate to the dedicated pages.)
+// ArchivedIdeasPanel inline in the main area when its sidebar tab is
+// active. Mobile still uses the Preferences card with a row that
+// navigates to the dedicated page.)
 
 // ── Sheets ────────────────────────────────────────────────────────────────
 

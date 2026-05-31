@@ -7,7 +7,6 @@ import { ideasRouter } from "./routers/ideas";
 import { datePollRouter } from "./routers/datePoll";
 import { expensesRouter } from "./routers/expenses";
 import { messagesRouter } from "./routers/messages";
-import { notificationsRouter } from "./routers/notifications";
 import { quickInfoTilesRouter } from "./routers/quickInfoTiles";
 import { competitionsRouter } from "./routers/competitions";
 import { eventsRouter } from "./routers/events";
@@ -31,7 +30,6 @@ export const appRouter = router({
   datePoll: datePollRouter,
   expenses: expensesRouter,
   messages: messagesRouter,
-  notifications: notificationsRouter,
   quickInfoTiles: quickInfoTilesRouter,
   competitions: competitionsRouter,
   events: eventsRouter,

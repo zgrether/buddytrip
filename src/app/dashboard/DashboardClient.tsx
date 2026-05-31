@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { TopNav } from "@/components/TopNav";
 import { TripCard } from "@/components/TripCard";
 import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
@@ -28,15 +27,6 @@ interface TripRow {
   myStatus?: string | null;
   created_at?: string | null;
 }
-
-type NotificationItem = {
-  id: string;
-  type: string;
-  trip_id: string;
-  created_at: string;
-  read: boolean;
-  payload?: Record<string, unknown>;
-};
 
 function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   const sections: Record<TripStatus, TripRow[]> = {
@@ -84,59 +74,6 @@ export default function DashboardClient() {
   const { data: trips = [], isLoading: tripsLoading } =
     trpc.trips.list.useQuery();
 
-  const tripIds = trips.map((t) => t.id);
-
-  // ── Notifications ─────────────────────────────────────────────────────────
-  // Fetch notifications for all trips. We avoid useQueries with a dynamic
-  // array (tripIds changes length as trips load) which violates Rules of Hooks.
-  // Instead, iterate after render and aggregate from individual enabled queries
-  // would also break hooks. Simplest safe approach: skip until trips are loaded,
-  // then use a stable-length useQueries by gating on tripsLoading.
-  //
-  // NOTE: We intentionally pass an empty array when loading so hook count is
-  // always 1 (the useQueries call itself is stable).
-  const stableTripIds = tripsLoading ? [] : tripIds;
-
-  // Realtime subscription for live notification updates
-  useRealtimeNotifications(stableTripIds);
-
-  const notifResults = trpc.useQueries((t) =>
-    stableTripIds.map((id) => t.notifications.list({ tripId: id, limit: 20 }))
-  );
-
-  const allNotifications: NotificationItem[] = notifResults
-    .flatMap((r) => r.data ?? [])
-    .sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-
-  const unreadByTrip = new Map<string, number>();
-  for (const n of allNotifications) {
-    if (!n.read) {
-      unreadByTrip.set(n.trip_id, (unreadByTrip.get(n.trip_id) ?? 0) + 1);
-    }
-  }
-  const totalUnread = allNotifications.filter((n) => !n.read).length;
-
-  // ── Mark all read ──────────────────────────────────────────────────────────
-  const utils = trpc.useUtils();
-  const markAllRead = trpc.notifications.markAllRead.useMutation({
-    onSuccess: () => {
-      for (const id of tripIds) {
-        utils.notifications.list.invalidate({ tripId: id });
-      }
-    },
-  });
-
-  const handleMarkAllRead = () => {
-    for (const id of tripIds) {
-      if ((unreadByTrip.get(id) ?? 0) > 0) {
-        markAllRead.mutate({ tripId: id });
-      }
-    }
-  };
-
   // ── Partition ──────────────────────────────────────────────────────────────
   const sections = partitionTrips(trips as TripRow[]);
 
@@ -158,12 +95,7 @@ export default function DashboardClient() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav
-        title="BuddyTrip"
-        notifications={allNotifications}
-        unreadCount={totalUnread}
-        onMarkAllRead={handleMarkAllRead}
-      />
+      <TopNav title="BuddyTrip" />
 
       <main
         className={`mx-auto max-w-[896px] px-4 pb-24 ${hasAnyTrips ? "pt-4" : ""}`}
@@ -207,7 +139,6 @@ export default function DashboardClient() {
               <TripSection
                 label="Now"
                 trips={sections.now}
-                unreadByTrip={unreadByTrip}
                 labelColor="var(--color-bt-warning)"
               />
             )}
@@ -217,7 +148,6 @@ export default function DashboardClient() {
             <TripSection
               label="Active"
               trips={[...sections.going, ...sections.planning]}
-              unreadByTrip={unreadByTrip}
             />
 
             {/* Ideas — trips still in the idea/comparison phase */}
@@ -225,7 +155,6 @@ export default function DashboardClient() {
               <TripSection
                 label="Ideas"
                 trips={sections.idea}
-                unreadByTrip={unreadByTrip}
               />
             )}
 
@@ -252,11 +181,7 @@ export default function DashboardClient() {
                 {pastExpanded && (
                   <div className="mt-2 space-y-3">
                     {sections.past.map((trip) => (
-                      <TripCard
-                        key={trip.id}
-                        trip={trip}
-                        unreadCount={unreadByTrip.get(trip.id) ?? 0}
-                      />
+                      <TripCard key={trip.id} trip={trip} />
                     ))}
                   </div>
                 )}
@@ -275,12 +200,10 @@ export default function DashboardClient() {
 function TripSection({
   label,
   trips,
-  unreadByTrip,
   labelColor,
 }: {
   label: string;
   trips: TripRow[];
-  unreadByTrip: Map<string, number>;
   labelColor?: string;
 }) {
   if (trips.length === 0) return null;
@@ -295,11 +218,7 @@ function TripSection({
       </h2>
       <div className="space-y-3">
         {trips.map((trip) => (
-          <TripCard
-            key={trip.id}
-            trip={trip}
-            unreadCount={unreadByTrip.get(trip.id) ?? 0}
-          />
+          <TripCard key={trip.id} trip={trip} />
         ))}
       </div>
     </section>

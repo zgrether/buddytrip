@@ -11,7 +11,7 @@ import { trpc } from "@/lib/trpc-client";
  * Row shape emitted by the `messages` postgres_changes payload. Matches the
  * exact column set `messages.list` selects, so a payload row can be written
  * straight into the query cache with no enrichment (chat has no server-side
- * joins — unlike events/notifications.list).
+ * joins — unlike events.list).
  */
 interface MessageRow {
   id: string;

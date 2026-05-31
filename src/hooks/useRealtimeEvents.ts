@@ -27,8 +27,7 @@ import { trpc } from "@/lib/trpc-client";
  * relations and corrupt the leaderboard/scoreboard until the next refetch, so
  * the only correct option here is to refetch.
  *
- * Mirrors the shape of `useRealtimeNotifications` /
- * `useRealtimeCompetition`.
+ * Mirrors the shape of `useRealtimeCompetition`.
  */
 export function useRealtimeEvents(
   tripId: string | null,

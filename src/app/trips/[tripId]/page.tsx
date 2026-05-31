@@ -12,7 +12,6 @@ import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
-import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeEvents } from "@/hooks/useRealtimeEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
@@ -120,8 +119,6 @@ export default function TripDetailPage() {
   const dataLoading = isLoading || ideasLoading || membersLoading
     || competitionLoading;
 
-  // ── Notifications ─────────────────────────────────────────────────────────
-  useRealtimeNotifications([tripId]);
   // Push competition row changes (Go Live, scoreboard style, name,
   // tagline) live to every crew member — without this they'd see
   // stale data for up to staleTime (60s).
@@ -135,12 +132,6 @@ export default function TripDetailPage() {
   // until their tripMembers.list cache goes stale or they reload.
   useRealtimeMembers(tripId);
 
-  const { data: notifications = [] } = trpc.notifications.list.useQuery(
-    { tripId, limit: 20 },
-  );
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
   // Remember the most recently visited trip so root-route redirect
   // (src/app/page.tsx) can drop the user back here on return visits.
   useEffect(() => {
@@ -151,12 +142,6 @@ export default function TripDetailPage() {
 
   // All hooks must be called before any early returns
   const utils = trpc.useUtils();
-
-  const markAllRead = trpc.notifications.markAllRead.useMutation({
-    onSuccess: () => {
-      utils.notifications.list.invalidate({ tripId });
-    },
-  });
 
   const lockDestination = trpc.trips.lockDestination.useMutation({
     onSuccess: () => {
@@ -379,9 +364,6 @@ export default function TripDetailPage() {
     >
       {/* ── Top nav ────────────────────────────────────────────────────────── */}
       <TopNav
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onMarkAllRead={() => markAllRead.mutate({ tripId })}
         tripId={tripId}
         onOpenChat={() => setChatOpen((prev) => !prev)}
         chatOpen={chatOpen}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Bell, Info, Pencil, RotateCcw, ThumbsUp, X } from "lucide-react";
+import { Info, Pencil, RotateCcw, ThumbsUp, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -38,13 +38,11 @@ function sortWindows(ws: PollWindow[]): PollWindow[] {
 
 /**
  * DatePollCard — the member-facing (and owner-operable) surface for the
- * date poll. Footer actions (Notify crew / Reset) are owner-only.
+ * date poll. Footer actions (Reset) are owner-only.
  *
  * Features:
  * - Poll note: owner-editable instructional text shown to all crew above the grid.
  * - Reset confirmation: two-step confirm before clearing all votes.
- * - Smart re-notify: Notify button re-enables after a new date is added,
- *   a reset is performed, or new members have joined since the last notify.
  * - All-voted banner: thumbs-up shown to any user once they've responded to every window.
  */
 export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps) {
@@ -59,16 +57,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
   // cleared when the ConfirmDatesModal is confirmed or cancelled.
   const [pendingLockWindowId, setPendingLockWindowId] = useState<string | null>(null);
 
-  // Re-notify state:
-  // hasFiredNotify latches true on success so refetch races can't re-enable
-  // the button. Cleared only when a re-enable event fires (new date / reset).
-  const [hasFiredNotify, setHasFiredNotify] = useState(false);
-  // Track the member IDs present at the time of last notification so we can
-  // identify newly-added members for targeted re-notification.
-  const [memberIdsAtNotify, setMemberIdsAtNotify] = useState<string[] | null>(null);
-  // "new-date" | "reset" | null — drives the button label copy.
-  const [renotifyReason, setRenotifyReason] = useState<"new-date" | "reset" | null>(null);
-
   // Poll note modal + editor
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [editingNote, setEditingNote] = useState(false);
@@ -82,34 +70,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     () => sortWindows((poll?.windows ?? []) as PollWindow[]),
     [poll?.windows]
   );
-
-  const notifySent = !!poll?.notifySent;
-
-  // Identify members who joined after the last crew-wide notification.
-  // newMemberIds is non-empty only after at least one full notify has been sent.
-  const newMemberIds: string[] = memberIdsAtNotify !== null
-    ? members
-        .filter((m) => m.user_id && !memberIdsAtNotify.includes(m.user_id))
-        .map((m) => m.user_id!)
-    : [];
-  const hasNewMembers = newMemberIds.length > 0;
-
-  // Button is disabled when notifySent (server) OR hasFiredNotify (local latch).
-  // Re-enabled explicitly when: addWindow fires, resetPoll fires, or new members joined.
-  const canNotify = !(notifySent || hasFiredNotify) || hasNewMembers || renotifyReason !== null;
-
-  // Derive the button label from the current re-notify context.
-  // renotifyReason (new date / reset) takes priority over new members because
-  // those events mean we want to notify everyone, not just the new members.
-  const notifyButtonLabel = !canNotify
-    ? "Crew notified"
-    : renotifyReason === "new-date"
-    ? "Notify crew about the new date"
-    : renotifyReason === "reset"
-    ? "Notify crew again"
-    : hasNewMembers
-    ? "Notify new crew members"
-    : "Notify crew";
 
   const pollNote = poll?.pollNote ?? null;
   const displayNote = pollNote ?? DEFAULT_POLL_NOTE;
@@ -258,14 +218,12 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
         if (!old) {
           return {
             lockedWindowId: null,
-            notifySent: false,
             pollNote: null,
             pollMode: true,
             windows: [newWindow],
           };
         }
-        // Optimistically reset notifySent so the button re-enables immediately.
-        return { ...old, notifySent: false, windows: [...old.windows, newWindow] };
+        return { ...old, windows: [...old.windows, newWindow] };
       });
       return { prev };
     },
@@ -273,10 +231,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
     onSuccess() {
-      setHasFiredNotify(false);
-      if (notifySent || hasFiredNotify) {
-        setRenotifyReason("new-date");
-      }
       if (!trip.poll_mode) {
         activatePoll.mutate({ tripId, pollMode: true });
       }
@@ -335,30 +289,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     },
   });
 
-  const notifyCrew = trpc.datePoll.notifyCrewPollOpen.useMutation({
-    async onMutate() {
-      await utils.datePoll.get.cancel({ tripId });
-      const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) =>
-        old ? { ...old, notifySent: true } : old
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
-    },
-    onSuccess() {
-      setHasFiredNotify(true);
-      setMemberIdsAtNotify(
-        members.map((m) => m.user_id!).filter(Boolean)
-      );
-      setRenotifyReason(null);
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
   const resetPoll = trpc.datePoll.resetPoll.useMutation({
     async onMutate() {
       await utils.datePoll.get.cancel({ tripId });
@@ -367,7 +297,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
         old
           ? {
               ...old,
-              notifySent: false,
               windows: old.windows.map((w) => ({ ...w, votes: [] })),
             }
           : old
@@ -379,8 +308,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     },
     onSuccess() {
       setShowResetConfirm(false);
-      setHasFiredNotify(false);
-      setRenotifyReason("reset");
     },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
@@ -423,18 +350,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
-    },
-  });
-
-  const notifyNewMembersM = trpc.datePoll.notifyNewMembers.useMutation({
-    onSuccess() {
-      // Absorb notified members into the tracked set so they're no longer "new"
-      setMemberIdsAtNotify(
-        members.map((m) => m.user_id!).filter(Boolean)
-      );
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
     },
   });
 
@@ -641,11 +556,11 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
           </div>
         )}
 
-        {/* ── Owner footer: Notify + Reset (only once dates exist) ─────── */}
-        {windows.length > 0 && isOwner && (
+        {/* ── Owner footer: Reset (only once votes exist) ─────────────── */}
+        {windows.length > 0 && isOwner && anyVotes && (
           <div className="flex items-center gap-2 pt-1">
             {showResetConfirm ? (
-              /* Notify hides; three confirm buttons fill the row */
+              /* Reset hides; three confirm buttons fill the row */
               <>
                 <button
                   type="button"
@@ -679,47 +594,20 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
                 </button>
               </>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!canNotify) return;
-                    if (hasNewMembers && !renotifyReason) {
-                      notifyNewMembersM.mutate({ tripId, userIds: newMemberIds });
-                    } else {
-                      notifyCrew.mutate({ tripId });
-                    }
-                  }}
-                  disabled={!canNotify || notifyCrew.isPending || notifyNewMembersM.isPending}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[13px] font-medium transition-opacity"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: canNotify ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                    border: "1px solid var(--color-bt-border)",
-                    opacity: canNotify ? 1 : 0.6,
-                    cursor: canNotify ? "pointer" : "default",
-                  }}
-                >
-                  <Bell size={13} />
-                  {notifyButtonLabel}
-                </button>
-                {anyVotes && (
-                  <button
-                    type="button"
-                    onClick={() => setShowResetConfirm(true)}
-                    className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      color: "var(--color-bt-text-dim)",
-                      border: "1px solid var(--color-bt-border)",
-                    }}
-                    aria-label="Reset votes"
-                  >
-                    <RotateCcw size={13} />
-                    Reset
-                  </button>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
+                style={{
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+                aria-label="Reset votes"
+              >
+                <RotateCcw size={13} />
+                Reset
+              </button>
             )}
           </div>
         )}

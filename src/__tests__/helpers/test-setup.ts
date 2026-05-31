@@ -346,13 +346,6 @@ export class TestContext {
     }
     // Trip-level tables
     for (const tripId of this._tripIds) {
-      const { data: notifs } = await this.admin
-        .from("notification_events").select("id").eq("trip_id", tripId);
-      const notifIds = notifs?.map((n: { id: string }) => n.id) ?? [];
-      if (notifIds.length > 0) {
-        await this.admin.from("notification_reads").delete().in("notification_id", notifIds);
-      }
-      await this.admin.from("notification_events").delete().eq("trip_id", tripId);
       await this.admin.from("messages").delete().eq("trip_id", tripId);
       await this.admin.from("idea_comments").delete().eq("trip_id", tripId);
       await this.admin.from("idea_votes").delete().eq("trip_id", tripId);
