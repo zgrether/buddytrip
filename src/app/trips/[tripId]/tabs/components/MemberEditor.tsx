@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowUpCircle, Check, Loader2, Mail, Send, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpCircle, Check, Mail, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { Avatar } from "@/components/Avatar";
+import {
+  useEmailValidation,
+  validationBorder,
+  ValidationFeedback,
+  type ValidationState,
+} from "@/components/emailValidation";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -35,8 +41,6 @@ export type MemberEditorTarget = {
     avatar_icon?: string | null;
   } | null;
 };
-
-type ValidationState = "idle" | "checking" | "match" | "invite" | "invalid";
 
 // Mirror of CrewTab's deriveStatus — kept inline to avoid a circular import.
 function deriveStatus(m: MemberEditorTarget): "active" | "invited" | "placeholder" {
@@ -92,35 +96,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // ── Live email validation (debounced) ──────────────────────────────────
-  const formatOk = useMemo(() => {
-    if (!email.trim()) return null; // empty → no card
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  }, [email]);
-
-  const [debounced, setDebounced] = useState(email);
-  useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(email), 400);
-    return () => window.clearTimeout(id);
-  }, [email]);
-
-  const checkQuery = trpc.tripMembers.checkEmail.useQuery(
-    { tripId, email: debounced.trim() },
-    {
-      enabled: !!debounced.trim() && formatOk === true,
-      staleTime: 30_000,
-    }
-  );
-
-  const validation: ValidationState = useMemo(() => {
-    if (!email.trim()) return "idle";
-    if (formatOk === false) return "invalid";
-    // Format-valid but query hasn't settled (or is in-flight).
-    if (debounced !== email || checkQuery.isFetching) return "checking";
-    if (checkQuery.data?.result === "match") return "match";
-    if (checkQuery.data?.result === "invalid") return "invalid";
-    if (checkQuery.data?.result === "invite") return "invite";
-    return "checking";
-  }, [email, debounced, formatOk, checkQuery.data, checkQuery.isFetching]);
+  const validation: ValidationState = useEmailValidation(tripId, email);
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const updateGuest = trpc.ghostCrew.update.useMutation({
@@ -697,104 +673,6 @@ function Field({
         </span>
       )}
     </label>
-  );
-}
-
-// ── ValidationFeedback — the four-state helper card ───────────────────────
-
-function validationBorder(state: ValidationState) {
-  switch (state) {
-    case "checking":
-    case "invite":
-      return "var(--color-bt-warning)";
-    case "match":
-      return "var(--color-bt-accent)";
-    case "invalid":
-      return "var(--color-bt-danger)";
-    default:
-      return "var(--color-bt-border)";
-  }
-}
-
-function ValidationFeedback({ state, email }: { state: ValidationState; email: string }) {
-  if (state === "idle") return null;
-
-  type Tone = "accent" | "warning" | "danger";
-  const copy: { tone: Tone; icon: "check" | "send" | "x" | "spin"; title: string; body: string | null } =
-    state === "checking"
-      ? { tone: "warning", icon: "spin", title: "Checking BuddyTrip…", body: null }
-      : state === "match"
-        ? {
-            tone: "accent",
-            icon: "check",
-            title: "Already on BuddyTrip",
-            body: `${email} is an active account — they'll be in the trip the moment you save.`,
-          }
-        : state === "invite"
-          ? {
-              tone: "warning",
-              icon: "send",
-              title: "No account yet",
-              body: `No account at ${email}. You can send an invite after you save your changes.`,
-            }
-          : {
-              tone: "danger",
-              icon: "x",
-              title: "That email doesn't look right",
-              body: "Or leave it blank — they'll be a placeholder.",
-            };
-
-  const tones: Record<Tone, { fg: string; bg: string; border: string }> = {
-    accent: {
-      fg: "var(--color-bt-accent)",
-      bg: "var(--color-bt-accent-faint)",
-      border: "var(--color-bt-accent-border)",
-    },
-    warning: {
-      fg: "var(--color-bt-warning)",
-      bg: "var(--color-bt-warning-faint)",
-      border: "var(--color-bt-warning-border)",
-    },
-    danger: {
-      fg: "var(--color-bt-danger)",
-      bg: "var(--color-bt-danger-faint)",
-      border: "var(--color-bt-danger-border)",
-    },
-  };
-  const t = tones[copy.tone];
-
-  return (
-    <div
-      className="mt-1 flex items-start gap-2.5 rounded-lg px-3 py-2"
-      style={{ background: t.bg, border: `1px solid ${t.border}` }}
-    >
-      <span
-        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-        style={{
-          background: copy.icon === "spin" ? "transparent" : t.fg,
-          color: "var(--color-bt-on-accent)",
-          border: copy.icon === "spin" ? `2px solid ${t.fg}` : undefined,
-        }}
-      >
-        {copy.icon === "check" && <Check size={12} strokeWidth={3} />}
-        {copy.icon === "send" && <Send size={11} strokeWidth={2.5} />}
-        {copy.icon === "x" && <X size={12} strokeWidth={3} />}
-        {copy.icon === "spin" && <Loader2 size={11} className="animate-spin" style={{ color: t.fg }} />}
-      </span>
-      <div className="min-w-0">
-        <div className="text-[12px] font-semibold" style={{ color: t.fg }}>
-          {copy.title}
-        </div>
-        {copy.body && (
-          <div
-            className="mt-0.5 text-[11px] leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            {copy.body}
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 

@@ -1888,17 +1888,7 @@ export default function IdeaZonePanel({
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteIdea, setDeleteIdea] = useState<Idea | null>(null);
   const [setDestinationIdea, setSetDestinationIdea] = useState<Idea | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(`planners-collapsed-${tripId}`) === "true";
-  });
   const [isCompact, setIsCompact] = useState(false);
-
-  const handleToggleCollapse = () => {
-    const next = !isCollapsed;
-    setIsCollapsed(next);
-    localStorage.setItem(`planners-collapsed-${tripId}`, String(next));
-  };
 
   useEffect(() => {
     if (showAddModal) {
@@ -1999,8 +1989,6 @@ export default function IdeaZonePanel({
             planners={plannersList}
             isOwner={isOwner}
             canEdit={canEdit}
-            isCollapsed={isCollapsed}
-            onToggleCollapse={handleToggleCollapse}
           />
         </div>
 
@@ -2018,8 +2006,9 @@ export default function IdeaZonePanel({
             className="flex-1 text-sm leading-relaxed"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Add your top contenders from the catalog or enter your own — compare
-            them side by side, then let the crew weigh in.
+            {isOwner
+              ? "Add your top contenders from the catalog or enter your own — compare them side by side, then let the crew weigh in."
+              : "Weigh in on the ideas below — react, comment, and vote for your favorite to help the crew decide where to go."}
           </p>
           <button
             onClick={() => setIsCompact((c) => !c)}
