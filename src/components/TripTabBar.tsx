@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, type FC } from "react";
 import { House, Users, Hotel, Calendar, DollarSign, Trophy, type LucideIcon } from "lucide-react";
 import type { TabId } from "./BottomNav";
+import { DOMAIN_COLORS, TAB_DOMAIN } from "@/lib/domainColors";
 
 interface TabDef {
   id: TabId;
@@ -85,6 +86,10 @@ export const TripTabBar: FC<TripTabBarProps> = ({
       {tabs.map(({ id, label, Icon }) => {
         const active = activeTab === id;
         const badgeTier = badges?.[id];
+        // Each area owns one hue — the active tab paints its icon, label,
+        // and 2px underline in that domain color. Inactive tabs stay
+        // neutral gray (color marks, never floods).
+        const domainColor = DOMAIN_COLORS[TAB_DOMAIN[id]].color;
         return (
           <button
             key={id}
@@ -92,9 +97,9 @@ export const TripTabBar: FC<TripTabBarProps> = ({
             onClick={() => onTabChange(id)}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-2.5 transition-colors"
             style={{
-              color: active ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+              color: active ? domainColor : "var(--color-bt-text-dim)",
               borderBottom: active
-                ? "2px solid var(--color-bt-accent)"
+                ? `2px solid ${domainColor}`
                 : "2px solid transparent",
             }}
           >
