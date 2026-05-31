@@ -611,6 +611,7 @@ export default function TripDetailPage() {
       <FloatingChatPanel
         tripId={tripId}
         isOpen={chatOpen}
+        ideaStage={stage === "idea"}
         onClose={() => setChatOpen(false)}
         memberNames={Object.fromEntries(
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])

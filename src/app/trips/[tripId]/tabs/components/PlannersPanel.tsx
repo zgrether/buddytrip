@@ -57,10 +57,8 @@ function PlannerRow({
     <div
       className="border-b last:border-b-0"
       style={{
-        borderColor: "var(--color-bt-border)",
-        background: isExpanded
-          ? "var(--color-bt-card-raised)"
-          : "color-mix(in srgb, var(--color-bt-accent) 5%, transparent)",
+        borderColor: "var(--color-bt-subtle-border)",
+        background: isExpanded ? "var(--color-bt-card-raised)" : "transparent",
       }}
     >
       {/* Main row */}
@@ -83,7 +81,7 @@ function PlannerRow({
             )}
           </p>
           {planner.email && (
-            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+            <p className="truncate font-mono text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {planner.email}
             </p>
           )}
@@ -327,27 +325,15 @@ export function PlannersPanel({
           : "1.5px dashed var(--color-bt-border)",
       }}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3">
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            background: "var(--color-bt-accent-faint)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
+      {/* Header — ORGANIZERS section header with count (matches CrewTab) */}
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+        <h2
+          className="flex flex-1 items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-accent)", background: "var(--color-bt-accent-faint)" }}
         >
-          <Users size={16} style={{ color: "var(--color-bt-accent)" }} />
-        </div>
-        <span className="flex-1 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          {hasMultiplePlanners
-            ? `Organizers · ${planners.length} ${planners.length === 1 ? "person" : "people"}`
-            : "Organizers"}
-        </span>
+          <span>Organizers</span>
+          <span className="font-mono" style={{ opacity: 0.75 }}>{planners.length}</span>
+        </h2>
         <button
           onClick={onToggleCollapse}
           style={{
