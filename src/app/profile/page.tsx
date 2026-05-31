@@ -104,7 +104,7 @@ export default function ProfilePage() {
   if (!authLoaded || isLoading || !me) {
     return (
       <div className="min-h-screen" style={{ background: "var(--color-bt-base)" }}>
-        <TopNav hideTripSwitcher />
+        <TopNav hideTripSwitcher hideNews />
         <div className="flex justify-center py-16">
           <div
             className="h-6 w-6 animate-spin rounded-full border-2"
@@ -122,7 +122,7 @@ export default function ProfilePage() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav hideTripSwitcher />
+      <TopNav hideTripSwitcher hideNews />
 
       <div className="flex">
         {/* ── Desktop sidebar ─────────────────────────────────────────── */}

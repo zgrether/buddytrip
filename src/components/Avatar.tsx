@@ -39,6 +39,13 @@ interface AvatarProps {
    * foreground stays reserved for "real"/actionable members.
    */
   muted?: boolean;
+  /**
+   * Inverted "filled" treatment: solid accent (teal) circle with a dark
+   * foreground, instead of the default teal-on-raised. Used for the
+   * top-nav account avatar so it reads as a distinct identity affordance.
+   * Ignored in competition mode (teamColor wins).
+   */
+  accent?: boolean;
   className?: string;
 }
 
@@ -48,22 +55,22 @@ interface AvatarProps {
  * classes below instead of these numbers.
  */
 const SIZE_MAP = {
-  sm: { circle: 30, icon: 14, initials: 11 }, // mobile values (used only as a hint for the Tabler `size` prop ceiling)
-  md: { circle: 36, icon: 18, initials: 13 },
-  lg: { circle: 72, icon: 28, initials: 24 },
+  sm: { circle: 30, icon: 20, initials: 11 }, // mobile values (used only as a hint for the Tabler `size` prop ceiling)
+  md: { circle: 36, icon: 23, initials: 13 },
+  lg: { circle: 72, icon: 44, initials: 24 },
 } as const;
 
 /**
  * Responsive Tailwind classes for `size="sm"` only. Spec calls for
  *   container: 30px mobile / 34px desktop
- *   icon:      14px mobile / 16px desktop
+ *   icon:      20px mobile / 22px desktop (filled — icons read clearly small)
  *   initials:  11px mobile / 12px desktop
  * The icon-size class targets the SVG that Tabler renders inside the
  * circle (Tailwind v4 arbitrary descendant selectors).
  */
 const SM_RESPONSIVE_CLASSES =
   "h-[30px] w-[30px] md:h-[34px] md:w-[34px] " +
-  "[&_svg]:h-[14px] [&_svg]:w-[14px] md:[&_svg]:h-[16px] md:[&_svg]:w-[16px] " +
+  "[&_svg]:h-[20px] [&_svg]:w-[20px] md:[&_svg]:h-[22px] md:[&_svg]:w-[22px] " +
   "[&_span]:text-[11px] md:[&_span]:text-[12px]";
 
 /** "Zach Grether" → "ZG"; "Llama" → "L"; "" → "?" */
@@ -84,6 +91,7 @@ export function Avatar({
   size = "md",
   sizePx,
   muted = false,
+  accent = false,
   className,
 }: AvatarProps) {
   // An explicit sizePx wins over the named preset and disables the
@@ -92,21 +100,32 @@ export function Avatar({
   const { circle, icon: iconSize, initials: initialsSize } = fixedPx
     ? {
         circle: fixedPx,
-        icon: Math.round(fixedPx * 0.5),
+        // Icons fill ~62% of the circle so they stay legible at small
+        // sizes; initials stay smaller (text needs more breathing room).
+        icon: Math.round(fixedPx * 0.62),
         initials: Math.max(9, Math.round(fixedPx * 0.4)),
       }
     : SIZE_MAP[size];
   const isResponsive = size === "sm" && fixedPx === null;
 
-  // Competition context (team color set) → white foreground on team-color bg
+  // Competition context (team color set) → white foreground on team-color bg.
+  // Accent ("filled") → dark foreground on a solid teal circle.
+  // Default → teal (or muted grey) foreground on a neutral raised surface.
   const competitionMode = !!teamColor;
-  const background = competitionMode ? (teamColor as string) : "var(--color-bt-card-raised)";
+  const background = competitionMode
+    ? (teamColor as string)
+    : accent
+      ? "var(--color-bt-accent)"
+      : "var(--color-bt-card-raised)";
   const foreground = competitionMode
     ? "#ffffff"
-    : muted
-      ? "var(--color-bt-text-dim)"
-      : "var(--color-bt-accent)";
-  const border = competitionMode ? "none" : "1.5px solid var(--color-bt-border)";
+    : accent
+      ? "#0d1f1a"
+      : muted
+        ? "var(--color-bt-text-dim)"
+        : "var(--color-bt-accent)";
+  const border =
+    competitionMode || accent ? "none" : "1.5px solid var(--color-bt-border)";
 
   // Look up the icon component. If avatarIcon is set but unknown (e.g. an
   // old value from before we curated the list), fall back to initials.
@@ -137,7 +156,7 @@ export function Avatar({
         // SVG has enough resolution; Tailwind classes scale the SVG down
         // to 14px on mobile via the [&_svg]:h-[14px] selector above.
         <IconComponent
-          size={isResponsive ? 16 : iconSize}
+          size={isResponsive ? 22 : iconSize}
           stroke={1.75}
           aria-hidden="true"
         />
