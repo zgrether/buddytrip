@@ -39,6 +39,13 @@ interface AvatarProps {
    * foreground stays reserved for "real"/actionable members.
    */
   muted?: boolean;
+  /**
+   * Inverted "filled" treatment: solid accent (teal) circle with a dark
+   * foreground, instead of the default teal-on-raised. Used for the
+   * top-nav account avatar so it reads as a distinct identity affordance.
+   * Ignored in competition mode (teamColor wins).
+   */
+  accent?: boolean;
   className?: string;
 }
 
@@ -84,6 +91,7 @@ export function Avatar({
   size = "md",
   sizePx,
   muted = false,
+  accent = false,
   className,
 }: AvatarProps) {
   // An explicit sizePx wins over the named preset and disables the
@@ -98,15 +106,24 @@ export function Avatar({
     : SIZE_MAP[size];
   const isResponsive = size === "sm" && fixedPx === null;
 
-  // Competition context (team color set) → white foreground on team-color bg
+  // Competition context (team color set) → white foreground on team-color bg.
+  // Accent ("filled") → dark foreground on a solid teal circle.
+  // Default → teal (or muted grey) foreground on a neutral raised surface.
   const competitionMode = !!teamColor;
-  const background = competitionMode ? (teamColor as string) : "var(--color-bt-card-raised)";
+  const background = competitionMode
+    ? (teamColor as string)
+    : accent
+      ? "var(--color-bt-accent)"
+      : "var(--color-bt-card-raised)";
   const foreground = competitionMode
     ? "#ffffff"
-    : muted
-      ? "var(--color-bt-text-dim)"
-      : "var(--color-bt-accent)";
-  const border = competitionMode ? "none" : "1.5px solid var(--color-bt-border)";
+    : accent
+      ? "#0d1f1a"
+      : muted
+        ? "var(--color-bt-text-dim)"
+        : "var(--color-bt-accent)";
+  const border =
+    competitionMode || accent ? "none" : "1.5px solid var(--color-bt-border)";
 
   // Look up the icon component. If avatarIcon is set but unknown (e.g. an
   // old value from before we curated the list), fall back to initials.

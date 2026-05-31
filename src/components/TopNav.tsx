@@ -80,7 +80,6 @@ export const TopNav: FC<TopNavProps> = ({
       (t) => t.id === currentTripId
     ) ?? null;
   const showSwitcher = !hideTripSwitcher && currentTrip != null;
-  const isOwner = currentTrip?.myRole === "Owner";
 
   return (
     <header
@@ -161,24 +160,6 @@ export const TopNav: FC<TopNavProps> = ({
                 padding: "5px 9px 5px 7px",
               }}
             >
-              {isOwner && (
-                <span
-                  className="flex-shrink-0"
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    lineHeight: 1,
-                    color: "var(--color-bt-owner)",
-                    border: "1px solid var(--color-bt-owner)",
-                    borderRadius: 4,
-                    padding: "2px 4px",
-                  }}
-                >
-                  Owner
-                </span>
-              )}
               <span
                 className="truncate max-w-[240px] @max-[600px]:max-w-[140px]"
                 style={{
