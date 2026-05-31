@@ -2025,7 +2025,7 @@ export default function IdeaZonePanel({
             </h2>
             <p className="text-sm leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
               {isOwner
-                ? "Invite people who want to help shape the trip. They can add ideas, vote, and weigh in before the trip is officially on — everyone else gets added when you're ready to go."
+                ? "Invite people who want to help shape the trip. They can add ideas, vote, and weigh in before the trip is officially on — everyone else gets added when you're ready to go. Want to pull someone out of the discussion? Demote them to a future crew member and they'll drop out of the organizer conversation while staying on the trip."
                 : "You're an organizer on this trip. Add your input on the ideas below and vote for your favorite — your voice helps decide where the crew lands."}
             </p>
           </div>
@@ -2100,11 +2100,10 @@ export default function IdeaZonePanel({
           </div>
         )}
 
-        {/* Section header */}
-        <h2
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
+        {/* Section header — same weight/size as "Need help deciding?" so the
+            two top-level sections read as peers, with breathing room above to
+            separate it from the crew roster. */}
+        <h2 className="pt-3 text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
           Destination Ideas
         </h2>
 
