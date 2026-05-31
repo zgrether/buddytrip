@@ -1,8 +1,16 @@
 "use client";
 
-import { Mail } from "lucide-react";
+import { useState } from "react";
+import { Mail, Plus } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { parseLocalDate } from "@/lib/dates";
+import {
+  TravelEditor,
+  TravelModePill,
+  summarizeTravel,
+  formatArrivalLabel,
+  type TravelMode,
+} from "./TravelControls";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 //
@@ -27,6 +35,15 @@ export type Member = {
    *  Drives the "not invited yet" status for real accounts that have been
    *  added to the trip but not yet emailed. */
   email_count?: number | null;
+  /** Travel fields (live on trip_members). `travel_mode` drives the
+   *  at-a-glance mode pill; `travel_detail` is the single free-text
+   *  description; `flight_arrival_time` is the combined arrival timestamp. */
+  travel_mode?: string | null;
+  travel_detail?: string | null;
+  flight_airline?: string | null;
+  flight_number?: string | null;
+  flight_airport?: string | null;
+  flight_arrival_time?: string | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -246,8 +263,10 @@ export function CrewRow({
           )}
         </div>
 
-        {/* Role pill (Owner / Organizer; Member renders nothing) */}
+        {/* Right cluster: at-a-glance travel mode pill (blank when not
+            shared — we never print "No travel") + role pill. */}
         <div className="flex flex-shrink-0 items-center gap-1.5">
+          <TravelModePill mode={(m.travel_mode as TravelMode | null) ?? null} />
           <RolePill role={m.role} />
         </div>
       </button>
@@ -345,6 +364,159 @@ export function CrewSection({
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+// ── YouTile — the current user's own card + inline travel self-service ──────
+//
+// Pulled out of the Organizers/Crew lists into its own highlighted tile at
+// the top of the Crew tab. This is the one place a member self-serves their
+// travel: tapping "Add your travel" / "Edit" opens the inline TravelEditor in
+// place (no drawer). Owners still edit anyone (including themselves) via the
+// row → MemberEditor drawer, but the YOU tile is the fast path for "me".
+
+export function YouTile({
+  member: m,
+  tripId,
+  tripStartDate,
+}: {
+  member: Member;
+  tripId: string;
+  tripStartDate?: string | null;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  const mode = (m.travel_mode as TravelMode | null) ?? null;
+  const detail = summarizeTravel(m);
+  const arrivalLabel = formatArrivalLabel(m.flight_arrival_time);
+  const hasTravel = !!mode;
+
+  return (
+    <section>
+      <h2
+        className="mb-2 flex items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+        style={{
+          color: "var(--color-bt-accent)",
+          background: "var(--color-bt-accent-faint)",
+        }}
+      >
+        <span>You</span>
+      </h2>
+
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          border: "1px solid var(--color-bt-accent-border)",
+        }}
+      >
+        {/* Identity row */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <Avatar
+            name={m.user?.name ?? m.displayName}
+            avatarIcon={m.user?.avatar_icon ?? null}
+            size="md"
+          />
+          <div className="min-w-0 flex-1">
+            <p
+              className="truncate text-sm font-medium"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {m.displayName}
+              <span
+                className="ml-1 text-xs"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                (you)
+              </span>
+            </p>
+            {m.user?.email && (
+              <p
+                className="truncate font-mono text-[11px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {m.user.email}
+              </p>
+            )}
+          </div>
+          <RolePill role={m.role} />
+        </div>
+
+        {/* Divider */}
+        <div
+          style={{ borderTop: "1px solid var(--color-bt-accent-border)" }}
+          aria-hidden
+        />
+
+        {/* Your travel block */}
+        <div className="px-4 py-3">
+          <div
+            className="mb-2 text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Your travel
+          </div>
+
+          {editing ? (
+            <div
+              className="rounded-xl p-3"
+              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <TravelEditor
+                tripId={tripId}
+                member={m}
+                tripStartDate={tripStartDate}
+                onSaved={() => setEditing(false)}
+                onCancel={() => setEditing(false)}
+              />
+            </div>
+          ) : hasTravel ? (
+            <div className="flex items-center gap-3">
+              <TravelModePill mode={mode} withLabel />
+              <div className="min-w-0 flex-1">
+                {detail && (
+                  <p
+                    className="truncate text-sm"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {detail}
+                  </p>
+                )}
+                {arrivalLabel && (
+                  <p
+                    className="truncate text-[11px]"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    Arriving {arrivalLabel}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="flex-shrink-0 text-xs font-medium hover:underline"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                Edit
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 py-2.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                borderColor: "var(--color-bt-accent-border)",
+                color: "var(--color-bt-accent)",
+              }}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              Add your travel
+            </button>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
