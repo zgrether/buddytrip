@@ -360,6 +360,23 @@ describe("tripMembers router — sendInvitationBlast", () => {
     expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalled();
   });
 
+  it("sendInvitationBlast — sends the explicit message body verbatim", async () => {
+    vi.mocked(sendInvitationBlast).mockClear();
+    const caller = ctx.caller();
+    const member = ctx.getUser("member");
+    const body = "Hey! I'm starting to plan a trip and could use your help.";
+
+    await caller.tripMembers.sendInvitationBlast({
+      tripId,
+      memberUserIds: [member.id],
+      message: body,
+    });
+
+    expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalledWith(
+      expect.objectContaining({ invitationMessage: body })
+    );
+  });
+
   it("sendInvitationBlast — stamps last_emailed_at and bumps email_count", async () => {
     const admin = ctx.admin;
     const caller = ctx.caller();

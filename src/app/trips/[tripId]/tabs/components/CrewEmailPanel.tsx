@@ -112,8 +112,17 @@ export function CrewEmailPanel({
   // Editable message (autosaves on blur). The caller can override the
   // default seed/reset copy (e.g. the idea zone's planning-vibe invite).
   const cannedInvitation = defaultMessage ?? buildCannedInvitation(trip);
+  // The going-stage canned invitation. A saved about_message that merely
+  // equals this isn't a genuine customization — it's the old default that
+  // got autosaved. Treat it as "not custom" so an overridden default (e.g.
+  // the idea zone's planning invite) still wins instead of resurfacing the
+  // going-stage copy.
+  const goingCanned = buildCannedInvitation(trip).trim();
   const savedMessage = trip.about_message?.trim() || "";
-  const [messageDraft, setMessageDraft] = useState(savedMessage || cannedInvitation);
+  const hasCustomMessage = !!savedMessage && savedMessage !== goingCanned;
+  const [messageDraft, setMessageDraft] = useState(
+    hasCustomMessage ? savedMessage : cannedInvitation
+  );
 
   // Auto-grow textarea: height tracks content so a multi-paragraph invite
   // isn't squashed into a tiny scroll box.
@@ -131,7 +140,10 @@ export function CrewEmailPanel({
 
   const handleBlur = () => {
     const trimmed = messageDraft.trim();
-    if (trimmed && trimmed !== savedMessage) {
+    // Persist genuine customizations only. Don't save the default (canned or
+    // planning) — the send carries the body explicitly, and writing a default
+    // into about_message pollutes it across stages.
+    if (trimmed && trimmed !== savedMessage && trimmed !== cannedInvitation.trim()) {
       updateAbout.mutate({ tripId, aboutMessage: trimmed });
     }
   };
@@ -504,6 +516,9 @@ export function CrewEmailPanel({
             blast.mutate({
               tripId,
               memberUserIds: selectedMembers.map((m) => m.memberId),
+              // Send the exact body shown in the panel so the email matches
+              // what the owner saw (planning vs. going default included).
+              message: messageDraft.trim(),
             });
           }}
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90 disabled:opacity-50"

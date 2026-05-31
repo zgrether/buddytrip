@@ -735,6 +735,15 @@ export const tripMembersRouter = router({
       z.object({
         tripId: z.string(),
         memberUserIds: z.array(z.string()).min(1),
+        /**
+         * The exact invitation body to send, as shown in the email panel.
+         * Passed explicitly so the sent email always matches what the owner
+         * saw — the panel's default varies by stage (planning vs. going) and
+         * isn't always persisted to about_message. Falls back to
+         * about_message, then the canned default, for any caller that omits
+         * it.
+         */
+        message: z.string().optional(),
       })
     )
     .use(requireTripRole("Owner"))
@@ -774,9 +783,13 @@ export const tripMembersRouter = router({
         .select("id, name, email")
         .in("id", verifiedIds);
 
-      // Build invitation message (custom or canned default)
+      // Build invitation message. Prefer the explicit body the panel sent
+      // (so the email matches what the owner saw, including the idea-zone
+      // planning-vibe default), then the saved about_message, then the
+      // canned default as a last resort.
       const { buildCannedInvitation } = await import("@/lib/invitationDefault");
-      const invitationMessage = trip.about_message?.trim() || buildCannedInvitation(trip);
+      const invitationMessage =
+        input.message?.trim() || trip.about_message?.trim() || buildCannedInvitation(trip);
 
       const { sendInvitationBlast: sendBlast } = await import("@/lib/email");
       const now = new Date().toISOString();
