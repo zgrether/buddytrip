@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Bell, Building2, Clock, FileText, Flag, Hash, Hotel, KeyRound, Lock, MapPin, Pencil, Plus, Wifi, X, Zap } from "lucide-react";
+import { AlertTriangle, Bell, Building2, Clock, FileText, Flag, Hash, Hotel, KeyRound, Lock, MapPin, Plus, Wifi, X, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
@@ -55,7 +55,7 @@ const TILE_ICON_CLASS = "h-4 w-4 sm:h-[17px] sm:w-[17px] md:h-[18px] md:w-[18px]
 // ── AlertToggle ──────────────────────────────────────────────────────────
 // Shared control for "mark this as a crew alert" in Add/Edit modals. When
 // on, the tile keeps the same footprint as the neutral info tiles but
-// renders in warning-yellow with a bell + "Alert ·" label so it stands out.
+// renders in warning-yellow with a bell chip so it stands out.
 
 function AlertToggle({ value, onChange }: { value: boolean; onChange: (next: boolean) => void }) {
   return (
@@ -314,8 +314,9 @@ function EditTileModal({
 // Owner-configured grab-bag of going-stage details (door codes, check-in
 // times, street addresses, crew alerts). Crew reads; owner edits via
 // Add/Edit tile modals. Every tile shares the same size; alert-flagged tiles
-// keep that footprint but swap in warning-yellow styling, a bell icon, and an
-// "Alert ·" label prefix so they read as urgent without dominating the grid.
+// keep that footprint but swap in warning-yellow styling and a bell chip so
+// they read as urgent without dominating the grid — the color carries the
+// signal, so no extra label prefix is needed. Owners tap a tile to edit it.
 // Renders nothing for non-owners when no tiles exist.
 
 export function QuickInfoSection({
@@ -395,13 +396,28 @@ export function QuickInfoSection({
           {sortedTiles.map((tile) => {
             const alert = !!tile.is_alert;
             // Every tile is the same size. Alerts keep that footprint but pick
-            // up warning tokens + a left border stripe, an amber icon chip with
-            // a bell, and an "Alert ·" label prefix so they stand out.
+            // up warning tokens + a left border stripe and an amber bell chip —
+            // the color alone signals urgency, no label prefix needed.
             return (
               <div
                 key={tile.id}
                 data-testid={`tile-${tile.id}`}
-                className="group relative flex items-center gap-2.5 rounded-xl p-3 md:gap-3"
+                onClick={isOwner ? () => setEditingTile(tile) : undefined}
+                role={isOwner ? "button" : undefined}
+                tabIndex={isOwner ? 0 : undefined}
+                onKeyDown={
+                  isOwner
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setEditingTile(tile);
+                        }
+                      }
+                    : undefined
+                }
+                className={`relative flex items-center gap-2.5 rounded-xl p-3 md:gap-3 ${
+                  isOwner ? "cursor-pointer transition-opacity hover:opacity-80" : ""
+                }`}
                 style={
                   alert
                     ? {
@@ -429,7 +445,7 @@ export function QuickInfoSection({
                     className="truncate text-[10px] font-semibold uppercase tracking-wider"
                     style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
                   >
-                    {alert ? `Alert · ${tile.label}` : tile.label}
+                    {tile.label}
                   </p>
                   <p
                     className="truncate text-sm font-semibold"
@@ -438,16 +454,6 @@ export function QuickInfoSection({
                     {tile.value}
                   </p>
                 </div>
-                {isOwner && (
-                  <button
-                    data-testid={`tile-edit-${tile.id}`}
-                    onClick={() => setEditingTile(tile)}
-                    className="absolute right-1.5 top-1.5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
-                    style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
-                  >
-                    <Pencil size={12} />
-                  </button>
-                )}
               </div>
             );
           })}
