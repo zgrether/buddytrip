@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Crown, Mail, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { Mail, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate } from "@/lib/dates";
@@ -78,7 +78,6 @@ function RolePill({ role }: { role: string }) {
           border: "1px solid var(--color-bt-warning-border)",
         }}
       >
-        <Crown size={10} />
         Owner
       </span>
     );
