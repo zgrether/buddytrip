@@ -32,6 +32,7 @@ export function LodgingTab({ trip, canEdit, embedded }: TabProps & { embedded?: 
     <div className={embedded ? undefined : "px-4"}>
       <TabHeader
         eyebrow="Lodging"
+        domain="lodging"
         headline="Where everyone's staying"
         body="Drop in the places you're considering so the crew can compare — links, prices, sleep counts. Confirm the one(s) you book, and they're locked in as official trip details. Multi-property and multi-leg trips are fine — confirm as many as you need."
         desktopAction={

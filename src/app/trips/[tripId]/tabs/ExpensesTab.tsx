@@ -39,6 +39,7 @@ export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
     <div className="px-4">
       <TabHeader
         eyebrow="Receipts"
+        domain="receipts"
         headline="Track who paid for what"
         body="Log anything the crew pays for — group dinners, lodging, green fees, rentals. Pick who paid and who's splitting it and we'll keep balances straight so nobody chases anyone for money at the end."
         desktopAction={

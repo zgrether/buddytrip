@@ -603,6 +603,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           // member-facing framing.
           eyebrow={`Crew · ${totalCount}`}
           eyebrowTone="accent"
+          domain="crew"
           headline="Everyone on the trip"
           body="Tag the Owner with planning questions. Roles, emails, and the roster itself are managed by the Owner."
         />
@@ -673,6 +674,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
         // breakdown.
         eyebrow={`Crew · ${totalCount}`}
         eyebrowTone="accent"
+        domain="crew"
         headline="Who's on the trip"
         // Populated copy per round-3 C3-2: surfaces the **placeholder**
         // defined term and pins ownership/permissions correctly.

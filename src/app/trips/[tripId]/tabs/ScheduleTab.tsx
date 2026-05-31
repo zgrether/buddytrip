@@ -886,6 +886,7 @@ export function ScheduleTab({
           rounds / out-of-range) sit between the header and the grid. */}
       <TabHeader
         eyebrow="Agenda"
+        domain="agenda"
         headline="What you're actually doing"
         body="Tee times, dinners, side games, anything else on the calendar. Treat it like a rough draft — once an item is ready for the crew, confirm it and it'll appear on their itinerary."
         desktopAction={
