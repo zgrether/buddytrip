@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Plus, UserPlus, X } from "lucide-react";
+import { Mail, Plus, ShieldCheck, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -487,6 +487,48 @@ function EmptyCrewInvitation() {
   );
 }
 
+// ── EmptyOrganizersInvitation ─────────────────────────────────────────────
+// Organizer-tone twin of EmptyCrewInvitation. Same card shell (icon square +
+// heading + dim copy) so the Organizers empty state reads identically to the
+// Crew one — only the accent color, icon, and copy differ. Shown inside the
+// ORGANIZERS section when the trip has no other organizers yet.
+
+function EmptyOrganizersInvitation() {
+  return (
+    <div
+      className="flex flex-col items-center gap-2.5 rounded-xl px-6 py-7 text-center"
+      style={{
+        background: "var(--color-bt-surface-invitation)",
+        border: "1.5px dashed var(--color-bt-border)",
+      }}
+    >
+      <span
+        className="flex h-11 w-11 items-center justify-center rounded-[12px]"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+        }}
+      >
+        <ShieldCheck size={22} strokeWidth={2} />
+      </span>
+      <div className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        No other organizers yet
+      </div>
+      <p
+        className="m-0 max-w-[360px] text-xs leading-snug"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Promote a crew member to{" "}
+        <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Organizer
+        </strong>{" "}
+        to share the planning work — they&apos;ll be able to manage lodging, the
+        schedule, and the budget alongside you.
+      </p>
+    </div>
+  );
+}
+
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
 export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
@@ -739,15 +781,40 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           {me && (
             <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} />
           )}
-          <CrewSection
-            title="Organizers"
-            tone="accent"
-            members={organizers}
-            isOwnerView={isOwner}
-            currentUserId={currentUser?.id}
-            onEditMember={(m) => setEditingMemberId(m.memberId)}
-            emptyHint="No other organizers yet — promote someone to share planning work."
-          />
+          {/* ORGANIZERS section: when empty + organizer view, render the
+              invitation card so it reads identically to the empty CREW
+              state below (rich icon card, accent tone). Populated state
+              uses the standard CrewSection rendering. */}
+          {organizers.length === 0 && isOwner ? (
+            <section>
+              <h2
+                className="mb-2 flex items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                style={{
+                  color: "var(--color-bt-accent)",
+                  background: "var(--color-bt-accent-faint)",
+                }}
+              >
+                <span>Organizers</span>
+                <span
+                  className="font-mono"
+                  style={{ color: "var(--color-bt-accent)", opacity: 0.75 }}
+                >
+                  0
+                </span>
+              </h2>
+              <EmptyOrganizersInvitation />
+            </section>
+          ) : (
+            <CrewSection
+              title="Organizers"
+              tone="accent"
+              members={organizers}
+              isOwnerView={isOwner}
+              currentUserId={currentUser?.id}
+              onEditMember={(m) => setEditingMemberId(m.memberId)}
+              emptyHint="No other organizers yet — promote someone to share planning work."
+            />
+          )}
           {/* CREW section: when empty + organizer view, render the
               invitation card per addendum §2. Populated state uses
               the standard CrewSection rendering. */}
