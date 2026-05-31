@@ -219,26 +219,27 @@ export function buildItinerary(input: {
     }
   }
 
-  // ── 3. Shared member arrivals ──
+  // ── 3. Member arrivals ──
+  // Travel is opt-in by entering it — there's no separate "shared" flag.
+  // Anyone (real member or owner-logged placeholder) weaves in once they
+  // have a mode + an arrival time.
   for (const m of input.members) {
-    // Guests can't log in to share their own travel, but the owner can
-    // now enter it on their behalf — include them if travel_mode is set.
-    if (m.isGuest && !m.travel_mode) continue;
-    if (!m.isGuest && !m.travel_shared) continue;
+    if (!m.travel_mode) continue;
     if (!m.flight_arrival_time) continue;
 
     const date = localDateOfTimestamp(m.flight_arrival_time);
     const time = localTimeOfTimestamp(m.flight_arrival_time);
 
-    let subtitle: string | null = null;
-    if (m.travel_mode === "flying") {
+    // `travel_detail` is the single free-text description for every mode.
+    // Fall back to the legacy structured flight fields for older rows that
+    // predate the collapse to one detail string.
+    let subtitle: string | null = m.travel_detail ?? null;
+    if (!subtitle && m.travel_mode === "flying") {
       const flight = [m.flight_airline, m.flight_number].filter(Boolean).join(" ");
       const parts: string[] = [];
       if (flight) parts.push(flight);
       if (m.flight_airport) parts.push(`arriving ${m.flight_airport}`);
       subtitle = parts.join(" · ") || null;
-    } else if (m.travel_detail) {
-      subtitle = m.travel_detail;
     }
 
     events.push({

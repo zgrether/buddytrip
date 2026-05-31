@@ -104,11 +104,24 @@ describe("buildItinerary — filtering", () => {
     expect(events).toHaveLength(0);
   });
 
-  it("excludes arrivals where travel_shared is false", () => {
+  it("weaves in arrivals regardless of travel_shared (flag no longer gates)", () => {
+    // Travel is opt-in by entering it — there's no separate "shared" flag.
+    // A member with a mode + arrival time weaves in even when travel_shared
+    // is false (legacy rows) or undefined.
     const events = buildItinerary({
       scheduleItems: [],
       logisticsItems: [],
       members: [member({ travel_shared: false })],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("arrival");
+  });
+
+  it("excludes arrivals without a travel_mode", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [member({ travel_mode: null })],
     });
     expect(events).toHaveLength(0);
   });
@@ -120,6 +133,48 @@ describe("buildItinerary — filtering", () => {
       members: [member({ flight_arrival_time: null })],
     });
     expect(events).toHaveLength(0);
+  });
+
+  it("uses travel_detail as the arrival subtitle for every mode", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [
+        member({
+          travel_mode: "driving",
+          travel_detail: "Driving up from Charlotte",
+          // No flight fields — detail is the single source of truth.
+          flight_airline: null,
+          flight_number: null,
+          flight_airport: null,
+        }),
+      ],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("arrival");
+    if (events[0].kind === "arrival") {
+      expect(events[0].subtitle).toBe("Driving up from Charlotte");
+    }
+  });
+
+  it("falls back to legacy flight fields when travel_detail is empty", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [
+        member({
+          travel_mode: "flying",
+          travel_detail: null,
+          flight_airline: "United",
+          flight_number: "UA123",
+          flight_airport: "ORD",
+        }),
+      ],
+    });
+    expect(events).toHaveLength(1);
+    if (events[0].kind === "arrival") {
+      expect(events[0].subtitle).toBe("United UA123 · arriving ORD");
+    }
   });
 });
 
