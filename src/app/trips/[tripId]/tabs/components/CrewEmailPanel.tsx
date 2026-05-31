@@ -370,7 +370,16 @@ export function CrewEmailPanel({
                       <div className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                         {m.user?.email}
                         {status === "invited" && (
-                          <span className="ml-1" style={{ color: "var(--color-bt-warning)" }}>
+                          <span
+                            className="ml-1"
+                            style={{
+                              // "pending invite" still needs action → amber.
+                              // "invited Mar 5" is just informational → teal.
+                              color: m.last_emailed_at
+                                ? "var(--color-bt-accent)"
+                                : "var(--color-bt-warning)",
+                            }}
+                          >
                             {m.last_emailed_at
                               ? `· invited ${parseLocalDate(m.last_emailed_at).toLocaleDateString(
                                   "en-US",

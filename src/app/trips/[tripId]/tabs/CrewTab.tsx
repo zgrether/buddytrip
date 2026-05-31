@@ -230,14 +230,22 @@ function CrewRow({
           {status === "invited" && (
             <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
               <span className="font-mono">{m.user?.email}</span>
-              <span className="ml-1" style={{ color: "var(--color-bt-warning)" }}>
-                {/* Two sub-states:
-                    - last_emailed_at set → "· invited Mar 5" (sent but
-                      the user hasn't signed up yet)
-                    - last_emailed_at null → "· pending invite" (added
-                      with an email but the invite blast hasn't gone
-                      out yet — the nudge above prompts the Owner to
-                      send it). */}
+              <span
+                className="ml-1"
+                style={{
+                  // Two sub-states:
+                  //  - last_emailed_at set → "· invited Mar 5" (sent but the
+                  //    user hasn't signed up yet). Informational, not a
+                  //    warning → teal.
+                  //  - last_emailed_at null → "· pending invite" (added with
+                  //    an email but the invite blast hasn't gone out yet — the
+                  //    nudge above prompts the Owner to send it). Needs action
+                  //    → amber.
+                  color: m.last_emailed_at
+                    ? "var(--color-bt-accent)"
+                    : "var(--color-bt-warning)",
+                }}
+              >
                 {m.last_emailed_at
                   ? `· invited ${parseLocalDate(m.last_emailed_at).toLocaleDateString("en-US", {
                       month: "short",
