@@ -349,7 +349,7 @@ describe("trips router — stage model", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // ── enableItinerary / enableGettingThere — panel activation flags ─────
+  // ── enableItinerary / enableQuickInfoTiles — panel activation flags ───
   // Reuses stageTrip — planner/member were added by the changeDestination
   // tests above, so we don't need to re-add them here.
   it("enableItinerary — owner flips itinerary_enabled to true", async () => {
@@ -377,25 +377,6 @@ describe("trips router — stage model", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("enableGettingThere — owner flips getting_there_enabled to true", async () => {
-    const caller = ctx.caller();
-    const res = await caller.trips.enableGettingThere({ tripId: stageTrip });
-    expect(res.success).toBe(true);
-    const { data } = await ctx.admin
-      .from("trips")
-      .select("getting_there_enabled")
-      .eq("id", stageTrip)
-      .single();
-    expect(data?.getting_there_enabled).toBe(true);
-  });
-
-  it("enableGettingThere — member is FORBIDDEN", async () => {
-    const memberCaller = ctx.callerAs("member");
-    await expect(
-      memberCaller.trips.enableGettingThere({ tripId: stageTrip })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
   it("disableItinerary — owner flips itinerary_enabled back to false", async () => {
     const caller = ctx.caller();
     const res = await caller.trips.disableItinerary({ tripId: stageTrip });
@@ -406,18 +387,6 @@ describe("trips router — stage model", () => {
       .eq("id", stageTrip)
       .single();
     expect(data?.itinerary_enabled).toBe(false);
-  });
-
-  it("disableGettingThere — owner flips getting_there_enabled back to false", async () => {
-    const caller = ctx.caller();
-    const res = await caller.trips.disableGettingThere({ tripId: stageTrip });
-    expect(res.success).toBe(true);
-    const { data } = await ctx.admin
-      .from("trips")
-      .select("getting_there_enabled")
-      .eq("id", stageTrip)
-      .single();
-    expect(data?.getting_there_enabled).toBe(false);
   });
 
   it("enableQuickInfoTiles — owner flips quick_info_enabled to true", async () => {

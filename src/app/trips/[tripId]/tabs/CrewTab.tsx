@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Plus, UserPlus, X } from "lucide-react";
+import { Mail, Plus, ShieldCheck, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -18,6 +18,7 @@ import {
   PlaceholderAvatar,
   CrewRow,
   CrewSection,
+  YouTile,
 } from "./components/CrewRoster";
 
 // ── StatusLegend (right rail, always visible) ─────────────────────────────
@@ -486,6 +487,48 @@ function EmptyCrewInvitation() {
   );
 }
 
+// ── EmptyOrganizersInvitation ─────────────────────────────────────────────
+// Organizer-tone twin of EmptyCrewInvitation. Same card shell (icon square +
+// heading + dim copy) so the Organizers empty state reads identically to the
+// Crew one — only the accent color, icon, and copy differ. Shown inside the
+// ORGANIZERS section when the trip has no other organizers yet.
+
+function EmptyOrganizersInvitation() {
+  return (
+    <div
+      className="flex flex-col items-center gap-2.5 rounded-xl px-6 py-7 text-center"
+      style={{
+        background: "var(--color-bt-surface-invitation)",
+        border: "1.5px dashed var(--color-bt-border)",
+      }}
+    >
+      <span
+        className="flex h-11 w-11 items-center justify-center rounded-[12px]"
+        style={{
+          background: "var(--color-bt-accent-faint)",
+          color: "var(--color-bt-accent)",
+        }}
+      >
+        <ShieldCheck size={22} strokeWidth={2} />
+      </span>
+      <div className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        No other organizers yet
+      </div>
+      <p
+        className="m-0 max-w-[360px] text-xs leading-snug"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        Promote a crew member to{" "}
+        <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Organizer
+        </strong>{" "}
+        to share the planning work — they&apos;ll be able to manage lodging, the
+        schedule, and the budget alongside you.
+      </p>
+    </div>
+  );
+}
+
 // ── CrewTab ───────────────────────────────────────────────────────────────
 
 export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
@@ -527,8 +570,14 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
     return a.displayName.localeCompare(b.displayName);
   });
 
-  const organizers = sortedAll.filter((m) => m.role === "Owner" || m.role === "Planner");
-  const restCrew = sortedAll.filter((m) => m.role === "Member");
+  // The current user is lifted out of the Organizers/Crew lists into the
+  // dedicated YOU tile (the one place they self-serve their own travel).
+  const organizers = sortedAll.filter(
+    (m) => (m.role === "Owner" || m.role === "Planner") && m.user_id !== currentUser?.id
+  );
+  const restCrew = sortedAll.filter(
+    (m) => m.role === "Member" && m.user_id !== currentUser?.id
+  );
   const totalCount = members.length;
 
   // Email-the-crew is available whenever at least one *other* member has an
@@ -560,24 +609,33 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
         {/* Member view grid — same shrink-and-collapse rules as the
             organizer view (see Task 44 comment below). */}
         <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
-          <section>
-            <div
-              className="overflow-hidden rounded-xl"
-              style={{
-                background: "var(--color-bt-card)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              {sortedAll.map((m) => (
-                <CrewRow
-                  key={m.memberId}
-                  member={m}
-                  isOwnerView={false}
-                  isMe={m.user_id === currentUser?.id}
-                />
-              ))}
-            </div>
-          </section>
+          <div className="flex flex-col gap-5">
+            {/* YOU tile — the current user's own card + inline travel
+                self-service, lifted out of the roster list below. */}
+            {me && (
+              <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} />
+            )}
+            <section>
+              <div
+                className="overflow-hidden rounded-xl"
+                style={{
+                  background: "var(--color-bt-card)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                {sortedAll
+                  .filter((m) => m.user_id !== currentUser?.id)
+                  .map((m) => (
+                    <CrewRow
+                      key={m.memberId}
+                      member={m}
+                      isOwnerView={false}
+                      isMe={false}
+                    />
+                  ))}
+              </div>
+            </section>
+          </div>
           {/* Member view rail — just the legend (no composer). Visible
               at sm+ (stacked below content sm-899; in-grid right
               column at ≥900). Member view never gets two side-by-side
@@ -716,17 +774,47 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           screens. Below 900px the grid collapses to a single column
           and the rail (still .sm:flex visible) stacks below content. */}
       <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] min-[900px]:gap-5">
-        {/* Main column — Organizers + Crew sections */}
+        {/* Main column — YOU tile + Organizers + Crew sections */}
         <div className="flex flex-col gap-5">
-          <CrewSection
-            title="Organizers"
-            tone="accent"
-            members={organizers}
-            isOwnerView={isOwner}
-            currentUserId={currentUser?.id}
-            onEditMember={(m) => setEditingMemberId(m.memberId)}
-            emptyHint="Just you so far — add an Organizer to share planning work."
-          />
+          {/* YOU tile — current user lifted out of Organizers, with inline
+              travel self-service. */}
+          {me && (
+            <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} />
+          )}
+          {/* ORGANIZERS section: when empty + organizer view, render the
+              invitation card so it reads identically to the empty CREW
+              state below (rich icon card, accent tone). Populated state
+              uses the standard CrewSection rendering. */}
+          {organizers.length === 0 && isOwner ? (
+            <section>
+              <h2
+                className="mb-2 flex items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                style={{
+                  color: "var(--color-bt-accent)",
+                  background: "var(--color-bt-accent-faint)",
+                }}
+              >
+                <span>Organizers</span>
+                <span
+                  className="font-mono"
+                  style={{ color: "var(--color-bt-accent)", opacity: 0.75 }}
+                >
+                  0
+                </span>
+              </h2>
+              <EmptyOrganizersInvitation />
+            </section>
+          ) : (
+            <CrewSection
+              title="Organizers"
+              tone="accent"
+              members={organizers}
+              isOwnerView={isOwner}
+              currentUserId={currentUser?.id}
+              onEditMember={(m) => setEditingMemberId(m.memberId)}
+              emptyHint="No other organizers yet — promote someone to share planning work."
+            />
+          )}
           {/* CREW section: when empty + organizer view, render the
               invitation card per addendum §2. Populated state uses
               the standard CrewSection rendering. */}

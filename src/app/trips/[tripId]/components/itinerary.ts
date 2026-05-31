@@ -107,21 +107,29 @@ export function todayLocalISO(now: Date = new Date()): string {
 
 /**
  * Parse the date portion of a YYYY-MM-DD or full ISO timestamp.
- * Returns the YYYY-MM-DD portion in the user's local timezone.
+ *
+ * Read literally (TZ-naive) — we take the YYYY-MM-DD prefix as written rather
+ * than running it through `new Date()`, which would shift a stored UTC
+ * `timestamptz` into the viewer's local zone and land arrivals on the wrong
+ * calendar day.
  */
 function localDateOfTimestamp(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-  return d.toLocaleDateString("en-CA");
+  return iso.slice(0, 10);
 }
 
-/** Parse the local HH:MM portion of a full ISO timestamp. */
+/**
+ * Parse the HH:MM portion of a full ISO timestamp, read literally (TZ-naive).
+ *
+ * Returns `null` when there's no time component or when the time is exactly
+ * midnight. Midnight is our sentinel for "date only, no specific time" — a
+ * date-only arrival is stored as `YYYY-MM-DDT00:00:00`, and we don't want to
+ * surface a spurious "12:00 AM" on the itinerary.
+ */
 function localTimeOfTimestamp(iso: string): string | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  const m = iso.match(/T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const hhmm = `${m[1]}:${m[2]}`;
+  return hhmm === "00:00" ? null : hhmm;
 }
 
 /** Looks like a YYYY-MM-DD date string. */
@@ -219,26 +227,27 @@ export function buildItinerary(input: {
     }
   }
 
-  // ── 3. Shared member arrivals ──
+  // ── 3. Member arrivals ──
+  // Travel is opt-in by entering it — there's no separate "shared" flag.
+  // Anyone (real member or owner-logged placeholder) weaves in once they
+  // have a mode + an arrival time.
   for (const m of input.members) {
-    // Guests can't log in to share their own travel, but the owner can
-    // now enter it on their behalf — include them if travel_mode is set.
-    if (m.isGuest && !m.travel_mode) continue;
-    if (!m.isGuest && !m.travel_shared) continue;
+    if (!m.travel_mode) continue;
     if (!m.flight_arrival_time) continue;
 
     const date = localDateOfTimestamp(m.flight_arrival_time);
     const time = localTimeOfTimestamp(m.flight_arrival_time);
 
-    let subtitle: string | null = null;
-    if (m.travel_mode === "flying") {
+    // `travel_detail` is the single free-text description for every mode.
+    // Fall back to the legacy structured flight fields for older rows that
+    // predate the collapse to one detail string.
+    let subtitle: string | null = m.travel_detail ?? null;
+    if (!subtitle && m.travel_mode === "flying") {
       const flight = [m.flight_airline, m.flight_number].filter(Boolean).join(" ");
       const parts: string[] = [];
       if (flight) parts.push(flight);
       if (m.flight_airport) parts.push(`arriving ${m.flight_airport}`);
       subtitle = parts.join(" · ") || null;
-    } else if (m.travel_detail) {
-      subtitle = m.travel_detail;
     }
 
     events.push({

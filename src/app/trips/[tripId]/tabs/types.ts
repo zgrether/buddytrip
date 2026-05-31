@@ -25,9 +25,10 @@ export interface TripData {
   about_message?: string | null;
   /** Panel activation flags — owner taps the invitation card to flip these on. */
   itinerary_enabled?: boolean | null;
-  getting_there_enabled?: boolean | null;
   quick_info_enabled?: boolean | null;
-  /** When false, the Travel Plans panel is hidden from non-owners. Defaults to true. */
+  /** @deprecated — Travel Plans moved to the Crew tab. Columns kept in DB but
+   *  no longer read; travel surfaces on Home only as woven itinerary arrivals. */
+  getting_there_enabled?: boolean | null;
   travel_plans_crew_visible?: boolean | null;
   /** @deprecated — column kept in DB but no longer read; the dismiss workflow
    *  has been retired in favor of the standard enable/disable activation flow. */

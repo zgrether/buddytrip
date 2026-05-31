@@ -576,29 +576,6 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // enableGettingThere — Owner or Planner activates the Getting There panel.
-  // Idempotent: re-calling on an already-enabled trip is a no-op.
-  // -----------------------------------------------------------------------
-  enableGettingThere: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({ getting_there_enabled: true })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to enable getting there: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
   // disableItinerary — inverse of enableItinerary. Used when the user
   // backs out of an activated-but-empty panel via the X button.
   // -----------------------------------------------------------------------
@@ -615,52 +592,6 @@ export const tripsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to disable itinerary: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // disableGettingThere — inverse of enableGettingThere.
-  // -----------------------------------------------------------------------
-  disableGettingThere: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({ getting_there_enabled: false })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to disable getting there: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // setTravelPlansVisible — owner toggles whether non-owners can see the
-  // Travel Plans panel. Defaults to true; owner can hide it once the trip
-  // is underway (the itinerary carries the same info).
-  // -----------------------------------------------------------------------
-  setTravelPlansVisible: authedProcedure
-    .input(z.object({ tripId: z.string(), visible: z.boolean() }))
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ input, ctx }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({ travel_plans_crew_visible: input.visible })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to update travel plans visibility: ${error.message}`,
         });
       }
 
@@ -695,7 +626,7 @@ export const tripsRouter = router({
   // -----------------------------------------------------------------------
   // disableQuickInfoTiles — inverse of enableQuickInfoTiles. Used if/when
   // the owner backs out of the activated empty state (parallel with
-  // disableItinerary / disableGettingThere).
+  // disableItinerary).
   // -----------------------------------------------------------------------
   disableQuickInfoTiles: authedProcedure
     .input(z.object({ tripId: z.string() }))

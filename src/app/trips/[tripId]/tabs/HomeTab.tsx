@@ -5,7 +5,6 @@ import { getTripStatus } from "@/components/StatusBadge";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ItineraryPanel as LegacyItineraryPanel } from "../components/ItineraryPanel";
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
-import { GettingTherePanel } from "./components/panels/GettingTherePanel";
 import { QuickInfoPanel } from "./components/panels/QuickInfoPanel";
 import { TabHeader } from "@/components/TabHeader";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
@@ -13,11 +12,14 @@ import type { TabProps } from "./types";
 
 // ── HomeTab ──────────────────────────────────────────────────────────────
 //
-// PLANNING and GOING stages share the same panel surface (Quick Info,
-// Travel Plans, Itinerary). Previously PLANNING showed a four-tile basic-
-// planning grid (PlanningGrid) with a "View Itinerary →" upgrade modal;
-// that scaffolding has been removed and trips go directly from IDEA → full
-// panel surface when the destination is locked.
+// PLANNING and GOING stages share the same panel surface (Quick Info +
+// Itinerary). Travel plans used to live here as their own panel but have
+// moved to the Crew tab — each member self-serves their own travel, and it
+// still surfaces here as woven "arrival" items in the itinerary timeline.
+// Previously PLANNING showed a four-tile basic-planning grid (PlanningGrid)
+// with a "View Itinerary →" upgrade modal; that scaffolding has been removed
+// and trips go directly from IDEA → full panel surface when the destination
+// is locked.
 //
 // The Competition invitation no longer lives here either — the Comp tab is
 // visible by default to canEdit users and owns the enable flow itself, so
@@ -82,70 +84,15 @@ export function HomeTab({
             isActivated={!!trip.quick_info_enabled}
           />
 
-          {/* Travel Plans + Itinerary layout.
-              - When BOTH are activated → side-by-side grid (Travel 1/3, Itin 2/3).
-                The asymmetric split fits the real shapes: a compact travel
-                widget on the left, a tall day-by-day timeline on the right.
-              - When either is still in its invitation-card state → stack
-                vertically full-width. Mismatched widths (a small dashed CTA
-                pinned next to a populated panel) looked awkward, and the
-                invitation card is designed for the full content width anyway.
-              - When the owner has hidden Travel Plans from crew →
-                Itinerary-only, full width.
-              minmax(0,…) stops filter-pill min-content from widening cols. */}
-          {(() => {
-            const showTravelColumn =
-              !!isOwner ||
-              (trip as { travel_plans_crew_visible?: boolean | null }).travel_plans_crew_visible !== false;
-
-            if (!showTravelColumn) {
-              return (
-                <ItineraryPanel
-                  tripId={trip.id}
-                  trip={trip}
-                  isOwner={!!isOwner}
-                  isActivated={!!trip.itinerary_enabled}
-                />
-              );
-            }
-
-            const bothExpanded =
-              !!trip.getting_there_enabled && !!trip.itinerary_enabled;
-
-            const gettingThere = (
-              <GettingTherePanel
-                tripId={trip.id}
-                trip={trip}
-                isOwner={!!isOwner}
-                isActivated={!!trip.getting_there_enabled}
-              />
-            );
-            const itinerary = (
-              <ItineraryPanel
-                tripId={trip.id}
-                trip={trip}
-                isOwner={!!isOwner}
-                isActivated={!!trip.itinerary_enabled}
-              />
-            );
-
-            return bothExpanded ? (
-              // items-stretch (CSS grid default) + h-full on the cell wrappers
-              // chains the row height through the panel structure so the
-              // dashed empty-state boxes match heights. Empty space lands
-              // INSIDE the shorter box (below its mock tiles), not as
-              // whitespace between cards.
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                <div className="h-full">{gettingThere}</div>
-                <div className="h-full">{itinerary}</div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {gettingThere}
-                {itinerary}
-              </div>
-            );
-          })()}
+          {/* Itinerary — full width. Travel plans moved to the Crew tab
+              (each member self-serves their own); travel still surfaces here
+              as woven "arrival" items inside the itinerary timeline. */}
+          <ItineraryPanel
+            tripId={trip.id}
+            trip={trip}
+            isOwner={!!isOwner}
+            isActivated={!!trip.itinerary_enabled}
+          />
         </>
       )}
 

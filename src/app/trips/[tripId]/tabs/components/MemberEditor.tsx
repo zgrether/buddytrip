@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowUpCircle, Check, Mail, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowUpCircle, Check, Mail, Plane, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -12,6 +12,14 @@ import {
   ValidationFeedback,
   type ValidationState,
 } from "@/components/emailValidation";
+import {
+  TravelFields,
+  travelMemberToForm,
+  travelFormToPayload,
+  travelFormsEqual,
+  TRAVEL_CLEAR_PAYLOAD,
+  type TravelFormValue,
+} from "./TravelControls";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -30,6 +38,14 @@ export type MemberEditorTarget = {
   /** Times this member has been emailed. 0 = not invited yet → reads as
    *  Pending even for a real account; >0 = contacted. Mirrors CrewTab. */
   email_count?: number | null;
+  /** Travel fields (live on trip_members). The owner edits these for any
+   *  member (incl. placeholders) via the Travel section below. */
+  travel_mode?: string | null;
+  travel_detail?: string | null;
+  flight_airline?: string | null;
+  flight_number?: string | null;
+  flight_airport?: string | null;
+  flight_arrival_time?: string | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -94,6 +110,27 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   // Surfaces a failed save (e.g. the email collides with another member)
   // so the drawer explains itself instead of silently refusing to close.
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Travel — this is an edit drawer, so the fields are always present (no
+  // add/edit toggle). State lives here and is persisted by the drawer's own
+  // Save button rather than an inner Save/Cancel.
+  const initialTravelForm = useMemo(() => travelMemberToForm(member), [member]);
+  const [travelForm, setTravelForm] = useState<TravelFormValue>(initialTravelForm);
+  // Clear/reset flag — set by the "Clear" button, which empties the fields and
+  // marks travel for removal. Persisted on the drawer's Save as travelMode:null
+  // (so the row reads "no travel"). Editing any field re-engages → flag clears.
+  const [travelCleared, setTravelCleared] = useState(false);
+  const handleTravelChange = (next: TravelFormValue) => {
+    setTravelCleared(false);
+    setTravelForm(next);
+  };
+  const hadSavedTravel = !!member.travel_mode;
+  const travelFormNonEmpty =
+    travelForm.mode !== null ||
+    travelForm.detail.trim() !== "" ||
+    travelForm.arrivalDate !== "";
+  const travelDirty = travelCleared
+    ? hadSavedTravel
+    : !travelFormsEqual(travelForm, initialTravelForm);
 
   // ── Live email validation (debounced) ──────────────────────────────────
   const validation: ValidationState = useEmailValidation(tripId, email);
@@ -105,6 +142,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   // Trip-scoped nickname update — works for guest AND active members alike,
   // because the nickname now lives on trip_members rather than users.
   const updateNickname = trpc.tripMembers.updateNickname.useMutation({
+    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+  });
+  // Owner-edits-anyone travel write (works for placeholders too). Fired as
+  // part of handleSave when the travel fields are dirty.
+  const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({
     onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
   });
   const removeMember = trpc.tripMembers.remove.useMutation({
@@ -190,6 +232,19 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           })
         );
       }
+    }
+
+    // Travel — persist alongside name/email when the always-on fields changed.
+    // A cleared form sends the wipe payload (travelMode:null) so the row reads
+    // "no travel"; otherwise send the form's current values.
+    if (travelDirty) {
+      tasks.push(
+        updateMemberTravel.mutateAsync({
+          tripId,
+          targetUserId: member.user_id,
+          ...(travelCleared ? TRAVEL_CLEAR_PAYLOAD : travelFormToPayload(travelForm)),
+        })
+      );
     }
 
     try {
@@ -512,6 +567,62 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             />
           </div>
 
+          {/* Travel — owner logs/edits any member's travel here (incl.
+              placeholders, who can't log it themselves). This is an edit
+              drawer, so the fields are always present (no add/edit toggle)
+              and saved by the drawer's own footer Save — no inner buttons.
+              Rendered as a plain <div> (not <Field>) because it contains
+              inputs that a wrapping <label> would proxy clicks to. */}
+          {member.user_id && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-col gap-1">
+                  <span
+                    className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    <Plane size={11} strokeWidth={2.5} />
+                    Travel
+                  </span>
+                  <p
+                    className="text-[11px] leading-snug"
+                    style={{ color: "var(--color-bt-text-dim)" }}
+                  >
+                    How they&rsquo;re getting in. Shows on the crew roster and weaves
+                    into the itinerary on arrival day.
+                  </p>
+                </div>
+                {/* Clear / reset — empties the fields and flags travel for
+                    removal on Save. Only offered when there's something to
+                    reset (saved travel or in-progress input) and not already
+                    cleared. */}
+                {(hadSavedTravel || travelFormNonEmpty) && !travelCleared && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTravelForm(travelMemberToForm({}));
+                      setTravelCleared(true);
+                    }}
+                    className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-danger-faint)]"
+                    style={{ color: "var(--color-bt-danger)", background: "transparent" }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <TravelFields
+                value={travelForm}
+                onChange={handleTravelChange}
+                surface="recessed"
+              />
+              {travelCleared && hadSavedTravel && (
+                <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Travel will be removed when you save.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Remove from trip — at the end of the body, matching the
               other edit modals (danger action above the footer). */}
           {!isOwnerRow && (
@@ -621,8 +732,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             const nicknameDirty = nickname.trim() !== initialNickname.trim();
             const emailDirty =
               member.isGuest && email.trim() !== (member.user?.email ?? "");
-            const canSave = nicknameDirty || emailDirty;
-            const isPending = updateNickname.isPending || updateGuest.isPending;
+            const canSave = nicknameDirty || emailDirty || travelDirty;
+            const isPending =
+              updateNickname.isPending ||
+              updateGuest.isPending ||
+              updateMemberTravel.isPending;
             return (
               <button
                 onClick={handleSave}
