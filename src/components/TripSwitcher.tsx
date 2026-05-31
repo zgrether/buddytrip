@@ -39,9 +39,36 @@ type SwitcherTrip = TripStatusFields & {
   end_date: string | null;
   locked_destination_title: string | null;
   locked_destination_location: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
 };
 
-const ACTIVE_STATUSES: TripDisplayStatus[] = ["idea", "planning", "going", "now"];
+// Order within the Active group: most imminent/committed first, so a trip
+// that's happening Now floats to the top and idea-stage trips sink to the
+// bottom. Mirrors the dashboard's section order.
+const ACTIVE_PRIORITY: Record<TripDisplayStatus, number> = {
+  now: 0,
+  going: 1,
+  planning: 2,
+  idea: 3,
+  past: 4,
+  saved: 5,
+};
+
+// Tiebreak within a single phase: dated phases by their relevant date,
+// undated phases (planning/idea) by most-recently-touched.
+function phaseTiebreak(
+  a: SwitcherTrip,
+  b: SwitcherTrip,
+  status: TripDisplayStatus
+): number {
+  if (status === "now") return (a.end_date ?? "").localeCompare(b.end_date ?? "");
+  if (status === "going")
+    return (a.start_date ?? "").localeCompare(b.start_date ?? "");
+  const ak = a.updated_at ?? a.created_at ?? "";
+  const bk = b.updated_at ?? b.created_at ?? "";
+  return bk.localeCompare(ak);
+}
 
 export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
   const router = useRouter();
@@ -58,11 +85,21 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     const past: SwitcherTrip[] = [];
     for (const t of trips as SwitcherTrip[]) {
       const status = getEffectiveStatus(t);
-      if (status === "past") past.push(t);
-      else if (ACTIVE_STATUSES.includes(status)) active.push(t);
-      // 'saved' falls through — we treat it as past for the switcher
-      else past.push(t);
+      // 'saved' is treated as past for the switcher.
+      if (status === "past" || status === "saved") past.push(t);
+      else active.push(t);
     }
+    // Active: Now → Going → Planning → Idea (then within-phase tiebreak).
+    active.sort((a, b) => {
+      const sa = getEffectiveStatus(a);
+      const sb = getEffectiveStatus(b);
+      const pa = ACTIVE_PRIORITY[sa];
+      const pb = ACTIVE_PRIORITY[sb];
+      if (pa !== pb) return pa - pb;
+      return phaseTiebreak(a, b, sa);
+    });
+    // Past: most-recently-ended first.
+    past.sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""));
     return { activeTrips: active, pastTrips: past };
   }, [trips]);
 

@@ -55,22 +55,22 @@ interface AvatarProps {
  * classes below instead of these numbers.
  */
 const SIZE_MAP = {
-  sm: { circle: 30, icon: 14, initials: 11 }, // mobile values (used only as a hint for the Tabler `size` prop ceiling)
-  md: { circle: 36, icon: 18, initials: 13 },
-  lg: { circle: 72, icon: 28, initials: 24 },
+  sm: { circle: 30, icon: 20, initials: 11 }, // mobile values (used only as a hint for the Tabler `size` prop ceiling)
+  md: { circle: 36, icon: 23, initials: 13 },
+  lg: { circle: 72, icon: 44, initials: 24 },
 } as const;
 
 /**
  * Responsive Tailwind classes for `size="sm"` only. Spec calls for
  *   container: 30px mobile / 34px desktop
- *   icon:      14px mobile / 16px desktop
+ *   icon:      20px mobile / 22px desktop (filled — icons read clearly small)
  *   initials:  11px mobile / 12px desktop
  * The icon-size class targets the SVG that Tabler renders inside the
  * circle (Tailwind v4 arbitrary descendant selectors).
  */
 const SM_RESPONSIVE_CLASSES =
   "h-[30px] w-[30px] md:h-[34px] md:w-[34px] " +
-  "[&_svg]:h-[14px] [&_svg]:w-[14px] md:[&_svg]:h-[16px] md:[&_svg]:w-[16px] " +
+  "[&_svg]:h-[20px] [&_svg]:w-[20px] md:[&_svg]:h-[22px] md:[&_svg]:w-[22px] " +
   "[&_span]:text-[11px] md:[&_span]:text-[12px]";
 
 /** "Zach Grether" → "ZG"; "Llama" → "L"; "" → "?" */
@@ -100,7 +100,9 @@ export function Avatar({
   const { circle, icon: iconSize, initials: initialsSize } = fixedPx
     ? {
         circle: fixedPx,
-        icon: Math.round(fixedPx * 0.5),
+        // Icons fill ~62% of the circle so they stay legible at small
+        // sizes; initials stay smaller (text needs more breathing room).
+        icon: Math.round(fixedPx * 0.62),
         initials: Math.max(9, Math.round(fixedPx * 0.4)),
       }
     : SIZE_MAP[size];
@@ -154,7 +156,7 @@ export function Avatar({
         // SVG has enough resolution; Tailwind classes scale the SVG down
         // to 14px on mobile via the [&_svg]:h-[14px] selector above.
         <IconComponent
-          size={isResponsive ? 16 : iconSize}
+          size={isResponsive ? 22 : iconSize}
           stroke={1.75}
           aria-hidden="true"
         />

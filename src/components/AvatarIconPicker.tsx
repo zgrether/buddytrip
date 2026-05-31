@@ -86,7 +86,7 @@ export function AvatarIconPicker({ value, onChange, showSaved }: AvatarIconPicke
               aria-label={icon.label}
               aria-pressed={isSelected}
               onClick={() => onChange(isSelected ? null : icon.id)}
-              className="flex aspect-square items-center justify-center rounded-[9px] transition-colors"
+              className="flex aspect-square items-center justify-center rounded-[9px] transition-colors [&_svg]:h-[34px] [&_svg]:w-[34px] sm:[&_svg]:h-[28px] sm:[&_svg]:w-[28px]"
               style={
                 isSelected
                   ? {
