@@ -45,6 +45,9 @@ interface TopNavProps {
   /** Hide the trip-breadcrumb switcher (e.g. on the profile page, which
    *  isn't trip-scoped). */
   hideTripSwitcher?: boolean;
+  /** Hide the Board tool (e.g. on the profile page, where the global
+   *  broadcast surface isn't relevant). */
+  hideBoard?: boolean;
 }
 
 // Minimal shape we read off trips.list for the breadcrumb.
@@ -60,6 +63,7 @@ export const TopNav: FC<TopNavProps> = ({
   onOpenChat,
   chatOpen = false,
   hideTripSwitcher = false,
+  hideBoard = false,
 }) => {
   const router = useRouter();
   const params = useParams<{ tripId?: string }>();
@@ -189,14 +193,16 @@ export const TopNav: FC<TopNavProps> = ({
       {/* ── RIGHT: global tools + me ───────────────────────────────────── */}
       <div className="flex flex-shrink-0 items-center gap-1">
         {/* Board — inert placeholder; persistent broadcast surface (TBD). */}
-        <ToolButton
-          icon={Megaphone}
-          label="Board"
-          count={BOARD_PLACEHOLDER_COUNT}
-          badgeBg="var(--color-bt-accent)"
-          ariaLabel="Board"
-          testId="board-button"
-        />
+        {!hideBoard && (
+          <ToolButton
+            icon={Megaphone}
+            label="Board"
+            count={BOARD_PLACEHOLDER_COUNT}
+            badgeBg="var(--color-bt-accent)"
+            ariaLabel="Board"
+            testId="board-button"
+          />
+        )}
 
         {tripId && onOpenChat && (
           <ChatToolButton
