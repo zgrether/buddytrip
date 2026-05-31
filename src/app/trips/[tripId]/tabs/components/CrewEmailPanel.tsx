@@ -35,6 +35,12 @@ function recipientSort(a: RecipientMember, b: RecipientMember) {
 export interface CrewEmailPanelProps {
   trip: TripData;
   isOwner: boolean;
+  /**
+   * memberIds to pre-check when the panel opens. The nudges pass their
+   * filtered recipient lists here so "Send invites" / "Resend invites"
+   * land in the modal with the right people already selected.
+   */
+  preselectMemberIds?: string[];
   /** Closes the host modal (Cancel button + header X). */
   onClose: () => void;
 }
@@ -47,7 +53,12 @@ export interface CrewEmailPanelProps {
  * chips), and a footer (Cancel + Send). Nothing is pre-selected — the
  * owner taps recipient cards to build the list.
  */
-export function CrewEmailPanel({ trip, isOwner, onClose }: CrewEmailPanelProps) {
+export function CrewEmailPanel({
+  trip,
+  isOwner,
+  preselectMemberIds,
+  onClose,
+}: CrewEmailPanelProps) {
   const tripId = trip.id;
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
@@ -88,7 +99,12 @@ export function CrewEmailPanel({ trip, isOwner, onClose }: CrewEmailPanelProps) 
     .filter((m) => !m.user?.email)
     .sort(recipientSort) as RecipientMember[];
 
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  // Seed from the nudge's recipient list (if any). The panel mounts fresh
+  // each time the modal opens, so this lazy initializer captures the right
+  // preselection for that open.
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(
+    () => new Set(preselectMemberIds ?? [])
+  );
   const [confirmingReset, setConfirmingReset] = useState(false);
 
   const toggleMember = (memberId: string) => {

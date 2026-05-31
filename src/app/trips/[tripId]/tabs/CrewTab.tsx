@@ -837,6 +837,15 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showMobileAdd, setShowMobileAdd] = useState(false);
+  // Recipients to pre-check when the email modal opens. The nudges populate
+  // this so "Send invites" / "Resend invites" land on the modal with exactly
+  // the people that nudge is about already selected; opening the modal from
+  // the header button passes [] (nothing pre-selected).
+  const [emailPreselectIds, setEmailPreselectIds] = useState<string[]>([]);
+  const openEmailModal = (memberIds: string[] = []) => {
+    setEmailPreselectIds(memberIds);
+    setShowEmailModal(true);
+  };
 
   const me = members.find((m) => m.user_id === currentUser?.id);
   const isOwner = me?.role === "Owner";
@@ -968,7 +977,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           hasEmailableCrew ? (
             <button
               type="button"
-              onClick={() => setShowEmailModal(true)}
+              onClick={() => openEmailModal()}
               data-testid="email-crew-btn"
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{
@@ -1015,7 +1024,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                   }
                   body="They have an email but haven't been invited yet — send the blast to officially bring them in."
                   ctaLabel="Send invites"
-                  onCta={() => setShowEmailModal(true)}
+                  onCta={() => openEmailModal(pending.map((m) => m.memberId))}
                 />
               )}
               {invited.length > 0 && (
@@ -1027,7 +1036,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                   }
                   body="They got the invite but haven't created an account — resend to nudge them along."
                   ctaLabel="Resend invites"
-                  onCta={() => setShowEmailModal(true)}
+                  onCta={() => openEmailModal(invited.map((m) => m.memberId))}
                 />
               )}
             </div>
@@ -1221,6 +1230,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             <CrewEmailPanel
               trip={trip}
               isOwner={isOwner}
+              preselectMemberIds={emailPreselectIds}
               onClose={() => setShowEmailModal(false)}
             />
           </div>
