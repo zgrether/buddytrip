@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Ghost, Mail, RotateCcw, Send, X } from "lucide-react";
+import { Check, Mail, RotateCcw, Send, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -311,17 +311,10 @@ export function CrewEmailPanel({
                     />
                     <div className="min-w-0 flex-1">
                       <div
-                        className="flex items-center gap-1.5 truncate text-sm font-semibold"
+                        className="truncate text-sm font-semibold"
                         style={{ color: "var(--color-bt-text)" }}
                       >
-                        {m.isGuest && (
-                          <Ghost
-                            size={12}
-                            className="flex-shrink-0"
-                            style={{ color: "var(--color-bt-text-dim)" }}
-                          />
-                        )}
-                        <span className="truncate">{m.displayName}</span>
+                        {m.displayName}
                       </div>
                       <div className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                         {m.user?.email}
