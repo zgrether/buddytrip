@@ -275,8 +275,11 @@ export function TravelFields({
               style={
                 active
                   ? {
-                      background: "var(--color-bt-card)",
-                      color: "var(--color-bt-text)",
+                      // Active segment is teal-on-faint so it stands out
+                      // against the recessed base track without re-introducing
+                      // a flat card fill.
+                      background: "var(--color-bt-accent-faint)",
+                      color: "var(--color-bt-accent)",
                       boxShadow: "var(--shadow-card)",
                     }
                   : { background: "transparent", color: "var(--color-bt-text-dim)" }

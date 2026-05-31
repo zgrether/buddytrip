@@ -407,17 +407,28 @@ export function YouTile({
       <div
         className="overflow-hidden rounded-xl"
         style={{
-          // In edit mode the tile drops its teal-tinted fill for the
-          // neutral float surface (the same recessed treatment as the
-          // crew-edit drawer), so the dark form inputs read clearly.
-          background: editing
-            ? "var(--color-bt-card-float)"
-            : "var(--color-bt-accent-faint)",
-          border: "1px solid var(--color-bt-accent-border)",
+          // Two states:
+          //  - Resting: teal-tinted fill + teal border — marks "your section".
+          //  - Editing: the teal fill floods a tall block and clashes with the
+          //    nested inputs, so it steps aside. The tile becomes a neutral
+          //    card with a single 3px accent left-edge as the only teal left.
+          //    Left padding on the inner rows drops 2px to keep content
+          //    aligned against the thicker edge.
+          background: editing ? "var(--color-bt-card)" : "var(--color-bt-accent-faint)",
+          border: editing
+            ? "1px solid var(--color-bt-border)"
+            : "1px solid var(--color-bt-accent-border)",
+          borderLeft: editing ? "3px solid var(--color-bt-accent)" : undefined,
         }}
       >
         {/* Identity row */}
-        <div className="flex items-center gap-3 px-4 py-3">
+        <div
+          className={
+            editing
+              ? "flex items-center gap-3 py-3 pr-4 pl-[14px]"
+              : "flex items-center gap-3 px-4 py-3"
+          }
+        >
           <Avatar
             name={m.user?.name ?? m.displayName}
             avatarIcon={m.user?.avatar_icon ?? null}
@@ -448,14 +459,18 @@ export function YouTile({
           <RolePill role={m.role} />
         </div>
 
-        {/* Divider */}
+        {/* Divider — neutral while editing to match the stepped-aside teal. */}
         <div
-          style={{ borderTop: "1px solid var(--color-bt-accent-border)" }}
+          style={{
+            borderTop: editing
+              ? "1px solid var(--color-bt-border)"
+              : "1px solid var(--color-bt-accent-border)",
+          }}
           aria-hidden
         />
 
         {/* Your travel block */}
-        <div className="px-4 py-3">
+        <div className={editing ? "py-3 pr-4 pl-[14px]" : "px-4 py-3"}>
           <div
             className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -465,16 +480,29 @@ export function YouTile({
           </div>
 
           {editing ? (
-            // Editor sits directly on the float-surface tile (no nested
-            // card box) with recessed inputs — matches the drawer look.
-            <TravelEditor
-              tripId={tripId}
-              member={m}
-              tripStartDate={tripStartDate}
-              surface="recessed"
-              onSaved={() => setEditing(false)}
-              onCancel={() => setEditing(false)}
-            />
+            // One grouped inset (card-raised) holds the whole form so the
+            // fields read as a single panel, not items floating on the tile.
+            // The editor itself carries no card/border of its own, so this
+            // doesn't double-box; its recessed inputs sit on base — darker
+            // than this group — so the hierarchy steps down cleanly:
+            // tile (card) → form group (card-raised) → inputs (base).
+            <div
+              style={{
+                background: "var(--color-bt-card-raised)",
+                border: "1px solid var(--color-bt-border)",
+                borderRadius: "10px",
+                padding: "13px",
+              }}
+            >
+              <TravelEditor
+                tripId={tripId}
+                member={m}
+                tripStartDate={tripStartDate}
+                surface="recessed"
+                onSaved={() => setEditing(false)}
+                onCancel={() => setEditing(false)}
+              />
+            </div>
           ) : hasTravel ? (
             <div className="flex items-center gap-3">
               <TravelModePill mode={mode} withLabel />
