@@ -107,21 +107,29 @@ export function todayLocalISO(now: Date = new Date()): string {
 
 /**
  * Parse the date portion of a YYYY-MM-DD or full ISO timestamp.
- * Returns the YYYY-MM-DD portion in the user's local timezone.
+ *
+ * Read literally (TZ-naive) — we take the YYYY-MM-DD prefix as written rather
+ * than running it through `new Date()`, which would shift a stored UTC
+ * `timestamptz` into the viewer's local zone and land arrivals on the wrong
+ * calendar day.
  */
 function localDateOfTimestamp(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-  return d.toLocaleDateString("en-CA");
+  return iso.slice(0, 10);
 }
 
-/** Parse the local HH:MM portion of a full ISO timestamp. */
+/**
+ * Parse the HH:MM portion of a full ISO timestamp, read literally (TZ-naive).
+ *
+ * Returns `null` when there's no time component or when the time is exactly
+ * midnight. Midnight is our sentinel for "date only, no specific time" — a
+ * date-only arrival is stored as `YYYY-MM-DDT00:00:00`, and we don't want to
+ * surface a spurious "12:00 AM" on the itinerary.
+ */
 function localTimeOfTimestamp(iso: string): string | null {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  const m = iso.match(/T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const hhmm = `${m[1]}:${m[2]}`;
+  return hhmm === "00:00" ? null : hhmm;
 }
 
 /** Looks like a YYYY-MM-DD date string. */

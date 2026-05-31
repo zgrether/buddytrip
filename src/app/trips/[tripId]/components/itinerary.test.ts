@@ -176,6 +176,35 @@ describe("buildItinerary — filtering", () => {
       expect(events[0].subtitle).toBe("United UA123 · arriving ORD");
     }
   });
+
+  it("treats a midnight arrival as date-only (time is null)", () => {
+    // Date-only arrivals are stored as YYYY-MM-DDT00:00:00 — midnight is our
+    // sentinel for "no specific time". The event still weaves in, dated, but
+    // with a null time so it sorts to the end of the day.
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [member({ flight_arrival_time: "2026-06-15T00:00:00Z" })],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("arrival");
+    expect(events[0].date).toBe("2026-06-15");
+    expect(events[0].time).toBeNull();
+  });
+
+  it("reads the arrival date/time literally, with no timezone shift", () => {
+    // The stored value is a timestamptz; parsing it through `new Date()` would
+    // shift it into the runner's local zone and could land it on a different
+    // calendar day or hour. We read the Y/M/D and H:M prefix verbatim.
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [member({ flight_arrival_time: "2026-06-15T23:45:00Z" })],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].date).toBe("2026-06-15");
+    expect(events[0].time).toBe("23:45");
+  });
 });
 
 // ── buildItinerary: lodging splitting ─────────────────────────────────────

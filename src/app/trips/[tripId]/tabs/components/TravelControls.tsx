@@ -122,32 +122,55 @@ export function summarizeTravel(m: TravelMember): string | null {
   return null;
 }
 
-/** Render an ISO timestamp as "Sep 10 · 3:00 PM" — empty string if invalid. */
+/**
+ * Render an ISO timestamp as "Sep 10 · 3:00 PM" — or just "Sep 10" when there's
+ * no specific time (date-only arrivals store midnight as the sentinel).
+ *
+ * Read literally (TZ-naive): the stored value is a `timestamptz` and running it
+ * through `new Date()` would shift it into the viewer's local zone, landing the
+ * label on the wrong day. We format directly off the date/time prefix instead.
+ */
 export function formatArrivalLabel(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  return `${date} · ${time}`;
+  const date = parseArrivalDate(iso);
+  if (!date) return "";
+  const time = parseArrivalTime(iso); // "" when midnight / no time
+
+  // Build a label off the literal Y/M/D parts (no timezone math).
+  const [y, mo, da] = date.split("-").map(Number);
+  const dateLabel = new Date(y, mo - 1, da).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
+  if (!time) return dateLabel;
+  const [hh, mm] = time.split(":").map(Number);
+  const timeLabel = new Date(2000, 0, 1, hh, mm).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${dateLabel} · ${timeLabel}`;
 }
 
-/** Pull YYYY-MM-DD out of an ISO timestamp in local time. */
+/** Pull YYYY-MM-DD out of an ISO timestamp, read literally (TZ-naive). */
 function parseArrivalDate(iso: string | null | undefined): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-CA");
+  const m = iso.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : "";
 }
 
-/** Pull HH:MM out of an ISO timestamp in local time. */
+/**
+ * Pull HH:MM out of an ISO timestamp, read literally (TZ-naive).
+ *
+ * Returns "" for missing times and for exactly midnight — midnight is our
+ * sentinel for "date only, no specific time", so re-opening the editor on a
+ * date-only arrival shows an empty time field rather than a spurious 12:00 AM.
+ */
 function parseArrivalTime(iso: string | null | undefined): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  const m = iso.match(/T(\d{2}):(\d{2})/);
+  if (!m) return "";
+  const hhmm = `${m[1]}:${m[2]}`;
+  return hhmm === "00:00" ? "" : hhmm;
 }
 
 // ── Travel form state (shared by TravelFields, TravelEditor, MemberEditor) ──
