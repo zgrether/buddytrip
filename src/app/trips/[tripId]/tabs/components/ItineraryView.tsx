@@ -25,6 +25,7 @@ import {
   type ItineraryTripMember,
 } from "../../components/itinerary";
 import type { TripData } from "../types";
+import { DOMAIN_COLORS, type Domain } from "@/lib/domainColors";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -377,27 +378,14 @@ function SkeletonRow({
 
 type PillTone = "all" | "lodging" | "travel" | "events";
 
-const PILL_TONES: Record<PillTone, { bg: string; color: string; border: string }> = {
-  all: {
-    bg: "var(--color-bt-accent-faint)",
-    color: "var(--color-bt-accent)",
-    border: "var(--color-bt-accent-border)",
-  },
-  lodging: {
-    bg: "var(--color-bt-blue-bg)",
-    color: "var(--color-bt-planning)",
-    border: "var(--color-bt-planning-border)",
-  },
-  travel: {
-    bg: "var(--color-bt-accent-faint)",
-    color: "var(--color-bt-accent)",
-    border: "var(--color-bt-accent-border)",
-  },
-  events: {
-    bg: "var(--color-bt-ready-bg)",
-    color: "var(--color-bt-ready)",
-    border: "var(--color-bt-ready-border)",
-  },
+// Each filter pill borrows its content area's domain color (item accents),
+// so the itinerary filters read in the same hues as their source tabs.
+// "All" uses Home teal — the itinerary lives on the Home tab.
+const PILL_DOMAIN: Record<PillTone, Domain> = {
+  all: "home",
+  lodging: "lodging",
+  travel: "travel",
+  events: "events",
 };
 
 function FilterPill({
@@ -411,19 +399,19 @@ function FilterPill({
   active: boolean;
   onClick: () => void;
 }) {
-  const cfg = PILL_TONES[tone];
+  const { color, faint } = DOMAIN_COLORS[PILL_DOMAIN[tone]];
   return (
     <button
       type="button"
       onClick={onClick}
       data-active={active}
-      className="rounded-full px-3 py-1.5 text-xs font-semibold"
+      className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
       style={
         active
           ? {
-              background: cfg.bg,
-              color: cfg.color,
-              border: `1px solid ${cfg.border}`,
+              background: faint,
+              color,
+              border: `1px solid ${color}`,
             }
           : {
               background: "var(--color-bt-card-raised)",
@@ -432,6 +420,13 @@ function FilterPill({
             }
       }
     >
+      {/* Domain dot — always tinted to the area's hue so the color reads
+          even on inactive pills (where the label itself stays neutral). */}
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: color }}
+        aria-hidden
+      />
       {label}
     </button>
   );
