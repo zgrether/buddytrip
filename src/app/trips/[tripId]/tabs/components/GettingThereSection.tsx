@@ -421,7 +421,7 @@ function CrewTravelRow({ member, showBorderTop = true }: { member: TripMemberLit
 // ── OtherMemberTravelRow ──────────────────────────────────────────────────
 // Owner-expandable row for every other crew member (real and ghost alike).
 // Same expand/collapse pattern as YourTravelRow but uses updateMemberTravel.
-// Ghost members get a Ghost avatar; real members get their profile Avatar.
+// Everyone gets the profile Avatar; guests fall back to muted name initials.
 
 function OtherMemberTravelRow({
   tripId,
