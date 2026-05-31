@@ -125,7 +125,9 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   };
   const hadSavedTravel = !!member.travel_mode;
   const travelFormNonEmpty =
-    travelForm.detail.trim() !== "" || travelForm.arrivalDate !== "";
+    travelForm.mode !== null ||
+    travelForm.detail.trim() !== "" ||
+    travelForm.arrivalDate !== "";
   const travelDirty = travelCleared
     ? hadSavedTravel
     : !travelFormsEqual(travelForm, initialTravelForm);

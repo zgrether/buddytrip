@@ -181,17 +181,22 @@ function parseArrivalTime(iso: string | null | undefined): string {
 // `TravelFields` presentational component off this shape.
 
 export interface TravelFormValue {
-  mode: TravelMode;
+  /** `null` = no mode picked yet (the segmented control sits unselected).
+   *  Mode is the canonical "has travel" marker — saving with a null mode
+   *  persists *no* travel rather than silently defaulting to a mode. */
+  mode: TravelMode | null;
   detail: string;
   arrivalDate: string;
   arrivalTime: string;
 }
 
 /** Build the initial form value from a member's saved travel (with legacy
- *  flight-field fallback for older flying rows). */
+ *  flight-field fallback for older flying rows). A member with no saved
+ *  travel starts with `mode: null` so the segmented control opens unselected
+ *  rather than pre-selecting Flying. */
 export function travelMemberToForm(member: TravelMember): TravelFormValue {
   return {
-    mode: (member.travel_mode as TravelMode) ?? "flying",
+    mode: (member.travel_mode as TravelMode) ?? null,
     detail: summarizeTravel(member) ?? "",
     arrivalDate: parseArrivalDate(member.flight_arrival_time),
     arrivalTime: parseArrivalTime(member.flight_arrival_time),
@@ -212,8 +217,16 @@ export const TRAVEL_CLEAR_PAYLOAD = {
 
 /** Convert form state into the mutation payload. Clears the legacy structured
  *  flight columns on every save so the single detail string stays
- *  authoritative. */
+ *  authoritative.
+ *
+ *  With no mode picked there's no travel to record — the mode is the marker
+ *  the crew roster and itinerary key off, so a detail/arrival without a mode
+ *  would be invisible orphan data. We persist the clear payload instead, which
+ *  is also what prevents an untouched form from silently saving "Flying". */
 export function travelFormToPayload(value: TravelFormValue) {
+  if (!value.mode) {
+    return { ...TRAVEL_CLEAR_PAYLOAD };
+  }
   let arrivalISO: string | null = null;
   if (value.arrivalDate) {
     arrivalISO = value.arrivalTime
@@ -339,7 +352,11 @@ export function TravelFields({
           type="text"
           value={value.detail}
           onChange={(e) => onChange({ ...value, detail: e.target.value })}
-          placeholder={TRAVEL_MODE_META[value.mode].placeholder}
+          placeholder={
+            value.mode
+              ? TRAVEL_MODE_META[value.mode].placeholder
+              : "Pick how you're getting there above"
+          }
           className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
           style={{
             background: inputBg,
