@@ -26,10 +26,15 @@ type Member = {
   status: string | null;
   displayName: string;
   isGuest: boolean;
-  /** When the trip invite email was last sent to this member. Null until
+  /** When this member was last emailed (invite or follow-up). Null until
    *  the first send; updated by sendInvitationBlast. Surfaced in the
-   *  invited subline so organizers know how stale the invite is. */
+   *  invited subline so organizers know how stale the contact is. */
   last_emailed_at?: string | null;
+  /** How many times this member has been emailed. 0 = never contacted
+   *  (the next send is an invite); >0 = already contacted (follow-up).
+   *  Drives the "not invited yet" status for real accounts that have been
+   *  added to the trip but not yet emailed. */
+  email_count?: number | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -46,12 +51,18 @@ type Member = {
 type DerivedStatus = "active" | "invited" | "placeholder";
 
 function deriveStatus(m: Member): DerivedStatus {
-  // Real BT account (non-guest) = active.
-  if (!m.isGuest) return "active";
-  // Guest with an email = waiting on signup = invited.
-  if (m.user?.email) return "invited";
-  // Guest without email = name-only stand-in = placeholder.
-  return "placeholder";
+  // The Owner created the trip — they're inherently on it, never "pending"
+  // (their email_count is 0 because nobody emails the host an invite).
+  if (m.role === "Owner") return "active";
+  // Guest without an email = name-only stand-in = placeholder.
+  if (m.isGuest && !m.user?.email) return "placeholder";
+  // Never emailed yet (guest OR real account) = not officially invited.
+  // A real BuddyTrip user added to the trip hasn't been "invited" until the
+  // owner actually emails them, so they read as Pending until email_count > 0.
+  if ((m.email_count ?? 0) === 0) return "invited";
+  // Emailed at least once: a guest is still waiting to sign up (invited);
+  // a real account is fully onboarded (active).
+  return m.isGuest ? "invited" : "active";
 }
 
 // ── Role pill (Owner amber · Organizer teal · Member: no pill) ────────────
@@ -383,7 +394,7 @@ function StatusLegend({ members }: { members: Member[] }) {
       // sublines + Owner nudges carry the finer distinction.
       key: "invited",
       label: "Pending",
-      body: "Has an email but no BuddyTrip account yet — they're waiting on an invite, or already got one and haven't signed up. They become Active once they sign in.",
+      body: "Has an email but hasn't been invited yet — a guest waiting to sign up, or a BuddyTrip user you haven't emailed about this trip. Send the invite to bring them in; they turn Active once they're emailed and signed in.",
       avatar: <InvitedAvatar name="P" />,
     },
     {
@@ -1002,7 +1013,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
                       ? "1 member waiting on an invite"
                       : `${pending.length} members waiting on an invite`
                   }
-                  body="They were added with an email but haven't been invited yet — send the blast to give them access."
+                  body="They have an email but haven't been invited yet — send the blast to officially bring them in."
                   ctaLabel="Send invites"
                   onCta={() => setShowEmailModal(true)}
                 />

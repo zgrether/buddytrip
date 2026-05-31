@@ -21,6 +21,9 @@ export type MemberEditorTarget = {
    * tripMembers.updateNickname.
    */
   nickname?: string | null;
+  /** Times this member has been emailed. 0 = not invited yet → reads as
+   *  Pending even for a real account; >0 = contacted. Mirrors CrewTab. */
+  email_count?: number | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -37,9 +40,14 @@ type ValidationState = "idle" | "checking" | "match" | "invite" | "invalid";
 
 // Mirror of CrewTab's deriveStatus — kept inline to avoid a circular import.
 function deriveStatus(m: MemberEditorTarget): "active" | "invited" | "placeholder" {
-  if (!m.isGuest) return "active";
-  if (m.user?.email) return "invited";
-  return "placeholder";
+  // Owner is inherently on the trip — always active.
+  if (m.role === "Owner") return "active";
+  // Guest with no email = name-only stand-in.
+  if (m.isGuest && !m.user?.email) return "placeholder";
+  // Never emailed (guest OR real account) = not officially invited yet.
+  if ((m.email_count ?? 0) === 0) return "invited";
+  // Emailed: guest still waiting to sign up (invited); real account = active.
+  return m.isGuest ? "invited" : "active";
 }
 
 function statusLabel(s: ReturnType<typeof deriveStatus>) {
