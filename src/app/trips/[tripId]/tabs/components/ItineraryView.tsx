@@ -172,45 +172,49 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
     // itinerary full-width — Travel Plans moved to the Crew tab).
     <div className="flex h-full flex-col space-y-3">
       {!isEmpty && (
-        <h2
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Itinerary
-        </h2>
-      )}
+        // Header + filters share one row: "ITINERARY" on the left, the filter
+        // pills inline on the right (wrapping below on narrow widths).
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2
+            className="text-xs font-semibold uppercase tracking-wider"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Itinerary
+          </h2>
 
-      {showFilterPills && (
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterPill
-            label="All"
-            tone="all"
-            active={activeFilters.has("all")}
-            onClick={() => toggleFilter("all")}
-          />
-          {hasLodging && (
-            <FilterPill
-              label="Lodging"
-              tone="lodging"
-              active={activeFilters.has("lodging")}
-              onClick={() => toggleFilter("lodging")}
-            />
-          )}
-          {hasTravel && (
-            <FilterPill
-              label="Travel"
-              tone="travel"
-              active={activeFilters.has("travel")}
-              onClick={() => toggleFilter("travel")}
-            />
-          )}
-          {hasEvents && (
-            <FilterPill
-              label="Events"
-              tone="events"
-              active={activeFilters.has("events")}
-              onClick={() => toggleFilter("events")}
-            />
+          {showFilterPills && (
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterPill
+                label="All"
+                tone="all"
+                active={activeFilters.has("all")}
+                onClick={() => toggleFilter("all")}
+              />
+              {hasLodging && (
+                <FilterPill
+                  label="Lodging"
+                  tone="lodging"
+                  active={activeFilters.has("lodging")}
+                  onClick={() => toggleFilter("lodging")}
+                />
+              )}
+              {hasTravel && (
+                <FilterPill
+                  label="Travel"
+                  tone="travel"
+                  active={activeFilters.has("travel")}
+                  onClick={() => toggleFilter("travel")}
+                />
+              )}
+              {hasEvents && (
+                <FilterPill
+                  label="Events"
+                  tone="events"
+                  active={activeFilters.has("events")}
+                  onClick={() => toggleFilter("events")}
+                />
+              )}
+            </div>
           )}
         </div>
       )}

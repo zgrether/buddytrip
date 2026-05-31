@@ -603,8 +603,8 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
                       setTravelForm(travelMemberToForm({}));
                       setTravelCleared(true);
                     }}
-                    className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-danger-faint)]"
-                    style={{ color: "var(--color-bt-danger)", background: "transparent" }}
+                    className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-accent-faint)]"
+                    style={{ color: "var(--color-bt-accent)", background: "transparent" }}
                   >
                     Clear
                   </button>

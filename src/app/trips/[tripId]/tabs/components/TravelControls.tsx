@@ -465,7 +465,9 @@ export function TravelEditor({
 
   // Clear / reset — wipes the saved travel entirely and closes the editor
   // (onSuccess → invalidate → onSaved). Only offered when there's something
-  // to reset; adding fresh travel has nothing to clear.
+  // to reset; adding fresh travel has nothing to clear. This is a member's own
+  // travel (self-edit when targetUserId is omitted), so it's a routine action,
+  // not a destructive owner one — styled teal, not danger-red.
   const handleClear = () => {
     if (targetUserId) {
       updateMemberTravel.mutate({ tripId, targetUserId, ...TRAVEL_CLEAR_PAYLOAD });
@@ -492,8 +494,8 @@ export function TravelEditor({
             type="button"
             onClick={handleClear}
             disabled={isPending}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-danger-faint)] disabled:opacity-40"
-            style={{ color: "var(--color-bt-danger)", background: "transparent" }}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-accent-faint)] disabled:opacity-40"
+            style={{ color: "var(--color-bt-accent)", background: "transparent" }}
           >
             Clear
           </button>
