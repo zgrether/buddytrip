@@ -18,6 +18,9 @@ type RecipientMember = {
   displayName: string;
   isGuest: boolean;
   last_emailed_at?: string | null;
+  /** Times emailed. 0 → the next send is a first-contact invite; >0 → a
+   *  follow-up. Drives the per-recipient Invite/Follow-up label. */
+  email_count?: number | null;
   user: { email: string | null; is_guest?: boolean; avatar_icon?: string | null } | null;
 };
 
@@ -308,7 +311,22 @@ export function CrewEmailPanel({ trip, isOwner, onClose }: CrewEmailPanelProps) 
                         {m.user?.email}
                       </div>
                     </div>
-                    {m.last_emailed_at && (
+                    {/* Invite vs follow-up label, driven by email_count.
+                        0 → never contacted, this send is their first invite
+                        (muted chip). >0 → already contacted, so it's a
+                        follow-up; show when we last reached them. */}
+                    {(m.email_count ?? 0) === 0 ? (
+                      <span
+                        className="flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                        style={{
+                          background: "var(--color-bt-card-raised)",
+                          color: "var(--color-bt-text-dim)",
+                          border: "1px solid var(--color-bt-border)",
+                        }}
+                      >
+                        Invite
+                      </span>
+                    ) : (
                       <span
                         className="flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
                         style={{
@@ -317,11 +335,12 @@ export function CrewEmailPanel({ trip, isOwner, onClose }: CrewEmailPanelProps) 
                           border: "1px solid var(--color-bt-accent-border)",
                         }}
                       >
-                        Sent ·{" "}
-                        {parseLocalDate(m.last_emailed_at).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
+                        {m.last_emailed_at
+                          ? `Follow-up · ${parseLocalDate(m.last_emailed_at).toLocaleDateString(
+                              "en-US",
+                              { month: "short", day: "numeric" }
+                            )}`
+                          : "Follow-up"}
                       </span>
                     )}
                   </button>
