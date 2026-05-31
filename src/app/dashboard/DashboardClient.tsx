@@ -95,7 +95,9 @@ export default function DashboardClient() {
       className="min-h-screen"
       style={{ background: "var(--color-bt-base)", color: "var(--color-bt-text)" }}
     >
-      <TopNav title="BuddyTrip" />
+      {/* News is a trip-scoped broadcast surface — hide it on the
+          dashboard, which spans all trips and has no single trip context. */}
+      <TopNav title="BuddyTrip" hideNews />
 
       <main
         className={`mx-auto max-w-[896px] px-4 pb-24 ${hasAnyTrips ? "pt-4" : ""}`}

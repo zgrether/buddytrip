@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, FileText, Flag, Hotel, Pencil, Plus, X, Zap } from "lucide-react";
+import { AlertTriangle, Bell, Building2, Clock, FileText, Flag, Hash, Hotel, KeyRound, Lock, MapPin, Plus, Wifi, X, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
@@ -18,24 +18,44 @@ export interface QuickTile {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function TileIcon({ icon, tone = "accent" }: { icon?: string | null; tone?: "accent" | "warning" }) {
-  const icons: Record<string, React.ReactNode> = {
-    hotel: <Hotel size={16} />,
-    golf: <Flag size={16} />,
-    zap: <Zap size={16} />,
-    file: <FileText size={16} />,
+// Resolve a tile's glyph. An explicit `icon` value wins; otherwise we infer
+// one from the label so common entries (door code, WiFi, lockbox, address)
+// get a recognizable icon without the owner having to pick one. Falls back to
+// a neutral hash for anything unmatched.
+function tileIconFor(tile: QuickTile, className: string): React.ReactNode {
+  const explicit: Record<string, React.ReactNode> = {
+    hotel: <Hotel className={className} />,
+    golf: <Flag className={className} />,
+    zap: <Zap className={className} />,
+    file: <FileText className={className} />,
+    wifi: <Wifi className={className} />,
+    lock: <Lock className={className} />,
+    key: <KeyRound className={className} />,
+    building: <Building2 className={className} />,
+    clock: <Clock className={className} />,
+    pin: <MapPin className={className} />,
   };
-  return (
-    <span style={{ color: tone === "warning" ? "var(--color-bt-warning)" : "var(--color-bt-accent)" }}>
-      {icons[icon ?? "file"] ?? <FileText size={16} />}
-    </span>
-  );
+  if (tile.icon && explicit[tile.icon]) return explicit[tile.icon];
+
+  const l = tile.label.toLowerCase();
+  if (/wi-?fi|network|password|ssid/.test(l)) return <Wifi className={className} />;
+  if (/lockbox|key/.test(l)) return <KeyRound className={className} />;
+  if (/door|code|gate|garage|pin/.test(l)) return <Lock className={className} />;
+  if (/house|unit|room|suite|villa|condo|address|street|apt/.test(l)) return <Building2 className={className} />;
+  if (/check|time|hour|arriv|depart/.test(l)) return <Clock className={className} />;
+  if (/map|location|where|direction|parking/.test(l)) return <MapPin className={className} />;
+  return <Hash className={className} />;
 }
+
+// Icon-chip + glyph sizes scale with the viewport so the chips don't eat
+// horizontal space in the narrow mobile grid.
+const TILE_CHIP_CLASS = "h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10";
+const TILE_ICON_CLASS = "h-4 w-4 sm:h-[17px] sm:w-[17px] md:h-[18px] md:w-[18px]";
 
 // ── AlertToggle ──────────────────────────────────────────────────────────
 // Shared control for "mark this as a crew alert" in Add/Edit modals. When
-// on, the tile renders in warning-yellow and is slightly larger, so it
-// stands out among the neutral info tiles.
+// on, the tile keeps the same footprint as the neutral info tiles but
+// renders in warning-yellow with a bell chip so it stands out.
 
 function AlertToggle({ value, onChange }: { value: boolean; onChange: (next: boolean) => void }) {
   return (
@@ -293,9 +313,11 @@ function EditTileModal({
 // ── QuickInfoSection ─────────────────────────────────────────────────────
 // Owner-configured grab-bag of going-stage details (door codes, check-in
 // times, street addresses, crew alerts). Crew reads; owner edits via
-// Add/Edit tile modals. Tiles flagged as alerts render in warning-yellow
-// and slightly larger to draw attention. Renders nothing for non-owners
-// when no tiles exist.
+// Add/Edit tile modals. Every tile shares the same size; alert-flagged tiles
+// keep that footprint but swap in warning-yellow styling and a bell chip so
+// they read as urgent without dominating the grid — the color carries the
+// signal, so no extra label prefix is needed. Owners tap a tile to edit it.
+// Renders nothing for non-owners when no tiles exist.
 
 export function QuickInfoSection({
   tripId,
@@ -370,21 +392,36 @@ export function QuickInfoSection({
           </p>
         </button>
       ) : (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
           {sortedTiles.map((tile) => {
             const alert = !!tile.is_alert;
-            // Alert tiles span 2 of 4 columns (half-width) so they read
-            // bigger without breaking the layout. They also use warning
-            // tokens + left border stripe to match the prior OwnerAlertPanel.
+            // Every tile is the same size. Alerts keep that footprint but pick
+            // up warning tokens + a left border stripe and an amber bell chip —
+            // the color alone signals urgency, no label prefix needed.
             return (
               <div
                 key={tile.id}
                 data-testid={`tile-${tile.id}`}
-                className={`group relative rounded-xl ${alert ? "col-span-2 p-4" : "p-3"}`}
+                onClick={isOwner ? () => setEditingTile(tile) : undefined}
+                role={isOwner ? "button" : undefined}
+                tabIndex={isOwner ? 0 : undefined}
+                onKeyDown={
+                  isOwner
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setEditingTile(tile);
+                        }
+                      }
+                    : undefined
+                }
+                className={`relative flex items-center gap-2.5 rounded-xl p-3 md:gap-3 ${
+                  isOwner ? "cursor-pointer transition-opacity hover:opacity-80" : ""
+                }`}
                 style={
                   alert
                     ? {
-                        background: "var(--color-bt-warning-faint)",
+                        background: "var(--color-bt-card)",
                         border: "1px solid var(--color-bt-warning-border)",
                         borderLeft: "3px solid var(--color-bt-warning)",
                       }
@@ -394,35 +431,29 @@ export function QuickInfoSection({
                       }
                 }
               >
-                <div className="mb-1 flex items-center gap-1.5">
-                  {alert ? (
-                    <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)" }} />
-                  ) : (
-                    <TileIcon icon={tile.icon} />
-                  )}
-                  <span
-                    className={alert ? "text-[11px] font-semibold uppercase tracking-wider" : "text-[10px]"}
-                    style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
-                  >
-                    {alert ? `Alert · ${tile.label}` : tile.label}
-                  </span>
-                </div>
-                <p
-                  className="text-sm font-medium pr-4"
-                  style={{ color: "var(--color-bt-text)" }}
+                <span
+                  className={`flex flex-shrink-0 items-center justify-center rounded-xl ${TILE_CHIP_CLASS}`}
+                  style={{
+                    background: alert ? "var(--color-bt-warning-faint)" : "var(--color-bt-accent-faint)",
+                    color: alert ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
+                  }}
                 >
-                  {tile.value}
-                </p>
-                {isOwner && (
-                  <button
-                    data-testid={`tile-edit-${tile.id}`}
-                    onClick={() => setEditingTile(tile)}
-                    className="absolute right-1.5 top-1.5 rounded p-0.5"
+                  {alert ? <Bell className={TILE_ICON_CLASS} /> : tileIconFor(tile, TILE_ICON_CLASS)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-[10px] font-semibold uppercase tracking-wider"
                     style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
                   >
-                    <Pencil size={10} />
-                  </button>
-                )}
+                    {tile.label}
+                  </p>
+                  <p
+                    className="truncate text-sm font-semibold"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {tile.value}
+                  </p>
+                </div>
               </div>
             );
           })}

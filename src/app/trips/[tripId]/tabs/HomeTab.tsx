@@ -78,11 +78,7 @@ export function HomeTab({
           )}
 
           {/* Quick Info — most-glanced surface (door codes, addresses) */}
-          <QuickInfoPanel
-            tripId={trip.id}
-            isOwner={!!isOwner}
-            isActivated={!!trip.quick_info_enabled}
-          />
+          <QuickInfoPanel tripId={trip.id} isOwner={!!isOwner} />
 
           {/* Itinerary — full width. Travel plans moved to the Crew tab
               (each member self-serves their own); travel still surfaces here
