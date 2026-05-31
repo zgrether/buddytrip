@@ -1662,7 +1662,7 @@ export function CoPlannerPanel({
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
     >
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-        Planners
+        Organizers
       </p>
 
       {/* Existing planners */}
@@ -1765,7 +1765,7 @@ function MobileCoPlannerSheet({
           style={{ borderBottom: "1px solid var(--color-bt-border)" }}
         >
           <p className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Planners
+            Organizers
           </p>
           <button
             onClick={onClose}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Users, ChevronDown, ChevronUp, Check, X, Crown, Trash2, Plus } from "lucide-react";
+import { Users, ChevronDown, ChevronUp, Check, X, Plus } from "lucide-react";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
+import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
 
@@ -42,7 +43,6 @@ function PlannerRow({
 }) {
   const utils = trpc.useUtils();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const removeMember = trpc.tripMembers.remove.useMutation({
     onSuccess() {
@@ -69,7 +69,7 @@ function PlannerRow({
         style={{ cursor: expandable ? "pointer" : undefined }}
         onClick={
           expandable
-            ? () => { setIsExpanded((e) => !e); setConfirmRemove(false); }
+            ? () => setIsExpanded((e) => !e)
             : undefined
         }
       >
@@ -104,25 +104,24 @@ function PlannerRow({
             </span>
           )}
 
-          {/* Owner badge */}
+          {/* Owner badge — plain text, matches CrewTab RolePill */}
           {isOwnerRow && (
             <span
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
               style={{
-                background: "color-mix(in srgb, var(--color-bt-warning) 15%, transparent)",
-                color: "var(--color-bt-warning)",
-                border: "1px solid color-mix(in srgb, var(--color-bt-warning) 30%, transparent)",
+                background: "var(--color-bt-warning-faint)",
+                color: "var(--color-bt-owner)",
+                border: "1px solid var(--color-bt-warning-border)",
               }}
             >
-              <Crown size={10} />
               Owner
             </span>
           )}
 
-          {/* Planner badge — no × button */}
+          {/* Organizer badge */}
           {!isOwnerRow && (
             <span
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
               style={{
                 background: "var(--color-bt-accent-faint)",
                 color: "var(--color-bt-accent)",
@@ -146,44 +145,19 @@ function PlannerRow({
         </div>
       </div>
 
-      {/* Expanded panel */}
+      {/* Expanded panel — canonical danger-action button (matches crew edit modal) */}
       {isExpanded && expandable && (
         <div className="flex gap-3 px-3 pb-3">
           <div className="w-8 flex-shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              {confirmRemove ? (
-                <>
-                  <span className="text-xs font-medium" style={{ color: "var(--color-bt-danger)" }}>
-                    Remove {planner.name}?
-                  </span>
-                  <button
-                    onClick={() => removeMember.mutate({ tripId, userId: planner.userId })}
-                    disabled={removeMember.isPending}
-                    className="rounded-lg px-2.5 py-1 text-xs font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-danger)", color: "white" }}
-                  >
-                    Yes, remove
-                  </button>
-                  <button
-                    onClick={() => setConfirmRemove(false)}
-                    className="rounded-lg border px-2.5 py-1 text-xs"
-                    style={{ borderColor: "var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setConfirmRemove(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
-                  style={{ color: "var(--color-bt-danger)", border: "1px solid var(--color-bt-danger)", opacity: 0.75 }}
-                >
-                  <Trash2 size={12} />
-                  Remove {planner.name} from trip
-                </button>
-              )}
-            </div>
+            <ConfirmDeleteButton
+              label={`Remove ${planner.name} from trip`}
+              confirmLabel="Remove"
+              pendingLabel="Removing…"
+              prompt={`Remove ${planner.name} from the trip?`}
+              pending={removeMember.isPending}
+              onConfirm={() => removeMember.mutate({ tripId, userId: planner.userId })}
+            />
           </div>
         </div>
       )}

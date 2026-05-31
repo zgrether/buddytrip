@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpCircle, Check, Crown, Loader2, Mail, Send, X } from "lucide-react";
+import { ArrowUpCircle, Check, Loader2, Mail, Send, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -825,13 +825,12 @@ function RoleControl({
         }}
       >
         <span
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
           style={{
             color: "var(--color-bt-owner)",
             border: "1px solid var(--color-bt-owner)",
           }}
         >
-          <Crown size={9} />
           Owner
         </span>
         <span className="text-[12px]" style={{ color: "var(--color-bt-text)" }}>

@@ -332,7 +332,7 @@ function EmptyState({
         className="mt-0.5 text-xs"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Planners can confirm items in the Schedule tab.
+        Organizers can confirm items in the Schedule tab.
       </p>
       {onTabChange && (
         <button
