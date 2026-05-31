@@ -27,7 +27,7 @@ import { CatalogBrowser } from "./CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
 import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
-import { PlannersPanel } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
+import { PlannersPanel, AddOrganizerComposer } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1982,15 +1982,34 @@ export default function IdeaZonePanel({
     <div>
       {/* ── Single column layout ──────────────────────────────────────── */}
       <div className="px-4 py-4 space-y-4">
-        {/* Planners panel — top of column */}
-        <div className="max-w-2xl">
-          <PlannersPanel
-            tripId={tripId}
-            planners={plannersList}
-            isOwner={isOwner}
-            canEdit={canEdit}
-          />
-        </div>
+        {/* Organizers — roster (main) + add composer (right rail).
+            Mirrors the Crew tab's responsive two-column grid: the rail sits
+            beside the roster at ≥900px and stacks below it under 900px
+            (same minmax(280px,320px) right track). Only the owner gets the
+            composer, so the grid is owner-only; organizers see the roster
+            on its own. */}
+        {isOwner && canEdit ? (
+          <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] min-[900px]:gap-5">
+            <div>
+              <PlannersPanel
+                tripId={tripId}
+                planners={plannersList}
+                isOwner={isOwner}
+              />
+            </div>
+            <aside>
+              <AddOrganizerComposer tripId={tripId} />
+            </aside>
+          </div>
+        ) : (
+          <div className="max-w-2xl">
+            <PlannersPanel
+              tripId={tripId}
+              planners={plannersList}
+              isOwner={isOwner}
+            />
+          </div>
+        )}
 
         {/* Section header */}
         <h2

@@ -29,7 +29,6 @@ interface PlannersPanelProps {
   tripId: string;
   planners: PlannerWithVoteStatus[];
   isOwner: boolean;
-  canEdit: boolean;
 }
 
 // ── PlannerRow ────────────────────────────────────────────────────────────
@@ -171,7 +170,7 @@ function PlannerRow({
 // and anyone added here lands as an Organizer (role: "Planner") rather than a
 // plain Member. Owner-only — gated by the caller.
 
-function AddOrganizerComposer({ tripId }: { tripId: string }) {
+export function AddOrganizerComposer({ tripId }: { tripId: string }) {
   const utils = trpc.useUtils();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -299,7 +298,6 @@ export function PlannersPanel({
   tripId,
   planners,
   isOwner,
-  canEdit,
 }: PlannersPanelProps) {
   const hasMultiplePlanners = planners.length > 1;
 
@@ -349,17 +347,6 @@ export function PlannersPanel({
           {planners.map((p) => (
             <PlannerRow key={p.userId} planner={p} tripId={tripId} isOwner={isOwner} />
           ))}
-        </div>
-      )}
-
-      {/* Add organizer affordance — Owner only. Organizers cannot add other
-          organizers (the server enforces this too via ghostCrew.create). */}
-      {isOwner && canEdit && (
-        <div
-          className="px-4 py-3"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-        >
-          <AddOrganizerComposer tripId={tripId} />
         </div>
       )}
     </div>
