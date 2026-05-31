@@ -360,7 +360,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
     expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalled();
   });
 
-  it("sendInvitationBlast — stamps last_invited_at and bumps email_count", async () => {
+  it("sendInvitationBlast — stamps last_emailed_at and bumps email_count", async () => {
     const admin = ctx.admin;
     const caller = ctx.caller();
     const member = ctx.getUser("member");
@@ -382,12 +382,12 @@ describe("tripMembers router — sendInvitationBlast", () => {
 
     const { data: after } = await admin
       .from("trip_members")
-      .select("last_invited_at, email_count")
+      .select("last_emailed_at, email_count")
       .eq("trip_id", tripId)
       .eq("user_id", member.id)
       .single();
 
-    expect(after?.last_invited_at).toBeTruthy();
+    expect(after?.last_emailed_at).toBeTruthy();
     expect(after?.email_count).toBe(startCount + 1);
   });
 

@@ -17,7 +17,7 @@ type RecipientMember = {
   role: string;
   displayName: string;
   isGuest: boolean;
-  last_invited_at?: string | null;
+  last_emailed_at?: string | null;
   user: { email: string | null; is_guest?: boolean; avatar_icon?: string | null } | null;
 };
 
@@ -308,7 +308,7 @@ export function CrewEmailPanel({ trip, isOwner, onClose }: CrewEmailPanelProps) 
                         {m.user?.email}
                       </div>
                     </div>
-                    {m.last_invited_at && (
+                    {m.last_emailed_at && (
                       <span
                         className="flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
                         style={{
@@ -318,7 +318,7 @@ export function CrewEmailPanel({ trip, isOwner, onClose }: CrewEmailPanelProps) 
                         }}
                       >
                         Sent ·{" "}
-                        {parseLocalDate(m.last_invited_at).toLocaleDateString("en-US", {
+                        {parseLocalDate(m.last_emailed_at).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
                         })}

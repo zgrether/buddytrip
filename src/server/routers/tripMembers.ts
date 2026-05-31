@@ -35,7 +35,7 @@ export async function listMembers(
   const { data, error } = await ctx.supabase
     .from("trip_members")
     .select(
-      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_invited_at, email_count",
+      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, last_emailed_at, email_count",
     )
     .eq("trip_id", tripId)
     .order("joined_at", { ascending: true });
@@ -726,7 +726,7 @@ export const tripMembersRouter = router({
 
   // -----------------------------------------------------------------------
   // sendInvitationBlast — Owner sends the trip invitation email to a
-  // selected subset of crew members. Stamps last_invited_at and bumps
+  // selected subset of crew members. Stamps last_emailed_at and bumps
   // email_count per recipient (email_count distinguishes a first-contact
   // invite from a follow-up).
   // -----------------------------------------------------------------------
@@ -799,14 +799,14 @@ export const tripMembersRouter = router({
         }
       }
 
-      // Stamp last_invited_at ("when last sent") for each recipient, then
+      // Stamp last_emailed_at ("when last sent") for each recipient, then
       // atomically bump email_count (0→1 makes the first send an invite;
       // any later send a follow-up). The increment is a SQL function because
       // supabase-js can't express `email_count = email_count + 1`.
       if (sentIds.length > 0) {
         await ctx.supabase
           .from("trip_members")
-          .update({ last_invited_at: now })
+          .update({ last_emailed_at: now })
           .eq("trip_id", ctx.tripId)
           .in("user_id", sentIds);
 

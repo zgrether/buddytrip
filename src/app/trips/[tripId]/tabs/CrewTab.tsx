@@ -29,7 +29,7 @@ type Member = {
   /** When the trip invite email was last sent to this member. Null until
    *  the first send; updated by sendInvitationBlast. Surfaced in the
    *  invited subline so organizers know how stale the invite is. */
-  last_invited_at?: string | null;
+  last_emailed_at?: string | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -222,14 +222,14 @@ function CrewRow({
               <span className="font-mono">{m.user?.email}</span>
               <span className="ml-1" style={{ color: "var(--color-bt-warning)" }}>
                 {/* Two sub-states:
-                    - last_invited_at set → "· invited Mar 5" (sent but
+                    - last_emailed_at set → "· invited Mar 5" (sent but
                       the user hasn't signed up yet)
-                    - last_invited_at null → "· pending invite" (added
+                    - last_emailed_at null → "· pending invite" (added
                       with an email but the invite blast hasn't gone
                       out yet — the nudge above prompts the Owner to
                       send it). */}
-                {m.last_invited_at
-                  ? `· invited ${parseLocalDate(m.last_invited_at).toLocaleDateString("en-US", {
+                {m.last_emailed_at
+                  ? `· invited ${parseLocalDate(m.last_emailed_at).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                     })}`
@@ -976,10 +976,10 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
       {/* Two crew nudges — only fire for Owner.
           - Pending: invite-eligible (guest + email) rows where the blast
-            has never been sent (last_invited_at is null). The Owner
+            has never been sent (last_emailed_at is null). The Owner
             added them but never hit "send invites" — the nudge prompts
             that send.
-          - Invited: blast has gone out (last_invited_at set) but the
+          - Invited: blast has gone out (last_emailed_at set) but the
             recipient hasn't signed up yet. Resend nudge.
           Each carries a right-justified Send/Resend email button that
           opens the blast modal — the previously-redundant header-corner
@@ -987,10 +987,10 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
       {isOwner &&
         (() => {
           const pending = members.filter(
-            (m) => deriveStatus(m) === "invited" && !m.last_invited_at
+            (m) => deriveStatus(m) === "invited" && !m.last_emailed_at
           );
           const invited = members.filter(
-            (m) => deriveStatus(m) === "invited" && !!m.last_invited_at
+            (m) => deriveStatus(m) === "invited" && !!m.last_emailed_at
           );
           if (pending.length === 0 && invited.length === 0) return null;
           return (
