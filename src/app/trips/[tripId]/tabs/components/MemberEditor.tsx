@@ -12,6 +12,14 @@ import {
   ValidationFeedback,
   type ValidationState,
 } from "@/components/emailValidation";
+import { Plus } from "lucide-react";
+import {
+  TravelEditor,
+  TravelModePill,
+  summarizeTravel,
+  formatArrivalLabel,
+  type TravelMode,
+} from "./TravelControls";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -30,6 +38,14 @@ export type MemberEditorTarget = {
   /** Times this member has been emailed. 0 = not invited yet → reads as
    *  Pending even for a real account; >0 = contacted. Mirrors CrewTab. */
   email_count?: number | null;
+  /** Travel fields (live on trip_members). The owner edits these for any
+   *  member (incl. placeholders) via the Travel section below. */
+  travel_mode?: string | null;
+  travel_detail?: string | null;
+  flight_airline?: string | null;
+  flight_number?: string | null;
+  flight_airport?: string | null;
+  flight_arrival_time?: string | null;
   user: {
     name?: string | null;
     email: string | null;
@@ -94,6 +110,9 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   // Surfaces a failed save (e.g. the email collides with another member)
   // so the drawer explains itself instead of silently refusing to close.
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Travel sub-editor reveal — the owner edits this member's travel inline
+  // within the drawer (between Permissions and Remove).
+  const [editingTravel, setEditingTravel] = useState(false);
 
   // ── Live email validation (debounced) ──────────────────────────────────
   const validation: ValidationState = useEmailValidation(tripId, email);
@@ -511,6 +530,93 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               onRemoveOrganizer={handleRemoveOrganizer}
             />
           </div>
+
+          {/* Travel — owner logs/edits any member's travel here (incl.
+              placeholders, who can't log it themselves). Rendered as a
+              plain <div> (not <Field>) because it contains buttons/inputs
+              that a wrapping <label> would proxy clicks to. */}
+          {member.user_id && (
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-[11px] font-bold uppercase tracking-[0.08em]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Travel
+              </span>
+              {(() => {
+                const mode = (member.travel_mode as TravelMode | null) ?? null;
+                const detail = summarizeTravel(member);
+                const arrivalLabel = formatArrivalLabel(member.flight_arrival_time);
+                const hasTravel = !!mode;
+
+                if (editingTravel) {
+                  return (
+                    <TravelEditor
+                      tripId={tripId}
+                      member={member}
+                      targetUserId={member.user_id!}
+                      surface="recessed"
+                      onSaved={() => setEditingTravel(false)}
+                      onCancel={() => setEditingTravel(false)}
+                    />
+                  );
+                }
+
+                if (hasTravel) {
+                  return (
+                    <div className="flex items-center gap-3">
+                      <TravelModePill mode={mode} withLabel />
+                      <div className="min-w-0 flex-1">
+                        {detail && (
+                          <p
+                            className="truncate text-sm"
+                            style={{ color: "var(--color-bt-text)" }}
+                          >
+                            {detail}
+                          </p>
+                        )}
+                        {arrivalLabel && (
+                          <p
+                            className="truncate text-[11px]"
+                            style={{ color: "var(--color-bt-text-dim)" }}
+                          >
+                            Arriving {arrivalLabel}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingTravel(true)}
+                        className="flex-shrink-0 text-xs font-medium hover:underline"
+                        style={{ color: "var(--color-bt-accent)" }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Empty state — copy differs by whether they can log it
+                // themselves. Placeholders (no email/app access) get
+                // "Log arrival"; app-users get "Add" (they could also do
+                // it from their own YOU tile).
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setEditingTravel(true)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 py-2.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                    style={{
+                      borderColor: "var(--color-bt-border)",
+                      color: "var(--color-bt-accent)",
+                    }}
+                  >
+                    <Plus size={14} strokeWidth={2.5} />
+                    {member.isGuest ? "Log arrival" : "Add travel"}
+                  </button>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Remove from trip — at the end of the body, matching the
               other edit modals (danger action above the footer). */}
