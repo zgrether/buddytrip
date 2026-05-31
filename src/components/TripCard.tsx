@@ -35,7 +35,6 @@ interface Trip {
 
 interface TripCardProps {
   trip: Trip;
-  unreadCount?: number;
 }
 
 function formatDateRange(start?: string | null, end?: string | null): string {
@@ -47,7 +46,7 @@ function formatDateRange(start?: string | null, end?: string | null): string {
   return `Until ${fmt(end!)}`;
 }
 
-export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
+export const TripCard: FC<TripCardProps> = ({ trip }) => {
   const router = useRouter();
   const utils = trpc.useUtils();
   // useTransition tracks Next's router.push from click → new route render,
@@ -210,14 +209,6 @@ export const TripCard: FC<TripCardProps> = ({ trip, unreadCount = 0 }) => {
             // clear the trip hasn't started yet vs. actively happening.
             label={status === "going" && countdown !== null ? "UPCOMING" : undefined}
           />
-        )}
-        {unreadCount > 0 && (
-          <span
-            className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
-            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
         )}
       </div>
 

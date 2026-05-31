@@ -91,24 +91,6 @@ test.describe("Dashboard", () => {
         return;
       }
 
-      if (url.includes("notifications.list")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([{ result: { data: [] } }]),
-        });
-        return;
-      }
-
-      if (url.includes("notifications.markAllRead")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([{ result: { data: { marked: 0 } } }]),
-        });
-        return;
-      }
-
       await route.continue();
     });
   });
@@ -144,9 +126,6 @@ test.describe("Dashboard", () => {
     await expect(
       page.locator('[data-testid="trip-card-trip-upcoming-1"]')
     ).toBeVisible();
-
-    // TopNav is visible
-    await expect(page.locator('[data-testid="notification-bell"]')).toBeVisible();
   });
 
   test("shows empty state when user has no trips", async ({ page }) => {
@@ -174,67 +153,6 @@ test.describe("Dashboard", () => {
     ).toBeVisible();
   });
 
-  test("notification bell opens and closes dropdown", async ({ page }) => {
-    // Seed one unread notification
-    const NOW = new Date().toISOString();
-    await page.route("**/api/trpc/**", async (route) => {
-      const url = route.request().url();
-      if (url.includes("trips.list")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([{ result: { data: MOCK_TRIPS } }]),
-        });
-        return;
-      }
-      if (url.includes("notifications.list")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([
-            {
-              result: {
-                data: [
-                  {
-                    id: "notif-1",
-                    type: "idea_added",
-                    trip_id: "trip-live-1",
-                    created_at: NOW,
-                    read: false,
-                  },
-                ],
-              },
-            },
-          ]),
-        });
-        return;
-      }
-      await route.continue();
-    });
-
-    await page.goto("/dashboard");
-
-    // Badge should show 1
-    await expect(page.locator('[data-testid="notification-badge"]')).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(
-      page.locator('[data-testid="notification-badge"]')
-    ).toContainText("1");
-
-    // Open dropdown
-    await page.locator('[data-testid="notification-bell"]').click();
-    await expect(
-      page.locator('[data-testid="notification-dropdown"]')
-    ).toBeVisible();
-
-    // Close by clicking outside
-    await page.mouse.click(10, 10);
-    await expect(
-      page.locator('[data-testid="notification-dropdown"]')
-    ).not.toBeVisible();
-  });
-
   test("past trips section is collapsible", async ({ page }) => {
     const pastTrip = {
       id: "trip-past-1",
@@ -255,14 +173,6 @@ test.describe("Dashboard", () => {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify([{ result: { data: [pastTrip] } }]),
-        });
-        return;
-      }
-      if (url.includes("notifications.list")) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([{ result: { data: [] } }]),
         });
         return;
       }

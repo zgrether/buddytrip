@@ -459,51 +459,6 @@ export const tripMembersRouter = router({
           // Email failure shouldn't block the mutation
         }
 
-        // In-app notifications — notify owner about new member, and the added person
-        try {
-          const { createNotification } = await import("./notifications");
-          const memberName = existing.name ?? email;
-
-          // Notify the owner (if the inviter is not the owner)
-          const { data: ownerMember } = await ctx.supabase
-            .from("trip_members")
-            .select("user_id")
-            .eq("trip_id", ctx.tripId)
-            .eq("role", "Owner")
-            .single();
-
-          if (ownerMember && ownerMember.user_id !== ctx.user!.id) {
-            await createNotification(ctx.supabase, {
-              tripId: ctx.tripId,
-              actorId: ctx.user!.id,
-              recipientId: ownerMember.user_id,
-              type: "crew_added",
-              payload: {
-                member_name: memberName,
-                trip_name: tripName,
-                trip_id: ctx.tripId,
-                is_self: "false",
-              },
-            });
-          }
-
-          // Notify the added person
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: existing.id,
-            type: "crew_added",
-            payload: {
-              adder_name: inviterName,
-              trip_name: tripName,
-              trip_id: ctx.tripId,
-              is_self: "true",
-            },
-          });
-        } catch {
-          // Notification failure shouldn't block the mutation
-        }
-
         return { status: "added_existing" as const };
       }
 
@@ -584,34 +539,6 @@ export const tripMembersRouter = router({
         });
       } catch {
         // Email failure shouldn't block the mutation
-      }
-
-      // Notify the owner about the new invite (if inviter is not the owner)
-      try {
-        const { createNotification } = await import("./notifications");
-        const { data: ownerMember } = await ctx.supabase
-          .from("trip_members")
-          .select("user_id")
-          .eq("trip_id", ctx.tripId)
-          .eq("role", "Owner")
-          .single();
-
-        if (ownerMember && ownerMember.user_id !== ctx.user!.id) {
-          await createNotification(ctx.supabase, {
-            tripId: ctx.tripId,
-            actorId: ctx.user!.id,
-            recipientId: ownerMember.user_id,
-            type: "crew_added",
-            payload: {
-              member_name: email.split("@")[0],
-              trip_name: tripName,
-              trip_id: ctx.tripId,
-              is_self: "false",
-            },
-          });
-        }
-      } catch {
-        // Notification failure shouldn't block the mutation
       }
 
       return { status: "invited_new" as const, userId: guestUserId };

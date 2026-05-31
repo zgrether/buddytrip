@@ -5,14 +5,12 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { TopNav } from "@/components/TopNav";
-import { useGlobalNotifications } from "@/hooks/useGlobalNotifications";
 import { DestinationPicker, type DestinationMode } from "@/components/DestinationPicker";
 import { EmptyStateOnboarding, type LocalIdea } from "@/app/trips/[tripId]/components/IdeaZonePanel";
 
 export default function TripNewPage() {
   const router = useRouter();
   const utils = trpc.useUtils();
-  const { notifications, unreadCount, markAllRead } = useGlobalNotifications();
 
   const [tripName, setTripName] = useState("");
   const [error, setError] = useState("");
@@ -103,11 +101,7 @@ export default function TripNewPage() {
       {/* App-wide top nav — matches dashboard, profile, and trip pages so
           the new-trip flow doesn't feel like a separate surface. The
           in-body "Back" link below replaces the old header back button. */}
-      <TopNav
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onMarkAllRead={markAllRead}
-      />
+      <TopNav />
 
       {error && (
         <div

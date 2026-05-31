@@ -41,10 +41,10 @@ export const datePollRouter = router({
         votesByWindow.set(v.window_id, arr);
       }
 
-      // Fetch locked_window_id + notify_sent + poll_note from date_polls
+      // Fetch locked_window_id + poll_note from date_polls
       const { data: poll } = await ctx.supabase
         .from("date_polls")
-        .select("locked_window_id, notify_sent, poll_note")
+        .select("locked_window_id, poll_note")
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
 
@@ -57,7 +57,6 @@ export const datePollRouter = router({
 
       return {
         lockedWindowId: poll?.locked_window_id ?? null,
-        notifySent: poll?.notify_sent ?? false,
         pollNote: poll?.poll_note ?? null,
         pollMode: trip?.poll_mode ?? false,
         windows: (windows ?? []).map((w) => ({
@@ -99,13 +98,12 @@ export const datePollRouter = router({
         });
       }
 
-      // Reset notify_sent so the owner can re-notify after adding a new option.
-      // Use upsert so the row is created here if setPollMode(true) hasn't run yet
-      // (first-window-activates-poll flow).
+      // Ensure a date_polls row exists for this trip (first-window-activates-poll
+      // flow may run before setPollMode(true) has created the row).
       await ctx.supabase
         .from("date_polls")
         .upsert(
-          { trip_id: ctx.tripId, notify_sent: false },
+          { trip_id: ctx.tripId, open: true },
           { onConflict: "trip_id" }
         );
 
@@ -190,82 +188,6 @@ export const datePollRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to vote: ${error.message}`,
         });
-      }
-
-      // Batched notification: owner only, deduplicate within 24h
-      try {
-        const { data: ownerMember } = await ctx.supabase
-          .from("trip_members")
-          .select("user_id")
-          .eq("trip_id", ctx.tripId)
-          .eq("role", "Owner")
-          .single();
-
-        // Don't notify the owner about their own votes
-        if (ownerMember && ownerMember.user_id !== ctx.user!.id) {
-          const { data: tripData } = await ctx.supabase
-            .from("trips")
-            .select("title")
-            .eq("id", ctx.tripId)
-            .single();
-
-          const { data: voterData } = await ctx.supabase
-            .from("users")
-            .select("name")
-            .eq("id", ctx.user!.id)
-            .single();
-
-          const voterName = voterData?.name ?? "Someone";
-
-          // Check for existing date_poll_voted notification within 24h
-          const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-          const { data: existingNotif } = await ctx.supabase
-            .from("notification_events")
-            .select("id, payload")
-            .eq("trip_id", ctx.tripId)
-            .eq("type", "date_poll_voted")
-            .gte("created_at", twentyFourHoursAgo)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (existingNotif) {
-            // Update existing notification with latest voter name
-            await ctx.supabase
-              .from("notification_events")
-              .update({
-                payload: {
-                  ...(existingNotif.payload as Record<string, unknown>),
-                  voter_name: voterName,
-                  trip_name: tripData?.title ?? "the trip",
-                  trip_id: ctx.tripId,
-                },
-              })
-              .eq("id", existingNotif.id);
-
-            // Delete the read record so owner sees it again
-            await ctx.supabase
-              .from("notification_reads")
-              .delete()
-              .eq("notification_id", existingNotif.id)
-              .eq("user_id", ownerMember.user_id);
-          } else {
-            const { createNotification } = await import("./notifications");
-            await createNotification(ctx.supabase, {
-              tripId: ctx.tripId,
-              actorId: ctx.user!.id,
-              recipientId: ownerMember.user_id,
-              type: "date_poll_voted",
-              payload: {
-                voter_name: voterName,
-                trip_name: tripData?.title ?? "the trip",
-                trip_id: ctx.tripId,
-              },
-            });
-          }
-        }
-      } catch {
-        // Notification failure shouldn't block the mutation
       }
 
       return data;
@@ -555,7 +477,7 @@ export const datePollRouter = router({
   // When pollMode = false (cancel poll):
   //   1. Delete all date_poll_votes for this trip's windows (child rows first)
   //   2. Delete all date_windows for this trip
-  //   3. Reset notify_sent = false on the date_polls record
+  //   3. Close the date_polls record (open = false)
   //   4. Flip poll_mode = false on trips
   //
   // This matches the spec's cancelPoll semantics — all poll data is cleared
@@ -612,10 +534,10 @@ export const datePollRouter = router({
           });
         }
 
-        // 4. Reset notify_sent so the Notify button re-enables next time.
+        // 4. Close the poll row.
         await ctx.supabase
           .from("date_polls")
-          .update({ notify_sent: false, open: false })
+          .update({ open: false })
           .eq("trip_id", ctx.tripId);
       }
 
@@ -632,8 +554,7 @@ export const datePollRouter = router({
         });
       }
 
-      // When opening a poll, ensure a date_polls row exists so
-      // notify_sent can be read/written without a separate insert.
+      // When opening a poll, ensure a date_polls row exists.
       if (input.pollMode) {
         await ctx.supabase
           .from("date_polls")
@@ -641,108 +562,6 @@ export const datePollRouter = router({
             { trip_id: ctx.tripId, open: true },
             { onConflict: "trip_id" }
           );
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // notifyCrewPollOpen — Owner or Planner: fire date_poll_started
-  // notifications to every non-actor member, then set notify_sent = true.
-  // -----------------------------------------------------------------------
-  notifyCrewPollOpen: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      try {
-        const { data: tripData } = await ctx.supabase
-          .from("trips")
-          .select("title")
-          .eq("id", ctx.tripId)
-          .single();
-
-        const { data: actorData } = await ctx.supabase
-          .from("users")
-          .select("name")
-          .eq("id", ctx.user!.id)
-          .single();
-
-        const { data: members } = await ctx.supabase
-          .from("trip_members")
-          .select("user_id")
-          .eq("trip_id", ctx.tripId)
-          .neq("user_id", ctx.user!.id);
-
-        const { createNotifications } = await import("./notifications");
-        await createNotifications(ctx.supabase, {
-          tripId: ctx.tripId,
-          actorId: ctx.user!.id,
-          recipientIds: (members ?? []).map((m) => m.user_id),
-          type: "date_poll_started",
-          payload: {
-            owner_name: actorData?.name ?? "The organizer",
-            trip_name: tripData?.title ?? "the trip",
-            trip_id: ctx.tripId,
-          },
-        });
-      } catch {
-        // Notification failure shouldn't block the flag flip
-      }
-
-      // Record that crew has been notified so the button disables.
-      await ctx.supabase
-        .from("date_polls")
-        .upsert(
-          { trip_id: ctx.tripId, open: true, notify_sent: true },
-          { onConflict: "trip_id" }
-        );
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // notifyNewMembers — Owner or Planner: send a date_poll_started notification
-  // to a specific set of member user IDs (e.g. members who joined after the
-  // initial crew notification). Does NOT flip notify_sent — that flag tracks
-  // whether the whole crew has been notified; targeted re-sends don't change it.
-  // -----------------------------------------------------------------------
-  notifyNewMembers: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        userIds: z.array(z.string()).min(1),
-      })
-    )
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      try {
-        const { data: tripData } = await ctx.supabase
-          .from("trips")
-          .select("title")
-          .eq("id", ctx.tripId)
-          .single();
-
-        const { data: actorData } = await ctx.supabase
-          .from("users")
-          .select("name")
-          .eq("id", ctx.user!.id)
-          .single();
-
-        const { createNotifications } = await import("./notifications");
-        await createNotifications(ctx.supabase, {
-          tripId: ctx.tripId,
-          actorId: ctx.user!.id,
-          // Skip the actor themselves just in case.
-          recipientIds: input.userIds.filter((id) => id !== ctx.user!.id),
-          type: "date_poll_started",
-          payload: {
-            owner_name: actorData?.name ?? "The organizer",
-            trip_name: tripData?.title ?? "the trip",
-            trip_id: ctx.tripId,
-          },
-        });
-      } catch {
-        // Notification failure shouldn't block the response
       }
 
       return { success: true };
@@ -779,8 +598,7 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // resetPoll — Owner or Planner: clear all votes + reset notify_sent.
-  // Windows are preserved.
+  // resetPoll — Owner or Planner: clear all votes. Windows are preserved.
   // -----------------------------------------------------------------------
   resetPoll: authedProcedure
     .input(z.object({ tripId: z.string() }))
@@ -816,7 +634,7 @@ export const datePollRouter = router({
       await ctx.supabase
         .from("date_polls")
         .upsert(
-          { trip_id: ctx.tripId, open: true, notify_sent: false },
+          { trip_id: ctx.tripId, open: true },
           { onConflict: "trip_id" }
         );
 

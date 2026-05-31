@@ -71,7 +71,7 @@ describe("Phase 0 Smoke Test", () => {
       "archived_ideas", "catalog_ideas",
       "date_polls", "date_windows", "date_poll_votes",
       "expenses", "expense_splits", "messages",
-      "notification_events", "notification_reads", "quick_info_tiles",
+      "quick_info_tiles",
       "schedule_items", "logistics_items", "invites",
     ];
 

@@ -15,8 +15,6 @@ import { trpc } from "@/lib/trpc-client";
  * on `competitions` filtered by `trip_id=eq.{tripId}`. On any change,
  * invalidates the `competitions.getByTrip` query so TanStack refetches
  * and re-renders consumers (ScoreboardPanel, CompTab, etc.).
- *
- * Mirrors the shape of `useRealtimeNotifications`.
  */
 export function useRealtimeCompetition(tripId: string | null) {
   const utils = trpc.useUtils();

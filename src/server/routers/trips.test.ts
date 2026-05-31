@@ -505,7 +505,7 @@ describe("datePoll router — setPollMode", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("setPollMode(false) — clears date windows, votes, and resets notify_sent", async () => {
+  it("setPollMode(false) — clears date windows and votes", async () => {
     // Fresh trip so we don't collide with other tests in this describe block.
     const clearTripId = `test-poll-cancel-${Date.now()}`;
     const caller = ctx.caller();
@@ -553,9 +553,6 @@ describe("datePoll router — setPollMode", () => {
       .select("window_id", { count: "exact", head: true })
       .in("window_id", [w1, w2]);
     expect(voteCount).toBe(0);
-
-    // Verify notify_sent was reset.
-    expect(poll.notifySent).toBe(false);
 
     // Verify poll_mode is false on the trip.
     const { data: tripRow } = await ctx.admin
