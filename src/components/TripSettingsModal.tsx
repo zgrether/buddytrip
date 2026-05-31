@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import {
   X,
   UserCheck,
@@ -609,7 +609,7 @@ export function TripSettingsModal({
                         onClick={() => setSelectedNewOwner(m.user_id)}
                         className="flex w-full items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-[var(--color-bt-hover)]"
                       >
-                        <UserAvatar name={m.displayName ?? null} avatarUrl={null} size="md" />
+                        <Avatar name={m.displayName ?? "?"} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
                         <span className="min-w-0 flex-1 text-left text-sm" style={{ color: "var(--color-bt-text)" }}>
                           {m.displayName}
                         </span>

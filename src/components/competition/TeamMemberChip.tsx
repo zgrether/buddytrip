@@ -1,11 +1,11 @@
 "use client";
 
 import { X } from "lucide-react";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 
 interface TeamMemberChipProps {
   displayName: string;
-  avatarUrl?: string | null;
+  avatarIcon?: string | null;
   isGuest?: boolean;
   /** Hex team color — drives the color-mix tint on the chip */
   teamColor: string;
@@ -30,8 +30,7 @@ interface TeamMemberChipProps {
  */
 export function TeamMemberChip({
   displayName,
-  avatarUrl,
-  isGuest,
+  avatarIcon,
   teamColor,
   onRemove,
   removeAriaLabel,
@@ -50,10 +49,10 @@ export function TeamMemberChip({
         border: `1px solid color-mix(in srgb, ${teamColor} 40%, var(--color-bt-border))`,
       }}
     >
-      <UserAvatar
+      <Avatar
         name={displayName}
-        avatarUrl={avatarUrl ?? null}
-        isGuest={isGuest}
+        avatarIcon={avatarIcon ?? null}
+        teamColor={teamColor}
         size="sm"
       />
       <span className="text-xs" style={{ color: "var(--color-bt-text)" }}>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Users, ChevronDown, ChevronUp, Check, X, Crown, Trash2, Plus } from "lucide-react";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -11,6 +11,7 @@ import { trpc } from "@/lib/trpc-client";
 export interface PlannerWithVoteStatus {
   userId: string;
   name: string;
+  avatarIcon?: string | null;
   email?: string | null;
   role: "owner" | "planner";
   hasVoted: boolean;
@@ -72,7 +73,7 @@ function PlannerRow({
             : undefined
         }
       >
-        <UserAvatar name={planner.name} avatarUrl={null} sizePx={32} />
+        <Avatar name={planner.name} avatarIcon={planner.avatarIcon ?? null} sizePx={32} />
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
@@ -291,7 +292,7 @@ export function PlannersPanel({
           <div style={{ display: "flex", gap: 4, alignItems: "center", flex: 1, flexWrap: "wrap" }}>
             {planners.map((p) => (
               <div key={p.userId} style={{ position: "relative", width: 22, height: 22 }}>
-                <UserAvatar name={p.name} avatarUrl={null} sizePx={22} />
+                <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} sizePx={22} />
                 <div
                   style={{
                     position: "absolute",

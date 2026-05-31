@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import {
   ThumbsUp,
   MapPin,
@@ -93,7 +93,7 @@ function IdeaCard({
   isOwner: boolean;
   tripStartDate?: string | null;
   currentUserId?: string;
-  memberData: { memberId: string; displayName: string }[];
+  memberData: { memberId: string; displayName: string; avatar_icon?: string | null }[];
   onVote: (ideaId: string) => void;
   votePending: boolean;
   onSetDestination: (idea: Idea) => void;
@@ -286,7 +286,7 @@ function IdeaCard({
                       style={{ marginLeft: idx === 0 ? 0 : -6, zIndex: visible.length - idx }}
                       className="relative"
                     >
-                      <UserAvatar name={name} avatarUrl={null} sizePx={20} />
+                      <Avatar name={name} avatarIcon={member?.avatar_icon ?? null} sizePx={20} />
                     </div>
                   );
                 })}
@@ -1643,7 +1643,7 @@ export function CoPlannerPanel({
   allVoterIds,
 }: {
   tripId: string;
-  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>;
+  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string; user?: { avatar_icon?: string | null } | null }>;
   isOwner: boolean;
   /** Set of user IDs who have voted on any idea */
   allVoterIds: Set<string>;
@@ -1673,7 +1673,7 @@ export function CoPlannerPanel({
           const hasVoted = allVoterIds.has(m.user_id);
           return (
             <div key={m.user_id ?? m.memberId} className="flex items-center gap-2">
-              <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+              <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs" style={{ color: "var(--color-bt-text)" }}>
                   {m.displayName}
@@ -1728,7 +1728,7 @@ function MobileCoPlannerSheet({
   onClose,
 }: {
   tripId: string;
-  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string }>;
+  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string; user?: { avatar_icon?: string | null } | null }>;
   isOwner: boolean;
   allVoterIds: Set<string>;
   onClose: () => void;
@@ -1786,7 +1786,7 @@ function MobileCoPlannerSheet({
             const hasVoted = allVoterIds.has(m.user_id);
             return (
               <div key={m.user_id ?? m.memberId} className="flex items-center gap-3">
-                <UserAvatar name={m.displayName} avatarUrl={null} size="sm" />
+                <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
                     {m.displayName}
@@ -1918,6 +1918,7 @@ export default function IdeaZonePanel({
   const memberData = members.map((m) => ({
     memberId: m.user_id,
     displayName: m.displayName,
+    avatar_icon: (m as { user?: { avatar_icon?: string | null } | null }).user?.avatar_icon ?? null,
   }));
 
   // Vote mutation (lifted from VotingPanel so IdeaCards can use it)
@@ -1959,6 +1960,7 @@ export default function IdeaZonePanel({
     .map((m) => ({
       userId: m.user_id,
       name: m.displayName,
+      avatarIcon: (m as { user?: { avatar_icon?: string | null } | null }).user?.avatar_icon ?? null,
       email: (m as { user?: { email?: string | null } | null }).user?.email ?? null,
       role: m.role.toLowerCase() as "owner" | "planner",
       hasVoted: allVoterIds.has(m.user_id),

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, Ghost, Link, Loader2, Plus, Search, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ export interface CrewSearchInputProps {
 
 type SearchState =
   | { kind: "idle" }
-  | { kind: "found"; user: { id: string; name: string | null; email: string } }
+  | { kind: "found"; user: { id: string; name: string | null; email: string; avatar_icon?: string | null } }
   | { kind: "not-found" };
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ export function CrewSearchInput({
     if (results && results.length > 0) {
       setSearch({
         kind: "found",
-        user: results[0] as { id: string; name: string | null; email: string },
+        user: results[0] as { id: string; name: string | null; email: string; avatar_icon?: string | null },
       });
     } else {
       setSearch({ kind: "not-found" });
@@ -238,7 +238,7 @@ export function CrewSearchInput({
           className="flex items-center gap-2 rounded-lg px-3 py-2"
           style={{ background: "var(--color-bt-base)", border: "1px solid var(--color-bt-border)" }}
         >
-          <UserAvatar name={displayName(search.user)} avatarUrl={null} size="sm" />
+          <Avatar name={displayName(search.user)} avatarIcon={search.user.avatar_icon ?? null} size="sm" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium" style={{ color: "var(--color-bt-text)" }}>
               {search.user.name ?? search.user.email}

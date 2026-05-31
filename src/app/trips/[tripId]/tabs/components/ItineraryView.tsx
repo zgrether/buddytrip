@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { addDays, differenceInDays } from "@/lib/tripStatus";
 import {
@@ -558,10 +558,9 @@ function EventCard({ event }: { event: ItineraryEvent }) {
       }}
     >
       {event.kind === "arrival" ? (
-        <UserAvatar
+        <Avatar
           name={event.displayName}
-          avatarUrl={event.avatarUrl ?? null}
-          isGuest={event.isGuest ?? false}
+          avatarIcon={event.avatarIcon ?? null}
           size="md"
         />
       ) : (

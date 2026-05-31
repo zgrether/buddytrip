@@ -52,7 +52,7 @@ export interface ItineraryTripMember {
   travel_shared?: boolean | null;
   /** Guest (placeholder) members can't share their own travel — exclude them. */
   isGuest?: boolean | null;
-  user?: { name?: string | null; avatar_url?: string | null } | null;
+  user?: { name?: string | null; avatar_icon?: string | null } | null;
 }
 
 // ── Output shape ──────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ export type ItineraryEvent =
       subtitle?: string | null;
       memberId: string;
       displayName: string;
-      avatarUrl?: string | null;
+      avatarIcon?: string | null;
       isGuest?: boolean | null;
     };
 
@@ -250,7 +250,7 @@ export function buildItinerary(input: {
       subtitle,
       memberId: m.memberId,
       displayName: m.displayName,
-      avatarUrl: m.user?.avatar_url ?? null,
+      avatarIcon: m.user?.avatar_icon ?? null,
       isGuest: m.isGuest ?? false,
     });
   }

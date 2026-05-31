@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 import {
   buildItinerary,
   groupByDay,
@@ -88,9 +88,9 @@ function EventIcon({ event }: { event: ItineraryEvent }) {
       return wrap(<Hotel size={14} />);
     case "arrival":
       return (
-        <UserAvatar
+        <Avatar
           name={event.displayName}
-          avatarUrl={null}
+          avatarIcon={event.avatarIcon ?? null}
           size="md"
         />
       );

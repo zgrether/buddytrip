@@ -13,8 +13,9 @@ import { AVATAR_ICON_COMPONENTS } from "@/lib/avatarIconComponents";
  *    avatarIcon set  │ teal icon on bt-raised   │ white icon on team bg
  *    no avatarIcon   │ teal initials on raised  │ white initials on team bg
  *
- * For uploaded photos (avatar_url) use `<UserAvatar>` instead — that
- * component handles `next/image` and the ghost-guest fallback.
+ * This is the only avatar component in the app: avatars are profile-scoped
+ * (the Tabler icon chosen in /profile) with a name-initials fallback. There
+ * is no per-trip uploaded-photo avatar.
  */
 
 interface AvatarProps {
@@ -26,6 +27,12 @@ interface AvatarProps {
   teamColor?: string | null;
   /** sm=24px, md=36px, lg=72px */
   size?: "sm" | "md" | "lg";
+  /**
+   * Exact pixel size — overrides `size` when provided. Lets Avatar cover
+   * the arbitrary dimensions older call sites needed (20, 22, 32, …)
+   * without adding bespoke presets. Icon + initials scale proportionally.
+   */
+  sizePx?: number;
   /**
    * Renders the initials/icon in muted grey instead of teal. Use for
    * placeholder identities (e.g. crew with no email yet) so the teal
@@ -75,11 +82,21 @@ export function Avatar({
   avatarIcon,
   teamColor,
   size = "md",
+  sizePx,
   muted = false,
   className,
 }: AvatarProps) {
-  const { circle, icon: iconSize, initials: initialsSize } = SIZE_MAP[size];
-  const isResponsive = size === "sm";
+  // An explicit sizePx wins over the named preset and disables the
+  // responsive sm behavior (which only applies to the bare size="sm").
+  const fixedPx = typeof sizePx === "number" ? sizePx : null;
+  const { circle, icon: iconSize, initials: initialsSize } = fixedPx
+    ? {
+        circle: fixedPx,
+        icon: Math.round(fixedPx * 0.5),
+        initials: Math.max(9, Math.round(fixedPx * 0.4)),
+      }
+    : SIZE_MAP[size];
+  const isResponsive = size === "sm" && fixedPx === null;
 
   // Competition context (team color set) → white foreground on team-color bg
   const competitionMode = !!teamColor;

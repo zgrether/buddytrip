@@ -16,7 +16,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { UserAvatar } from "@/components/UserAvatar";
+import { Avatar } from "@/components/Avatar";
 
 type TravelMode = "driving" | "flying" | "other";
 type TravelFilterKey = "all" | "driving" | "flying" | "other";
@@ -26,6 +26,7 @@ interface TripMemberLite {
   user_id: string | null;
   displayName: string;
   isGuest?: boolean;
+  user?: { avatar_icon?: string | null } | null;
   travel_mode?: string | null;
   travel_detail?: string | null;
   flight_airline?: string | null;
@@ -388,7 +389,7 @@ function CrewTravelRow({ member, showBorderTop = true }: { member: TripMemberLit
       <Ghost size={14} />
     </div>
   ) : (
-    <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+    <Avatar name={member.displayName} avatarIcon={member.user?.avatar_icon ?? null} size="md" />
   );
 
   return (
@@ -420,7 +421,7 @@ function CrewTravelRow({ member, showBorderTop = true }: { member: TripMemberLit
 // ── OtherMemberTravelRow ──────────────────────────────────────────────────
 // Owner-expandable row for every other crew member (real and ghost alike).
 // Same expand/collapse pattern as YourTravelRow but uses updateMemberTravel.
-// Ghost members get a Ghost avatar; real members get UserAvatar.
+// Ghost members get a Ghost avatar; real members get their profile Avatar.
 
 function OtherMemberTravelRow({
   tripId,
@@ -446,7 +447,7 @@ function OtherMemberTravelRow({
       <Ghost size={14} />
     </div>
   ) : (
-    <UserAvatar name={m.displayName} avatarUrl={null} size="md" />
+    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
   );
 
   const borderStyle: React.CSSProperties = showBorderTop
@@ -744,7 +745,7 @@ function YourTravelRow({
         onClick={onToggleExpanded}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
       >
-        <UserAvatar name={member.displayName} avatarUrl={null} size="md" />
+        <Avatar name={member.displayName} avatarIcon={member.user?.avatar_icon ?? null} size="md" />
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
