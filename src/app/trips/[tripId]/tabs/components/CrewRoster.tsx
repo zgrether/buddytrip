@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Plus } from "lucide-react";
+import { Mail, Plane, Plus } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { parseLocalDate } from "@/lib/dates";
 import {
@@ -407,7 +407,12 @@ export function YouTile({
       <div
         className="overflow-hidden rounded-xl"
         style={{
-          background: "var(--color-bt-accent-faint)",
+          // In edit mode the tile drops its teal-tinted fill for the
+          // neutral float surface (the same recessed treatment as the
+          // crew-edit drawer), so the dark form inputs read clearly.
+          background: editing
+            ? "var(--color-bt-card-float)"
+            : "var(--color-bt-accent-faint)",
           border: "1px solid var(--color-bt-accent-border)",
         }}
       >
@@ -452,25 +457,24 @@ export function YouTile({
         {/* Your travel block */}
         <div className="px-4 py-3">
           <div
-            className="mb-2 text-[10px] font-bold uppercase tracking-wider"
+            className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
+            <Plane size={11} strokeWidth={2.5} />
             Your travel
           </div>
 
           {editing ? (
-            <div
-              className="rounded-xl p-3"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <TravelEditor
-                tripId={tripId}
-                member={m}
-                tripStartDate={tripStartDate}
-                onSaved={() => setEditing(false)}
-                onCancel={() => setEditing(false)}
-              />
-            </div>
+            // Editor sits directly on the float-surface tile (no nested
+            // card box) with recessed inputs — matches the drawer look.
+            <TravelEditor
+              tripId={tripId}
+              member={m}
+              tripStartDate={tripStartDate}
+              surface="recessed"
+              onSaved={() => setEditing(false)}
+              onCancel={() => setEditing(false)}
+            />
           ) : hasTravel ? (
             <div className="flex items-center gap-3">
               <TravelModePill mode={mode} withLabel />
@@ -505,7 +509,7 @@ export function YouTile({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed px-3 py-2.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+              className="inline-flex items-center gap-1.5 rounded-full border border-dashed px-4 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{
                 borderColor: "var(--color-bt-accent-border)",
                 color: "var(--color-bt-accent)",

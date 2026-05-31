@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpCircle, Check, Mail, X } from "lucide-react";
+import { ArrowUpCircle, Check, Mail, Plane, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -536,13 +536,23 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               plain <div> (not <Field>) because it contains buttons/inputs
               that a wrapping <label> would proxy clicks to. */}
           {member.user_id && (
-            <div className="flex flex-col gap-1.5">
-              <span
-                className="text-[11px] font-bold uppercase tracking-[0.08em]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Travel
-              </span>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
+                <span
+                  className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  <Plane size={11} strokeWidth={2.5} />
+                  Travel
+                </span>
+                <p
+                  className="text-[11px] leading-snug"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                >
+                  How they&rsquo;re getting in. Shows on the crew roster and weaves
+                  into the itinerary on arrival day.
+                </p>
+              </div>
               {(() => {
                 const mode = (member.travel_mode as TravelMode | null) ?? null;
                 const detail = summarizeTravel(member);
