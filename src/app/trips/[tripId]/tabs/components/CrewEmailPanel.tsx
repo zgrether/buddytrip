@@ -32,6 +32,43 @@ function recipientSort(a: RecipientMember, b: RecipientMember) {
   return a.displayName.localeCompare(b.displayName);
 }
 
+/**
+ * Mirrors CrewTab's deriveStatus (minus "placeholder", which can't appear
+ * here — the recipient list only holds members who already have an email).
+ *   • "active"  → a real BuddyTrip account that's joined the trip.
+ *   • "invited" → has an email but no account yet: a guest, or a real member
+ *                 we haven't emailed about this trip (email_count === 0).
+ */
+function recipientStatus(m: RecipientMember): "active" | "invited" {
+  if (m.role === "Owner") return "active";
+  if ((m.email_count ?? 0) === 0) return "invited";
+  return m.isGuest ? "invited" : "active";
+}
+
+/**
+ * InvitedAvatar — the avatar + amber ✉ corner badge used on the Crew tab,
+ * replicated here so the email modal speaks the same visual language. Sized
+ * for the modal's "sm" avatars; the badge ring matches the recipient card.
+ */
+function InvitedAvatar({ name, avatarIcon }: { name: string; avatarIcon?: string | null }) {
+  return (
+    <div className="relative flex-shrink-0">
+      <Avatar name={name} avatarIcon={avatarIcon ?? null} size="sm" />
+      <span
+        className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full"
+        style={{
+          background: "var(--color-bt-warning)",
+          color: "var(--color-bt-on-accent)",
+          border: "1.5px solid var(--color-bt-card-raised)",
+        }}
+        aria-label="Invited"
+      >
+        <Mail size={7} strokeWidth={3} />
+      </span>
+    </div>
+  );
+}
+
 export interface CrewEmailPanelProps {
   trip: TripData;
   isOwner: boolean;
@@ -271,6 +308,7 @@ export function CrewEmailPanel({
               {withEmail.map((m) => {
                 const checked = checkedIds.has(m.memberId);
                 const isBTMember = !m.isGuest;
+                const status = recipientStatus(m);
                 return (
                   <button
                     key={m.memberId}
@@ -304,11 +342,21 @@ export function CrewEmailPanel({
                         style={{ border: "1.5px solid var(--color-bt-border)" }}
                       />
                     )}
-                    <Avatar
-                      name={m.displayName}
-                      avatarIcon={m.user?.avatar_icon ?? null}
-                      size="sm"
-                    />
+                    {/* Avatar — invited members carry the amber ✉ corner
+                        badge (matches the Crew tab); real accounts use the
+                        plain avatar. */}
+                    {status === "invited" ? (
+                      <InvitedAvatar
+                        name={m.displayName}
+                        avatarIcon={m.user?.avatar_icon ?? null}
+                      />
+                    ) : (
+                      <Avatar
+                        name={m.displayName}
+                        avatarIcon={m.user?.avatar_icon ?? null}
+                        size="sm"
+                      />
+                    )}
                     <div className="min-w-0 flex-1">
                       <div
                         className="truncate text-sm font-semibold"
@@ -316,25 +364,27 @@ export function CrewEmailPanel({
                       >
                         {m.displayName}
                       </div>
+                      {/* Subline mirrors the Crew tab: email, plus an amber
+                          "· pending invite" / "· invited Mar 5" suffix when
+                          the account doesn't exist yet. */}
                       <div className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
                         {m.user?.email}
+                        {status === "invited" && (
+                          <span className="ml-1" style={{ color: "var(--color-bt-warning)" }}>
+                            {m.last_emailed_at
+                              ? `· invited ${parseLocalDate(m.last_emailed_at).toLocaleDateString(
+                                  "en-US",
+                                  { month: "short", day: "numeric" }
+                                )}`
+                              : "· pending invite"}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    {/* State label (not an action), driven by email_count.
-                        0 → we've never emailed them yet (muted chip).
-                        >0 → already invited; show when we last reached them. */}
-                    {(m.email_count ?? 0) === 0 ? (
-                      <span
-                        className="flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                        style={{
-                          background: "var(--color-bt-card-raised)",
-                          color: "var(--color-bt-text-dim)",
-                          border: "1px solid var(--color-bt-border)",
-                        }}
-                      >
-                        Not invited
-                      </span>
-                    ) : (
+                    {/* For a real account, a "Last sent" badge is all that's
+                        needed — the invite state lives on invited rows
+                        (avatar badge + subline) instead. */}
+                    {status === "active" && (m.email_count ?? 0) > 0 && (
                       <span
                         className="flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
                         style={{
