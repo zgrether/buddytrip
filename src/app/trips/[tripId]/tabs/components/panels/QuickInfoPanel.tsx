@@ -72,8 +72,13 @@ export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
             className="mt-0.5 text-xs leading-snug"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Door codes, WiFi, check-in times, the lockbox — one glance, no
-            scrolling the chat for it.
+            {/* Copy tightens on phones where the card has little room next to
+                the button; the fuller pitch returns at sm+. */}
+            <span className="sm:hidden">Door codes, WiFi, check-in — one place.</span>
+            <span className="hidden sm:inline">
+              Door codes, WiFi, check-in times, the lockbox — one glance, no
+              scrolling the chat for it.
+            </span>
           </p>
         </div>
         <button
@@ -87,7 +92,8 @@ export function QuickInfoPanel({ tripId, isOwner }: QuickInfoPanelProps) {
           }}
         >
           <Plus size={14} strokeWidth={2.5} />
-          Add quick info
+          <span className="hidden sm:inline">Add quick info</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
