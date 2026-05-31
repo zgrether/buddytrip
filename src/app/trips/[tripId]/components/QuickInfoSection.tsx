@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, FileText, Flag, Hotel, Pencil, Plus, X, Zap } from "lucide-react";
+import { AlertTriangle, Bell, Building2, Clock, FileText, Flag, Hash, Hotel, KeyRound, Lock, MapPin, Pencil, Plus, Wifi, X, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 
@@ -18,24 +18,39 @@ export interface QuickTile {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function TileIcon({ icon, tone = "accent" }: { icon?: string | null; tone?: "accent" | "warning" }) {
-  const icons: Record<string, React.ReactNode> = {
-    hotel: <Hotel size={16} />,
-    golf: <Flag size={16} />,
-    zap: <Zap size={16} />,
-    file: <FileText size={16} />,
+// Resolve a tile's glyph. An explicit `icon` value wins; otherwise we infer
+// one from the label so common entries (door code, WiFi, lockbox, address)
+// get a recognizable icon without the owner having to pick one. Falls back to
+// a neutral hash for anything unmatched.
+function tileIconFor(tile: QuickTile, size = 18): React.ReactNode {
+  const explicit: Record<string, React.ReactNode> = {
+    hotel: <Hotel size={size} />,
+    golf: <Flag size={size} />,
+    zap: <Zap size={size} />,
+    file: <FileText size={size} />,
+    wifi: <Wifi size={size} />,
+    lock: <Lock size={size} />,
+    key: <KeyRound size={size} />,
+    building: <Building2 size={size} />,
+    clock: <Clock size={size} />,
+    pin: <MapPin size={size} />,
   };
-  return (
-    <span style={{ color: tone === "warning" ? "var(--color-bt-warning)" : "var(--color-bt-accent)" }}>
-      {icons[icon ?? "file"] ?? <FileText size={16} />}
-    </span>
-  );
+  if (tile.icon && explicit[tile.icon]) return explicit[tile.icon];
+
+  const l = tile.label.toLowerCase();
+  if (/wi-?fi|network|password|ssid/.test(l)) return <Wifi size={size} />;
+  if (/lockbox|key/.test(l)) return <KeyRound size={size} />;
+  if (/door|code|gate|garage|pin/.test(l)) return <Lock size={size} />;
+  if (/house|unit|room|suite|villa|condo|address|street|apt/.test(l)) return <Building2 size={size} />;
+  if (/check|time|hour|arriv|depart/.test(l)) return <Clock size={size} />;
+  if (/map|location|where|direction|parking/.test(l)) return <MapPin size={size} />;
+  return <Hash size={size} />;
 }
 
 // ── AlertToggle ──────────────────────────────────────────────────────────
 // Shared control for "mark this as a crew alert" in Add/Edit modals. When
-// on, the tile renders in warning-yellow and is slightly larger, so it
-// stands out among the neutral info tiles.
+// on, the tile keeps the same footprint as the neutral info tiles but
+// renders in warning-yellow with a bell + "Alert ·" label so it stands out.
 
 function AlertToggle({ value, onChange }: { value: boolean; onChange: (next: boolean) => void }) {
   return (
@@ -293,9 +308,10 @@ function EditTileModal({
 // ── QuickInfoSection ─────────────────────────────────────────────────────
 // Owner-configured grab-bag of going-stage details (door codes, check-in
 // times, street addresses, crew alerts). Crew reads; owner edits via
-// Add/Edit tile modals. Tiles flagged as alerts render in warning-yellow
-// and slightly larger to draw attention. Renders nothing for non-owners
-// when no tiles exist.
+// Add/Edit tile modals. Every tile shares the same size; alert-flagged tiles
+// keep that footprint but swap in warning-yellow styling, a bell icon, and an
+// "Alert ·" label prefix so they read as urgent without dominating the grid.
+// Renders nothing for non-owners when no tiles exist.
 
 export function QuickInfoSection({
   tripId,
@@ -370,21 +386,21 @@ export function QuickInfoSection({
           </p>
         </button>
       ) : (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
           {sortedTiles.map((tile) => {
             const alert = !!tile.is_alert;
-            // Alert tiles span 2 of 4 columns (half-width) so they read
-            // bigger without breaking the layout. They also use warning
-            // tokens + left border stripe to match the prior OwnerAlertPanel.
+            // Every tile is the same size. Alerts keep that footprint but pick
+            // up warning tokens + a left border stripe, an amber icon chip with
+            // a bell, and an "Alert ·" label prefix so they stand out.
             return (
               <div
                 key={tile.id}
                 data-testid={`tile-${tile.id}`}
-                className={`group relative rounded-xl ${alert ? "col-span-2 p-4" : "p-3"}`}
+                className="group relative flex items-center gap-3 rounded-xl p-3"
                 style={
                   alert
                     ? {
-                        background: "var(--color-bt-warning-faint)",
+                        background: "var(--color-bt-card)",
                         border: "1px solid var(--color-bt-warning-border)",
                         borderLeft: "3px solid var(--color-bt-warning)",
                       }
@@ -394,33 +410,37 @@ export function QuickInfoSection({
                       }
                 }
               >
-                <div className="mb-1 flex items-center gap-1.5">
-                  {alert ? (
-                    <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)" }} />
-                  ) : (
-                    <TileIcon icon={tile.icon} />
-                  )}
-                  <span
-                    className={alert ? "text-[11px] font-semibold uppercase tracking-wider" : "text-[10px]"}
+                <span
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
+                  style={{
+                    background: alert ? "var(--color-bt-warning-faint)" : "var(--color-bt-accent-faint)",
+                    color: alert ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
+                  }}
+                >
+                  {alert ? <Bell size={18} /> : tileIconFor(tile)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-[10px] font-semibold uppercase tracking-wider"
                     style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
                   >
                     {alert ? `Alert · ${tile.label}` : tile.label}
-                  </span>
+                  </p>
+                  <p
+                    className="truncate text-sm font-semibold"
+                    style={{ color: "var(--color-bt-text)" }}
+                  >
+                    {tile.value}
+                  </p>
                 </div>
-                <p
-                  className="text-sm font-medium pr-4"
-                  style={{ color: "var(--color-bt-text)" }}
-                >
-                  {tile.value}
-                </p>
                 {isOwner && (
                   <button
                     data-testid={`tile-edit-${tile.id}`}
                     onClick={() => setEditingTile(tile)}
-                    className="absolute right-1.5 top-1.5 rounded p-0.5"
+                    className="absolute right-1.5 top-1.5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
                     style={{ color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)" }}
                   >
-                    <Pencil size={10} />
+                    <Pencil size={12} />
                   </button>
                 )}
               </div>
