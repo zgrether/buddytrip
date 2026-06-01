@@ -409,8 +409,10 @@ export function TripHeaderDock({
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
+          // Lighter elevation — sits a touch above the header surface
+          // instead of hovering. y-offset 8→3, blur 22→10, opacity 28%→16%.
           boxShadow:
-            "inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 22px rgba(0,0,0,0.28)",
+            "inset 0 1px 0 rgba(255,255,255,0.08), 0 3px 10px rgba(0,0,0,0.16)",
         }}
         data-testid="trip-header-dock"
       >
