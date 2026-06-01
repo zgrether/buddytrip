@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, type FC } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FC,
+} from "react";
 import { Bell, Plus, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { CountdownResult } from "@/lib/tripCountdown";
@@ -338,6 +345,56 @@ export function TripHeaderDock({
     countdown.type !== "idea" &&
     countdown.type !== "no_dates";
 
+  // ── Ring-stacking based on tile-rail wrap ─────────────────────────────
+  // Watch the tile rail's height. When it wraps onto a second row, flip
+  // the ring to stacked (col) so it frees horizontal space; when the
+  // viewport widens enough that the rail no longer wraps, return to
+  // horizontal. We track the dock width at the moment of stacking and
+  // require it to grow by HYSTERESIS_PX before unstacking — otherwise
+  // the act of stacking (which shortens the ring section and gives the
+  // rail more width) would make the rail fit, instantly un-stack, and
+  // we'd ping-pong forever.
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const [ringStacked, setRingStacked] = useState(false);
+  const stackTriggerWidthRef = useRef<number | null>(null);
+
+  // 38px single tile pill + a small fudge for sub-pixel rounding.
+  const SINGLE_ROW_PX = 42;
+  const HYSTERESIS_PX = 60;
+
+  const measureRail = useRef<() => void>(() => {});
+  measureRail.current = () => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const railHeight = rail.offsetHeight;
+    const dockWidth = rail.parentElement?.offsetWidth ?? 0;
+    const wrapped = railHeight > SINGLE_ROW_PX;
+
+    if (wrapped && !ringStacked) {
+      stackTriggerWidthRef.current = dockWidth;
+      setRingStacked(true);
+    } else if (!wrapped && ringStacked) {
+      const trigger = stackTriggerWidthRef.current;
+      if (trigger == null || dockWidth > trigger + HYSTERESIS_PX) {
+        stackTriggerWidthRef.current = null;
+        setRingStacked(false);
+      }
+    }
+  };
+
+  useLayoutEffect(() => {
+    measureRail.current();
+  }, [sortedTiles.length, ringStacked, canEdit, hasCountdown]);
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measureRail.current());
+    ro.observe(rail);
+    if (rail.parentElement) ro.observe(rail.parentElement);
+    return () => ro.disconnect();
+  }, [hasTiles]);
+
   // Nothing to show? Hide the dock entirely.
   if (!hasCountdown && !hasTiles && !canEdit) {
     return null;
@@ -358,15 +415,15 @@ export function TripHeaderDock({
         data-testid="trip-header-dock"
       >
         {/* ── Left: countdown ring + meta ──────────────────────────────────
-            Horizontal by default. When tiles share the row AND the
-            viewport is genuinely tight (<420px), stack the ring above
-            its day text to free horizontal width for the tile rail.
-            With no tiles, always horizontal at every viewport. */}
+            Horizontal by default; stacks vertically (ring above day-text)
+            only when the tile rail wraps to a second row — measured at
+            runtime via ResizeObserver, with hysteresis so we don't
+            ping-pong when stacking frees just enough width to un-wrap. */}
         {hasCountdown && (
           <div
             className={
-              hasTiles
-                ? "flex flex-shrink-0 flex-col items-center gap-1 min-[420px]:flex-row min-[420px]:gap-2.5"
+              ringStacked
+                ? "flex flex-shrink-0 flex-col items-center gap-1"
                 : "flex flex-shrink-0 items-center gap-2.5"
             }
           >
@@ -395,6 +452,7 @@ export function TripHeaderDock({
         ) : hasTiles ? (
           <>
             <div
+              ref={railRef}
               className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
               data-testid="header-dock-tiles"
             >
