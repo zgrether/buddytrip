@@ -21,7 +21,7 @@ import { CrewTab } from "./tabs/CrewTab";
 import { LodgingTab } from "./tabs/LodgingTab";
 import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
-import { formatDateRange } from "@/lib/dates";
+import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
@@ -380,7 +380,7 @@ export default function TripDetailPage() {
               status={status}
               location={destLocation}
               lockedTitle={trip.locked_destination_title}
-              dateRange={formatDateRange(trip.start_date, trip.end_date)}
+              dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
               stage={stage}
               canEdit={canEdit}
@@ -431,7 +431,7 @@ export default function TripDetailPage() {
               status={status}
               location={destLocation}
               lockedTitle={trip.locked_destination_title}
-              dateRange={formatDateRange(trip.start_date, trip.end_date)}
+              dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
               stage={stage}
               canEdit={canEdit}

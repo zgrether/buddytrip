@@ -18,6 +18,11 @@ interface LocationHeroProps {
   children?: ReactNode;
   /** Optional element absolutely positioned at the top-right corner of the card (e.g. settings gear). */
   topRightAction?: ReactNode;
+  /** Suppresses the state outline / fallback pin watermark behind the top
+   *  content. Defaults to true (kept on for the dashboard TripCard).
+   *  The trip detail header turns this off — the destination is already
+   *  shown inline in the top-right meta strip. */
+  showStateWatermark?: boolean;
 }
 
 /**
@@ -45,7 +50,15 @@ export function parseLocation(location: string): { city: string; region: string 
  * outline of the destination state and a pin on the city (US only).
  * Falls back to a subtle large pin icon for unrecognised/international locations.
  */
-export function LocationHero({ location, tripName, tripStartDate, topContent, children, topRightAction }: LocationHeroProps) {
+export function LocationHero({
+  location,
+  tripName,
+  tripStartDate,
+  topContent,
+  children,
+  topRightAction,
+  showStateWatermark = true,
+}: LocationHeroProps) {
   const { resolvedTheme } = useTheme();
   const { outline, cityPin, showPin, rotation } = getLocationInfo(location);
 
@@ -81,7 +94,7 @@ export function LocationHero({ location, tripName, tripStartDate, topContent, ch
             vertically centered within this block so it doesn't shift based on
             whether content (e.g. the countdown bar) is rendered below. */}
         <div className="relative">
-          {outline ? (
+          {showStateWatermark && outline ? (
             <div
               className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 overflow-hidden"
               style={{ width: '80px', height: '64px' }}
@@ -108,7 +121,7 @@ export function LocationHero({ location, tripName, tripStartDate, topContent, ch
                 )}
               </svg>
             </div>
-          ) : (
+          ) : showStateWatermark ? (
             /* Fallback: subtle MapPin outline for unrecognised / international locations */
             <svg
               className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 opacity-[0.08]"
@@ -125,7 +138,7 @@ export function LocationHero({ location, tripName, tripStartDate, topContent, ch
               <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z" />
               <circle cx="12" cy="10" r="3" />
             </svg>
-          )}
+          ) : null}
           {topContent}
         </div>
         </div>

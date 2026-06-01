@@ -2,7 +2,7 @@
 
 import { type FC } from "react";
 import { useTheme } from "next-themes";
-import { MapPin, Calendar, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import { RoleBadge } from "@/components/RoleBadge";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
@@ -114,116 +114,123 @@ function CountdownBar({ countdown }: { countdown: LabelledCountdown }) {
 // Re-export so other surfaces (dashboard cards) can use the same bar.
 export { CountdownBar };
 
-// ── Shared dates row — handles all three states ──────────────────────────
+// ── Inline meta strip (location · dates) ─────────────────────────────────
+//
+// Lives in the top-right of the header card, immediately left of the gear.
+// Three date states match the prior DatesRow semantics, just rendered as
+// inline text without a leading calendar icon:
 //
 //   1. No dates, no poll:           "Set dates →"      (accent / teal)
 //   2. No dates, poll active:       "Polling crew →"   (warning / amber)
-//   3. Dates locked:                "May 20 – May 25" (dim, clickable when canEdit)
+//   3. Dates locked:                "May 20 – 25"      (dim, clickable when canEdit)
 //
-// `colorOverride` lets the hero variant tint the locked-range text to fit
-// the photo background. canEdit gates the click affordance; members see the
-// locked range as static text.
+// The locked-range text is fed from upstream via `formatDateRangeCompact`,
+// so the year is already stripped (start date doesn't show the year).
 
-interface DatesRowProps {
+interface HeaderMetaProps {
+  location?: string | null;
   tripStartDate: string | null | undefined;
   dateRange?: string;
   canEdit: boolean;
   pollActive: boolean;
   onOpenDatesSheet?: () => void;
-  /** Locked-range text color (defaults to bt-text-dim). */
-  lockedColor?: string;
-  /** Margin-top class for the row container. */
-  marginTopClass?: string;
+  /** Locked-range text color — light text on the dark gradient (hero),
+   *  bt-text-dim on the plain card. */
+  textColor?: string;
+  /** Dimmer separator-dot tint for the bullet between location + dates. */
+  separatorColor?: string;
 }
 
-function DatesRow({
+function HeaderMeta({
+  location,
   tripStartDate,
   dateRange,
   canEdit,
   pollActive,
   onOpenDatesSheet,
-  lockedColor = "var(--color-bt-text-dim)",
-  marginTopClass = "mt-1",
-}: DatesRowProps) {
+  textColor = "var(--color-bt-text-dim)",
+  separatorColor,
+}: HeaderMetaProps) {
   const hasDates = !!tripStartDate;
+  const hasLocked = hasDates && dateRange && dateRange !== "Dates TBD";
   const clickable = canEdit && !!onOpenDatesSheet;
 
-  // ── Locked range ──────────────────────────────────────────────────────
-  if (hasDates && dateRange && dateRange !== "Dates TBD") {
-    const content = (
-      <>
-        <Calendar size={11} className="shrink-0" />
-        <span>{dateRange}</span>
-      </>
-    );
-    if (clickable) {
-      return (
-        <button
-          type="button"
-          onClick={onOpenDatesSheet}
-          className={`${marginTopClass} flex items-center gap-1 text-xs transition-opacity hover:opacity-80`}
-          style={{
-            color: lockedColor,
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            padding: 0,
-          }}
-        >
-          {content}
-        </button>
-      );
-    }
-    return (
-      <div
-        className={`${marginTopClass} flex items-center gap-1 text-xs`}
-        style={{ color: lockedColor }}
-      >
-        {content}
-      </div>
-    );
-  }
+  // Resolve the dates rendering once so the join logic stays clean.
+  // `null` means "no dates segment for non-editors" (member with no dates).
+  let datesNode: React.ReactNode = null;
 
-  // ── No dates yet ──────────────────────────────────────────────────────
-  // Only canEdit users get a tap affordance. Members see nothing here.
-  if (!clickable) return null;
-
-  if (pollActive) {
-    return (
+  if (hasLocked) {
+    const content = <span>{dateRange}</span>;
+    datesNode = clickable ? (
       <button
         type="button"
         onClick={onOpenDatesSheet}
-        className={`${marginTopClass} flex items-center gap-1.5 text-xs`}
+        className="transition-opacity hover:opacity-80"
         style={{
-          color: "var(--color-bt-warning)",
+          color: textColor,
           background: "transparent",
           border: "none",
-          cursor: "pointer",
           padding: 0,
+          cursor: "pointer",
         }}
       >
-        <Calendar size={12} />
-        Polling crew &rarr;
+        {content}
       </button>
+    ) : (
+      <span style={{ color: textColor }}>{content}</span>
     );
+  } else if (clickable) {
+    if (pollActive) {
+      datesNode = (
+        <button
+          type="button"
+          onClick={onOpenDatesSheet}
+          style={{
+            color: "var(--color-bt-warning)",
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+          }}
+        >
+          Polling crew &rarr;
+        </button>
+      );
+    } else {
+      datesNode = (
+        <button
+          type="button"
+          onClick={onOpenDatesSheet}
+          style={{
+            color: "var(--color-bt-accent)",
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+          }}
+        >
+          Set dates &rarr;
+        </button>
+      );
+    }
   }
 
+  const locationNode = location ? (
+    <span style={{ color: textColor }}>{location}</span>
+  ) : null;
+
+  if (!locationNode && !datesNode) return null;
+
   return (
-    <button
-      type="button"
-      onClick={onOpenDatesSheet}
-      className={`${marginTopClass} flex items-center gap-1.5 text-xs`}
-      style={{
-        color: "var(--color-bt-accent)",
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
-      }}
-    >
-      <Calendar size={12} />
-      Set dates &rarr;
-    </button>
+    <div className="flex min-w-0 items-center gap-1.5 text-xs">
+      {locationNode}
+      {locationNode && datesNode && (
+        <span style={{ color: separatorColor ?? textColor, opacity: 0.55 }}>
+          ·
+        </span>
+      )}
+      {datesNode}
+    </div>
   );
 }
 
@@ -285,12 +292,19 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
       }}
       data-testid="trip-header-plain"
     >
-      {onSettingsClick && (
-        <div className="absolute right-3 top-3 z-20">
-          <SettingsGear onClick={onSettingsClick} />
-        </div>
-      )}
-      <div className="p-5 pr-12">
+      {/* Top-right meta strip: location · dates, then settings gear. */}
+      <div className="absolute right-3 top-3 z-20 flex max-w-[60%] items-center gap-2">
+        <HeaderMeta
+          location={location}
+          tripStartDate={tripStartDate}
+          dateRange={dateRange}
+          canEdit={!!canEdit}
+          pollActive={!!pollActive}
+          onOpenDatesSheet={onOpenDatesSheet}
+        />
+        {onSettingsClick && <SettingsGear onClick={onSettingsClick} />}
+      </div>
+      <div className="p-5 pr-[180px] sm:pr-[220px]">
         <div className="flex min-w-0 items-center gap-2">
           {myRole && <RoleBadge role={myRole} />}
           <h1
@@ -301,24 +315,6 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
             {tripName}
           </h1>
         </div>
-
-        {location && (
-          <div
-            className="mt-2 flex items-center gap-1 text-sm"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <MapPin size={13} />
-            <span>{location}</span>
-          </div>
-        )}
-
-        <DatesRow
-          tripStartDate={tripStartDate}
-          dateRange={dateRange}
-          canEdit={!!canEdit}
-          pollActive={!!pollActive}
-          onOpenDatesSheet={onOpenDatesSheet}
-        />
       </div>
       {tripId && (
         <TripHeaderDock
@@ -354,8 +350,8 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
   const isDark = resolvedTheme === "dark";
 
   const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
-  const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
-  const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
+  const metaColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
+  const metaSeparator = isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.40)";
 
   // Prefer location (locked_destination_location from parent) over lockedTitle
   // (locked_destination_title). Both now hold the same value after the
@@ -367,11 +363,28 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
       location={displayLocation || tripName}
       tripName={tripName}
       tripStartDate={status === "past" ? tripStartDate : null}
-      topRightAction={onSettingsClick ? <SettingsGear onClick={onSettingsClick} /> : undefined}
+      showStateWatermark={false}
+      topRightAction={
+        <div className="flex items-center gap-2">
+          <HeaderMeta
+            location={displayLocation}
+            tripStartDate={tripStartDate}
+            dateRange={dateRange}
+            canEdit={!!canEdit}
+            pollActive={!!pollActive}
+            onOpenDatesSheet={onOpenDatesSheet}
+            textColor={metaColor}
+            separatorColor={metaSeparator}
+          />
+          {onSettingsClick && <SettingsGear onClick={onSettingsClick} />}
+        </div>
+      }
       topContent={
         <>
-          {/* Row 1: role + trip name. Right padding leaves room for the gear. */}
-          <div className="flex min-w-0 items-center gap-2 pr-10">
+          {/* Title row — destination + dates now live in the top-right meta
+              strip (alongside the gear), so the title block is just role +
+              trip name. Right padding leaves room for that strip. */}
+          <div className="flex min-w-0 items-center gap-2 pr-[180px] sm:pr-[220px]">
             {myRole && <RoleBadge role={myRole} />}
             <h1
               data-testid="trip-title"
@@ -381,23 +394,6 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
               {tripName}
             </h1>
           </div>
-
-          {/* Destination */}
-          {displayLocation && (
-            <div className="mt-1.5 flex items-center gap-1 text-sm" style={{ color: subColor }}>
-              <MapPin size={13} className="shrink-0" />
-              <span>{displayLocation}</span>
-            </div>
-          )}
-
-          <DatesRow
-            tripStartDate={tripStartDate}
-            dateRange={dateRange}
-            canEdit={!!canEdit}
-            pollActive={!!pollActive}
-            onOpenDatesSheet={onOpenDatesSheet}
-            lockedColor={metaColor}
-          />
         </>
       }
     >

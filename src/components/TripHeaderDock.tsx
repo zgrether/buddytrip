@@ -317,15 +317,16 @@ const ExpandHandle: FC<{
     aria-label={expanded ? "Collapse info dock" : "Expand info dock"}
     aria-expanded={expanded}
     data-testid="header-dock-expand"
-    className="absolute left-1/2 flex h-5 w-9 -translate-x-1/2 items-center justify-center rounded-full transition-colors hover:opacity-90"
+    className="absolute left-1/2 flex h-9 w-11 -translate-x-1/2 items-center justify-center rounded-lg transition-colors hover:bg-[rgba(255,255,255,0.10)]"
     style={{
-      bottom: -9,
-      // Solid surface — the handle straddles the bottom edge and overlaps
-      // whatever sits below, so it must not be see-through.
-      background: "var(--color-bt-card-float)",
-      border: "1px solid var(--color-bt-border)",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.30)",
-      color: "var(--color-bt-text)",
+      // Shifted further down so only the bottom half hangs below the dock
+      // edge — reads as a tab attached to the container, not a floating
+      // pill. Matches the tile chip's height + translucent-white styling
+      // so it reads as part of the same row of UI.
+      bottom: -18,
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.09)",
+      color: "rgba(255,255,255,0.80)",
     }}
   >
     <ChevronDown
