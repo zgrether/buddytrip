@@ -9,7 +9,7 @@ import {
   useState,
   type FC,
 } from "react";
-import { Bell, ChevronDown, Plus, Hash } from "lucide-react";
+import { Bell, Plus, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { CountdownResult } from "@/lib/tripCountdown";
 
@@ -305,7 +305,14 @@ const EmptyCta: FC<{ onClick: () => void }> = ({ onClick }) => (
   </button>
 );
 
-// ── Expand handle (bottom-edge pull, only when there's overflow) ──────────
+// ── Expand handle — window-resize grabber bar ────────────────────────────
+//
+// Sits centered at the bottom edge of the dock. The button is a generous
+// hit zone (40×14) that straddles the edge — top half overlaps the dock's
+// bottom padding so it never touches a tile, bottom half sits below the
+// edge. Inside it: a small horizontal bar (36×4) that reads as a
+// resize/drag affordance, like the iOS sheet grabber or a window-edge
+// handle. No chevron — the bar is the whole vocabulary.
 
 const ExpandHandle: FC<{
   expanded: boolean;
@@ -317,24 +324,18 @@ const ExpandHandle: FC<{
     aria-label={expanded ? "Collapse info dock" : "Expand info dock"}
     aria-expanded={expanded}
     data-testid="header-dock-expand"
-    className="absolute left-1/2 flex h-9 w-11 -translate-x-1/2 items-center justify-center rounded-lg transition-colors hover:bg-[rgba(255,255,255,0.10)]"
+    className="group absolute left-1/2 flex h-3.5 w-10 -translate-x-1/2 cursor-pointer items-center justify-center bg-transparent"
     style={{
-      // Shifted further down so only the bottom half hangs below the dock
-      // edge — reads as a tab attached to the container, not a floating
-      // pill. Matches the tile chip's height + translucent-white styling
-      // so it reads as part of the same row of UI.
-      bottom: -18,
-      background: "rgba(255,255,255,0.06)",
-      border: "1px solid rgba(255,255,255,0.09)",
-      color: "rgba(255,255,255,0.80)",
+      // Half above, half below the container's bottom edge. The dock's
+      // bottom padding (pb-3) absorbs the top half, so the hit zone
+      // never overlaps tile content.
+      bottom: -7,
     }}
   >
-    <ChevronDown
-      size={13}
-      strokeWidth={2.2}
+    <span
+      className="block h-1 w-9 rounded-full transition-colors group-hover:bg-[rgba(255,255,255,0.55)]"
       style={{
-        transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-        transition: "transform 150ms ease",
+        background: "rgba(255,255,255,0.35)",
       }}
     />
   </button>
@@ -433,7 +434,7 @@ export function TripHeaderDock({
   return (
     <div className="relative px-4 pt-3 pb-3 sm:px-5">
       <div
-        className="relative flex items-center gap-3 rounded-xl px-3 py-2 sm:gap-4 sm:px-3.5 sm:py-2"
+        className="relative flex items-center gap-3 rounded-xl px-3 pt-2 pb-3 sm:gap-4 sm:px-3.5"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
