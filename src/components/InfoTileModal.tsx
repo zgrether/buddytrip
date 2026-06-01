@@ -42,9 +42,32 @@ const PICKER_ICONS: Array<{ key: string; Icon: LucideIcon; label: string }> = [
   { key: "car", Icon: Car, label: "Car" },
 ];
 
-/** Resolve a picker key (or null) into a renderable glyph component. */
-function iconFor(key: string | null | undefined): LucideIcon {
-  return PICKER_ICONS.find((p) => p.key === key)?.Icon ?? Hash;
+/** Render the icon JSX for a picker key (or null) at the given size.
+ *  Returns a literal JSX element with a static component reference, so
+ *  the React Compiler's `react-hooks/static-components` lint rule
+ *  doesn't flag it as "creating a component during render" — which is
+ *  what happened when this used to return a `LucideIcon` reference for
+ *  the caller to render. */
+function renderIcon(
+  key: string | null | undefined,
+  size: number,
+): React.ReactElement {
+  switch (key) {
+    case "lock":
+      return <Lock size={size} strokeWidth={1.9} aria-hidden="true" />;
+    case "wifi":
+      return <Wifi size={size} strokeWidth={1.9} aria-hidden="true" />;
+    case "door":
+      return <DoorOpen size={size} strokeWidth={1.9} aria-hidden="true" />;
+    case "key":
+      return <KeyRound size={size} strokeWidth={1.9} aria-hidden="true" />;
+    case "hash":
+      return <Hash size={size} strokeWidth={1.9} aria-hidden="true" />;
+    case "car":
+      return <Car size={size} strokeWidth={1.9} aria-hidden="true" />;
+    default:
+      return <Hash size={size} strokeWidth={1.9} aria-hidden="true" />;
+  }
 }
 
 // ── Live preview chip ─────────────────────────────────────────────────────
@@ -59,7 +82,6 @@ const PreviewChip: FC<{
   iconKey: string | null;
   isAlert: boolean;
 }> = ({ label, value, iconKey, isAlert }) => {
-  const Glyph = isAlert ? Bell : iconFor(iconKey);
   return (
     <div
       className="rounded-xl p-4"
@@ -90,7 +112,11 @@ const PreviewChip: FC<{
               color: isAlert ? "#fbbf24" : "var(--color-bt-accent)",
             }}
           >
-            <Glyph size={13} strokeWidth={1.9} aria-hidden="true" />
+            {isAlert ? (
+              <Bell size={13} strokeWidth={1.9} aria-hidden="true" />
+            ) : (
+              renderIcon(iconKey, 13)
+            )}
           </span>
           <span className="flex flex-col leading-tight">
             <span
@@ -546,4 +572,4 @@ export function InfoTileModal({
 }
 
 // ── Re-exports used by the dock to keep glyph resolution consistent ───────
-export { iconFor, PICKER_ICONS };
+export { renderIcon, PICKER_ICONS };

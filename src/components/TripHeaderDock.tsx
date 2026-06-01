@@ -8,7 +8,7 @@ import {
   useState,
   type FC,
 } from "react";
-import { Bell, Plus, Hash } from "lucide-react";
+import { Bell, Car, Hash, KeyRound, Lock, Plus, Wifi } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { CountdownResult } from "@/lib/tripCountdown";
 
@@ -19,7 +19,7 @@ type LabelledCountdown = Exclude<
   CountdownResult,
   { type: "idea" } | { type: "no_dates" }
 >;
-import { InfoTileModal, iconFor, type QuickTile } from "@/components/InfoTileModal";
+import { InfoTileModal, renderIcon, type QuickTile } from "@/components/InfoTileModal";
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -31,17 +31,27 @@ const RING_STROKE = 3;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-/** Resolve a tile's glyph. Explicit `icon` wins; otherwise label-infer some
- *  obvious entries so common tiles (wifi, door, address) get a recognizable
- *  chip without the owner having to pick. Falls back to a neutral hash. */
-function dockGlyphFor(tile: QuickTile) {
-  if (tile.icon) return iconFor(tile.icon);
+/** Render the JSX for a tile's glyph at the given size. Explicit `icon` wins
+ *  (via the shared renderIcon helper); otherwise we label-infer some obvious
+ *  entries so common tiles (wifi, door, address) get a recognizable chip
+ *  without the owner having to pick. Falls back to a neutral hash. Returns
+ *  JSX with literal component refs so the React Compiler's static-components
+ *  lint rule doesn't flag it. */
+function renderDockGlyph(
+  tile: QuickTile,
+  size: number,
+): React.ReactElement {
+  if (tile.icon) return renderIcon(tile.icon, size);
   const l = tile.label.toLowerCase();
-  if (/wi-?fi|network|password|ssid/.test(l)) return iconFor("wifi");
-  if (/lockbox|key/.test(l)) return iconFor("key");
-  if (/door|code|gate|garage|pin/.test(l)) return iconFor("lock");
-  if (/car|valet|parking|uber/.test(l)) return iconFor("car");
-  return Hash;
+  if (/wi-?fi|network|password|ssid/.test(l))
+    return <Wifi size={size} strokeWidth={1.9} aria-hidden="true" />;
+  if (/lockbox|key/.test(l))
+    return <KeyRound size={size} strokeWidth={1.9} aria-hidden="true" />;
+  if (/door|code|gate|garage|pin/.test(l))
+    return <Lock size={size} strokeWidth={1.9} aria-hidden="true" />;
+  if (/car|valet|parking|uber/.test(l))
+    return <Car size={size} strokeWidth={1.9} aria-hidden="true" />;
+  return <Hash size={size} strokeWidth={1.9} aria-hidden="true" />;
 }
 
 // ── Countdown ring ────────────────────────────────────────────────────────
@@ -215,7 +225,6 @@ const TileChip: FC<{
   onClick?: () => void;
 }> = ({ tile, onClick }) => {
   const alert = !!tile.is_alert;
-  const Glyph = alert ? Bell : dockGlyphFor(tile);
   const clickable = !!onClick;
 
   return (
@@ -242,7 +251,11 @@ const TileChip: FC<{
           color: alert ? "#fbbf24" : "var(--color-bt-accent)",
         }}
       >
-        <Glyph size={13} strokeWidth={1.9} aria-hidden="true" />
+        {alert ? (
+          <Bell size={13} strokeWidth={1.9} aria-hidden="true" />
+        ) : (
+          renderDockGlyph(tile, 13)
+        )}
       </span>
       <span className="flex min-w-0 flex-col leading-tight">
         <span
