@@ -5,6 +5,9 @@ import { Plus, X, Search, MapPin } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
+import { DatePicker } from "@/components/DatePicker";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
+import { parseLocalDate, toISODate } from "@/lib/dates";
 
 const GOLF_TYPES = ["golf_course"];
 
@@ -704,17 +707,14 @@ export function AddScheduleItemSheet({
             >
               Date <span className="font-medium normal-case tracking-normal">(optional)</span>
             </p>
-            <input
-              type={scheduledDate ? "date" : "text"}
-              value={scheduledDate}
-              min={tripStart}
-              max={tripEnd}
-              onFocus={(e) => { e.currentTarget.type = "date"; }}
-              onBlur={(e) => { if (!scheduledDate) e.currentTarget.type = "text"; }}
-              onChange={(e) => setScheduledDate(e.target.value)}
-              placeholder="Add a date"
-              className="rounded-xl border px-3 py-2.5 text-sm outline-none"
-              style={inputStyle}
+            <DatePicker
+              mode="single"
+              accent={DOMAIN_COLORS.agenda.color}
+              accentFaint={DOMAIN_COLORS.agenda.faint}
+              min={tripStart ? parseLocalDate(tripStart) : null}
+              max={tripEnd ? parseLocalDate(tripEnd) : null}
+              value={scheduledDate ? parseLocalDate(scheduledDate) : null}
+              onChange={(d) => setScheduledDate(d ? toISODate(d) : "")}
             />
 
             {/* Tee times */}
@@ -896,21 +896,18 @@ export function AddScheduleItemSheet({
                 Native date input with min/max bound to the trip's date
                 range keeps users from assigning items outside it. */}
             <div className="mt-3 flex gap-3">
-              <div>
+              <div className="flex-1">
                 <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
                   Date <span className="font-medium normal-case tracking-normal">(optional)</span>
                 </p>
-                <input
-                  type={scheduledDate ? "date" : "text"}
-                  value={scheduledDate}
-                  min={tripStart}
-                  max={tripEnd}
-                  onFocus={(e) => { e.currentTarget.type = "date"; }}
-                  onBlur={(e) => { if (!scheduledDate) e.currentTarget.type = "text"; }}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                  placeholder="Add a date"
-                  className="rounded-xl border px-3 py-2.5 text-sm outline-none"
-                  style={inputStyle}
+                <DatePicker
+                  mode="single"
+                  accent={DOMAIN_COLORS.agenda.color}
+                  accentFaint={DOMAIN_COLORS.agenda.faint}
+                  min={tripStart ? parseLocalDate(tripStart) : null}
+                  max={tripEnd ? parseLocalDate(tripEnd) : null}
+                  value={scheduledDate ? parseLocalDate(scheduledDate) : null}
+                  onChange={(d) => setScheduledDate(d ? toISODate(d) : "")}
                 />
               </div>
               <div>

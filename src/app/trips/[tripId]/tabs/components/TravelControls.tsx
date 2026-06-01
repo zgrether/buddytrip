@@ -4,6 +4,9 @@ import { useState } from "react";
 import { AlertTriangle, Car, HelpCircle, Plane } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { DatePicker } from "@/components/DatePicker";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
+import { parseLocalDate, toISODate } from "@/lib/dates";
 
 /**
  * Shared travel controls for the Crew tab.
@@ -375,16 +378,15 @@ export function TravelFields({
           >
             Arriving
           </label>
-          <input
-            type="date"
-            value={value.arrivalDate}
-            onChange={(e) => onChange({ ...value, arrivalDate: e.target.value })}
-            className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
-            style={{
-              background: inputBg,
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
+          <DatePicker
+            mode="single"
+            icon={<Plane size={15} />}
+            accent={DOMAIN_COLORS.travel.color}
+            accentFaint={DOMAIN_COLORS.travel.faint}
+            value={value.arrivalDate ? parseLocalDate(value.arrivalDate) : null}
+            onChange={(d) =>
+              onChange({ ...value, arrivalDate: d ? toISODate(d) : "" })
+            }
           />
         </div>
         <div style={{ flex: "1 1 100px" }}>

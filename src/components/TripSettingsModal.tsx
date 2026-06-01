@@ -16,7 +16,9 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { RoleBadge } from "@/components/RoleBadge";
-import { formatDateRangeCompact } from "@/lib/dates";
+import { formatDateRangeCompact, parseLocalDate, toISODate } from "@/lib/dates";
+import { DatePicker } from "@/components/DatePicker";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
 import type { TripRole } from "@/server/middleware";
 import type { TripData } from "@/app/trips/[tripId]/tabs/types";
 
@@ -437,48 +439,21 @@ export function TripSettingsModal({
                       style={{ borderColor: "var(--color-bt-border)" }}
                     >
                       <>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <label
-                                className="text-[11px] font-semibold uppercase tracking-wider"
-                                style={{ color: "var(--color-bt-text-dim)" }}
-                              >
-                                Start date
-                              </label>
-                              <input
-                                type="date"
-                                data-testid="settings-start-date-input"
-                                value={startDraft}
-                                onChange={(e) => setStartDraft(e.target.value)}
-                                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-                                style={{
-                                  background: "var(--color-bt-card-raised)",
-                                  borderColor: "var(--color-bt-border)",
-                                  color: "var(--color-bt-text)",
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label
-                                className="text-[11px] font-semibold uppercase tracking-wider"
-                                style={{ color: "var(--color-bt-text-dim)" }}
-                              >
-                                End date
-                              </label>
-                              <input
-                                type="date"
-                                data-testid="settings-end-date-input"
-                                value={endDraft}
-                                onChange={(e) => setEndDraft(e.target.value)}
-                                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-                                style={{
-                                  background: "var(--color-bt-card-raised)",
-                                  borderColor: "var(--color-bt-border)",
-                                  color: "var(--color-bt-text)",
-                                }}
-                              />
-                            </div>
-                          </div>
+                          <DatePicker
+                            mode="range"
+                            label="Trip dates"
+                            testId="settings-dates-picker"
+                            accent={DOMAIN_COLORS.home.color}
+                            accentFaint={DOMAIN_COLORS.home.faint}
+                            value={{
+                              start: startDraft ? parseLocalDate(startDraft) : null,
+                              end: endDraft ? parseLocalDate(endDraft) : null,
+                            }}
+                            onChange={(r) => {
+                              setStartDraft(r.start ? toISODate(r.start) : "");
+                              setEndDraft(r.end ? toISODate(r.end) : "");
+                            }}
+                          />
                           <button
                             data-testid="settings-save-dates-btn"
                             disabled={!canSaveDates}
