@@ -5,8 +5,10 @@ import { AlertTriangle, Car, HelpCircle, Plane } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { DatePicker } from "@/components/DatePicker";
+import { TimePicker } from "@/components/TimePicker";
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import { parseLocalDate, toISODate } from "@/lib/dates";
+import { parseTime, toTime24 } from "@/lib/time";
 
 /**
  * Shared travel controls for the Crew tab.
@@ -397,23 +399,15 @@ export function TravelFields({
           />
         </div>
         <div style={{ flex: "1 1 100px" }}>
-          <label
-            className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Time
-          </label>
-          <input
-            type="time"
-            value={value.arrivalTime}
-            onChange={(e) => onChange({ ...value, arrivalTime: e.target.value })}
+          <TimePicker
+            label="Time"
+            icon={<Plane size={15} />}
+            presets="daypart"
             disabled={!modeSelected}
-            className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
-            style={{
-              background: inputBg,
-              borderColor: "var(--color-bt-border)",
-              color: "var(--color-bt-text)",
-            }}
+            accent={DOMAIN_COLORS.travel.color}
+            accentFaint={DOMAIN_COLORS.travel.faint}
+            value={parseTime(value.arrivalTime)}
+            onChange={(t) => onChange({ ...value, arrivalTime: toTime24(t) })}
           />
         </div>
       </div>

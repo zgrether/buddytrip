@@ -273,6 +273,31 @@ test.describe("TripDetail — SPEC 2 structure", () => {
     await expect(page.getByTestId("rsvp-out")).toBeVisible();
   });
 
+  test("sets an arrival time with the TimePicker in the YOU-tile travel editor", async ({
+    page,
+  }) => {
+    await setupMocks(page);
+    await page.goto(`/trips/${TRIP_ID}`);
+
+    await page.getByTestId("tab-crew").click();
+
+    // Open the YOU-tile inline travel editor (current user has no travel yet).
+    await page.getByRole("button", { name: "Add your travel" }).click();
+
+    // Time field is gated on a chosen mode — pick Flying to enable it.
+    await page.getByRole("button", { name: "Flying" }).click();
+
+    // Open the TimePicker popover and use a daypart preset.
+    await page.getByText("Select time").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByText("Evening").click();
+    await dialog.getByRole("button", { name: "Set time" }).click();
+
+    // The trigger now reflects the chosen 6:00 PM evening preset.
+    await expect(page.getByText("6:00 PM")).toBeVisible();
+  });
+
   test("switches to Schedule tab and shows date poll + expenses", async ({
     page,
   }) => {

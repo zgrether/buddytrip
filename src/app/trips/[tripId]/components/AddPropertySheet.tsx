@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Hotel, Link, MapPin, ImagePlus, X } from "lucide-react";
+import { Hotel, Link, MapPin, ImagePlus, X, Clock } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { createClient } from "@/lib/supabase";
 import { DatePicker } from "@/components/DatePicker";
+import { TimePicker } from "@/components/TimePicker";
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import { parseLocalDate, toISODate } from "@/lib/dates";
+import { parseTime, toTime24 } from "@/lib/time";
 
 // ── Platform detection (exported so parents can use it) ───────────────────
 
@@ -710,23 +712,23 @@ export function AddPropertySheet({
               />
               <div className="grid grid-cols-2 gap-2">
               <Field label="Check-in time">
-                <input
-                  type="time"
-                  value={checkInTimeOfDay}
-                  onChange={(e) => setCheckInTimeOfDay(e.target.value)}
-                  onClick={(e) => e.currentTarget.showPicker?.()}
-                  className={`${inputCls} font-mono tabular-nums`}
-                  style={inputStyle}
+                <TimePicker
+                  icon={<Clock size={15} />}
+                  presets="daypart"
+                  accent={DOMAIN_COLORS.lodging.color}
+                  accentFaint={DOMAIN_COLORS.lodging.faint}
+                  value={parseTime(checkInTimeOfDay)}
+                  onChange={(t) => setCheckInTimeOfDay(toTime24(t))}
                 />
               </Field>
               <Field label="Check-out time">
-                <input
-                  type="time"
-                  value={checkOutTimeOfDay}
-                  onChange={(e) => setCheckOutTimeOfDay(e.target.value)}
-                  onClick={(e) => e.currentTarget.showPicker?.()}
-                  className={`${inputCls} font-mono tabular-nums`}
-                  style={inputStyle}
+                <TimePicker
+                  icon={<Clock size={15} />}
+                  presets="daypart"
+                  accent={DOMAIN_COLORS.lodging.color}
+                  accentFaint={DOMAIN_COLORS.lodging.faint}
+                  value={parseTime(checkOutTimeOfDay)}
+                  onChange={(t) => setCheckOutTimeOfDay(toTime24(t))}
                 />
               </Field>
               </div>
