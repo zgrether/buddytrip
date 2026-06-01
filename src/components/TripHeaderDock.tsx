@@ -393,6 +393,7 @@ export function TripHeaderDock({
             className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
             data-testid="header-dock-tiles"
           >
+            {canEdit && <AddTileButton onClick={() => setAddOpen(true)} />}
             {sortedTiles.map((tile) => (
               <TileChip
                 key={tile.id}
@@ -400,7 +401,6 @@ export function TripHeaderDock({
                 onClick={canEdit ? () => setEditing(tile) : undefined}
               />
             ))}
-            {canEdit && <AddTileButton onClick={() => setAddOpen(true)} />}
           </div>
         ) : null}
       </div>
