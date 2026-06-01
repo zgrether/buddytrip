@@ -301,7 +301,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
           fill all the way up to the meta strip without a hardcoded
           right-padding reservation. Title shrinks (truncate) first
           when the row is tight; meta+gear stays its natural size. */}
-      <div className="p-5">
+      <div className="p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {myRole && <RoleBadge role={myRole} />}

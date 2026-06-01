@@ -89,7 +89,7 @@ export function LocationHero({
         </div>
       )}
       <div className="relative z-10">
-        <div className="px-5 pt-3 pb-2">
+        <div className="p-3">
         {/* Top block: title / location / dates. The state watermark is
             vertically centered within this block so it doesn't shift based on
             whether content (e.g. the countdown bar) is rendered below. */}
