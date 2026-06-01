@@ -325,7 +325,14 @@ const ExpandHandle: FC<{
     aria-label={expanded ? "Collapse info dock" : "Expand info dock"}
     aria-expanded={expanded}
     data-testid="header-dock-expand"
-    className="absolute left-1/2 flex w-9 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full transition-opacity hover:opacity-90"
+    className={
+      // Hidden by default; revealed on hover of the dock container
+      // (the parent gets `group`) or on keyboard focus of the handle
+      // itself. Stays visible while expanded so the user always has a
+      // way to collapse.
+      "absolute left-1/2 flex w-9 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full transition-opacity duration-150 hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 " +
+      (expanded ? "opacity-100" : "opacity-0")
+    }
     style={{
       height: HANDLE_H,
       bottom: -(HANDLE_H / 2),
@@ -439,7 +446,7 @@ export function TripHeaderDock({
   return (
     <div className="relative px-4 pt-3 pb-3 sm:px-5">
       <div
-        className="relative flex items-center gap-3 rounded-xl px-3 py-3 sm:gap-4 sm:px-3.5"
+        className="group relative flex items-center gap-3 rounded-xl px-3 py-3 sm:gap-4 sm:px-3.5"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
