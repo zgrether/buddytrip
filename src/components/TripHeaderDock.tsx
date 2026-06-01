@@ -224,7 +224,7 @@ const TileChip: FC<{
       onClick={onClick}
       disabled={!clickable}
       data-tile-id={tile.id}
-      className="inline-flex flex-shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 transition-colors"
+      className="inline-flex flex-shrink-0 items-center gap-2 rounded-lg p-0.5 transition-colors"
       style={{
         background: alert
           ? "rgba(251,191,36,0.12)"
@@ -294,7 +294,7 @@ const EmptyCta: FC<{ onClick: () => void }> = ({ onClick }) => (
     type="button"
     onClick={onClick}
     data-testid="header-dock-empty-cta"
-    className="flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-medium transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+    className="flex w-full items-center justify-center gap-2 rounded-lg p-0.5 text-[12px] font-medium transition-colors hover:bg-[rgba(255,255,255,0.06)]"
     style={{
       border: "1px dashed rgba(255,255,255,0.20)",
       color: "rgba(255,255,255,0.70)",
@@ -405,7 +405,7 @@ export function TripHeaderDock({
   return (
     <div className="relative px-4 pt-3 pb-3 sm:px-5">
       <div
-        className="relative flex items-center gap-3 rounded-xl px-3 py-3 sm:gap-4 sm:px-3.5"
+        className="relative flex items-center gap-3 rounded-xl p-0.5 sm:gap-4"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
