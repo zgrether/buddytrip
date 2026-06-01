@@ -257,22 +257,25 @@ const TileChip: FC<{
   );
 };
 
-// ── Inline [+] add button (tile-styled, NOT teal) ─────────────────────────
+// ── Inline [+] add button — discrete ghost ───────────────────────────────
+//
+// Bare plus icon, no pill background, no border. Sits at the leading
+// position of the tile rail and stays out of the way visually so the
+// tiles read as the primary content. A small left-margin pull tightens
+// its position relative to the divider.
 
 const AddTileButton: FC<{ onClick: () => void }> = ({ onClick }) => (
   <button
     type="button"
     onClick={onClick}
     data-testid="header-dock-add-tile"
-    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[rgba(255,255,255,0.10)]"
+    className="-ml-1 inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[rgba(255,255,255,0.08)]"
     style={{
-      background: "rgba(255,255,255,0.06)",
-      border: "1px solid rgba(255,255,255,0.09)",
-      color: "rgba(255,255,255,0.70)",
+      color: "rgba(255,255,255,0.55)",
     }}
     aria-label="Add info tile"
   >
-    <Plus size={16} strokeWidth={2.2} />
+    <Plus size={14} strokeWidth={2.2} />
   </button>
 );
 
