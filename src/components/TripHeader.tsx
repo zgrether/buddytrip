@@ -297,29 +297,33 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
       }}
       data-testid="trip-header-plain"
     >
-      {/* Top-right meta stack: location white on top, dates dim below;
-          gear sits to the right of the stack, vertically centered. */}
-      <div className="absolute right-3 top-3 z-20 flex max-w-[60%] items-center gap-2">
-        <HeaderMeta
-          location={location}
-          tripStartDate={tripStartDate}
-          dateRange={dateRange}
-          canEdit={!!canEdit}
-          pollActive={!!pollActive}
-          onOpenDatesSheet={onOpenDatesSheet}
-        />
-        {onSettingsClick && <SettingsGear onClick={onSettingsClick} />}
-      </div>
-      <div className="p-5 pr-[180px] sm:pr-[220px]">
-        <div className="flex min-w-0 items-center gap-2">
-          {myRole && <RoleBadge role={myRole} />}
-          <h1
-            data-testid="trip-title"
-            className="truncate text-xl font-bold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            {tripName}
-          </h1>
+      {/* Title and top-right meta share one flex row so the title can
+          fill all the way up to the meta strip without a hardcoded
+          right-padding reservation. Title shrinks (truncate) first
+          when the row is tight; meta+gear stays its natural size. */}
+      <div className="p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {myRole && <RoleBadge role={myRole} />}
+            <h1
+              data-testid="trip-title"
+              className="truncate text-xl font-bold"
+              style={{ color: "var(--color-bt-text)" }}
+            >
+              {tripName}
+            </h1>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <HeaderMeta
+              location={location}
+              tripStartDate={tripStartDate}
+              dateRange={dateRange}
+              canEdit={!!canEdit}
+              pollActive={!!pollActive}
+              onOpenDatesSheet={onOpenDatesSheet}
+            />
+            {onSettingsClick && <SettingsGear onClick={onSettingsClick} />}
+          </div>
         </div>
       </div>
       {tripId && (
@@ -373,27 +377,13 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
       tripName={tripName}
       tripStartDate={status === "past" ? tripStartDate : null}
       showStateWatermark={false}
-      topRightAction={
-        <div className="flex items-center gap-2">
-          <HeaderMeta
-            location={displayLocation}
-            tripStartDate={tripStartDate}
-            dateRange={dateRange}
-            canEdit={!!canEdit}
-            pollActive={!!pollActive}
-            onOpenDatesSheet={onOpenDatesSheet}
-            primaryColor={metaPrimary}
-            secondaryColor={metaSecondary}
-          />
-          {onSettingsClick && <SettingsGear onClick={onSettingsClick} />}
-        </div>
-      }
       topContent={
-        <>
-          {/* Title row — destination + dates now live in the top-right meta
-              strip (alongside the gear), so the title block is just role +
-              trip name. Right padding leaves room for that strip. */}
-          <div className="flex min-w-0 items-center gap-2 pr-[180px] sm:pr-[220px]">
+        /* Title and top-right meta share one flex row inside topContent
+           — no absolute topRightAction — so the title fills until it
+           meets the meta strip. Title shrinks (truncate) first when
+           the row gets tight; meta+gear stays its natural size. */
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {myRole && <RoleBadge role={myRole} />}
             <h1
               data-testid="trip-title"
@@ -403,7 +393,20 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
               {tripName}
             </h1>
           </div>
-        </>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <HeaderMeta
+              location={displayLocation}
+              tripStartDate={tripStartDate}
+              dateRange={dateRange}
+              canEdit={!!canEdit}
+              pollActive={!!pollActive}
+              onOpenDatesSheet={onOpenDatesSheet}
+              primaryColor={metaPrimary}
+              secondaryColor={metaSecondary}
+            />
+            {onSettingsClick && <SettingsGear onClick={onSettingsClick} />}
+          </div>
+        </div>
       }
     >
       {tripId && (
