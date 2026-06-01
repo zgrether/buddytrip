@@ -387,12 +387,23 @@ export function TripHeaderDock({
   }, [sortedTiles.length, ringStacked, canEdit, hasCountdown]);
 
   useEffect(() => {
+    // Leaving the has-tiles state — drop the stacked flag so the ring
+    // doesn't keep hugging vertical inside the empty-CTA layout, where
+    // there's no rail to measure against in the first place.
+    if (!hasTiles) {
+      stackTriggerWidthRef.current = null;
+      if (ringStacked) setRingStacked(false);
+      return;
+    }
     const rail = railRef.current;
     if (!rail || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measureRail.current());
     ro.observe(rail);
     if (rail.parentElement) ro.observe(rail.parentElement);
     return () => ro.disconnect();
+    // ringStacked is intentionally excluded from deps — we only reset it
+    // on the empty-state edge, not every time it flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasTiles]);
 
   // Nothing to show? Hide the dock entirely.
@@ -424,7 +435,7 @@ export function TripHeaderDock({
         {hasCountdown && (
           <div
             className={
-              ringStacked
+              ringStacked && hasTiles
                 ? "flex flex-shrink-0 flex-col items-center gap-1"
                 : "flex flex-shrink-0 items-center gap-2.5"
             }
