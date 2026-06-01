@@ -24,8 +24,11 @@ import { InfoTileModal, iconFor, type QuickTile } from "@/components/InfoTileMod
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-const RING_PX = 56;
-const RING_STROKE = 4;
+// Sized to match the tile pill height (icon chip 24px + label/value text +
+// vertical padding ≈ 38px) so the ring sits on the same baseline as the
+// rail and the dock container doesn't grow taller than it needs to.
+const RING_PX = 38;
+const RING_STROKE = 3;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -116,7 +119,7 @@ const CountdownRing: FC<{ countdown: CountdownResult | null }> = ({
         className="absolute inset-0 flex items-center justify-center font-semibold"
         style={{
           color: dim ? "rgba(255,255,255,0.45)" : "#ffffff",
-          fontSize: 16,
+          fontSize: 12,
           lineHeight: 1,
           fontFeatureSettings: '"tnum" 1',
         }}
@@ -149,7 +152,7 @@ const CountdownMeta: FC<{
       <div className={wrapperClass}>
         <span
           className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]"
-          style={{ color: "var(--color-bt-accent)" }}
+          style={{ color: "#ffffff" }}
         >
           {isHappening && (
             <span
@@ -314,12 +317,15 @@ const ExpandHandle: FC<{
     aria-label={expanded ? "Collapse info dock" : "Expand info dock"}
     aria-expanded={expanded}
     data-testid="header-dock-expand"
-    className="absolute left-1/2 flex h-5 w-9 -translate-x-1/2 items-center justify-center rounded-full transition-colors hover:bg-[rgba(255,255,255,0.18)]"
+    className="absolute left-1/2 flex h-5 w-9 -translate-x-1/2 items-center justify-center rounded-full transition-colors hover:opacity-90"
     style={{
       bottom: -9,
-      background: "rgba(255,255,255,0.12)",
-      border: "1px solid rgba(255,255,255,0.16)",
-      color: "rgba(255,255,255,0.80)",
+      // Solid surface — the handle straddles the bottom edge and overlaps
+      // whatever sits below, so it must not be see-through.
+      background: "var(--color-bt-card-float)",
+      border: "1px solid var(--color-bt-border)",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.30)",
+      color: "var(--color-bt-text)",
     }}
   >
     <ChevronDown
@@ -426,7 +432,7 @@ export function TripHeaderDock({
   return (
     <div className="relative px-4 pt-3 pb-3 sm:px-5">
       <div
-        className="relative flex items-center gap-3 rounded-2xl px-3 py-3 sm:gap-4 sm:px-4 sm:py-3"
+        className="relative flex items-center gap-3 rounded-xl px-3 py-2 sm:gap-4 sm:px-3.5 sm:py-2"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
@@ -474,7 +480,9 @@ export function TripHeaderDock({
             ref={rowRef}
             className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-hidden"
             style={{
-              maxHeight: expanded ? undefined : 42,
+              // One-row clamp: tile pill height ≈ 38px. Slight buffer to
+              // avoid sub-pixel rounding clipping the bottom border.
+              maxHeight: expanded ? undefined : 40,
             }}
             data-testid="header-dock-tiles"
           >

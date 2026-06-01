@@ -147,7 +147,7 @@ const IconPicker: FC<{
             style={{
               background: active
                 ? "var(--color-bt-accent-faint)"
-                : "var(--color-bt-base)",
+                : "var(--color-bt-card-raised)",
               border: `1px solid ${
                 active
                   ? "var(--color-bt-accent-border)"
@@ -185,7 +185,7 @@ const AlertToggleRow: FC<{
         : "var(--color-bt-border)",
       background: value
         ? "var(--color-bt-warning-faint)"
-        : "var(--color-bt-base)",
+        : "var(--color-bt-card-raised)",
     }}
   >
     <span className="flex items-center gap-2.5">
@@ -260,6 +260,11 @@ export function InfoTileModal({
   const [value, setValue] = useState(tile?.value ?? "");
   const [iconKey, setIconKey] = useState<string | null>(tile?.icon ?? null);
   const [isAlert, setIsAlert] = useState(!!tile?.is_alert);
+  /** Two-step delete: first tap on the quiet "Delete" arms; the footer
+   *  swaps to a confirm prompt + Cancel + Delete row (same canonical
+   *  pattern as ConfirmDeleteButton, fitted to the spec's quiet-text
+   *  idle state). */
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
   const invalidate = () =>
     utils.quickInfoTiles.list.invalidate({ tripId });
@@ -424,7 +429,7 @@ export function InfoTileModal({
               maxLength={100}
               className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1"
               style={{
-                background: "var(--color-bt-base)",
+                background: "var(--color-bt-card-raised)",
                 borderColor: "var(--color-bt-border)",
                 color: "var(--color-bt-text)",
               }}
@@ -441,7 +446,7 @@ export function InfoTileModal({
               maxLength={500}
               className="w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none focus:ring-1"
               style={{
-                background: "var(--color-bt-base)",
+                background: "var(--color-bt-card-raised)",
                 borderColor: "var(--color-bt-border)",
                 color: "var(--color-bt-text)",
               }}
@@ -451,43 +456,89 @@ export function InfoTileModal({
           <AlertToggleRow value={isAlert} onChange={setIsAlert} />
         </div>
 
-        {/* Footer */}
+        {/* Footer — swaps into the two-step delete-confirm row when armed
+            (Edit mode only). Idle state matches the spec: quiet red text
+            "Delete" on the left + Cancel / Save on the right. */}
         <div
-          className="flex items-center gap-3 px-5 py-3"
+          className="flex items-center gap-2 px-5 py-3"
           style={{ borderTop: "1px solid var(--color-bt-border)" }}
         >
-          {isEditing && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={remove.isPending}
-              className="text-[13px] font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
-              style={{ color: "var(--color-bt-danger)" }}
+          {deleteArmed && isEditing ? (
+            <div
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5"
+              style={{
+                background: "var(--color-bt-danger-faint)",
+                border: "1px solid var(--color-bt-danger-border)",
+              }}
             >
-              Delete
-            </button>
+              <span
+                className="min-w-0 flex-1 truncate text-sm font-medium"
+                style={{ color: "var(--color-bt-danger)" }}
+              >
+                Delete this tile?
+              </span>
+              <button
+                type="button"
+                onClick={() => setDeleteArmed(false)}
+                disabled={remove.isPending}
+                className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+                style={{
+                  background: "transparent",
+                  color: "var(--color-bt-text-dim)",
+                  border: "1px solid var(--color-bt-border)",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={remove.isPending}
+                className="rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-danger)",
+                  color: "#ffffff",
+                }}
+              >
+                {remove.isPending ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          ) : (
+            <>
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteArmed(true)}
+                  disabled={remove.isPending}
+                  className="text-[13px] font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
+                  style={{ color: "var(--color-bt-danger)" }}
+                >
+                  Delete
+                </button>
+              )}
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canSubmit}
+                className="rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{
+                  background: "var(--color-bt-accent)",
+                  color: "var(--color-bt-on-accent)",
+                }}
+              >
+                {isEditing ? "Save" : "Add tile"}
+              </button>
+            </>
           )}
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!canSubmit}
-            className="rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-on-accent)",
-            }}
-          >
-            {isEditing ? "Save" : "Add tile"}
-          </button>
         </div>
       </div>
     </div>
