@@ -134,12 +134,9 @@ const CountdownRing: FC<{ countdown: CountdownResult | null }> = ({
 
 const CountdownMeta: FC<{
   countdown: LabelledCountdown;
-  stack: boolean;
-}> = ({ countdown, stack }) => {
+}> = ({ countdown }) => {
   const isHappening = countdown.type === "happening";
-  const wrapperClass = stack
-    ? "flex flex-col items-center text-center leading-tight"
-    : "flex flex-col leading-tight";
+  const wrapperClass = "flex flex-col leading-tight";
 
   // Copy per the spec:
   //   pre-trip → single line "X days to go" / "Tomorrow" / "Today"
@@ -437,10 +434,6 @@ export function TripHeaderDock({
     return null;
   }
 
-  // Mobile compression rule: ring stacks above day text only when sharing
-  // the row with tiles. With no tiles, keep horizontal at every width.
-  const stackOnMobile = hasTiles;
-
   const showEmptyCta = canEdit && !hasTiles;
 
   return (
@@ -455,20 +448,14 @@ export function TripHeaderDock({
         }}
         data-testid="trip-header-dock"
       >
-        {/* ── Left: countdown ring + meta ───────────────────────────────── */}
+        {/* ── Left: countdown ring + meta ──────────────────────────────────
+            Always horizontal. The right-side tile rail wraps to a second
+            row when there's no room — preferred over pre-emptively
+            stacking the ring above its day text. */}
         {hasCountdown && (
-          <div
-            className={
-              stackOnMobile
-                ? "flex flex-shrink-0 flex-col items-center gap-1 sm:flex-row sm:gap-2.5"
-                : "flex flex-shrink-0 items-center gap-2.5"
-            }
-          >
+          <div className="flex flex-shrink-0 items-center gap-2.5">
             <CountdownRing countdown={countdown} />
-            <CountdownMeta
-              countdown={countdown as LabelledCountdown}
-              stack={stackOnMobile}
-            />
+            <CountdownMeta countdown={countdown as LabelledCountdown} />
           </div>
         )}
 
