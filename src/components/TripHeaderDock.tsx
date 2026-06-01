@@ -403,7 +403,7 @@ export function TripHeaderDock({
   const showEmptyCta = canEdit && !hasTiles;
 
   return (
-    <div className="relative px-4 pt-3 pb-3 sm:px-5">
+    <div className="relative p-4 sm:p-5">
       <div
         className="relative flex items-center gap-3 rounded-xl px-2 py-2 sm:gap-4 sm:px-2.5"
         style={{
