@@ -449,11 +449,18 @@ export function TripHeaderDock({
         data-testid="trip-header-dock"
       >
         {/* ── Left: countdown ring + meta ──────────────────────────────────
-            Always horizontal. The right-side tile rail wraps to a second
-            row when there's no room — preferred over pre-emptively
-            stacking the ring above its day text. */}
+            Horizontal by default. When tiles share the row AND the
+            viewport is genuinely tight (<420px), stack the ring above
+            its day text to free horizontal width for the tile rail.
+            With no tiles, always horizontal at every viewport. */}
         {hasCountdown && (
-          <div className="flex flex-shrink-0 items-center gap-2.5">
+          <div
+            className={
+              hasTiles
+                ? "flex flex-shrink-0 flex-col items-center gap-1 min-[420px]:flex-row min-[420px]:gap-2.5"
+                : "flex flex-shrink-0 items-center gap-2.5"
+            }
+          >
             <CountdownRing countdown={countdown} />
             <CountdownMeta countdown={countdown as LabelledCountdown} />
           </div>
