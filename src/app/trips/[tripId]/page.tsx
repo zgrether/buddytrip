@@ -21,7 +21,7 @@ import { CrewTab } from "./tabs/CrewTab";
 import { LodgingTab } from "./tabs/LodgingTab";
 import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
-import { formatDateRange } from "@/lib/dates";
+import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { TripSummaryModal } from "./components/TripSummaryModal";
 import { TripInvitationModal } from "./components/TripInvitationModal";
@@ -380,7 +380,7 @@ export default function TripDetailPage() {
               status={status}
               location={destLocation}
               lockedTitle={trip.locked_destination_title}
-              dateRange={formatDateRange(trip.start_date, trip.end_date)}
+              dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
               stage={stage}
               canEdit={canEdit}
@@ -431,7 +431,7 @@ export default function TripDetailPage() {
               status={status}
               location={destLocation}
               lockedTitle={trip.locked_destination_title}
-              dateRange={formatDateRange(trip.start_date, trip.end_date)}
+              dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
               stage={stage}
               canEdit={canEdit}
@@ -452,9 +452,9 @@ export default function TripDetailPage() {
             />
 
             <div className="mt-4">
-              {/* Quick Info has moved into the home tab panel system —
-                   no longer rendered above the tab bar. The QuickInfoSection
-                   data hooks are still used by QuickInfoPanel inside HomeTab. */}
+              {/* Quick Info is now baked into the trip header dock
+                   (TripHeaderDock) — tile rail sits alongside the countdown
+                   ring, no separate home-tab panel anymore. */}
 
               {/* Competition strip — removed in Phase A schema rebuild.
                    The persistent leaderboard summary returns in Phase B

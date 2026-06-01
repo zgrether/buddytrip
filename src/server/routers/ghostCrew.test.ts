@@ -12,12 +12,17 @@ const guestUserIds: string[] = [];
 const RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
 describe("ghostCrew router", () => {
+  // Integration tests against the live test DB — hooks need >10s headroom
+  // when the network is slow or the cleanup cascades through several
+  // tables. Default 10s was tripping intermittently in CI.
+  const HOOK_TIMEOUT_MS = 30_000;
+
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Ghost Crew Test Trip");
     await ctx.addTripMember(tripId, "planner", "Planner");
     await ctx.addTripMember(tripId, "member", "Member");
-  });
+  }, HOOK_TIMEOUT_MS);
 
   afterAll(async () => {
     // Delete guest users rows created in this test run before cleanup()
@@ -26,7 +31,7 @@ describe("ghostCrew router", () => {
       await ctx.admin.from("users").delete().in("id", guestUserIds).eq("is_guest", true);
     }
     await ctx.cleanup();
-  });
+  }, HOOK_TIMEOUT_MS);
 
   // ── create ────────────────────────────────────────────────────────────────
   // Owner-only as of Task 53 — guest crew creation is roster management.
