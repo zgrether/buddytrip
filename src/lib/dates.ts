@@ -25,6 +25,20 @@ export function parseLocalDate(dateStr: string): Date {
 }
 
 /**
+ * Format a Date back into a YYYY-MM-DD string using its LOCAL calendar
+ * fields (not UTC), the inverse of parseLocalDate. Using toISOString()
+ * here would shift the day backward in western timezones — the same
+ * off-by-one bug parseLocalDate guards against — so we assemble the
+ * string from local getFullYear/getMonth/getDate instead.
+ */
+export function toISODate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
  * Format a YYYY-MM-DD date string for display (e.g. "Jun 15, 2026").
  */
 export function formatDate(

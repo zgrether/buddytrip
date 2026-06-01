@@ -5,6 +5,9 @@ import { Hotel, Link, MapPin, ImagePlus, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { createClient } from "@/lib/supabase";
+import { DatePicker } from "@/components/DatePicker";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
+import { parseLocalDate, toISODate } from "@/lib/dates";
 
 // ── Platform detection (exported so parents can use it) ───────────────────
 
@@ -689,25 +692,23 @@ export function AddPropertySheet({
 
           {/* Check-in / Check-out — planning only */}
           {showAddressAndDates && (
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Check-in">
-                <input
-                  type="date"
-                  value={checkIn}
-                  onChange={(e) => setCheckIn(e.target.value)}
-                  className={inputCls}
-                  style={inputStyle}
-                />
-              </Field>
-              <Field label="Check-out">
-                <input
-                  type="date"
-                  value={checkOut}
-                  onChange={(e) => setCheckOut(e.target.value)}
-                  className={inputCls}
-                  style={inputStyle}
-                />
-              </Field>
+            <div className="space-y-2">
+              <DatePicker
+                mode="range"
+                label="Check-in → check-out"
+                icon={<Hotel size={15} />}
+                accent={DOMAIN_COLORS.lodging.color}
+                accentFaint={DOMAIN_COLORS.lodging.faint}
+                value={{
+                  start: checkIn ? parseLocalDate(checkIn) : null,
+                  end: checkOut ? parseLocalDate(checkOut) : null,
+                }}
+                onChange={(r) => {
+                  setCheckIn(r.start ? toISODate(r.start) : "");
+                  setCheckOut(r.end ? toISODate(r.end) : "");
+                }}
+              />
+              <div className="grid grid-cols-2 gap-2">
               <Field label="Check-in time">
                 <input
                   type="time"
@@ -728,6 +729,7 @@ export function AddPropertySheet({
                   style={inputStyle}
                 />
               </Field>
+              </div>
             </div>
           )}
 

@@ -7,6 +7,9 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
 import { SplitPanel } from "./SplitPanel";
 import { CurrencyInput, memberName } from "./ExpensesSection";
+import { DatePicker } from "@/components/DatePicker";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
+import { parseLocalDate, toISODate } from "@/lib/dates";
 import type { ExpenseMember } from "./ExpensesSection";
 
 export function AddExpenseModal({
@@ -228,15 +231,12 @@ export function AddExpenseModal({
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
                 Date (optional)
               </label>
-              <input
-                type={date ? "date" : "text"}
-                value={date}
-                onFocus={(e) => { e.currentTarget.type = "date"; }}
-                onBlur={(e) => { if (!date) e.currentTarget.type = "text"; }}
-                onChange={(e) => setDate(e.target.value)}
-                placeholder="Add a date"
-                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-                style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+              <DatePicker
+                mode="single"
+                accent={DOMAIN_COLORS.receipts.color}
+                accentFaint={DOMAIN_COLORS.receipts.faint}
+                value={date ? parseLocalDate(date) : null}
+                onChange={(d) => setDate(d ? toISODate(d) : "")}
               />
             </div>
           </div>
