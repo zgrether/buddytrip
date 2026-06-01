@@ -307,12 +307,13 @@ const EmptyCta: FC<{ onClick: () => void }> = ({ onClick }) => (
 
 // ── Expand handle — chevron pill straddling the dock's bottom edge ───────
 //
-// Pill big enough for a down-chevron with a few px of padding. Centered
-// on the container's bottom edge: midline sits on the edge, half above,
-// half below. The top half overlaps the dock's bottom padding so it
-// never touches a tile.
+// 16px-tall opaque pill centered on the container's bottom edge: midline
+// on the edge, 8px above (overlapping the dock's symmetric vertical
+// padding, never touching a tile), 8px below. Opaque card-float bg so
+// it reads cleanly in both halves — the bottom half hangs over whatever
+// sits beneath the dock.
 
-const HANDLE_H = 22;
+const HANDLE_H = 16;
 
 const ExpandHandle: FC<{
   expanded: boolean;
@@ -324,18 +325,19 @@ const ExpandHandle: FC<{
     aria-label={expanded ? "Collapse info dock" : "Expand info dock"}
     aria-expanded={expanded}
     data-testid="header-dock-expand"
-    className="absolute left-1/2 flex w-9 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-[rgba(255,255,255,0.10)]"
+    className="absolute left-1/2 flex w-9 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full transition-opacity hover:opacity-90"
     style={{
       height: HANDLE_H,
       bottom: -(HANDLE_H / 2),
-      background: "rgba(255,255,255,0.06)",
-      border: "1px solid rgba(255,255,255,0.09)",
-      color: "rgba(255,255,255,0.80)",
+      background: "var(--color-bt-card-float)",
+      border: "1px solid var(--color-bt-border)",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.28)",
+      color: "var(--color-bt-text)",
     }}
   >
     <ChevronDown
-      size={14}
-      strokeWidth={2.2}
+      size={11}
+      strokeWidth={2.4}
       style={{
         transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
         transition: "transform 150ms ease",
@@ -437,7 +439,7 @@ export function TripHeaderDock({
   return (
     <div className="relative px-4 pt-3 pb-3 sm:px-5">
       <div
-        className="relative flex items-center gap-3 rounded-xl px-3 pt-2 pb-4 sm:gap-4 sm:px-3.5"
+        className="relative flex items-center gap-3 rounded-xl px-3 py-3 sm:gap-4 sm:px-3.5"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
