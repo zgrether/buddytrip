@@ -191,6 +191,31 @@ test.describe("TripSettings — owner flows", () => {
     await expect(page.getByText("Danger zone")).toBeVisible();
   });
 
+  test("owner picks a trip-date range with the DatePicker", async ({ page }) => {
+    await setupMocks(page);
+    await page.goto(`/trips/${TRIP_ID}`);
+
+    await page.getByTestId("trip-settings-btn").click();
+
+    // Expand the "Change dates" section, which now hosts the shared DatePicker.
+    await page.getByTestId("settings-change-dates-btn").click();
+
+    // Open the popover calendar.
+    const trigger = page.getByTestId("settings-dates-picker");
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // Use a quick preset to fill a valid range, then commit with Apply.
+    await dialog.getByText("This weekend").click();
+    await dialog.getByRole("button", { name: "Apply" }).click();
+
+    // The trigger now reflects the chosen range with a nights tag.
+    await expect(trigger).toContainText("night");
+  });
+
   test("owner can expand transfer ownership and see crew members", async ({ page }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
