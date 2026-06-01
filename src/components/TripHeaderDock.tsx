@@ -147,7 +147,7 @@ const CountdownMeta: FC<{
     return (
       <div className={wrapperClass}>
         <span
-          className="flex items-center gap-1.5 text-[12px] font-semibold"
+          className="flex items-center gap-1.5 text-[13px] font-medium"
           style={{ color: "#ffffff" }}
         >
           {isHappening && (
@@ -159,8 +159,8 @@ const CountdownMeta: FC<{
           Day {countdown.dayNumber}
         </span>
         <span
-          className="text-[12px]"
-          style={{ color: "rgba(255,255,255,0.70)" }}
+          className="text-[11px]"
+          style={{ color: "rgba(255,255,255,0.55)" }}
         >
           {daysLeft <= 0
             ? "Last day"
@@ -174,14 +174,14 @@ const CountdownMeta: FC<{
     return (
       <div className={wrapperClass}>
         <span
-          className="text-[12px] font-medium"
-          style={{ color: "rgba(255,255,255,0.55)" }}
+          className="text-[13px] font-medium"
+          style={{ color: "#ffffff" }}
         >
           Wrapped
         </span>
         <span
           className="text-[11px]"
-          style={{ color: "rgba(255,255,255,0.40)" }}
+          style={{ color: "rgba(255,255,255,0.55)" }}
         >
           {countdown.label}
         </span>
@@ -199,7 +199,7 @@ const CountdownMeta: FC<{
   return (
     <div className={wrapperClass}>
       <span
-        className="text-[13px] font-semibold"
+        className="text-[13px] font-medium"
         style={{ color: "#ffffff" }}
       >
         {line}
