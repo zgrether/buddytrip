@@ -151,7 +151,7 @@ const CountdownMeta: FC<{
     return (
       <div className={wrapperClass}>
         <span
-          className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]"
+          className="flex items-center gap-1.5 text-[12px] font-semibold"
           style={{ color: "#ffffff" }}
         >
           {isHappening && (

@@ -2,7 +2,7 @@
 
 import { type FC } from "react";
 import { useTheme } from "next-themes";
-import { Settings } from "lucide-react";
+import { MapPin, Settings } from "lucide-react";
 import { RoleBadge } from "@/components/RoleBadge";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
@@ -114,18 +114,20 @@ function CountdownBar({ countdown }: { countdown: LabelledCountdown }) {
 // Re-export so other surfaces (dashboard cards) can use the same bar.
 export { CountdownBar };
 
-// ── Inline meta strip (location · dates) ─────────────────────────────────
+// ── Stacked meta block (location top, dates below) ───────────────────────
 //
 // Lives in the top-right of the header card, immediately left of the gear.
-// Three date states match the prior DatesRow semantics, just rendered as
-// inline text without a leading calendar icon:
+// Mirrors the crew-row pattern: primary identity line in solid text colour
+// (location with a small pin), secondary detail in a dimmer smaller font
+// (dates). Right-aligned so the stack reads cleanly toward the gear.
 //
-//   1. No dates, no poll:           "Set dates →"      (accent / teal)
-//   2. No dates, poll active:       "Polling crew →"   (warning / amber)
-//   3. Dates locked:                "May 20 – 25"      (dim, clickable when canEdit)
+// Date states still match the prior DatesRow semantics:
+//   1. No dates, no poll:    "Set dates →"      (accent / teal)
+//   2. No dates, poll active:"Polling crew →"   (warning / amber)
+//   3. Dates locked:         "May 26 – Jun 14"  (dim, clickable when canEdit)
 //
 // The locked-range text is fed from upstream via `formatDateRangeCompact`,
-// so the year is already stripped (start date doesn't show the year).
+// so the year is already stripped.
 
 interface HeaderMetaProps {
   location?: string | null;
@@ -134,11 +136,11 @@ interface HeaderMetaProps {
   canEdit: boolean;
   pollActive: boolean;
   onOpenDatesSheet?: () => void;
-  /** Locked-range text color — light text on the dark gradient (hero),
-   *  bt-text-dim on the plain card. */
-  textColor?: string;
-  /** Dimmer separator-dot tint for the bullet between location + dates. */
-  separatorColor?: string;
+  /** Primary line color (location) — white on the dark hero gradient,
+   *  bt-text on the plain card. */
+  primaryColor?: string;
+  /** Secondary line color (dates) — dim variants of the primary. */
+  secondaryColor?: string;
 }
 
 function HeaderMeta({
@@ -148,15 +150,15 @@ function HeaderMeta({
   canEdit,
   pollActive,
   onOpenDatesSheet,
-  textColor = "var(--color-bt-text-dim)",
-  separatorColor,
+  primaryColor = "var(--color-bt-text)",
+  secondaryColor = "var(--color-bt-text-dim)",
 }: HeaderMetaProps) {
   const hasDates = !!tripStartDate;
   const hasLocked = hasDates && dateRange && dateRange !== "Dates TBD";
   const clickable = canEdit && !!onOpenDatesSheet;
 
-  // Resolve the dates rendering once so the join logic stays clean.
-  // `null` means "no dates segment for non-editors" (member with no dates).
+  // Resolve the dates line once so the layout below stays flat.
+  // `null` means "no dates segment for non-editors with no dates set yet".
   let datesNode: React.ReactNode = null;
 
   if (hasLocked) {
@@ -167,7 +169,7 @@ function HeaderMeta({
         onClick={onOpenDatesSheet}
         className="transition-opacity hover:opacity-80"
         style={{
-          color: textColor,
+          color: secondaryColor,
           background: "transparent",
           border: "none",
           padding: 0,
@@ -177,7 +179,7 @@ function HeaderMeta({
         {content}
       </button>
     ) : (
-      <span style={{ color: textColor }}>{content}</span>
+      <span style={{ color: secondaryColor }}>{content}</span>
     );
   } else if (clickable) {
     if (pollActive) {
@@ -216,20 +218,23 @@ function HeaderMeta({
   }
 
   const locationNode = location ? (
-    <span style={{ color: textColor }}>{location}</span>
+    <span
+      className="flex items-center gap-1 text-[13px] font-medium leading-tight"
+      style={{ color: primaryColor }}
+    >
+      <MapPin size={12} className="shrink-0" aria-hidden="true" />
+      <span className="truncate">{location}</span>
+    </span>
   ) : null;
 
   if (!locationNode && !datesNode) return null;
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5 text-xs">
+    <div className="flex min-w-0 flex-col items-end gap-0.5">
       {locationNode}
-      {locationNode && datesNode && (
-        <span style={{ color: separatorColor ?? textColor, opacity: 0.55 }}>
-          ·
-        </span>
+      {datesNode && (
+        <span className="text-[11px] leading-tight">{datesNode}</span>
       )}
-      {datesNode}
     </div>
   );
 }
@@ -292,7 +297,8 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
       }}
       data-testid="trip-header-plain"
     >
-      {/* Top-right meta strip: location · dates, then settings gear. */}
+      {/* Top-right meta stack: location white on top, dates dim below;
+          gear sits to the right of the stack, vertically centered. */}
       <div className="absolute right-3 top-3 z-20 flex max-w-[60%] items-center gap-2">
         <HeaderMeta
           location={location}
@@ -350,8 +356,11 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
   const isDark = resolvedTheme === "dark";
 
   const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
-  const metaColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.60)";
-  const metaSeparator = isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.40)";
+  // Hero card sits on the dark temporal-gradient surface regardless of
+  // theme, so the meta stack mirrors that contrast: white primary line,
+  // semi-transparent white secondary line.
+  const metaPrimary = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
+  const metaSecondary = isDark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.55)";
 
   // Prefer location (locked_destination_location from parent) over lockedTitle
   // (locked_destination_title). Both now hold the same value after the
@@ -373,8 +382,8 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
             canEdit={!!canEdit}
             pollActive={!!pollActive}
             onOpenDatesSheet={onOpenDatesSheet}
-            textColor={metaColor}
-            separatorColor={metaSeparator}
+            primaryColor={metaPrimary}
+            secondaryColor={metaSecondary}
           />
           {onSettingsClick && <SettingsGear onClick={onSettingsClick} />}
         </div>
