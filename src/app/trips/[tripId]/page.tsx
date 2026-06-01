@@ -452,9 +452,9 @@ export default function TripDetailPage() {
             />
 
             <div className="mt-4">
-              {/* Quick Info has moved into the home tab panel system —
-                   no longer rendered above the tab bar. The QuickInfoSection
-                   data hooks are still used by QuickInfoPanel inside HomeTab. */}
+              {/* Quick Info is now baked into the trip header dock
+                   (TripHeaderDock) — tile rail sits alongside the countdown
+                   ring, no separate home-tab panel anymore. */}
 
               {/* Competition strip — removed in Phase A schema rebuild.
                    The persistent leaderboard summary returns in Phase B

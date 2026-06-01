@@ -5,7 +5,6 @@ import { getTripStatus } from "@/components/StatusBadge";
 import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ItineraryPanel as LegacyItineraryPanel } from "../components/ItineraryPanel";
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
-import { QuickInfoPanel } from "./components/panels/QuickInfoPanel";
 import { TabHeader } from "@/components/TabHeader";
 import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps } from "./types";
@@ -77,8 +76,9 @@ export function HomeTab({
             />
           )}
 
-          {/* Quick Info — most-glanced surface (door codes, addresses) */}
-          <QuickInfoPanel tripId={trip.id} isOwner={!!isOwner} />
+          {/* Quick Info moved into the trip header dock — see
+              TripHeaderDock. The old QuickInfoPanel + QuickInfoSection
+              are removed; the header dock owns the tile rail now. */}
 
           {/* Itinerary — full width. Travel plans moved to the Crew tab
               (each member self-serves their own); travel still surfaces here

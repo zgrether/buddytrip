@@ -8,6 +8,7 @@ import type { TripDisplayStatus } from "@/lib/tripStatus";
 import { LocationHero } from "@/components/LocationHero";
 import type { TripRole } from "@/server/middleware";
 import { getTripCountdown, type CountdownResult } from "@/lib/tripCountdown";
+import { TripHeaderDock } from "@/components/TripHeaderDock";
 
 interface TripHeaderProps {
   tripId?: string;
@@ -257,6 +258,7 @@ const IdeaHeader: FC<{ tripName: string; myRole?: TripRole | null }> = ({
 // ── Plain card (no locked destination, non-idea stage) ───────────────────
 
 const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCountdown | null }> = ({
+  tripId,
   tripName,
   status,
   location,
@@ -318,7 +320,13 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
           onOpenDatesSheet={onOpenDatesSheet}
         />
       </div>
-      {countdown && <CountdownBar countdown={countdown} />}
+      {tripId && (
+        <TripHeaderDock
+          tripId={tripId}
+          countdown={countdown}
+          canEdit={!!canEdit}
+        />
+      )}
     </div>
   );
 };
@@ -326,6 +334,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
 // ── Hero card (locked destination) ───────────────────────────────────────
 
 const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCountdown | null }> = ({
+  tripId,
   tripName,
   status,
   location,
@@ -392,7 +401,13 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
         </>
       }
     >
-      {countdown && <CountdownBar countdown={countdown} />}
+      {tripId && (
+        <TripHeaderDock
+          tripId={tripId}
+          countdown={countdown}
+          canEdit={!!canEdit}
+        />
+      )}
     </LocationHero>
   );
 };
