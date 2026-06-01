@@ -259,17 +259,18 @@ const TileChip: FC<{
 
 // ── Inline [+] add button — discrete ghost ───────────────────────────────
 //
-// Bare plus icon, no pill background, no border. Sits at the leading
-// position of the tile rail and stays out of the way visually so the
-// tiles read as the primary content. A small left-margin pull tightens
-// its position relative to the divider.
+// Bare plus icon, no pill background, no border. Sits at the trailing
+// edge of the dock (right of the tile rail) and stays out of the way
+// visually so the tiles read as the primary content. The tile rail
+// has flex-1 alongside [+], so tiles wrap to a new row before colliding
+// with the button.
 
 const AddTileButton: FC<{ onClick: () => void }> = ({ onClick }) => (
   <button
     type="button"
     onClick={onClick}
     data-testid="header-dock-add-tile"
-    className="-ml-1 inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[rgba(255,255,255,0.08)]"
+    className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[rgba(255,255,255,0.08)]"
     style={{
       color: "rgba(255,255,255,0.55)",
     }}
@@ -392,19 +393,21 @@ export function TripHeaderDock({
             <EmptyCta onClick={() => setAddOpen(true)} />
           </div>
         ) : hasTiles ? (
-          <div
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
-            data-testid="header-dock-tiles"
-          >
+          <>
+            <div
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+              data-testid="header-dock-tiles"
+            >
+              {sortedTiles.map((tile) => (
+                <TileChip
+                  key={tile.id}
+                  tile={tile}
+                  onClick={canEdit ? () => setEditing(tile) : undefined}
+                />
+              ))}
+            </div>
             {canEdit && <AddTileButton onClick={() => setAddOpen(true)} />}
-            {sortedTiles.map((tile) => (
-              <TileChip
-                key={tile.id}
-                tile={tile}
-                onClick={canEdit ? () => setEditing(tile) : undefined}
-              />
-            ))}
-          </div>
+          </>
         ) : null}
       </div>
 
