@@ -307,7 +307,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
             {myRole && <RoleBadge role={myRole} />}
             <h1
               data-testid="trip-title"
-              className="truncate font-bold"
+              className="line-clamp-2 break-words font-bold leading-tight"
               style={{
                 color: "var(--color-bt-text)",
                 // Fluid scale: 15px floor on narrow phones up to 20px
@@ -393,7 +393,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
             {myRole && <RoleBadge role={myRole} />}
             <h1
               data-testid="trip-title"
-              className="truncate font-bold"
+              className="line-clamp-2 break-words font-bold leading-tight"
               style={{
                 color: titleColor,
                 // Fluid scale: 16px floor on narrow phones up to 24px
