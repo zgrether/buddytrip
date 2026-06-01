@@ -282,6 +282,11 @@ export function TravelFields({
   const inputBg =
     surface === "recessed" ? "var(--color-bt-base)" : "var(--color-bt-card-raised)";
 
+  // Everything below the mode picker depends on a chosen mode — travel won't
+  // persist without one. Keep the detail/arrival fields disabled until the
+  // user selects Flying / Driving / Other so the form can't be half-filled.
+  const modeSelected = !!value.mode;
+
   return (
     <div className="space-y-3">
       {arrivalBeforeTrip && (
@@ -355,12 +360,13 @@ export function TravelFields({
           type="text"
           value={value.detail}
           onChange={(e) => onChange({ ...value, detail: e.target.value })}
+          disabled={!modeSelected}
           placeholder={
             value.mode
               ? TRAVEL_MODE_META[value.mode].placeholder
               : "Pick how you're getting there above"
           }
-          className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+          className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
           style={{
             background: inputBg,
             borderColor: "var(--color-bt-border)",
@@ -381,6 +387,7 @@ export function TravelFields({
           <DatePicker
             mode="single"
             icon={<Plane size={15} />}
+            disabled={!modeSelected}
             accent={DOMAIN_COLORS.travel.color}
             accentFaint={DOMAIN_COLORS.travel.faint}
             value={value.arrivalDate ? parseLocalDate(value.arrivalDate) : null}
@@ -400,7 +407,8 @@ export function TravelFields({
             type="time"
             value={value.arrivalTime}
             onChange={(e) => onChange({ ...value, arrivalTime: e.target.value })}
-            className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+            disabled={!modeSelected}
+            className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
             style={{
               background: inputBg,
               borderColor: "var(--color-bt-border)",
