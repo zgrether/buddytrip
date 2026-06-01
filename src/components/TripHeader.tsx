@@ -307,8 +307,14 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
             {myRole && <RoleBadge role={myRole} />}
             <h1
               data-testid="trip-title"
-              className="truncate text-xl font-bold"
-              style={{ color: "var(--color-bt-text)" }}
+              className="truncate font-bold"
+              style={{
+                color: "var(--color-bt-text)",
+                // Fluid scale: 15px floor on narrow phones up to 20px
+                // (text-xl) on wider viewports. 3.5vw drives the middle
+                // so the title shrinks smoothly as the row tightens.
+                fontSize: "clamp(0.95rem, 3.5vw, 1.25rem)",
+              }}
             >
               {tripName}
             </h1>
@@ -387,8 +393,15 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
             {myRole && <RoleBadge role={myRole} />}
             <h1
               data-testid="trip-title"
-              className="truncate text-2xl font-bold"
-              style={{ color: titleColor }}
+              className="truncate font-bold"
+              style={{
+                color: titleColor,
+                // Fluid scale: 16px floor on narrow phones up to 24px
+                // (text-2xl) on wider viewports. Hero gets a bigger
+                // ceiling than PlainHeader since it's the locked,
+                // hero-treatment card.
+                fontSize: "clamp(1rem, 4vw, 1.5rem)",
+              }}
             >
               {tripName}
             </h1>
