@@ -8,6 +8,9 @@ import { trpc } from "@/lib/trpc-client";
 import { SplitPanel } from "./SplitPanel";
 import { CurrencyInput, memberName as getMemberName } from "./ExpensesSection";
 import type { ExpenseItem, ExpenseMember } from "./ExpensesSection";
+import { DatePicker } from "@/components/DatePicker";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
+import { parseLocalDate, toISODate } from "@/lib/dates";
 
 export function EditExpenseModal({
   expense,
@@ -327,16 +330,13 @@ export function EditExpenseModal({
             </div>
             <div className="w-36 flex-shrink-0">
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>Date <span className="lowercase">(optional)</span></label>
-              <input
-                type={date ? "date" : "text"}
-                value={date}
-                onFocus={(e) => { e.currentTarget.type = "date"; }}
-                onBlur={(e) => { if (!date) e.currentTarget.type = "text"; }}
-                onChange={(e) => setDate(e.target.value)}
+              <DatePicker
+                mode="single"
                 disabled={!isOwner}
-                placeholder="Add a date"
-                className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)", color: "var(--color-bt-text)" }}
+                accent={DOMAIN_COLORS.receipts.color}
+                accentFaint={DOMAIN_COLORS.receipts.faint}
+                value={date ? parseLocalDate(date) : null}
+                onChange={(d) => setDate(d ? toISODate(d) : "")}
               />
             </div>
           </div>
