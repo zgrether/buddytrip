@@ -408,9 +408,9 @@ export function TripHeaderDock({
         className="relative flex items-center gap-3 rounded-xl px-2 py-2 sm:gap-4 sm:px-2.5"
         style={{
           background: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.10)",
-          // Lighter elevation — sits a touch above the header surface
-          // instead of hovering. y-offset 8→3, blur 22→10, opacity 28%→16%.
+          // Borderless — the translucent fill + inset highlight + soft
+          // drop shadow do the elevation work; an explicit hairline was
+          // doubling up on the visual weight.
           boxShadow:
             "inset 0 1px 0 rgba(255,255,255,0.08), 0 3px 10px rgba(0,0,0,0.16)",
         }}
