@@ -1,15 +1,7 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FC,
-} from "react";
-import { Bell, ChevronDown, Plus, Hash } from "lucide-react";
+import { useMemo, useState, type FC } from "react";
+import { Bell, Plus, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import type { CountdownResult } from "@/lib/tripCountdown";
 
@@ -302,54 +294,6 @@ const EmptyCta: FC<{ onClick: () => void }> = ({ onClick }) => (
   </button>
 );
 
-// ── Expand handle — chevron pill straddling the dock's bottom edge ───────
-//
-// 16px-tall opaque pill centered on the container's bottom edge: midline
-// on the edge, 8px above (overlapping the dock's symmetric vertical
-// padding, never touching a tile), 8px below. Opaque card-float bg so
-// it reads cleanly in both halves — the bottom half hangs over whatever
-// sits beneath the dock.
-
-const HANDLE_H = 16;
-
-const ExpandHandle: FC<{
-  expanded: boolean;
-  onClick: () => void;
-}> = ({ expanded, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    aria-label={expanded ? "Collapse info dock" : "Expand info dock"}
-    aria-expanded={expanded}
-    data-testid="header-dock-expand"
-    className={
-      // Hidden by default; revealed on hover of the dock container
-      // (the parent gets `group`) or on keyboard focus of the handle
-      // itself. Stays visible while expanded so the user always has a
-      // way to collapse.
-      "absolute left-1/2 flex w-9 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full transition-opacity duration-150 hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 " +
-      (expanded ? "opacity-100" : "opacity-0")
-    }
-    style={{
-      height: HANDLE_H,
-      bottom: -(HANDLE_H / 2),
-      background: "var(--color-bt-card-float)",
-      border: "1px solid var(--color-bt-border)",
-      boxShadow: "0 2px 6px rgba(0,0,0,0.28)",
-      color: "var(--color-bt-text)",
-    }}
-  >
-    <ChevronDown
-      size={11}
-      strokeWidth={2.4}
-      style={{
-        transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-        transition: "transform 150ms ease",
-      }}
-    />
-  </button>
-);
-
 // ── TripHeaderDock ────────────────────────────────────────────────────────
 //
 // The "ring dock" — countdown ring + meta on the left, divider, then the
@@ -373,8 +317,6 @@ export function TripHeaderDock({
 
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<QuickTile | null>(null);
-  const [expanded, setExpanded] = useState(false);
-
   // Alerts sort to the front; otherwise leave server order.
   const sortedTiles = useMemo(
     () =>
@@ -392,43 +334,6 @@ export function TripHeaderDock({
     countdown.type !== "idea" &&
     countdown.type !== "no_dates";
 
-  // Detect tile-row overflow so we can decide whether to show the expand
-  // handle. We compare scrollHeight vs the single-row max-height after layout
-  // settles on each width change.
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  const [overflowing, setOverflowing] = useState(false);
-
-  const measureOverflow = useCallback(() => {
-    const el = rowRef.current;
-    if (!el) return;
-    // Compare full flex-wrap scrollHeight to the height of a single row
-    // (clientHeight when collapsed). When they differ, content wraps.
-    if (expanded) {
-      // While expanded, peek at intrinsic vs the "1-row equivalent" via a
-      // synthetic measurement — we cache the first child's offsetHeight.
-      const first = el.firstElementChild as HTMLElement | null;
-      if (!first) {
-        setOverflowing(false);
-        return;
-      }
-      setOverflowing(el.scrollHeight > first.offsetHeight + 4);
-    } else {
-      setOverflowing(el.scrollHeight > el.clientHeight + 1);
-    }
-  }, [expanded]);
-
-  useLayoutEffect(() => {
-    measureOverflow();
-  }, [measureOverflow, sortedTiles.length, canEdit, expanded]);
-
-  useEffect(() => {
-    const el = rowRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => measureOverflow());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [measureOverflow]);
-
   // Nothing to show? Hide the dock entirely.
   if (!hasCountdown && !hasTiles && !canEdit) {
     return null;
@@ -439,7 +344,7 @@ export function TripHeaderDock({
   return (
     <div className="relative px-4 pt-3 pb-3 sm:px-5">
       <div
-        className="group relative flex items-center gap-3 rounded-xl px-3 py-3 sm:gap-4 sm:px-3.5"
+        className="relative flex items-center gap-3 rounded-xl px-3 py-3 sm:gap-4 sm:px-3.5"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.10)",
@@ -485,13 +390,7 @@ export function TripHeaderDock({
           </div>
         ) : hasTiles ? (
           <div
-            ref={rowRef}
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-2 overflow-hidden"
-            style={{
-              // One-row clamp: tile pill height ≈ 38px. Slight buffer to
-              // avoid sub-pixel rounding clipping the bottom border.
-              maxHeight: expanded ? undefined : 40,
-            }}
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
             data-testid="header-dock-tiles"
           >
             {sortedTiles.map((tile) => (
@@ -504,14 +403,6 @@ export function TripHeaderDock({
             {canEdit && <AddTileButton onClick={() => setAddOpen(true)} />}
           </div>
         ) : null}
-
-        {/* ── Expand handle ─────────────────────────────────────────────── */}
-        {overflowing && hasTiles && (
-          <ExpandHandle
-            expanded={expanded}
-            onClick={() => setExpanded((p) => !p)}
-          />
-        )}
       </div>
 
       {/* ── Modals ──────────────────────────────────────────────────────── */}
