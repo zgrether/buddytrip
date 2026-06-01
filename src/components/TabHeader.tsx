@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { DOMAIN_COLORS, type Domain } from "@/lib/domainColors";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -12,13 +13,20 @@ interface TabHeaderProps {
    */
   eyebrow?: string;
   /**
-   * Eyebrow color. "accent" (default) uses the brand teal — the
-   * standard tab eyebrow treatment. "dim" uses bt-text-dim and is
-   * reserved for empty-state pages where the eyebrow conveys
-   * neutral context (trip name · location) rather than the tab
+   * Eyebrow color. "accent" (default) takes the domain hue when `domain`
+   * is supplied (the standard tab eyebrow treatment — it matches the
+   * active tab), falling back to the brand teal otherwise. "dim" uses
+   * bt-text-dim and is reserved for empty-state pages where the eyebrow
+   * conveys neutral context (trip name · location) rather than the tab
    * identity itself.
    */
   eyebrowTone?: "accent" | "dim";
+  /**
+   * Trip area this header belongs to. When set (and tone is "accent"),
+   * the eyebrow is painted in that area's domain color so it reinforces
+   * the active tab. Omit on neutral/empty-state headers.
+   */
+  domain?: Domain;
   /** Bold display headline. */
   headline: string;
   /** Short paragraph of dim body copy below the headline. Accepts a
@@ -66,12 +74,22 @@ interface TabHeaderProps {
 export function TabHeader({
   eyebrow,
   eyebrowTone = "accent",
+  domain,
   headline,
   body,
   desktopAction,
   actionAlwaysVisible = false,
   testId,
 }: TabHeaderProps) {
+  // Eyebrow color: "dim" stays neutral; otherwise pull the domain hue so
+  // the eyebrow matches the active tab, falling back to accent teal when
+  // no domain is supplied.
+  const eyebrowColor =
+    eyebrowTone === "dim"
+      ? "var(--color-bt-text-dim)"
+      : domain
+        ? DOMAIN_COLORS[domain].color
+        : "var(--color-bt-accent)";
   return (
     <div className="mb-6" data-testid={testId}>
       {/* Eyebrow row — only renders when an eyebrow is supplied. The
@@ -82,13 +100,7 @@ export function TabHeader({
         <div className="mb-3 flex items-center justify-between gap-3">
           <span
             className="text-[11px] font-semibold uppercase"
-            style={{
-              color:
-                eyebrowTone === "dim"
-                  ? "var(--color-bt-text-dim)"
-                  : "var(--color-bt-accent)",
-              letterSpacing: "0.1em",
-            }}
+            style={{ color: eyebrowColor, letterSpacing: "0.1em" }}
           >
             {eyebrow}
           </span>

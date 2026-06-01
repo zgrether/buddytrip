@@ -4,6 +4,12 @@ import { useState } from "react";
 import { AlertTriangle, Bell, Building2, Clock, FileText, Flag, Hash, Hotel, KeyRound, Lock, MapPin, Plus, Wifi, X, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
+
+// Quick Info is a Home-tab content surface, so its (non-alert) item
+// icon-chips take the Home domain hue. Alert tiles keep their warning
+// amber identity. Pulled from the shared map so a Home reskin reaches here.
+const HOME = DOMAIN_COLORS.home;
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -434,8 +440,8 @@ export function QuickInfoSection({
                 <span
                   className={`flex flex-shrink-0 items-center justify-center rounded-xl ${TILE_CHIP_CLASS}`}
                   style={{
-                    background: alert ? "var(--color-bt-warning-faint)" : "var(--color-bt-accent-faint)",
-                    color: alert ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
+                    background: alert ? "var(--color-bt-warning-faint)" : HOME.faint,
+                    color: alert ? "var(--color-bt-warning)" : HOME.color,
                   }}
                 >
                   {alert ? <Bell className={TILE_ICON_CLASS} /> : tileIconFor(tile, TILE_ICON_CLASS)}
