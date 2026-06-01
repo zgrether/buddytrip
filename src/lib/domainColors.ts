@@ -38,39 +38,25 @@ export interface DomainColor {
   faint: string;
 }
 
+// TEMPORARY: every area is mapped to teal (Home's hue) for now. The real
+// per-area hues still live in the `--color-bt-domain-*` tokens in
+// globals.css — to re-enable the full palette, point each entry back at
+// its own `var(--color-bt-domain-<area>)` / `-faint` token (see the
+// commented-out values beside each line).
+const TEAL: DomainColor = {
+  color: "var(--color-bt-domain-home)",
+  faint: "var(--color-bt-domain-home-faint)",
+};
+
 export const DOMAIN_COLORS: Record<Domain, DomainColor> = {
-  home: {
-    color: "var(--color-bt-domain-home)",
-    faint: "var(--color-bt-domain-home-faint)",
-  },
-  crew: {
-    color: "var(--color-bt-domain-crew)",
-    faint: "var(--color-bt-domain-crew-faint)",
-  },
-  lodging: {
-    color: "var(--color-bt-domain-lodging)",
-    faint: "var(--color-bt-domain-lodging-faint)",
-  },
-  agenda: {
-    color: "var(--color-bt-domain-agenda)",
-    faint: "var(--color-bt-domain-agenda-faint)",
-  },
-  travel: {
-    color: "var(--color-bt-domain-travel)",
-    faint: "var(--color-bt-domain-travel-faint)",
-  },
-  events: {
-    color: "var(--color-bt-domain-events)",
-    faint: "var(--color-bt-domain-events-faint)",
-  },
-  receipts: {
-    color: "var(--color-bt-domain-receipts)",
-    faint: "var(--color-bt-domain-receipts-faint)",
-  },
-  competition: {
-    color: "var(--color-bt-domain-competition)",
-    faint: "var(--color-bt-domain-competition-faint)",
-  },
+  home: TEAL, // { color: "var(--color-bt-domain-home)",        faint: "var(--color-bt-domain-home-faint)" }
+  crew: TEAL, // { color: "var(--color-bt-domain-crew)",        faint: "var(--color-bt-domain-crew-faint)" }
+  lodging: TEAL, // { color: "var(--color-bt-domain-lodging)",     faint: "var(--color-bt-domain-lodging-faint)" }
+  agenda: TEAL, // { color: "var(--color-bt-domain-agenda)",      faint: "var(--color-bt-domain-agenda-faint)" }
+  travel: TEAL, // { color: "var(--color-bt-domain-travel)",      faint: "var(--color-bt-domain-travel-faint)" }
+  events: TEAL, // { color: "var(--color-bt-domain-events)",      faint: "var(--color-bt-domain-events-faint)" }
+  receipts: TEAL, // { color: "var(--color-bt-domain-receipts)",    faint: "var(--color-bt-domain-receipts-faint)" }
+  competition: TEAL, // { color: "var(--color-bt-domain-competition)", faint: "var(--color-bt-domain-competition-faint)" }
 };
 
 /**
