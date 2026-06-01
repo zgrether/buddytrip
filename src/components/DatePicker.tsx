@@ -2,11 +2,13 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   addMonths,
@@ -85,6 +87,10 @@ const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 // (per the design spec). Dark ink reads on every domain hue.
 const CAP_TEXT = "#0d1f1a";
 
+// Popover geometry — kept in sync with the dialog's Tailwind width (w-[300px]).
+const POPOVER_W = 300;
+const POPOVER_GAP = 8;
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 /**
@@ -114,6 +120,10 @@ export function DatePicker(props: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState<Date | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  // Fixed-position coords for the portaled popover (null until measured).
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
 
   // Draft selection lives only while the popover is open; Apply commits it.
   const [draftRange, setDraftRange] = useState<DateRange>({ start: null, end: null });
@@ -134,13 +144,15 @@ export function DatePicker(props: DatePickerProps) {
     setOpen(true);
   }
 
-  // Close on outside click / Escape.
+  // Close on outside click / Escape. The popover is portaled to <body>, so a
+  // click inside it is outside rootRef — check both refs before closing.
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      const inTrigger = rootRef.current?.contains(target);
+      const inPopover = popoverRef.current?.contains(target);
+      if (!inTrigger && !inPopover) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -152,6 +164,38 @@ export function DatePicker(props: DatePickerProps) {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // Position the portaled popover relative to the trigger, flipping above when
+  // there isn't room below. Recomputed on open and on scroll/resize.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function reposition() {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const r = trigger.getBoundingClientRect();
+      const popH = popoverRef.current?.offsetHeight ?? 360;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      let left = r.left;
+      if (left + POPOVER_W > vw - POPOVER_GAP) left = vw - POPOVER_W - POPOVER_GAP;
+      if (left < POPOVER_GAP) left = POPOVER_GAP;
+
+      let top = r.bottom + POPOVER_GAP;
+      const fitsBelow = top + popH <= vh - POPOVER_GAP;
+      const fitsAbove = r.top - POPOVER_GAP - popH >= POPOVER_GAP;
+      if (!fitsBelow && fitsAbove) top = r.top - POPOVER_GAP - popH;
+
+      setCoords({ top, left });
+    }
+    reposition();
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open, mode]);
 
   // ── Trigger display ────────────────────────────────────────────────────
   const triggerText =
@@ -225,6 +269,7 @@ export function DatePicker(props: DatePickerProps) {
 
       {/* ── Trigger pill ──────────────────────────────────────────────── */}
       <button
+        ref={triggerRef}
         type="button"
         data-testid={testId}
         onClick={() => (open ? setOpen(false) : handleOpen())}
@@ -260,12 +305,17 @@ export function DatePicker(props: DatePickerProps) {
         />
       </button>
 
-      {/* ── Popover calendar ──────────────────────────────────────────── */}
-      {open && (
+      {/* ── Popover calendar (portaled to <body> so it escapes any clipping
+            ancestor and floats above the surrounding panel) ─────────────── */}
+      {open && typeof document !== "undefined" && createPortal(
         <div
+          ref={popoverRef}
           role="dialog"
-          className="absolute left-0 top-full z-50 mt-2 w-[300px] rounded-2xl p-3"
+          className="fixed z-[100] w-[300px] rounded-2xl p-3"
           style={{
+            top: coords?.top ?? -9999,
+            left: coords?.left ?? -9999,
+            visibility: coords ? "visible" : "hidden",
             background: "var(--color-bt-card-float)",
             border: "1px solid var(--color-bt-border)",
             boxShadow: "var(--shadow-floating)",
@@ -444,7 +494,8 @@ export function DatePicker(props: DatePickerProps) {
               Apply
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
