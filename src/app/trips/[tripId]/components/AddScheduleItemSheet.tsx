@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, X, Search, MapPin } from "lucide-react";
+import { Plus, X, Search, MapPin, Flag, Clock } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { DatePicker } from "@/components/DatePicker";
+import { TimePicker } from "@/components/TimePicker";
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import { parseLocalDate, toISODate } from "@/lib/dates";
+import { parseTime, toTime24 } from "@/lib/time";
 
 const GOLF_TYPES = ["golf_course"];
 
@@ -729,14 +731,16 @@ export function AddScheduleItemSheet({
                 <div className="space-y-1.5">
                   {teeTimes.map((t, idx) => (
                     <div key={idx} className="flex items-center gap-2">
-                      <input
-                        type="time"
-                        value={t}
-                        onChange={(e) => updateTeeTime(idx, e.target.value)}
-                        onClick={(e) => e.currentTarget.showPicker?.()}
-                        className="flex-1 rounded-xl border px-3 py-2.5 text-sm font-mono tabular-nums outline-none"
-                        style={inputStyle}
-                      />
+                      <div className="flex-1">
+                        <TimePicker
+                          icon={<Flag size={15} />}
+                          presets="tee"
+                          accent={DOMAIN_COLORS.agenda.color}
+                          accentFaint={DOMAIN_COLORS.agenda.faint}
+                          value={parseTime(t)}
+                          onChange={(time) => updateTeeTime(idx, toTime24(time))}
+                        />
+                      </div>
                       {teeTimes.length > 1 && (
                         <button
                           onClick={() => removeTeeTime(idx)}
@@ -910,17 +914,17 @@ export function AddScheduleItemSheet({
                   onChange={(d) => setScheduledDate(d ? toISODate(d) : "")}
                 />
               </div>
-              <div>
+              <div className="w-40">
                 <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: "var(--color-bt-text-dim)" }}>
                   Time <span className="font-medium normal-case tracking-normal">(optional)</span>
                 </p>
-                <input
-                  type="time"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                  onClick={(e) => e.currentTarget.showPicker?.()}
-                  className="w-32 rounded-xl border px-3 py-2.5 text-sm font-mono tabular-nums outline-none"
-                  style={inputStyle}
+                <TimePicker
+                  icon={<Clock size={15} />}
+                  presets="daypart"
+                  accent={DOMAIN_COLORS.agenda.color}
+                  accentFaint={DOMAIN_COLORS.agenda.faint}
+                  value={parseTime(scheduledTime)}
+                  onChange={(t) => setScheduledTime(toTime24(t))}
                 />
               </div>
             </div>
