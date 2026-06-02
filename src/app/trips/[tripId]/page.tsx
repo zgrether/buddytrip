@@ -412,6 +412,7 @@ export default function TripDetailPage() {
                 onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                 compActivated={showComp}
                 onOpenChat={() => setChatOpen(true)}
+                onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
               />
             )}
           </main>
@@ -491,6 +492,7 @@ export default function TripDetailPage() {
                     onWriteInvitation={() => setShowWriteInvitationModal(true)}
                     onAdvanceToGoing={isOwner ? () => setShowInvitationModal(true) : undefined}
                     actionCenterTitleAction={summaryButton}
+                    onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
                 )}
                 {activeTab === "schedule" && (

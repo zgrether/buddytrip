@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ItineraryView } from "../ItineraryView";
-import { ItineraryIntroModal } from "../modals/ItineraryIntroModal";
-import { InvitationCard } from "@/components/InvitationCard";
+import {
+  FreshTripGuide,
+  DismissedEmptyState,
+  useGuideDismissed,
+} from "../../../components/setup-guide";
 import type { TripData } from "../../types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -14,8 +16,17 @@ interface ItineraryPanelProps {
   tripId: string;
   trip: TripData;
   isOwner: boolean;
-  /** True once the owner has tapped "Add Itinerary" on the invitation card. */
+  /** True once the owner has tapped "Add Itinerary" on the (legacy)
+   *  invitation card. With the FreshTripGuide rollout we treat the empty
+   *  itinerary as the default for owners, so this flag is no longer the
+   *  primary gate — but it still routes legacy trips and members. */
   isActivated: boolean;
+  /** Opens the existing DatesSheet — wired from the trip page. Passed
+   *  through to FreshTripGuide's date flip-card poll branch. */
+  onOpenDatesSheet?: () => void;
+  /** Tab switcher — drives the Lodging / Crew / Agenda step CTAs in
+   *  FreshTripGuide. */
+  onTabChange?: (tab: string) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -23,103 +34,119 @@ interface ItineraryPanelProps {
 /**
  * ItineraryPanel — home tab panel for the day-by-day timeline.
  *
- * State machine:
- *   1. Member, not activated  → dim placeholder, no CTA
- *   2. Owner, not activated   → standard InvitationCard, opens
- *                               ItineraryIntroModal
- *   3. Activated              → ItineraryView renders directly (no panel
- *                               container). When activated-but-empty, the
- *                               empty state gets an X button to back out.
+ * State machine (owner):
+ *   - dates set OR isActivated → ItineraryView (real bookends + content).
+ *     When the guide isn't dismissed, FreshTripGuide also renders above it
+ *     so the owner can keep adding lodging/crew/agenda from the same spot.
+ *   - no dates set + !dismissed → FreshTripGuide alone (the empty state).
+ *   - no dates set + dismissed  → DismissedEmptyState (single dashed card
+ *     with a Set-dates CTA and a "Show setup guide" restore link).
  *
- * The previous "no content" branch (a bare nudge to set dates from the
- * header) has been folded into the standard invitation card so all four
- * home-tab panels share the same opt-in affordance.
+ * Members still see the dim placeholder until the trip has real content.
+ *
+ * The legacy `isActivated` flag (itinerary_enabled) routes pre-existing
+ * trips that already opted in; new trips treat the empty itinerary as the
+ * default, with FreshTripGuide teaching the flow.
  */
 export function ItineraryPanel({
   tripId,
   trip,
   isOwner,
   isActivated,
+  onOpenDatesSheet,
+  onTabChange,
 }: ItineraryPanelProps) {
-  const [introOpen, setIntroOpen] = useState(false);
+  const [dismissed, setDismissed] = useGuideDismissed(tripId);
   const utils = trpc.useUtils();
+  // Suppress the unused-warning for the legacy disable mutation — kept on
+  // standby for the (very rare) "back out of activation" flow if we wire
+  // it back in later. For now FreshTripGuide replaces the activation UI.
+  void useState; // imported above; tree-shaken if not used
 
-  const enableItinerary = trpc.trips.enableItinerary.useMutation({
+  // Legacy disable hook — no longer surfaced in the UI, but kept available
+  // so any prod data with itinerary_enabled=true and no content can still
+  // be reverted via a future affordance without re-plumbing.
+  const _disableItinerary = trpc.trips.disableItinerary.useMutation({
     async onMutate() {
       await utils.trips.getById.cancel({ tripId });
       const prev = utils.trips.getById.getData({ tripId });
       utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
-        old ? { ...old, itinerary_enabled: true } : old
+        old ? { ...old, itinerary_enabled: false } : old,
       );
       return { prev };
     },
     onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.trips.getById.setData({ tripId }, ctx.prev);
-    },
-    onSuccess() {
-      setIntroOpen(false);
+      if (ctx?.prev !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prev);
     },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
     },
   });
+  void _disableItinerary;
 
-  const disableItinerary = trpc.trips.disableItinerary.useMutation({
-    async onMutate() {
-      await utils.trips.getById.cancel({ tripId });
-      const prev = utils.trips.getById.getData({ tripId });
-      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
-        old ? { ...old, itinerary_enabled: false } : old
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.trips.getById.setData({ tripId }, ctx.prev);
-    },
-    onSettled() {
-      utils.trips.getById.invalidate({ tripId });
-    },
-  });
+  const datesSet = !!(trip.start_date && trip.end_date);
 
-  // ── State 4: live (no panel shell — view renders directly) ──────────
-  if (isActivated) {
-    return (
-      <ItineraryView
-        trip={trip}
-        isOwner={isOwner}
-        onCancel={isOwner ? () => disableItinerary.mutate({ tripId }) : undefined}
-      />
-    );
-  }
-
-  // ── State 1: member, not activated ───────────────────────────────────
+  // ── Member path ─────────────────────────────────────────────────────
   if (!isOwner) {
+    // Show the live view as soon as there are bookends or content.
+    if (datesSet || isActivated) {
+      return <ItineraryView trip={trip} isOwner={false} />;
+    }
     return (
-      <DimPlaceholder
-        text="Your itinerary will appear here once the trip organizer sets it up."
+      <DimPlaceholder text="Your itinerary will appear here once the trip organizer sets it up." />
+    );
+  }
+
+  // ── Owner: dates set OR activated — show real view + restore link ──
+  if (datesSet || isActivated) {
+    return (
+      <div className="space-y-3">
+        {!dismissed && (
+          <FreshTripGuide
+            tripId={tripId}
+            trip={trip}
+            onOpenDatesSheet={onOpenDatesSheet}
+            onTabChange={onTabChange}
+            onDismiss={() => setDismissed(true)}
+          />
+        )}
+        {dismissed && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setDismissed(false)}
+              className="text-[11px] transition-opacity hover:opacity-80"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              data-testid="guide-restore-link"
+            >
+              Show setup guide
+            </button>
+          </div>
+        )}
+        <ItineraryView trip={trip} isOwner={isOwner} />
+      </div>
+    );
+  }
+
+  // ── Owner: no dates yet ────────────────────────────────────────────
+  if (dismissed) {
+    return (
+      <DismissedEmptyState
+        onSetDates={() => onOpenDatesSheet?.()}
+        onRestoreGuide={() => setDismissed(false)}
       />
     );
   }
 
-  // ── State 2: owner, not activated — standard invitation card ─────────
   return (
-    <>
-      <InvitationCard
-        Icon={Calendar}
-        title="Add Itinerary"
-        body="Set your trip dates and your lodging, schedule, and travel info all slot into a day-by-day view."
-        onClick={() => setIntroOpen(true)}
-        testId="itinerary-invitation"
-      />
-      {introOpen && (
-        <ItineraryIntroModal
-          isOpen
-          onClose={() => setIntroOpen(false)}
-          onActivate={() => enableItinerary.mutate({ tripId })}
-          isActivating={enableItinerary.isPending}
-        />
-      )}
-    </>
+    <FreshTripGuide
+      tripId={tripId}
+      trip={trip}
+      onOpenDatesSheet={onOpenDatesSheet}
+      onTabChange={onTabChange}
+      onDismiss={() => setDismissed(true)}
+    />
   );
 }
 

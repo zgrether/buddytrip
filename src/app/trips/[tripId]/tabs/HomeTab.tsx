@@ -34,7 +34,8 @@ export function HomeTab({
   isOwner,
   onTabChange,
   onOpenChat,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
+  onOpenDatesSheet,
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode; onOpenDatesSheet?: () => void }) {
   // Prefetch ideas so IdeaZonePanel renders instantly when stage === "idea".
   trpc.ideas.list.useQuery({ tripId: trip.id });
 
@@ -88,6 +89,8 @@ export function HomeTab({
             trip={trip}
             isOwner={!!isOwner}
             isActivated={!!trip.itinerary_enabled}
+            onOpenDatesSheet={onOpenDatesSheet}
+            onTabChange={onTabChange}
           />
         </>
       )}
