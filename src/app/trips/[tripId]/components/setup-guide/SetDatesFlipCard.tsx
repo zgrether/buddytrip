@@ -7,7 +7,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Pencil,
-  Users,
+  User,
+  UserPlus,
+  Vote,
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -296,50 +298,50 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           }
         />
       ) : crewCount < 2 ? (
-        <div className="flex flex-1 flex-col items-start gap-2">
+        // Centered redirect — matches the no-crew Poll-tab mock.
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-2 text-center">
           <span
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full"
             style={{ background: tint.faint, color: tint.color }}
             aria-hidden="true"
           >
-            <Users size={16} />
+            <User size={22} strokeWidth={1.9} />
           </span>
           <p
-            className="text-[13px] font-semibold leading-tight"
+            className="text-[15px] font-semibold leading-tight"
             style={{ color: "var(--color-bt-text)" }}
           >
             Add the crew first
           </p>
           <p
-            className="text-[11px] leading-snug"
+            className="text-[12px] leading-snug"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Polling needs at least two people — invite the crew, then come
-            back to set up the date poll.
+            It's just you so far — invite at least one more person and
+            you can poll everyone for the dates that work.
           </p>
-          <div className="mt-1 flex flex-col gap-1.5">
-            <button
-              type="button"
-              onClick={() => onTabChange?.("crew")}
-              className="rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90"
-              style={{
-                background: tint.color,
-                color: "var(--color-bt-on-accent, #0d1f1a)",
-              }}
-              data-testid="guide-dates-poll-invite-crew"
-            >
-              Invite crew
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("pick")}
-              className="text-[11px] transition-opacity hover:opacity-80"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              data-testid="guide-dates-poll-fallback-pick"
-            >
-              or just pick the dates yourself
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => onTabChange?.("crew")}
+            className="mt-1 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
+            style={{
+              background: tint.color,
+              color: "var(--color-bt-on-accent, #0d1f1a)",
+            }}
+            data-testid="guide-dates-poll-invite-crew"
+          >
+            <UserPlus size={14} strokeWidth={2.2} />
+            Invite crew
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("pick")}
+            className="text-[12px] transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="guide-dates-poll-fallback-pick"
+          >
+            or just pick the dates yourself
+          </button>
         </div>
       ) : pollMode ? (
         <PollBuilderPlaceholder
@@ -359,15 +361,24 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           }}
         />
       ) : (
-        <div className="flex flex-1 flex-col items-start gap-2">
+        // ≥2 crew — same centered cadence as the no-crew state so the
+        // Poll tab feels like one consistent surface across both modes.
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-2 text-center">
+          <span
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full"
+            style={{ background: tint.faint, color: tint.color }}
+            aria-hidden="true"
+          >
+            <Vote size={22} strokeWidth={1.9} />
+          </span>
           <p
-            className="text-[13px] font-semibold leading-tight"
+            className="text-[15px] font-semibold leading-tight"
             style={{ color: "var(--color-bt-text)" }}
           >
             Poll the crew
           </p>
           <p
-            className="text-[11px] leading-snug"
+            className="text-[12px] leading-snug"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             Propose a few date ranges and the crew votes — pick a
@@ -376,14 +387,24 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           <button
             type="button"
             onClick={() => onPollExpand?.()}
-            className="mt-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90"
+            className="mt-1 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
             style={{
               background: tint.color,
               color: "var(--color-bt-on-accent, #0d1f1a)",
             }}
             data-testid="guide-dates-poll-launch"
           >
-            Set up date poll →
+            <Vote size={14} strokeWidth={2.2} />
+            Set up date poll
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("pick")}
+            className="text-[12px] transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="guide-dates-poll-fallback-pick-withcrew"
+          >
+            or just pick the dates yourself
           </button>
         </div>
       )}
