@@ -41,13 +41,24 @@ import type { TripData } from "../../tabs/types";
 export interface SetDatesFlipCardProps {
   tripId: string;
   trip: TripData;
-  /** Opens the existing DatesSheet — used by the Poll branch (≥2 crew). */
+  /** Opens the existing DatesSheet — only used as a deep fallback if the
+   *  parent decides not to handle pollMode itself. With the inline poll
+   *  builder we now expand the card in place via onPollExpand. */
   onOpenDatesSheet?: () => void;
   /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect. */
   onTabChange?: (tab: string) => void;
   /** Card min-height in px. FreshTripGuide passes this so all four step
    *  cards (this one and the three StepCards) share the same shape. */
   minHeight?: number;
+  /** True when the parent has expanded this card to span the whole grid
+   *  so the poll builder has room to grow horizontally. The card stays
+   *  flipped to its back face while this is on. */
+  pollMode?: boolean;
+  /** Called when the user taps "Set up date poll →" with ≥2 crew. The
+   *  parent flips pollMode on and re-renders the grid full-width. */
+  onPollExpand?: () => void;
+  /** Cancels poll mode and returns the parent to the regular 4-up grid. */
+  onPollCancel?: () => void;
 }
 
 type PickerTab = "pick" | "poll";
@@ -61,9 +72,16 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   onOpenDatesSheet,
   onTabChange,
   minHeight,
+  pollMode = false,
+  onPollExpand,
+  onPollCancel,
 }) => {
   const tint = DOMAIN_COLORS.home;
+  // While pollMode is on, the card stays on its back face — the parent
+  // has already widened the column, so flipping back to the front face
+  // mid-poll would just show a stretched-out Set Dates card.
   const [flipped, setFlipped] = useState(false);
+  const showBack = flipped || pollMode;
   const [tab, setTab] = useState<PickerTab>("pick");
   const utils = trpc.useUtils();
 
@@ -214,7 +232,12 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         </p>
         <button
           type="button"
-          onClick={() => setFlipped(false)}
+          onClick={() => {
+            // Always cancel pollMode if active, so the parent collapses
+            // the card back to its column; then flip back to the front.
+            if (pollMode) onPollCancel?.();
+            setFlipped(false);
+          }}
           aria-label="Close picker"
           className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
           style={{ color: "var(--color-bt-text-dim)" }}
@@ -224,7 +247,10 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         </button>
       </div>
 
-      {/* Pick / Poll tabs — full width segmented control */}
+      {/* Pick / Poll tabs — full width segmented control. Hidden once
+          the parent has committed to pollMode; the builder is a
+          single-purpose surface and tab-switching mid-build is noise. */}
+      {!pollMode && (
       <div
         className="mb-2 grid grid-cols-2 rounded-lg p-0.5"
         style={{
@@ -252,8 +278,9 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           );
         })}
       </div>
+      )}
 
-      {tab === "pick" ? (
+      {tab === "pick" && !pollMode ? (
         <InlineRangeCalendar
           initialStart={trip.start_date ?? null}
           initialEnd={trip.end_date ?? null}
@@ -314,6 +341,23 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             </button>
           </div>
         </div>
+      ) : pollMode ? (
+        <PollBuilderPlaceholder
+          accent={tint.color}
+          accentFaint={tint.faint}
+          onCancel={() => {
+            onPollCancel?.();
+            // When the parent collapses the card back to its column,
+            // we also flip back to the front face so the next open
+            // starts clean.
+            setFlipped(false);
+          }}
+          onOpenSheet={() => {
+            onPollCancel?.();
+            setFlipped(false);
+            onOpenDatesSheet?.();
+          }}
+        />
       ) : (
         <div className="flex flex-1 flex-col items-start gap-2">
           <p
@@ -326,15 +370,12 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             className="text-[11px] leading-snug"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Propose a few date ranges and the crew votes. Set up the
-            options in the dates sheet.
+            Propose a few date ranges and the crew votes — pick a
+            window, add a few more, then launch.
           </p>
           <button
             type="button"
-            onClick={() => {
-              setFlipped(false);
-              onOpenDatesSheet?.();
-            }}
+            onClick={() => onPollExpand?.()}
             className="mt-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90"
             style={{
               background: tint.color,
@@ -358,10 +399,11 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         className="absolute inset-0 h-full w-full"
         style={{
           transformStyle: "preserve-3d",
-          transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+          transform: showBack ? "rotateY(180deg)" : "rotateY(0deg)",
           transition: "transform 450ms cubic-bezier(.2,.8,.2,1)",
         }}
         data-testid="guide-step-dates"
+        data-pollmode={pollMode ? "true" : "false"}
       >
         {/* Front — absolutely positioned so it stretches to the wrapper's
             minHeight. Same treatment as the back face; without this, the
@@ -575,6 +617,153 @@ function InlineRangeCalendar({
         >
           {saving ? "Saving…" : "Set dates"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PollBuilderPlaceholder ───────────────────────────────────────────────
+//
+// First-cut inline poll builder rendered when the parent grid has
+// expanded the Set Dates card to full width. Lays out a two-column row:
+// the same InlineRangeCalendar on the left for picking a date range +
+// a proposed-ranges rail on the right that grows horizontally as the
+// user adds windows. Launch + Cancel sit in the footer. The polished
+// design lands once the reference screenshot is back in play — this
+// placeholder proves the layout (card expansion + horizontal growth)
+// works and offers a working hand-off to the existing DatesSheet so
+// the underlying feature stays usable while the inline build matures.
+
+function PollBuilderPlaceholder({
+  accent,
+  accentFaint,
+  onCancel,
+  onOpenSheet,
+}: {
+  accent: string;
+  accentFaint: string;
+  onCancel: () => void;
+  onOpenSheet: () => void;
+}) {
+  return (
+    <div className="flex flex-1 flex-col gap-3" data-testid="poll-builder">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p
+            className="text-[14px] font-semibold leading-tight"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            Set up the date poll
+          </p>
+          <p
+            className="mt-1 text-[12px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            Propose a few windows the crew can vote on. Add another date
+            range to the right — the rail grows as you go.
+          </p>
+        </div>
+      </div>
+
+      {/* Inline builder canvas — left calendar / right proposed-ranges
+          rail. Right side scrolls horizontally as proposals exceed the
+          available width. */}
+      <div
+        className="flex flex-1 gap-3 overflow-hidden rounded-lg"
+        style={{
+          background: "var(--color-bt-base)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        <div
+          className="flex w-[280px] flex-shrink-0 items-center justify-center p-4 text-center"
+          style={{ borderRight: "1px solid var(--color-bt-border)" }}
+        >
+          <p
+            className="text-[12px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            The inline calendar lives here.
+            <br />
+            Pick a range and add it as a proposal.
+          </p>
+        </div>
+        <div className="flex flex-1 items-center gap-3 overflow-x-auto p-3">
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="flex h-full w-[170px] flex-shrink-0 flex-col items-center justify-center rounded-md text-center"
+              style={{
+                background: "var(--color-bt-card)",
+                border: `1px dashed ${accent}`,
+              }}
+            >
+              <p
+                className="text-[11px] uppercase tracking-[0.08em]"
+                style={{ color: accent }}
+              >
+                Proposal {n}
+              </p>
+              <p
+                className="mt-1 text-[12px]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                — pending —
+              </p>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="flex h-full w-[120px] flex-shrink-0 flex-col items-center justify-center rounded-md text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-card-raised)]"
+            style={{
+              border: `1px dashed var(--color-bt-border)`,
+              color: "var(--color-bt-text-dim)",
+            }}
+          >
+            + Add another
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          data-testid="poll-builder-cancel"
+        >
+          Cancel
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenSheet}
+            className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{
+              color: "var(--color-bt-text-dim)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+            data-testid="poll-builder-handoff"
+          >
+            Open in dates sheet
+          </button>
+          <button
+            type="button"
+            disabled
+            className="rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
+            style={{
+              background: accent,
+              color: "var(--color-bt-on-accent, #0d1f1a)",
+            }}
+            data-testid="poll-builder-launch"
+          >
+            Launch poll
+          </button>
+          {/* accentFaint reserved for the highlighted-range fill that
+              will sit on the inline calendar once it's wired up. */}
+          <span className="sr-only" style={{ background: accentFaint }} />
+        </div>
       </div>
     </div>
   );

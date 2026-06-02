@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Building2, Flag, UserPlus, X } from "lucide-react";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
@@ -54,6 +55,13 @@ export function FreshTripGuide({
 }: FreshTripGuideProps) {
   const datesSet = !!(trip.start_date && trip.end_date);
   const accent = DOMAIN_COLORS.home.color;
+
+  // Poll-builder takeover: when the user taps "Set up date poll →" on
+  // the dates flip card with ≥2 crew, the Set Dates card expands across
+  // the whole grid and the other three steps hide until the poll is
+  // committed or cancelled. Starting a poll is a "finish it" task —
+  // splitting attention with the rest of the guide isn't useful.
+  const [pollMode, setPollMode] = useState(false);
 
   // Destination string for the eyebrow + location graphic. Prefer the
   // explicit locked-destination location (semantic geographic string),
@@ -122,61 +130,76 @@ export function FreshTripGuide({
         </button>
       </header>
 
-      {/* ── Step grid — 1 col mobile, 2 col tablet, 4 col desktop ─────── */}
+      {/* ── Step grid — 1 col mobile, 2 col tablet, 4 col desktop.
+              In pollMode the Set Dates card spans the full grid width
+              and the other three steps drop out of the DOM. ─────────── */}
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* Step 1 — Set dates (flip card; primary CTA) */}
-        <SetDatesFlipCard
-          tripId={tripId}
-          trip={trip}
-          onOpenDatesSheet={onOpenDatesSheet}
-          onTabChange={onTabChange}
-          minHeight={CARD_MIN_H}
-        />
+        <div
+          className={
+            pollMode
+              ? "sm:col-span-2 lg:col-span-4"
+              : "sm:col-span-1 lg:col-span-1"
+          }
+        >
+          <SetDatesFlipCard
+            tripId={tripId}
+            trip={trip}
+            onOpenDatesSheet={onOpenDatesSheet}
+            onTabChange={onTabChange}
+            minHeight={CARD_MIN_H}
+            pollMode={pollMode}
+            onPollExpand={() => setPollMode(true)}
+            onPollCancel={() => setPollMode(false)}
+          />
+        </div>
 
-        {/* Step 2 — Invite the crew (ghost) */}
-        <StepCard
-          number={2}
-          domain="crew"
-          title="Invite the crew"
-          body="Add everyone — they join, share travel, and split costs from their phone."
-          thumbnail={<CrewThumbnail />}
-          cta="Invite crew"
-          ctaIcon={<UserPlus size={14} strokeWidth={2} />}
-          ctaVariant="ghost"
-          onCta={() => onTabChange?.("crew")}
-          minHeight={CARD_MIN_H}
-          testId="guide-step-crew"
-        />
-
-        {/* Step 3 — Add lodging (ghost) */}
-        <StepCard
-          number={3}
-          domain="lodging"
-          title="Add lodging"
-          body="Properties and rooms. Set nightly dates now or once your trip dates land."
-          thumbnail={<LodgingThumbnail />}
-          cta="Add lodging"
-          ctaIcon={<Building2 size={14} strokeWidth={2} />}
-          ctaVariant="ghost"
-          onCta={() => onTabChange?.("lodging")}
-          minHeight={CARD_MIN_H}
-          testId="guide-step-lodging"
-        />
-
-        {/* Step 4 — Plan the agenda (ghost) */}
-        <StepCard
-          number={4}
-          domain="agenda"
-          title="Plan the agenda"
-          body="Tee times, dinners, side games. Slot them onto days whenever you like."
-          thumbnail={<AgendaThumbnail />}
-          cta="Plan agenda"
-          ctaIcon={<Flag size={14} strokeWidth={2} />}
-          ctaVariant="ghost"
-          onCta={() => onTabChange?.("schedule")}
-          minHeight={CARD_MIN_H}
-          testId="guide-step-agenda"
-        />
+        {/* Steps 2-4 hide while a poll is being built — starting a
+            poll is a "finish it" task; the other steps just split
+            attention. They return on cancel/launch. */}
+        {!pollMode && (
+          <>
+            <StepCard
+              number={2}
+              domain="crew"
+              title="Invite the crew"
+              body="Add everyone — they join, share travel, and split costs from their phone."
+              thumbnail={<CrewThumbnail />}
+              cta="Invite crew"
+              ctaIcon={<UserPlus size={14} strokeWidth={2} />}
+              ctaVariant="ghost"
+              onCta={() => onTabChange?.("crew")}
+              minHeight={CARD_MIN_H}
+              testId="guide-step-crew"
+            />
+            <StepCard
+              number={3}
+              domain="lodging"
+              title="Add lodging"
+              body="Properties and rooms. Set nightly dates now or once your trip dates land."
+              thumbnail={<LodgingThumbnail />}
+              cta="Add lodging"
+              ctaIcon={<Building2 size={14} strokeWidth={2} />}
+              ctaVariant="ghost"
+              onCta={() => onTabChange?.("lodging")}
+              minHeight={CARD_MIN_H}
+              testId="guide-step-lodging"
+            />
+            <StepCard
+              number={4}
+              domain="agenda"
+              title="Plan the agenda"
+              body="Tee times, dinners, side games. Slot them onto days whenever you like."
+              thumbnail={<AgendaThumbnail />}
+              cta="Plan agenda"
+              ctaIcon={<Flag size={14} strokeWidth={2} />}
+              ctaVariant="ghost"
+              onCta={() => onTabChange?.("schedule")}
+              minHeight={CARD_MIN_H}
+              testId="guide-step-agenda"
+            />
+          </>
+        )}
       </div>
     </section>
   );
