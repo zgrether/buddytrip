@@ -1,40 +1,53 @@
 "use client";
 
 import type { FC, ReactNode } from "react";
+import { Check } from "lucide-react";
 import { DOMAIN_COLORS, type Domain } from "@/lib/domainColors";
 
 // ── StepCard ─────────────────────────────────────────────────────────────
 //
-// One of the four step cards in FreshTripGuide. Owns the layout shared by
-// every step (number badge + thumbnail + title + body + CTA); the caller
-// supplies the thumbnail SVG and the click handler. Domain-tinted via the
-// shared DOMAIN_COLORS map so each step picks up its tab's color.
+// One of the four step cards in FreshTripGuide. Layout:
+//   1. dark "preview" area at the top — owns the mini-UI thumbnail. The
+//      thumbnail renders flush on this surface; no inner panel/border.
+//   2. Number badge inline with the title (number-circle is faint-teal
+//      background + teal numeral; the badge collapses to a check icon
+//      when `done`).
+//   3. One-line body or done-summary.
+//   4. CTA at the bottom. Primary variant = solid accent (use for the
+//      single "attention grabber" — Set dates), ghost variant = card-raised
+//      bg + subtle border + leading icon (matches the "Add another item"
+//      buttons under each tab).
 
 export interface StepCardProps {
-  /** Step number rendered as a small badge in the top-left. */
+  /** Step number rendered as a small badge to the LEFT of the title. */
   number: number;
-  /** Domain that drives the accent tint of the number badge + thumbnail
-   *  background + CTA. Maps to a `--color-bt-domain-*` token. */
+  /** Domain that drives the badge tint (and any future per-step
+   *  accent). Maps to a `--color-bt-domain-*` token. */
   domain: Domain;
   /** Numbered title — short noun-phrase. */
   title: string;
   /** One-line description under the title. */
   body: string;
-  /** Tiny stylized thumbnail rendered in the card's preview area. SVG or
-   *  arbitrary JSX — caller controls sizing. */
+  /** Stylized mini-UI preview. Rendered into the dark preview area. */
   thumbnail: ReactNode;
-  /** CTA button label, e.g. "Add a property". */
+  /** CTA button label, e.g. "Add lodging". */
   cta: string;
+  /** Leading icon for the CTA, e.g. <Home size={14} />. */
+  ctaIcon?: ReactNode;
+  /** "primary" → solid teal attention-grabber.
+   *  "ghost"   → translucent + bordered (matches add-another-item style).
+   *  Default ghost; only set "primary" on the single attention step. */
+  ctaVariant?: "primary" | "ghost";
   /** CTA click handler. */
   onCta: () => void;
-  /** Optional "done" mode — collapsed visual state once the step is
-   *  satisfied (e.g. dates set). The CTA becomes a quiet "Change" link;
-   *  the thumbnail and body fade back. */
+  /** Optional "done" mode — when the step is satisfied. Currently
+   *  flips the number badge to a check; the parent card may also swap
+   *  its own background to accent-faint (see SetDatesFlipCard). */
   done?: boolean;
-  /** Shown above the body when done — what the user actually picked.
-   *  E.g. "May 26 – Jun 14". */
+  /** Shown above the body when done — what the user actually picked,
+   *  e.g. "May 22 – 26, 2026 · 5 days. These frame your whole itinerary." */
   doneSummary?: string;
-  /** Optional test id for the CTA. */
+  /** Test id for the CTA. */
   testId?: string;
 }
 
@@ -45,6 +58,8 @@ export const StepCard: FC<StepCardProps> = ({
   body,
   thumbnail,
   cta,
+  ctaIcon,
+  ctaVariant = "ghost",
   onCta,
   done = false,
   doneSummary,
@@ -53,90 +68,99 @@ export const StepCard: FC<StepCardProps> = ({
   const tint = DOMAIN_COLORS[domain];
   return (
     <div
-      className="relative flex flex-col rounded-xl p-4"
+      className="flex flex-col gap-3 rounded-xl p-3"
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
       }}
       data-testid={`step-card-${number}`}
     >
-      {/* Number badge */}
-      <span
-        className="absolute -top-2 left-3 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums"
-        style={{
-          background: tint.color,
-          color: "var(--color-bt-on-accent, #0d1f1a)",
-        }}
-        aria-hidden="true"
-      >
-        {number}
-      </span>
-
-      {/* Thumbnail — domain-tinted background */}
+      {/* Preview area — dark surface that hosts the mini-UI thumbnail. */}
       <div
-        className="mb-3 flex h-20 items-center justify-center overflow-hidden rounded-lg"
+        className="flex h-[120px] items-stretch justify-stretch overflow-hidden rounded-lg"
         style={{
-          background: tint.faint,
-          color: tint.color,
-          opacity: done ? 0.55 : 1,
+          background: "var(--color-bt-base)",
         }}
         aria-hidden="true"
       >
         {thumbnail}
       </div>
 
-      {/* Title */}
-      <p
-        className="text-[13px] font-semibold leading-tight"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        {title}
-      </p>
+      {/* Title row — number badge inline */}
+      <div className="flex items-center gap-2">
+        <NumberBadge done={done} tint={tint.color} faint={tint.faint}>
+          {number}
+        </NumberBadge>
+        <p
+          className="text-[14px] font-semibold leading-tight"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {title}
+        </p>
+      </div>
 
       {/* Body / done-summary */}
-      {done && doneSummary ? (
-        <p
-          className="mt-1 text-[12px]"
-          style={{ color: tint.color }}
-        >
-          {doneSummary}
-        </p>
-      ) : (
-        <p
-          className="mt-1 text-[11px] leading-snug"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {body}
-        </p>
-      )}
+      <p
+        className="text-[12px] leading-snug"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        {done && doneSummary ? doneSummary : body}
+      </p>
 
       {/* CTA */}
-      <div className="mt-3">
-        {done ? (
-          <button
-            type="button"
-            onClick={onCta}
-            data-testid={testId}
-            className="text-[12px] font-medium transition-opacity hover:opacity-80"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Change
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onCta}
-            data-testid={testId}
-            className="w-full rounded-lg py-2 text-[12px] font-semibold transition-opacity hover:opacity-90"
-            style={{
-              background: tint.color,
-              color: "var(--color-bt-on-accent, #0d1f1a)",
-            }}
-          >
-            {cta}
-          </button>
-        )}
-      </div>
+      <button
+        type="button"
+        onClick={onCta}
+        data-testid={testId}
+        className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
+        style={
+          ctaVariant === "primary"
+            ? {
+                background: tint.color,
+                color: "var(--color-bt-on-accent, #0d1f1a)",
+              }
+            : {
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text)",
+                border: "1px solid var(--color-bt-border)",
+              }
+        }
+      >
+        {ctaIcon}
+        {cta}
+      </button>
     </div>
   );
 };
+
+// ── NumberBadge ─────────────────────────────────────────────────────────
+//
+// 20px circle. Idle: faint-teal background + teal numeral (inverted from
+// the previous "solid teal + dark numeral" treatment). Done: check icon
+// in the same colors.
+
+function NumberBadge({
+  children,
+  done,
+  tint,
+  faint,
+}: {
+  children: ReactNode;
+  done: boolean;
+  tint: string;
+  faint: string;
+}) {
+  return (
+    <span
+      className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums"
+      style={{
+        background: faint,
+        color: tint,
+        border: `1px solid ${tint}`,
+      }}
+      aria-hidden="true"
+    >
+      {done ? <Check size={12} strokeWidth={2.6} /> : children}
+    </span>
+  );
+}

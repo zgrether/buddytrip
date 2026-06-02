@@ -2,169 +2,108 @@
 
 // ── Step thumbnails ──────────────────────────────────────────────────────
 //
-// Tiny stylized previews of each tab's UI — not literal screenshots, just
-// enough cue per step that the grid scans at a glance. Each thumbnail
-// renders into a domain-tinted backing in StepCard; colors come from
-// currentColor + small alpha plates so individual rebrands sweep through.
+// Each thumbnail renders flush into StepCard's dark preview area — no
+// inner border, no inner panel. Just the stylized mini-UI on the parent
+// surface. Colors are explicit so each step reads as its own UI rather
+// than a single tinted plate (lodging blue gradient, crew rose/teal/blue
+// dots, agenda amber outlines, etc.).
 
-const TILE_BG = "rgba(255,255,255,0.04)";
-const TILE_BORDER = "rgba(255,255,255,0.08)";
+const DIM = "rgba(255,255,255,0.10)";
+const DIM_BRIGHTER = "rgba(255,255,255,0.18)";
+const TEXT_DIM = "rgba(255,255,255,0.35)";
+const TEXT_DIMMER = "rgba(255,255,255,0.22)";
 
 // ── Calendar (Step 1: Set dates) ─────────────────────────────────────────
 //
-// A 3x5 month grid with a highlighted range across the middle row — reads
-// as "calendar with dates selected" without needing dates to be legible.
+// Sparse grid (5×7) on the dark preview surface. Two cells filled in
+// accent teal hint at the selected range without literally drawing a
+// month — the picker itself does that.
 
-export function CalendarThumbnail() {
+export function CalendarThumbnail({ accent }: { accent?: string } = {}) {
+  const ACCENT = accent ?? "var(--color-bt-accent)";
+  // Cells filled solid teal — the "selected range" hint.
+  const filled = new Set([10, 26]);
+  // Cells faintly tinted to soften the grid before the picker opens.
+  const tinted = new Set([11, 27]);
   return (
     <div
-      className="flex flex-col gap-[3px] rounded-md p-2"
-      style={{
-        background: TILE_BG,
-        border: `1px solid ${TILE_BORDER}`,
-        width: 64,
-      }}
+      className="grid h-full w-full grid-cols-7 gap-[6px] p-3"
       aria-hidden="true"
     >
-      {/* Header strip */}
-      <div className="mb-[2px] flex items-center justify-between">
-        <span
-          className="block h-[3px] w-3 rounded-sm"
-          style={{ background: "currentColor", opacity: 0.7 }}
-        />
-        <span className="flex gap-[2px]">
+      {/* Tiny header strip — top-left bar */}
+      <span className="col-span-2 h-[3px] rounded-sm" style={{ background: TEXT_DIM }} />
+      <span className="col-span-5" />
+      {Array.from({ length: 35 }).map((_, i) => {
+        const fill = filled.has(i)
+          ? ACCENT
+          : tinted.has(i)
+            ? "color-mix(in srgb, var(--color-bt-accent) 28%, transparent)"
+            : DIM;
+        return (
           <span
-            className="block h-[3px] w-[3px] rounded-full"
-            style={{ background: "currentColor", opacity: 0.4 }}
+            key={i}
+            className="aspect-square rounded-[3px]"
+            style={{ background: fill }}
           />
-          <span
-            className="block h-[3px] w-[3px] rounded-full"
-            style={{ background: "currentColor", opacity: 0.4 }}
-          />
-        </span>
-      </div>
-      {/* Weekday row */}
-      <div className="grid grid-cols-7 gap-[2px]">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <span
-            key={`h-${i}`}
-            className="block h-[2px]"
-            style={{ background: "currentColor", opacity: 0.35 }}
-          />
-        ))}
-      </div>
-      {/* Day grid — middle row highlighted as a 5-day range */}
-      {Array.from({ length: 4 }).map((_, row) => (
-        <div key={`r-${row}`} className="grid grid-cols-7 gap-[2px]">
-          {Array.from({ length: 7 }).map((_, col) => {
-            const idx = row * 7 + col;
-            const inRange = idx >= 8 && idx <= 12;
-            const isCap = idx === 8 || idx === 12;
-            return (
-              <span
-                key={`d-${idx}`}
-                className="block h-[5px] rounded-[1px]"
-                style={{
-                  background: isCap
-                    ? "currentColor"
-                    : inRange
-                      ? "currentColor"
-                      : "rgba(255,255,255,0.10)",
-                  opacity: isCap ? 1 : inRange ? 0.45 : 1,
-                }}
-              />
-            );
-          })}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 // ── Lodging (Step 2) ─────────────────────────────────────────────────────
 //
-// Tiny lodging card: image block on top, two text lines below, a pill on
-// the right of the title line.
+// Property card: blue gradient image block on top + a long title bar +
+// a shorter detail bar with a small button on the right.
 
 export function LodgingThumbnail() {
   return (
-    <div
-      className="flex flex-col gap-[3px] rounded-md p-1.5"
-      style={{
-        background: TILE_BG,
-        border: `1px solid ${TILE_BORDER}`,
-        width: 64,
-      }}
-      aria-hidden="true"
-    >
-      {/* Image block */}
+    <div className="flex h-full w-full flex-col gap-2 p-3" aria-hidden="true">
       <div
-        className="h-[18px] w-full rounded-[2px]"
-        style={{ background: "currentColor", opacity: 0.30 }}
+        className="h-[40%] w-full rounded-md"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(96,165,250,0.95) 0%, rgba(59,130,246,0.85) 70%, rgba(37,99,235,0.75) 100%)",
+        }}
       />
-      {/* Title row with pill */}
-      <div className="flex items-center justify-between gap-1">
+      <span className="h-[5px] w-full rounded-sm" style={{ background: DIM_BRIGHTER }} />
+      <div className="flex items-center gap-2">
+        <span className="h-[5px] flex-1 rounded-sm" style={{ background: DIM }} />
         <span
-          className="block h-[3px] flex-1 rounded-sm"
-          style={{ background: "currentColor", opacity: 0.75 }}
-        />
-        <span
-          className="block h-[5px] w-[10px] rounded-full"
-          style={{ background: "currentColor", opacity: 0.55 }}
+          className="h-[12px] w-[24px] rounded-sm"
+          style={{ background: DIM_BRIGHTER }}
         />
       </div>
-      {/* Subtitle line */}
-      <span
-        className="block h-[2px] w-9 rounded-sm"
-        style={{ background: "currentColor", opacity: 0.4 }}
-      />
-      {/* Detail line */}
-      <span
-        className="block h-[2px] w-7 rounded-sm"
-        style={{ background: "currentColor", opacity: 0.3 }}
-      />
     </div>
   );
 }
 
 // ── Crew (Step 3) ────────────────────────────────────────────────────────
 //
-// Three roster rows — colored avatar dot + name line + status pill.
+// Three roster rows: colored dot + name line. Distinct dot colors so the
+// roster reads as different people even with the domain palette in its
+// placeholder-teal state.
 
 export function CrewThumbnail() {
-  // Distinct dot colors so the roster reads as "different people" even
-  // without the rest of the domain-color system lit up yet.
-  const dots = [
-    "rgba(96,165,250,0.85)", // blue
-    "rgba(251,191,36,0.85)", // amber
-    "rgba(251,113,133,0.85)", // rose
+  const rows: [string, number][] = [
+    ["rgba(244,114,182,0.95)", 70], // rose
+    ["rgba(45,212,191,0.95)", 60], // teal
+    ["rgba(96,165,250,0.95)", 55], // blue
   ];
   return (
     <div
-      className="flex flex-col gap-[3px] rounded-md p-1.5"
-      style={{
-        background: TILE_BG,
-        border: `1px solid ${TILE_BORDER}`,
-        width: 64,
-      }}
+      className="flex h-full w-full flex-col justify-center gap-3 p-4"
       aria-hidden="true"
     >
-      {dots.map((dot, i) => (
-        <div key={i} className="flex items-center gap-1">
+      {rows.map(([color, widthPct], i) => (
+        <div key={i} className="flex items-center gap-3">
           <span
-            className="block h-[6px] w-[6px] flex-shrink-0 rounded-full"
-            style={{ background: dot }}
+            className="h-3 w-3 flex-shrink-0 rounded-full"
+            style={{ background: color }}
           />
           <span
-            className="block h-[3px] flex-1 rounded-sm"
-            style={{
-              background: "currentColor",
-              opacity: 0.55 - i * 0.1,
-            }}
-          />
-          <span
-            className="block h-[3px] w-[8px] rounded-full"
-            style={{ background: "currentColor", opacity: 0.35 }}
+            className="h-[5px] rounded-sm"
+            style={{ background: DIM_BRIGHTER, width: `${widthPct}%` }}
           />
         </div>
       ))}
@@ -174,43 +113,32 @@ export function CrewThumbnail() {
 
 // ── Agenda (Step 4) ──────────────────────────────────────────────────────
 //
-// A day cluster: small day badge on top, then three event rows each with a
-// colored left marker and a title bar.
+// Two event chips: tiny amber/orange outlined squares (event markers) +
+// title line + a small trailing time pill.
 
 export function AgendaThumbnail() {
-  const markers = [
-    "currentColor", // primary
-    "rgba(251,191,36,0.85)", // amber accent
-    "currentColor",
+  const items = [
+    { ring: "rgba(251,191,36,0.85)", line: 60 },
+    { ring: "rgba(251,113,36,0.85)", line: 70 },
   ];
   return (
     <div
-      className="flex flex-col gap-[3px] rounded-md p-1.5"
-      style={{
-        background: TILE_BG,
-        border: `1px solid ${TILE_BORDER}`,
-        width: 64,
-      }}
+      className="flex h-full w-full flex-col justify-center gap-3 p-4"
       aria-hidden="true"
     >
-      {/* Day badge */}
-      <span
-        className="block h-[4px] w-[20px] rounded-sm"
-        style={{ background: "currentColor", opacity: 0.45 }}
-      />
-      {/* Event chips */}
-      {markers.map((marker, i) => (
-        <div
-          key={i}
-          className="flex items-center gap-1 rounded-[2px] py-[1.5px] pl-1"
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            borderLeft: `2px solid ${marker}`,
-          }}
-        >
+      {items.map(({ ring, line }, i) => (
+        <div key={i} className="flex items-center gap-3">
           <span
-            className="block h-[3px] flex-1 rounded-sm"
-            style={{ background: "currentColor", opacity: 0.6 - i * 0.05 }}
+            className="h-3 w-3 flex-shrink-0 rounded-[3px]"
+            style={{ border: `1.5px solid ${ring}` }}
+          />
+          <span
+            className="h-[5px] rounded-sm"
+            style={{ background: DIM_BRIGHTER, width: `${line}%` }}
+          />
+          <span
+            className="h-[5px] w-[28px] flex-shrink-0 rounded-sm"
+            style={{ background: TEXT_DIMMER }}
           />
         </div>
       ))}

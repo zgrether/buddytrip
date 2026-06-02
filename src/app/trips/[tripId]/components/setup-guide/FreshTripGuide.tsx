@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Building2, Flag, UserPlus, X } from "lucide-react";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
 import {
@@ -8,7 +8,6 @@ import {
   CrewThumbnail,
   AgendaThumbnail,
 } from "./thumbnails";
-import { formatDateRangeCompact } from "@/lib/dates";
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import type { TripData } from "../../tabs/types";
 
@@ -54,9 +53,6 @@ export function FreshTripGuide({
   const headline = datesSet
     ? "Add what you've got"
     : "Your itinerary builds itself";
-  const datesSummary = datesSet
-    ? formatDateRangeCompact(trip.start_date, trip.end_date)
-    : undefined;
 
   return (
     // Flush — no outer panel. The mock renders the guide directly under the
@@ -99,48 +95,53 @@ export function FreshTripGuide({
 
       {/* Step grid — 1 col mobile, 2 col tablet, 4 col desktop */}
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Step 1 — Set dates (flip card) */}
+        {/* Step 1 — Set dates (flip card; owns its own done state) */}
         <SetDatesFlipCard
           tripId={tripId}
           trip={trip}
           onOpenDatesSheet={onOpenDatesSheet}
           onTabChange={onTabChange}
-          done={datesSet}
-          doneSummary={datesSummary}
         />
 
-        {/* Step 2 — Add lodging */}
+        {/* Step 2 — Add lodging (ghost CTA — only step 1 is the
+            attention-grabber) */}
         <StepCard
           number={2}
           domain="lodging"
           title="Add lodging"
-          body="Houses, rooms, and check-in details. Each property becomes a card in the timeline."
+          body="Properties and rooms. Set nightly dates now or once your trip dates land."
           thumbnail={<LodgingThumbnail />}
-          cta="Add a property"
+          cta="Add lodging"
+          ctaIcon={<Building2 size={14} strokeWidth={2} />}
+          ctaVariant="ghost"
           onCta={() => onTabChange?.("lodging")}
           testId="guide-step-lodging"
         />
 
-        {/* Step 3 — Invite the crew */}
+        {/* Step 3 — Invite the crew (ghost) */}
         <StepCard
           number={3}
           domain="crew"
           title="Invite the crew"
-          body="Add everyone joining. Crew members sign up, RSVP, and share their travel."
+          body="Add everyone — they join, share travel, and split costs from their phone."
           thumbnail={<CrewThumbnail />}
           cta="Invite crew"
+          ctaIcon={<UserPlus size={14} strokeWidth={2} />}
+          ctaVariant="ghost"
           onCta={() => onTabChange?.("crew")}
           testId="guide-step-crew"
         />
 
-        {/* Step 4 — Plan the agenda */}
+        {/* Step 4 — Plan the agenda (ghost) */}
         <StepCard
           number={4}
           domain="agenda"
           title="Plan the agenda"
-          body="Activities, tee times, dinners. Confirmed items appear on the timeline."
+          body="Tee times, dinners, side games. Slot them onto days whenever you like."
           thumbnail={<AgendaThumbnail />}
-          cta="Plan something"
+          cta="Plan agenda"
+          ctaIcon={<Flag size={14} strokeWidth={2} />}
+          ctaVariant="ghost"
           onCta={() => onTabChange?.("schedule")}
           testId="guide-step-agenda"
         />
