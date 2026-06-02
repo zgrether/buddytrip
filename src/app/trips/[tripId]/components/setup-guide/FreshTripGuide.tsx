@@ -9,6 +9,7 @@ import {
   AgendaThumbnail,
 } from "./thumbnails";
 import { formatDateRangeCompact } from "@/lib/dates";
+import { DOMAIN_COLORS } from "@/lib/domainColors";
 import type { TripData } from "../../tabs/types";
 
 // ── FreshTripGuide ───────────────────────────────────────────────────────
@@ -58,19 +59,15 @@ export function FreshTripGuide({
     : undefined;
 
   return (
-    <section
-      className="rounded-2xl p-5"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-      data-testid="fresh-trip-guide"
-    >
+    // Flush — no outer panel. The mock renders the guide directly under the
+    // Itinerary header with full container width so the four step cards
+    // breathe; an extra bordered box just shrinks them.
+    <section data-testid="fresh-trip-guide">
       {/* Header — eyebrow + title + dismiss */}
       <header className="relative pr-10">
         <p
           className="text-[10px] font-semibold uppercase tracking-[0.08em]"
-          style={{ color: "var(--color-bt-accent)" }}
+          style={{ color: DOMAIN_COLORS.home.color }}
         >
           {eyebrow}
         </p>
@@ -84,9 +81,9 @@ export function FreshTripGuide({
           className="mt-1 text-[12px] leading-snug"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          {datesSet
-            ? "Lodging, crew, and agenda items feed straight into the timeline below. Tap any step to keep going."
-            : "Tap a step to start. Anything you add — lodging, crew, agenda — weaves into the day-by-day timeline once dates are set."}
+          Add any of these in any order and they weave into one timeline.
+          Dates frame it best — start there if you can — but nothing's
+          blocked until you do.
         </p>
         <button
           type="button"
@@ -117,7 +114,7 @@ export function FreshTripGuide({
           number={2}
           domain="lodging"
           title="Add lodging"
-          body="The houses, rooms, and check-in details. Each property becomes a card in the timeline."
+          body="Houses, rooms, and check-in details. Each property becomes a card in the timeline."
           thumbnail={<LodgingThumbnail />}
           cta="Add a property"
           onCta={() => onTabChange?.("lodging")}

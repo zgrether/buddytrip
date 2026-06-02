@@ -1,34 +1,46 @@
 "use client";
 
-import { useState, type FC, type ReactNode } from "react";
-import { Calendar, RotateCcw, Users } from "lucide-react";
+import { useMemo, useState, type FC, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, RotateCcw, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { DatePickerPanel } from "../../tabs/components/DatePickerPanel";
+import {
+  addMonths,
+  applyRangeClick,
+  atNoon,
+  isOutOfBounds,
+  isSameDay,
+  isWithinRange,
+  monthMatrix,
+  nightsBetween,
+  rangePresets,
+  startOfMonth,
+  type DateRange,
+} from "@/lib/calendar";
 import { DOMAIN_COLORS } from "@/lib/domainColors";
+import { CalendarThumbnail } from "./thumbnails";
 import type { TripData } from "../../tabs/types";
 
 // ── SetDatesFlipCard ──────────────────────────────────────────────────────
 //
 // Step 1 of the FreshTripGuide. The card flips in place on tap to reveal a
-// compact Pick / Poll date picker (no navigation). Pick mode uses the same
-// DatePickerPanel as the DatesSheet, so the lock behaviour stays consistent.
-// Poll mode is gated on crew size: under 2 crew the tab shows an
-// "Add the crew first" redirect with an Invite-crew CTA + a quiet
-// "or just pick the dates yourself" link that flips back to Pick. ≥2 crew
-// surfaces a simpler "Set up date poll" hand-off — the full inline poll
-// builder lives in DatesSheet (we route there instead of duplicating it).
+// compact range calendar (no navigation, no native date inputs). The same
+// reusable calendar primitives `@/lib/calendar` exposes drive the grid —
+// what the rest of the app uses everywhere else — just rendered inline at
+// a tighter cell size so the month fits inside a step-card-sized container.
+//
+// Poll tab gating:
+//   - <2 crew  → "Add the crew first" redirect with Invite + quiet fallback
+//   - ≥2 crew  → hand off to DatesSheet's existing poll builder (we don't
+//                duplicate the inline poll UI).
 
 export interface SetDatesFlipCardProps {
   tripId: string;
   trip: TripData;
-  /** Open the existing DatesSheet — used for the Poll branch (>=2 crew)
-   *  since the full poll builder already lives there. */
+  /** Opens the existing DatesSheet — used by the Poll branch (≥2 crew). */
   onOpenDatesSheet?: () => void;
-  /** Navigate to the Crew tab — the "Add the crew first" redirect uses
-   *  this when crew < 2. */
+  /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect. */
   onTabChange?: (tab: string) => void;
-  /** Set to true once trip.start_date is locked. Renders the done state
-   *  (no flip; "Change" link replaces the CTA). */
+  /** Set to true once trip.start_date is locked. Renders the done state. */
   done?: boolean;
   /** Summary shown in the done state, e.g. "May 26 – Jun 14". */
   doneSummary?: string;
@@ -37,6 +49,14 @@ export interface SetDatesFlipCardProps {
 type PickerTab = "pick" | "poll";
 
 const STEP_NUMBER = 1;
+
+// Compact day-cell height tuned so a 6-row month fits without the card
+// scrolling on its own.
+const DAY_CELL_PX = 27;
+// Minimum flipped-card height — covers the picker tab strip + presets +
+// month grid + Save row at the tightest viewport so the card grows to fit
+// instead of clamping the calendar.
+const FLIPPED_MIN_H = 390;
 
 export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   tripId,
@@ -51,8 +71,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   const [tab, setTab] = useState<PickerTab>("pick");
   const utils = trpc.useUtils();
 
-  // Crew count — drives the poll-tab gate. Cheap because HomeTab already
-  // prefetches tripMembers.list at page load.
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const crewCount = members.length;
 
@@ -77,7 +95,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         utils.trips.getById.setData({ tripId }, ctx.prev);
     },
     onSuccess() {
-      // Lock succeeded — flip back so the card shows the done state.
       setFlipped(false);
     },
     onSettled() {
@@ -86,10 +103,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
       utils.datePoll.get.invalidate({ tripId });
     },
   });
-
-  const handleSave = (startDate: string, endDate: string) => {
-    lockDates.mutate({ tripId, startDate, endDate });
-  };
 
   // ── Front face (default) ──────────────────────────────────────────────
   const front: ReactNode = (
@@ -103,7 +116,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         }}
         aria-hidden="true"
       >
-        <MiniCalendarThumbnail />
+        <CalendarThumbnail />
       </div>
       <p
         className="text-[13px] font-semibold leading-tight"
@@ -112,10 +125,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         Set your dates
       </p>
       {done && doneSummary ? (
-        <p
-          className="mt-1 text-[12px]"
-          style={{ color: tint.color }}
-        >
+        <p className="mt-1 text-[12px]" style={{ color: tint.color }}>
           {doneSummary}
         </p>
       ) : (
@@ -158,61 +168,67 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   // ── Back face (flipped — picker) ──────────────────────────────────────
   const back: ReactNode = (
     <div className="flex h-full flex-col">
-      {/* Tab strip */}
-      <div className="mb-3 inline-flex self-start rounded-lg p-0.5"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {(["pick", "poll"] as const).map((value) => {
-          const active = tab === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTab(value)}
-              className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors"
-              style={
-                active
-                  ? {
-                      background: tint.faint,
-                      color: tint.color,
-                    }
-                  : {
-                      background: "transparent",
-                      color: "var(--color-bt-text-dim)",
-                    }
-              }
-              data-testid={`guide-dates-tab-${value}`}
-            >
-              {value === "pick" ? "Pick" : "Poll"}
-            </button>
-          );
-        })}
+      {/* Tab strip + back button */}
+      <div className="mb-2 flex items-center justify-between">
+        <div
+          className="inline-flex rounded-lg p-0.5"
+          style={{
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          {(["pick", "poll"] as const).map((value) => {
+            const active = tab === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTab(value)}
+                className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                style={
+                  active
+                    ? { background: tint.faint, color: tint.color }
+                    : { background: "transparent", color: "var(--color-bt-text-dim)" }
+                }
+                data-testid={`guide-dates-tab-${value}`}
+              >
+                {value === "pick" ? "Pick" : "Poll"}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setFlipped(false)}
+          aria-label="Back to step card"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          data-testid="guide-dates-flip-back"
+        >
+          <RotateCcw size={13} />
+        </button>
       </div>
 
       {tab === "pick" ? (
-        <div className="flex-1">
-          <DatePickerPanel
-            tripId={tripId}
-            initialStartDate={trip.start_date ?? null}
-            initialEndDate={trip.end_date ?? null}
-            onSave={handleSave}
-            isSaving={lockDates.isPending}
-            onCancel={() => setFlipped(false)}
-            showDescription={false}
-          />
-        </div>
+        <InlineRangeCalendar
+          initialStart={trip.start_date ?? null}
+          initialEnd={trip.end_date ?? null}
+          saving={lockDates.isPending}
+          accent={tint.color}
+          accentFaint={tint.faint}
+          onSave={(start, end) =>
+            lockDates.mutate({
+              tripId,
+              startDate: start.toISOString().slice(0, 10),
+              endDate: end.toISOString().slice(0, 10),
+            })
+          }
+        />
       ) : crewCount < 2 ? (
-        // Poll requires ≥2 crew — show the "add the crew first" redirect.
         <div className="flex flex-1 flex-col items-start gap-2">
           <span
             className="inline-flex h-9 w-9 items-center justify-center rounded-full"
-            style={{
-              background: tint.faint,
-              color: tint.color,
-            }}
+            style={{ background: tint.faint, color: tint.color }}
             aria-hidden="true"
           >
             <Users size={16} />
@@ -230,7 +246,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             Polling needs at least two people — invite the crew, then come
             back to set up the date poll.
           </p>
-          <div className="mt-2 flex flex-col gap-1.5">
+          <div className="mt-1 flex flex-col gap-1.5">
             <button
               type="button"
               onClick={() => onTabChange?.("crew")}
@@ -255,7 +271,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           </div>
         </div>
       ) : (
-        // ≥2 crew — hand off to the existing poll builder in DatesSheet.
         <div className="flex flex-1 flex-col items-start gap-2">
           <p
             className="text-[13px] font-semibold leading-tight"
@@ -276,7 +291,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
               setFlipped(false);
               onOpenDatesSheet?.();
             }}
-            className="mt-2 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90"
+            className="mt-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90"
             style={{
               background: tint.color,
               color: "var(--color-bt-on-accent, #0d1f1a)",
@@ -287,17 +302,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           </button>
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={() => setFlipped(false)}
-        aria-label="Back"
-        className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-        style={{ color: "var(--color-bt-text-dim)" }}
-        data-testid="guide-dates-flip-back"
-      >
-        <RotateCcw size={13} />
-      </button>
     </div>
   );
 
@@ -320,6 +324,9 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           transformStyle: "preserve-3d",
           transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
           transition: "transform 450ms cubic-bezier(.2,.8,.2,1)",
+          // Grow to the picker's height when flipped so the calendar never
+          // has to scroll inside the card; collapse back when front-side.
+          minHeight: flipped ? FLIPPED_MIN_H : undefined,
         }}
         data-testid="guide-step-dates"
       >
@@ -331,6 +338,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             border: "1px solid var(--color-bt-border)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden",
+            overflow: "hidden",
           }}
         >
           {front}
@@ -344,7 +352,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             transform: "rotateY(180deg)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden",
-            overflow: "auto",
+            overflow: "hidden",
           }}
         >
           {back}
@@ -354,32 +362,192 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   );
 };
 
-// ── Mini calendar thumbnail (front face) ─────────────────────────────────
+// ── InlineRangeCalendar ──────────────────────────────────────────────────
 //
-// Tiny stylized 7-column calendar grid — just enough to read as "a calendar"
-// without being literal. The current row highlights the "selected" range.
+// Compact always-open range calendar driven by `@/lib/calendar` primitives.
+// Same selection mechanic as the global DatePicker (click start → click
+// end → range fills in), but rendered inline at tighter cell sizes so a
+// full month fits inside the flip-card-sized container without scroll.
 
-function MiniCalendarThumbnail() {
+function InlineRangeCalendar({
+  initialStart,
+  initialEnd,
+  saving,
+  accent,
+  accentFaint,
+  onSave,
+}: {
+  initialStart: string | null;
+  initialEnd: string | null;
+  saving: boolean;
+  accent: string;
+  accentFaint: string;
+  onSave: (start: Date, end: Date) => void;
+}) {
+  const today = atNoon(new Date());
+  const [range, setRange] = useState<DateRange>(() => ({
+    start: initialStart ? atNoon(new Date(initialStart)) : null,
+    end: initialEnd ? atNoon(new Date(initialEnd)) : null,
+  }));
+  const [view, setView] = useState<Date>(() =>
+    range.start ? startOfMonth(range.start) : startOfMonth(today),
+  );
+
+  const matrix = useMemo(() => monthMatrix(view), [view]);
+  const presets = useMemo(() => rangePresets(today), [today]);
+  const nights = range.start && range.end ? nightsBetween(range.start, range.end) : null;
+
+  const monthLabel = view.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
+  const handleDayClick = (day: Date) => {
+    if (isOutOfBounds(day, null, null)) return;
+    setRange((cur) => applyRangeClick(cur, day));
+  };
+
+  const canSave = !!(range.start && range.end);
+
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <Calendar size={18} strokeWidth={1.8} />
-      <div className="grid grid-cols-7 gap-[3px]">
-        {Array.from({ length: 21 }).map((_, i) => {
-          // Highlight a 5-day range in the middle row.
-          const inRange = i >= 9 && i <= 13;
+    <div className="flex flex-1 flex-col">
+      {/* Presets */}
+      <div className="mb-2 flex flex-wrap gap-1">
+        {presets.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => {
+              setRange(p.range);
+              if (p.range.start) setView(startOfMonth(p.range.start));
+            }}
+            className="rounded-md px-2 py-1 text-[10px] font-medium transition-colors"
+            style={{
+              background: "var(--color-bt-card-raised)",
+              color: "var(--color-bt-text-dim)",
+              border: "1px solid var(--color-bt-border)",
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Month header */}
+      <div className="mb-1 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setView((v) => addMonths(v, -1))}
+          aria-label="Previous month"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <ChevronLeft size={13} />
+        </button>
+        <span
+          className="text-[11px] font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {monthLabel}
+        </span>
+        <button
+          type="button"
+          onClick={() => setView((v) => addMonths(v, 1))}
+          aria-label="Next month"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <ChevronRight size={13} />
+        </button>
+      </div>
+
+      {/* Weekday header */}
+      <div className="grid grid-cols-7 text-center">
+        {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => (
+          <span
+            key={`${w}-${i}`}
+            className="text-[9px] font-semibold uppercase"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {w}
+          </span>
+        ))}
+      </div>
+
+      {/* Day grid */}
+      <div className="grid grid-cols-7 gap-y-px">
+        {matrix.flat().map((day, idx) => {
+          const inMonth = day.getMonth() === view.getMonth();
+          const isStart = isSameDay(day, range.start);
+          const isEnd = isSameDay(day, range.end);
+          const inRange = isWithinRange(day, range);
+          const isToday = isSameDay(day, today);
           return (
-            <span
-              key={i}
-              className="h-1.5 w-1.5 rounded-[1px]"
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleDayClick(day)}
+              className="relative flex items-center justify-center text-[11px] font-medium transition-colors"
               style={{
-                background: inRange
-                  ? "currentColor"
-                  : "rgba(255,255,255,0.15)",
-                opacity: inRange ? 0.85 : 1,
+                height: DAY_CELL_PX,
+                color: !inMonth
+                  ? "var(--color-bt-text-dim)"
+                  : isStart || isEnd
+                    ? "var(--color-bt-on-accent, #0d1f1a)"
+                    : "var(--color-bt-text)",
+                background: isStart || isEnd
+                  ? accent
+                  : inRange
+                    ? accentFaint
+                    : "transparent",
+                borderRadius:
+                  isStart && isEnd
+                    ? 6
+                    : isStart
+                      ? "6px 0 0 6px"
+                      : isEnd
+                        ? "0 6px 6px 0"
+                        : 0,
+                opacity: inMonth ? 1 : 0.4,
               }}
-            />
+              data-testid={`day-${day.toISOString().slice(0, 10)}`}
+            >
+              {day.getDate()}
+              {isToday && !isStart && !isEnd && (
+                <span
+                  className="absolute bottom-[2px] h-[3px] w-[3px] rounded-full"
+                  style={{ background: accent }}
+                  aria-hidden="true"
+                />
+              )}
+            </button>
           );
         })}
+      </div>
+
+      {/* Save row */}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span
+          className="text-[10px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {nights != null ? `${nights} night${nights === 1 ? "" : "s"}` : "Pick a range"}
+        </span>
+        <button
+          type="button"
+          disabled={!canSave || saving}
+          onClick={() => {
+            if (canSave) onSave(range.start!, range.end!);
+          }}
+          className="rounded-md px-3 py-1.5 text-[11px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+          style={{
+            background: accent,
+            color: "var(--color-bt-on-accent, #0d1f1a)",
+          }}
+          data-testid="guide-dates-save"
+        >
+          {saving ? "Saving…" : "Set dates"}
+        </button>
       </div>
     </div>
   );
