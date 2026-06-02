@@ -69,7 +69,7 @@ export function HomeTab({
     !!isOwner && !!showFullPanels;
 
   return (
-    <div className="space-y-4 px-4">
+    <div className="space-y-4 px-4 pt-3">
       {showFullPanels && (
         <>
           {/* Owner intro — only shown when FreshTripGuide isn't (because
