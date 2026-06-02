@@ -133,8 +133,8 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   const front: ReactNode = (
     <div className="flex h-full flex-col gap-3 p-3">
       <div
-        className="flex flex-1 items-stretch justify-stretch overflow-hidden rounded-lg"
-        style={{ ...previewSurface, minHeight: 120 }}
+        className="flex items-stretch justify-stretch overflow-hidden rounded-lg"
+        style={{ ...previewSurface, height: 130 }}
         aria-hidden="true"
       >
         <CalendarThumbnail accent={tint.color} />
@@ -154,7 +154,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           {datesSet ? <Check size={12} strokeWidth={2.6} /> : 1}
         </span>
         <p
-          className="text-[14px] font-semibold leading-tight"
+          className="text-[15px] font-semibold leading-tight"
           style={{ color: "var(--color-bt-text)" }}
         >
           {datesSet ? "Dates set" : "Set your dates"}
@@ -162,7 +162,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
       </div>
 
       <p
-        className="text-[12px] leading-snug"
+        className="text-[13px] leading-snug"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         {datesSet

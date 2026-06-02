@@ -82,14 +82,15 @@ export const StepCard: FC<StepCardProps> = ({
       data-testid={`step-card-${number}`}
     >
       {/* Preview area — dark surface that hosts the mini-UI thumbnail.
-          flex-1 so it stretches to fill the card's spare height; the
-          text + CTA below stay their natural size and the button gets
-          pinned to the bottom. */}
+          Fixed 130px height so the thumbnail keeps the same proportions
+          across cards. Any spare card height becomes empty space
+          between the body text and the CTA (which mt-auto pins to the
+          bottom). */}
       <div
-        className="flex flex-1 items-stretch justify-stretch overflow-hidden rounded-lg"
+        className="flex items-stretch justify-stretch overflow-hidden rounded-lg"
         style={{
           background: "var(--color-bt-base)",
-          minHeight: 120,
+          height: 130,
         }}
         aria-hidden="true"
       >
@@ -102,7 +103,7 @@ export const StepCard: FC<StepCardProps> = ({
           {number}
         </NumberBadge>
         <p
-          className="text-[14px] font-semibold leading-tight"
+          className="text-[15px] font-semibold leading-tight"
           style={{ color: "var(--color-bt-text)" }}
         >
           {title}
@@ -111,15 +112,15 @@ export const StepCard: FC<StepCardProps> = ({
 
       {/* Body / done-summary */}
       <p
-        className="text-[12px] leading-snug"
+        className="text-[13px] leading-snug"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         {done && doneSummary ? doneSummary : body}
       </p>
 
-      {/* CTA — `mt-auto` is a no-op given flex-col + flex-1 above, but
-          keeps the bottom-anchored intent legible if the preview ever
-          loses its flex-grow. */}
+      {/* CTA — mt-auto pins to the bottom; the gap between body text
+          and button is the visible empty space in the middle of the
+          card, intentionally preserved. */}
       <button
         type="button"
         onClick={onCta}
