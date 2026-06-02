@@ -85,7 +85,7 @@ export function FreshTripGuide({
               : `${destination} — nice pick.`}
           </h2>
           <p
-            className="mt-2 text-[13px] leading-snug"
+            className="mt-2 max-w-prose text-[13px] leading-snug"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             {datesSet

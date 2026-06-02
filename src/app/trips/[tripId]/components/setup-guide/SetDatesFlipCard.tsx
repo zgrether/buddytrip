@@ -350,20 +350,26 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   );
 
   return (
-    <div className="relative" style={{ perspective: 1200, minHeight }}>
+    <div
+      className="relative h-full w-full"
+      style={{ perspective: 1200, minHeight }}
+    >
       <div
-        className="relative h-full w-full"
+        className="absolute inset-0 h-full w-full"
         style={{
           transformStyle: "preserve-3d",
           transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
           transition: "transform 450ms cubic-bezier(.2,.8,.2,1)",
-          minHeight,
         }}
         data-testid="guide-step-dates"
       >
-        {/* Front */}
+        {/* Front — absolutely positioned so it stretches to the wrapper's
+            minHeight. Same treatment as the back face; without this, the
+            front face sized to its content (~230px) while the wrapper
+            held the 420px minHeight, so the card looked shorter than its
+            siblings. */}
         <div
-          className="rounded-xl"
+          className="absolute inset-0 rounded-xl"
           style={{
             ...cardSurface,
             backfaceVisibility: "hidden",
