@@ -69,24 +69,37 @@ export function FreshTripGuide({
         className="relative flex items-start gap-4 pr-10 sm:gap-5"
       >
         <LocationGraphic location={destination} />
-        <div className="min-w-0 flex-1 pt-1">
+        {/* Text block — same typography cadence as the shared TabHeader
+            (see src/components/TabHeader.tsx): 11px accent eyebrow,
+            clamp-scaled semibold headline with -0.015em tracking, 15px
+            body at 1.65 line-height, mb-3 rhythm between each row. */}
+        <div className="min-w-0 flex-1">
           <p
-            className="text-[11px] font-semibold uppercase tracking-[0.10em]"
-            style={{ color: accent }}
+            className="mb-3 text-[11px] font-semibold uppercase"
+            style={{ color: accent, letterSpacing: "0.1em" }}
           >
             {datesSet ? "Get set up" : `New trip · ${destinationUpper}`}
           </p>
           <h2
-            className="mt-1 text-[22px] font-bold leading-tight sm:text-[24px]"
-            style={{ color: "var(--color-bt-text)" }}
+            className="mb-3 font-semibold"
+            style={{
+              color: "var(--color-bt-text)",
+              fontSize: "clamp(20px, 2.8vw, 26px)",
+              lineHeight: 1.15,
+              letterSpacing: "-0.015em",
+            }}
           >
             {datesSet
               ? "Add what you've got"
               : `${destination} — nice pick.`}
           </h2>
           <p
-            className="mt-2 max-w-prose text-[13px] leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
+            className="max-w-prose"
+            style={{
+              color: "var(--color-bt-text-dim)",
+              fontSize: 15,
+              lineHeight: 1.65,
+            }}
           >
             {datesSet
               ? "Add any of these in any order and they weave into one timeline. Dates frame it best — start there if you can — but nothing's blocked until you do."
