@@ -53,24 +53,32 @@ export function CalendarThumbnail({ accent }: { accent?: string } = {}) {
 
 // ── Lodging (Step 2) ─────────────────────────────────────────────────────
 //
-// Property card: blue gradient image block on top + a long title bar +
-// a shorter detail bar with a small button on the right.
+// Property card — exaggerated to fill the preview area:
+//   • Big blue-gradient image block (~55% of the height) sits on top
+//   • A thick title bar
+//   • A shorter detail bar with a chunky trailing pill (price/CTA)
 
 export function LodgingThumbnail() {
   return (
-    <div className="flex h-full w-full flex-col gap-2 p-3" aria-hidden="true">
+    <div className="flex h-full w-full flex-col gap-4 p-5" aria-hidden="true">
       <div
-        className="h-[40%] w-full rounded-md"
+        className="w-full flex-1 rounded-lg"
         style={{
           background:
-            "linear-gradient(135deg, rgba(96,165,250,0.95) 0%, rgba(59,130,246,0.85) 70%, rgba(37,99,235,0.75) 100%)",
+            "linear-gradient(135deg, rgba(96,165,250,0.95) 0%, rgba(59,130,246,0.90) 65%, rgba(37,99,235,0.85) 100%)",
         }}
       />
-      <span className="h-[5px] w-full rounded-sm" style={{ background: DIM_BRIGHTER }} />
-      <div className="flex items-center gap-2">
-        <span className="h-[5px] flex-1 rounded-sm" style={{ background: DIM }} />
+      <span
+        className="h-3 w-full rounded-md"
+        style={{ background: DIM_BRIGHTER }}
+      />
+      <div className="flex items-center gap-3">
         <span
-          className="h-[12px] w-[24px] rounded-sm"
+          className="h-3 flex-1 rounded-md"
+          style={{ background: DIM }}
+        />
+        <span
+          className="h-7 w-14 flex-shrink-0 rounded-md"
           style={{ background: DIM_BRIGHTER }}
         />
       </div>
@@ -80,29 +88,29 @@ export function LodgingThumbnail() {
 
 // ── Crew (Step 3) ────────────────────────────────────────────────────────
 //
-// Three roster rows: colored dot + name line. Distinct dot colors so the
-// roster reads as different people even with the domain palette in its
-// placeholder-teal state.
+// Three roster rows — bigger avatar circles + thicker name bars so the
+// roster reads from across the room. Distinct dot colors keep "different
+// people" legible even while the domain palette is in placeholder-teal.
 
 export function CrewThumbnail() {
   const rows: [string, number][] = [
-    ["rgba(244,114,182,0.95)", 70], // rose
-    ["rgba(45,212,191,0.95)", 60], // teal
+    ["rgba(244,114,182,0.95)", 80], // rose
+    ["rgba(45,212,191,0.95)", 65], // teal
     ["rgba(96,165,250,0.95)", 55], // blue
   ];
   return (
     <div
-      className="flex h-full w-full flex-col justify-center gap-3 p-4"
+      className="flex h-full w-full flex-col justify-center gap-5 p-5"
       aria-hidden="true"
     >
       {rows.map(([color, widthPct], i) => (
-        <div key={i} className="flex items-center gap-3">
+        <div key={i} className="flex items-center gap-4">
           <span
-            className="h-3 w-3 flex-shrink-0 rounded-full"
+            className="h-9 w-9 flex-shrink-0 rounded-full"
             style={{ background: color }}
           />
           <span
-            className="h-[5px] rounded-sm"
+            className="h-3 rounded-md"
             style={{ background: DIM_BRIGHTER, width: `${widthPct}%` }}
           />
         </div>
@@ -113,31 +121,31 @@ export function CrewThumbnail() {
 
 // ── Agenda (Step 4) ──────────────────────────────────────────────────────
 //
-// Two event chips: tiny amber/orange outlined squares (event markers) +
-// title line + a small trailing time pill.
+// Two event chips — exaggerated: bigger amber/orange outlined event
+// markers, thicker title bar, chunkier trailing time pill.
 
 export function AgendaThumbnail() {
   const items = [
-    { ring: "rgba(251,191,36,0.85)", line: 60 },
-    { ring: "rgba(251,113,36,0.85)", line: 70 },
+    { ring: "rgba(251,191,36,0.95)", line: 65 },
+    { ring: "rgba(251,113,36,0.95)", line: 75 },
   ];
   return (
     <div
-      className="flex h-full w-full flex-col justify-center gap-3 p-4"
+      className="flex h-full w-full flex-col justify-center gap-5 p-5"
       aria-hidden="true"
     >
       {items.map(({ ring, line }, i) => (
-        <div key={i} className="flex items-center gap-3">
+        <div key={i} className="flex items-center gap-4">
           <span
-            className="h-3 w-3 flex-shrink-0 rounded-[3px]"
-            style={{ border: `1.5px solid ${ring}` }}
+            className="h-9 w-9 flex-shrink-0 rounded-md"
+            style={{ border: `2.5px solid ${ring}` }}
           />
           <span
-            className="h-[5px] rounded-sm"
+            className="h-3 rounded-md"
             style={{ background: DIM_BRIGHTER, width: `${line}%` }}
           />
           <span
-            className="h-[5px] w-[28px] flex-shrink-0 rounded-sm"
+            className="h-3 w-12 flex-shrink-0 rounded-md"
             style={{ background: TEXT_DIMMER }}
           />
         </div>
