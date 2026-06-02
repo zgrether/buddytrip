@@ -47,6 +47,10 @@ export interface StepCardProps {
   /** Shown above the body when done — what the user actually picked,
    *  e.g. "May 22 – 26, 2026 · 5 days. These frame your whole itinerary." */
   doneSummary?: string;
+  /** Outer card min-height in px. Defaults to none. FreshTripGuide sets
+   *  this so every step card matches the flipped Set-dates height and
+   *  nothing jars when the picker opens. */
+  minHeight?: number;
   /** Test id for the CTA. */
   testId?: string;
 }
@@ -63,6 +67,7 @@ export const StepCard: FC<StepCardProps> = ({
   onCta,
   done = false,
   doneSummary,
+  minHeight,
   testId,
 }) => {
   const tint = DOMAIN_COLORS[domain];
@@ -72,14 +77,19 @@ export const StepCard: FC<StepCardProps> = ({
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
+        minHeight,
       }}
       data-testid={`step-card-${number}`}
     >
-      {/* Preview area — dark surface that hosts the mini-UI thumbnail. */}
+      {/* Preview area — dark surface that hosts the mini-UI thumbnail.
+          flex-1 so it stretches to fill the card's spare height; the
+          text + CTA below stay their natural size and the button gets
+          pinned to the bottom. */}
       <div
-        className="flex h-[120px] items-stretch justify-stretch overflow-hidden rounded-lg"
+        className="flex flex-1 items-stretch justify-stretch overflow-hidden rounded-lg"
         style={{
           background: "var(--color-bt-base)",
+          minHeight: 120,
         }}
         aria-hidden="true"
       >
@@ -107,12 +117,14 @@ export const StepCard: FC<StepCardProps> = ({
         {done && doneSummary ? doneSummary : body}
       </p>
 
-      {/* CTA */}
+      {/* CTA — `mt-auto` is a no-op given flex-col + flex-1 above, but
+          keeps the bottom-anchored intent legible if the preview ever
+          loses its flex-grow. */}
       <button
         type="button"
         onClick={onCta}
         data-testid={testId}
-        className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
+        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
         style={
           ctaVariant === "primary"
             ? {

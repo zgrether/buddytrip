@@ -60,16 +60,22 @@ export function HomeTab({
     stage === "planning" ||
     (stage === "going" && (status === "going" || status === "now"));
 
+  // FreshTripGuide owns its own welcoming header when it renders, so the
+  // generic "You're driving this trip" TabHeader collapses to avoid two
+  // intros stacked on top of each other. The guide renders for owners
+  // who haven't dismissed it AND don't yet have a populated itinerary —
+  // matched against the same gates ItineraryPanel uses.
+  const guideOwnsHeader =
+    !!isOwner && !!showFullPanels;
+
   return (
     <div className="space-y-4 px-4">
       {showFullPanels && (
         <>
-          {/* Owner intro — same marketing-style typography as the other tabs'
-              TabHeader, but without an eyebrow (the trip header above already
-              announces context). Reinforces what the owner controls and the
-              fact that the crew sees only what's published. Members and
-              planners don't see this — it's owner-coaching copy. */}
-          {isOwner && (
+          {/* Owner intro — only shown when FreshTripGuide isn't (because
+              the guide carries its own welcoming header that already
+              announces context). */}
+          {isOwner && !guideOwnsHeader && (
             <TabHeader
               headline="You're driving this trip"
               body="Lock in dates and destination, invite the crew, and add logistics as they firm up. You decide what the crew sees — from travel plans to a live competition leaderboard — and everyone stays in sync in real time."

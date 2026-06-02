@@ -45,20 +45,22 @@ export interface SetDatesFlipCardProps {
   onOpenDatesSheet?: () => void;
   /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect. */
   onTabChange?: (tab: string) => void;
+  /** Card min-height in px. FreshTripGuide passes this so all four step
+   *  cards (this one and the three StepCards) share the same shape. */
+  minHeight?: number;
 }
 
 type PickerTab = "pick" | "poll";
 
 // Compact day cell so a 6-row month fits inside the flipped card.
 const DAY_CELL_PX = 27;
-// Min height when flipped so the picker never has to scroll on its own.
-const FLIPPED_MIN_H = 420;
 
 export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   tripId,
   trip,
   onOpenDatesSheet,
   onTabChange,
+  minHeight,
 }) => {
   const tint = DOMAIN_COLORS.home;
   const [flipped, setFlipped] = useState(false);
@@ -129,10 +131,10 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
 
   // ── Front face (default + done) ──────────────────────────────────────
   const front: ReactNode = (
-    <div className="flex flex-col gap-3 p-3">
+    <div className="flex h-full flex-col gap-3 p-3">
       <div
-        className="flex h-[120px] items-stretch justify-stretch overflow-hidden rounded-lg"
-        style={previewSurface}
+        className="flex flex-1 items-stretch justify-stretch overflow-hidden rounded-lg"
+        style={{ ...previewSurface, minHeight: 120 }}
         aria-hidden="true"
       >
         <CalendarThumbnail accent={tint.color} />
@@ -168,11 +170,13 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           : "Pick a range or poll the crew. Sets the bookends everything else lands between."}
       </p>
 
-      {/* CTA — primary teal for Set dates; ghost for Edit dates */}
+      {/* CTA — primary teal for Set dates; ghost for Edit dates.
+          `mt-auto` keeps it pinned to the bottom even if the preview
+          area stops growing. */}
       <button
         type="button"
         onClick={() => setFlipped(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
+        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
         style={
           datesSet
             ? {
@@ -346,14 +350,14 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   );
 
   return (
-    <div className="relative" style={{ perspective: 1200 }}>
+    <div className="relative" style={{ perspective: 1200, minHeight }}>
       <div
-        className="relative w-full"
+        className="relative h-full w-full"
         style={{
           transformStyle: "preserve-3d",
           transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
           transition: "transform 450ms cubic-bezier(.2,.8,.2,1)",
-          minHeight: flipped ? FLIPPED_MIN_H : undefined,
+          minHeight,
         }}
         data-testid="guide-step-dates"
       >

@@ -8,38 +8,42 @@ import {
   CrewThumbnail,
   AgendaThumbnail,
 } from "./thumbnails";
+import { LocationGraphic } from "./LocationGraphic";
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import type { TripData } from "../../tabs/types";
 
 // ── FreshTripGuide ───────────────────────────────────────────────────────
 //
-// The empty-itinerary teaching surface for a fresh trip. Renders an
-// "Itinerary" header (eyebrow + title + dismiss ×) and a 4-up responsive
-// grid of step cards: dates / lodging / crew / agenda. The dates card
-// flips in place to reveal an inline date picker; the other three are
-// launchers to their tab. Steps 2–4 are independent — nothing is gated on
-// dates being set yet, so the owner can add things in any order.
+// Owner's empty-itinerary teaching surface. Two states:
 //
-// Once trip.start_date is locked, the eyebrow flips from "New trip" to
-// "Get set up", the title flips to "Add what you've got", and the dates
-// step renders its done state ("May 26 – Jun 14") — but every step
-// remains as an add-launcher so the guide stays useful through the rest
-// of setup.
+//   No dates yet → welcome header: location graphic on the left,
+//     "NEW TRIP · DESTINATION" eyebrow + "Destination — nice pick." +
+//     a one-sentence welcome on the right.
+//
+//   Dates set    → planning header: same location graphic, "GET SET UP"
+//     eyebrow + "Add what you've got" + the in-progress copy.
+//
+// Below the header, a 4-up responsive grid of step cards (set dates /
+// invite the crew / add lodging / plan the agenda). Every card is the
+// same fixed height as the flipped Set-dates card so nothing jumps when
+// the picker opens.
 
 export interface FreshTripGuideProps {
   tripId: string;
   trip: TripData;
-  /** Opens the existing DatesSheet (used by the dates flip-card's Poll
-   *  branch when ≥2 crew, since the full poll builder lives there). */
+  /** Opens the existing DatesSheet — used by the Poll branch (≥2 crew). */
   onOpenDatesSheet?: () => void;
-  /** Navigate to a tab — drives the Lodging / Crew / Agenda step CTAs and
-   *  the "Add the crew first" redirect in the Poll branch. */
+  /** Navigate to a tab — drives the Lodging / Crew / Agenda CTAs and
+   *  the Poll-branch "Add the crew first" redirect. */
   onTabChange?: (tab: string) => void;
-  /** Owner dismissed the guide. The ItineraryPanel handles what to render
-   *  next (DismissedEmptyState if no dates, real bookends + restore link
-   *  if dates set), so the guide just calls this. */
+  /** Owner dismissed the guide. */
   onDismiss: () => void;
 }
+
+// Match the flipped Set-dates card height so every step card holds the
+// same shape before AND after the picker opens. Tuned to fit calendar +
+// presets + Save row at the picker's tightest layout.
+const CARD_MIN_H = 420;
 
 export function FreshTripGuide({
   tripId,
@@ -49,78 +53,76 @@ export function FreshTripGuide({
   onDismiss,
 }: FreshTripGuideProps) {
   const datesSet = !!(trip.start_date && trip.end_date);
-  const eyebrow = datesSet ? "Get set up" : "New trip";
-  const headline = datesSet
-    ? "Add what you've got"
-    : "Your itinerary builds itself";
+  const accent = DOMAIN_COLORS.home.color;
+
+  // Destination string for the eyebrow + location graphic. Prefer the
+  // explicit locked-destination location (semantic geographic string),
+  // falling back to whatever the trip exposes.
+  const destination =
+    trip.locked_destination_location ?? trip.location ?? trip.title;
+  const destinationUpper = destination?.toUpperCase() ?? "";
 
   return (
-    // Flush — no outer panel. The mock renders the guide directly under the
-    // Itinerary header with full container width so the four step cards
-    // breathe; an extra bordered box just shrinks them.
     <section data-testid="fresh-trip-guide">
-      {/* Header — eyebrow + title + dismiss */}
-      <header className="relative pr-10">
-        <p
-          className="text-[10px] font-semibold uppercase tracking-[0.08em]"
-          style={{ color: DOMAIN_COLORS.home.color }}
-        >
-          {eyebrow}
-        </p>
-        <h2
-          className="mt-1 text-lg font-bold leading-tight"
-          style={{ color: "var(--color-bt-text)" }}
-        >
-          {headline}
-        </h2>
-        <p
-          className="mt-1 text-[12px] leading-snug"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Add any of these in any order and they weave into one timeline.
-          Dates frame it best — start there if you can — but nothing's
-          blocked until you do.
-        </p>
+      {/* ── Welcome / planning header ─────────────────────────────────── */}
+      <header
+        className="relative flex items-start gap-4 pr-10 sm:gap-5"
+      >
+        <LocationGraphic location={destination} />
+        <div className="min-w-0 flex-1 pt-1">
+          <p
+            className="text-[11px] font-semibold uppercase tracking-[0.10em]"
+            style={{ color: accent }}
+          >
+            {datesSet ? "Get set up" : `New trip · ${destinationUpper}`}
+          </p>
+          <h2
+            className="mt-1 text-[22px] font-bold leading-tight sm:text-[24px]"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            {datesSet
+              ? "Add what you've got"
+              : `${destination} — nice pick.`}
+          </h2>
+          <p
+            className="mt-2 text-[13px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {datesSet
+              ? "Add any of these in any order and they weave into one timeline. Dates frame it best — start there if you can — but nothing's blocked until you do."
+              : "That's the hard part done. Now let's build it out — set your dates, add lodging, pull in the crew. Each piece weaves into one day-by-day timeline, in whatever order you like."}
+          </p>
+        </div>
         <button
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss setup guide"
           className="absolute right-0 top-0 inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text-dim)" }}
+          style={{
+            color: "var(--color-bt-text-dim)",
+            background: "var(--color-bt-card-raised)",
+            border: "1px solid var(--color-bt-border)",
+          }}
           data-testid="fresh-trip-guide-dismiss"
         >
           <X size={16} />
         </button>
       </header>
 
-      {/* Step grid — 1 col mobile, 2 col tablet, 4 col desktop */}
+      {/* ── Step grid — 1 col mobile, 2 col tablet, 4 col desktop ─────── */}
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Step 1 — Set dates (flip card; owns its own done state) */}
+        {/* Step 1 — Set dates (flip card; primary CTA) */}
         <SetDatesFlipCard
           tripId={tripId}
           trip={trip}
           onOpenDatesSheet={onOpenDatesSheet}
           onTabChange={onTabChange}
+          minHeight={CARD_MIN_H}
         />
 
-        {/* Step 2 — Add lodging (ghost CTA — only step 1 is the
-            attention-grabber) */}
+        {/* Step 2 — Invite the crew (ghost) */}
         <StepCard
           number={2}
-          domain="lodging"
-          title="Add lodging"
-          body="Properties and rooms. Set nightly dates now or once your trip dates land."
-          thumbnail={<LodgingThumbnail />}
-          cta="Add lodging"
-          ctaIcon={<Building2 size={14} strokeWidth={2} />}
-          ctaVariant="ghost"
-          onCta={() => onTabChange?.("lodging")}
-          testId="guide-step-lodging"
-        />
-
-        {/* Step 3 — Invite the crew (ghost) */}
-        <StepCard
-          number={3}
           domain="crew"
           title="Invite the crew"
           body="Add everyone — they join, share travel, and split costs from their phone."
@@ -129,7 +131,23 @@ export function FreshTripGuide({
           ctaIcon={<UserPlus size={14} strokeWidth={2} />}
           ctaVariant="ghost"
           onCta={() => onTabChange?.("crew")}
+          minHeight={CARD_MIN_H}
           testId="guide-step-crew"
+        />
+
+        {/* Step 3 — Add lodging (ghost) */}
+        <StepCard
+          number={3}
+          domain="lodging"
+          title="Add lodging"
+          body="Properties and rooms. Set nightly dates now or once your trip dates land."
+          thumbnail={<LodgingThumbnail />}
+          cta="Add lodging"
+          ctaIcon={<Building2 size={14} strokeWidth={2} />}
+          ctaVariant="ghost"
+          onCta={() => onTabChange?.("lodging")}
+          minHeight={CARD_MIN_H}
+          testId="guide-step-lodging"
         />
 
         {/* Step 4 — Plan the agenda (ghost) */}
@@ -143,6 +161,7 @@ export function FreshTripGuide({
           ctaIcon={<Flag size={14} strokeWidth={2} />}
           ctaVariant="ghost"
           onCta={() => onTabChange?.("schedule")}
+          minHeight={CARD_MIN_H}
           testId="guide-step-agenda"
         />
       </div>
