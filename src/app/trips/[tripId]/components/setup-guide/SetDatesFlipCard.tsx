@@ -640,21 +640,37 @@ function InlineRangeCalendar({
         >
           {nights != null ? `${nights} night${nights === 1 ? "" : "s"}` : "Pick a range"}
         </span>
-        <button
-          type="button"
-          disabled={!canSave || saving}
-          onClick={() => {
-            if (canSave) onSave(range.start!, range.end!);
-          }}
-          className="rounded-md px-3 py-1.5 text-[11px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-          style={{
-            background: accent,
-            color: "var(--color-bt-on-accent, #0d1f1a)",
-          }}
-          data-testid="guide-dates-save"
-        >
-          {saving ? "Saving…" : "Set dates"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          {/* Quiet Clear — only renders when something is selected. Wipes
+              the working range so the user can start over without
+              hunting through months to deselect. */}
+          {(range.start || range.end) && (
+            <button
+              type="button"
+              onClick={() => setRange({ start: null, end: null })}
+              className="rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              data-testid="guide-dates-clear"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={!canSave || saving}
+            onClick={() => {
+              if (canSave) onSave(range.start!, range.end!);
+            }}
+            className="rounded-md px-3 py-1.5 text-[11px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+            style={{
+              background: accent,
+              color: "var(--color-bt-on-accent, #0d1f1a)",
+            }}
+            data-testid="guide-dates-save"
+          >
+            {saving ? "Saving…" : "Set dates"}
+          </button>
+        </div>
       </div>
     </div>
   );
