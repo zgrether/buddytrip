@@ -177,15 +177,18 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
     // itinerary full-width — Travel Plans moved to the Crew tab).
     <div className="flex h-full flex-col space-y-3">
       {!isEmpty && (
-        // Two-row header. Row 1: ITINERARY label on the left, the
-        // optional headerAction (e.g. "← Setup guide") on the right.
-        // Row 2: filter pills, only when there's more than one category
-        // worth filtering.
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
+        // Two-row header. Row 1: ITINERARY eyebrow on the left, the
+        // optional headerAction (e.g. "← Setup guide") on the right —
+        // same typography pattern the shared TabHeader uses across
+        // every entry tab. Row 2: filter pills.
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
             <h2
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
+              className="text-[11px] font-semibold uppercase"
+              style={{
+                color: "var(--color-bt-accent)",
+                letterSpacing: "0.1em",
+              }}
             >
               Itinerary
             </h2>
