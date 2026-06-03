@@ -71,14 +71,25 @@ export const StepCard: FC<StepCardProps> = ({
   testId,
 }) => {
   const tint = DOMAIN_COLORS[domain];
-  return (
-    <div
-      className="flex flex-col gap-3 rounded-xl p-3"
-      style={{
+  // Done treatment — accent-faint vertical fade + accent-border outline.
+  // Mirrors SetDatesFlipCard's done state so completed steps speak the
+  // same visual language.
+  const surface: React.CSSProperties = done
+    ? {
+        background:
+          "linear-gradient(180deg, var(--color-bt-accent-faint), transparent 60%)",
+        border: "1px solid var(--color-bt-accent-border)",
+        minHeight,
+      }
+    : {
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
         minHeight,
-      }}
+      };
+  return (
+    <div
+      className="flex flex-col gap-3 rounded-xl p-3"
+      style={surface}
       data-testid={`step-card-${number}`}
     >
       {/* Preview area — dark surface that hosts the mini-UI thumbnail.
@@ -120,23 +131,31 @@ export const StepCard: FC<StepCardProps> = ({
 
       {/* CTA — mt-auto pins to the bottom; the gap between body text
           and button is the visible empty space in the middle of the
-          card, intentionally preserved. */}
+          card, intentionally preserved. When done, the CTA becomes an
+          unfilled outline button (the tinted card surface already
+          carries weight; a filled button would compete). */}
       <button
         type="button"
         onClick={onCta}
         data-testid={testId}
-        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
+        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-colors hover:bg-[rgba(255,255,255,0.04)]"
         style={
-          ctaVariant === "primary"
+          done
             ? {
-                background: tint.color,
-                color: "var(--color-bt-on-accent, #0d1f1a)",
-              }
-            : {
-                background: "var(--color-bt-card-raised)",
+                background: "transparent",
                 color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
+                border: "1px solid var(--color-bt-accent-border)",
               }
+            : ctaVariant === "primary"
+              ? {
+                  background: tint.color,
+                  color: "var(--color-bt-on-accent, #0d1f1a)",
+                }
+              : {
+                  background: "var(--color-bt-card-raised)",
+                  color: "var(--color-bt-text)",
+                  border: "1px solid var(--color-bt-border)",
+                }
         }
       >
         {ctaIcon}
@@ -166,14 +185,22 @@ function NumberBadge({
   return (
     <span
       className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums"
-      style={{
-        background: faint,
-        color: tint,
-        border: `1px solid ${tint}`,
-      }}
+      style={
+        done
+          ? {
+              // Inverted — solid accent fill with dark check ink.
+              background: tint,
+              color: "var(--color-bt-on-accent, #0d1f1a)",
+            }
+          : {
+              background: faint,
+              color: tint,
+              border: `1px solid ${tint}`,
+            }
+      }
       aria-hidden="true"
     >
-      {done ? <Check size={12} strokeWidth={2.6} /> : children}
+      {done ? <Check size={12} strokeWidth={2.8} /> : children}
     </span>
   );
 }

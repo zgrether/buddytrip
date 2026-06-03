@@ -133,11 +133,15 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
     },
   });
 
-  // ── Done state — paint card with the accent-faint treatment ──────────
+  // ── Done state — accent-faint vertical fade + accent-border outline.
+  // Mirrors the .hiw-face.front.done treatment from the design spec:
+  //   background: linear-gradient(180deg, accent-faint, transparent 60%);
+  //   border-color: accent-border;
   const cardSurface: React.CSSProperties = datesSet
     ? {
-        background: tint.faint,
-        border: `1px solid ${tint.color}`,
+        background:
+          "linear-gradient(180deg, var(--color-bt-accent-faint), transparent 60%)",
+        border: "1px solid var(--color-bt-accent-border)",
       }
     : {
         background: "var(--color-bt-card)",
@@ -160,18 +164,27 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         <CalendarThumbnail accent={tint.color} />
       </div>
 
-      {/* Title row — number badge / check inline */}
+      {/* Title row — number badge / check inline. Done state inverts the
+          badge: solid accent fill with dark checkmark ink (the rest of
+          the cards' idle badges stay accent-faint with teal numerals). */}
       <div className="flex items-center gap-2">
         <span
           className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums"
-          style={{
-            background: tint.faint,
-            color: tint.color,
-            border: `1px solid ${tint.color}`,
-          }}
+          style={
+            datesSet
+              ? {
+                  background: tint.color,
+                  color: "var(--color-bt-on-accent, #0d1f1a)",
+                }
+              : {
+                  background: tint.faint,
+                  color: tint.color,
+                  border: `1px solid ${tint.color}`,
+                }
+          }
           aria-hidden="true"
         >
-          {datesSet ? <Check size={12} strokeWidth={2.6} /> : 1}
+          {datesSet ? <Check size={12} strokeWidth={2.8} /> : 1}
         </span>
         <p
           className="text-[15px] font-semibold leading-tight"
@@ -196,13 +209,15 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
       <button
         type="button"
         onClick={() => setFlipped(true)}
-        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
+        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-colors hover:bg-[rgba(255,255,255,0.04)]"
         style={
           datesSet
             ? {
-                background: "var(--color-bt-card-raised)",
+                // Unfilled outline — the done card already carries the
+                // accent-tinted backdrop; a filled button would compete.
+                background: "transparent",
                 color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
+                border: "1px solid var(--color-bt-accent-border)",
               }
             : {
                 background: tint.color,
