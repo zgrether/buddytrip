@@ -508,6 +508,31 @@ function InlineRangeCalendar({
   const presets = useMemo(() => rangePresets(today), [today]);
   const nights = range.start && range.end ? nightsBetween(range.start, range.end) : null;
 
+  // Has the user's current selection matched the trip's already-saved
+  // dates? If so we replace the Save row with a confirmation chip —
+  // there's nothing to save until they change something. Compare
+  // against the local YYYY-MM-DD parts so timezone offset (e.g. EDT,
+  // -4h) doesn't shift the Date's .toISOString() back a day on the
+  // trip's saved string.
+  const localYMD = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  const sameAsInitial =
+    !!initialStart &&
+    !!initialEnd &&
+    !!range.start &&
+    !!range.end &&
+    localYMD(range.start) === initialStart &&
+    localYMD(range.end) === initialEnd;
+
+  const initialRangeLabel =
+    initialStart && initialEnd
+      ? formatDateRangeCompact(initialStart, initialEnd)
+      : "";
+
   const monthLabel = view.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
@@ -633,45 +658,66 @@ function InlineRangeCalendar({
         })}
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <span
-          className="text-[10px]"
-          style={{ color: "var(--color-bt-text-dim)" }}
+      {sameAsInitial ? (
+        // Confirmation chip — selection matches what's already saved,
+        // so there's nothing to commit. Same shape as the row's other
+        // CTAs (full-width pill); reads as a positive indicator and
+        // not as an action.
+        <div
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-md py-1.5 text-[11px] font-semibold"
+          style={{
+            background: accentFaint,
+            color: accent,
+            border: `1px solid ${accent}`,
+          }}
+          data-testid="guide-dates-confirm-chip"
         >
-          {nights != null ? `${nights} night${nights === 1 ? "" : "s"}` : "Pick a range"}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {/* Quiet Clear — only renders when something is selected. Wipes
-              the working range so the user can start over without
-              hunting through months to deselect. */}
-          {(range.start || range.end) && (
+          <Check size={12} strokeWidth={2.6} />
+          Set {initialRangeLabel}
+        </div>
+      ) : (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span
+            className="text-[10px]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {nights != null
+              ? `${nights} night${nights === 1 ? "" : "s"}`
+              : "Pick a range"}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {/* Quiet Clear — only renders when something is selected.
+                Wipes the working range so the user can start over
+                without hunting through months to deselect. */}
+            {(range.start || range.end) && (
+              <button
+                type="button"
+                onClick={() => setRange({ start: null, end: null })}
+                className="rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+                data-testid="guide-dates-clear"
+              >
+                Clear
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setRange({ start: null, end: null })}
-              className="rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              data-testid="guide-dates-clear"
+              disabled={!canSave || saving}
+              onClick={() => {
+                if (canSave) onSave(range.start!, range.end!);
+              }}
+              className="rounded-md px-3 py-1.5 text-[11px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{
+                background: accent,
+                color: "var(--color-bt-on-accent, #0d1f1a)",
+              }}
+              data-testid="guide-dates-save"
             >
-              Clear
+              {saving ? "Saving…" : "Set dates"}
             </button>
-          )}
-          <button
-            type="button"
-            disabled={!canSave || saving}
-            onClick={() => {
-              if (canSave) onSave(range.start!, range.end!);
-            }}
-            className="rounded-md px-3 py-1.5 text-[11px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-40"
-            style={{
-              background: accent,
-              color: "var(--color-bt-on-accent, #0d1f1a)",
-            }}
-            data-testid="guide-dates-save"
-          >
-            {saving ? "Saving…" : "Set dates"}
-          </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
