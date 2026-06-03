@@ -197,20 +197,11 @@ export function DatePollStackedCards({
     return top[0]!.id;
   }, [windows, tallies]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => mostPopularId ?? windows[0]?.id ?? null,
-  );
-
-  // selectedId is initialized once at mount, so a window added while the
-  // card is already open (the common flow — start poll, then add the first
-  // option) leaves it null and would hide the Lock footer until a reload
-  // re-mounts the component. Derive the effective selection so the Lock CTA
-  // tracks the current windows live: honor an explicit pick while it still
-  // points at a real window, otherwise fall back to most-popular / first.
-  const effectiveSelectedId =
-    selectedId && windows.some((w) => w.id === selectedId)
-      ? selectedId
-      : mostPopularId ?? windows[0]?.id ?? null;
+  // No auto-selection: the owner explicitly taps a window's radio to pick
+  // which one to lock (and can tap again to unselect). Lock only surfaces
+  // once something is selected. The most-popular window still gets a badge,
+  // but is never auto-selected.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Inline add-option calendar. Hidden by default; "+ Add a date option"
   // reveals it. Stays inline so the owner can fire several proposals
@@ -403,17 +394,22 @@ export function DatePollStackedCards({
 
       {/* Stacked option cards. Each owns its own expanded/confirm state. */}
       <div className="space-y-2.5">
-        {windows.map((w) => (
+        {windows.map((w, i) => (
           <OptionCard
             key={w.id}
             window={w}
             members={members}
             currentUserId={currentUserId}
             isOwner={isOwner}
-            isSelected={effectiveSelectedId === w.id}
+            isSelected={selectedId === w.id}
             isMostPopular={mostPopularId === w.id}
+            // First option opens expanded so a freshly-added window shows
+            // its voting controls without a tap. Selection stays explicit.
+            defaultExpanded={i === 0}
             tally={tallies[w.id]!}
-            onSelect={() => setSelectedId(w.id)}
+            onSelect={() =>
+              setSelectedId((cur) => (cur === w.id ? null : w.id))
+            }
             onVote={onVote}
             onRemove={onRemoveWindow ? () => onRemoveWindow(w.id) : undefined}
             onManageCrew={onManageCrew}
@@ -458,10 +454,10 @@ export function DatePollStackedCards({
           save on click), so no dedicated footer is needed. */}
       {isOwner && (
         <div className="space-y-2 pt-1">
-          {onLockWindow && effectiveSelectedId && (
+          {onLockWindow && selectedId && (
             <button
               type="button"
-              onClick={() => onLockWindow(effectiveSelectedId)}
+              onClick={() => onLockWindow(selectedId)}
               className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold transition-opacity hover:opacity-90"
               style={{
                 background: "var(--color-bt-accent)",
@@ -471,7 +467,7 @@ export function DatePollStackedCards({
             >
               <Check size={16} strokeWidth={2.6} />
               Lock in {(() => {
-                const w = windows.find((x) => x.id === effectiveSelectedId);
+                const w = windows.find((x) => x.id === selectedId);
                 return w ? fmtRangeShort(w.start_date, w.end_date) : "selected dates";
               })()}
             </button>
@@ -492,6 +488,7 @@ function OptionCard({
   isOwner,
   isSelected,
   isMostPopular,
+  defaultExpanded = false,
   tally,
   onSelect,
   onVote,
@@ -504,13 +501,14 @@ function OptionCard({
   isOwner: boolean;
   isSelected: boolean;
   isMostPopular: boolean;
+  defaultExpanded?: boolean;
   tally: { yes: number; maybe: number; no: number; waiting: number };
   onSelect: () => void;
   onVote: (windowId: string, answer: VoteAnswer, userId: string) => void;
   onRemove?: () => void;
   onManageCrew?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   // Two-step delete for cards with existing votes — matches HANDOFF
   // "Remove this option? N votes discarded." inline confirm.
   const [confirmRemove, setConfirmRemove] = useState(false);
