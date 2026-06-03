@@ -68,8 +68,12 @@ export function HomeTab({
   const guideOwnsHeader =
     !!isOwner && !!showFullPanels;
 
+  // pt-1 (4px) lands the guide / ITINERARY eyebrow level with the
+  // other tabs' TabHeader eyebrow (Crew/Lodging/Agenda/Receipts). The
+  // wrapper previously used pt-3, which stacked 12px on top of the
+  // parent's pt-4 and pushed the heading a few pixels below its peers.
   return (
-    <div className="space-y-4 px-4 pt-3">
+    <div className="space-y-4 px-4 pt-1">
       {showFullPanels && (
         <>
           {/* Owner intro — only shown when FreshTripGuide isn't (because

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { ListChecks } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ItineraryView } from "../ItineraryView";
+import { DatePollCard } from "../DatePollCard";
 import {
   FreshTripGuide,
   DismissedEmptyState,
@@ -86,15 +88,33 @@ export function ItineraryPanel({
   void _disableItinerary;
 
   const datesSet = !!(trip.start_date && trip.end_date);
+  const pollActive = !!trip.poll_mode;
 
   // ── Member path ─────────────────────────────────────────────────────
+  // Priority order:
+  //   1. Real bookends locked → ItineraryView (the trip has dates; show
+  //      the day-by-day even if the poll flag is somehow still on,
+  //      because dates landing is what members are waiting for).
+  //   2. Poll is active → DatePollCard in vote/read mode. This is the
+  //      one place the crew weighs in; the home tab IS the poll until
+  //      it resolves. If the owner hasn't added windows yet, the card's
+  //      empty state ("The organizer hasn't added any windows yet")
+  //      handles that — members still see something useful instead of
+  //      a generic dim placeholder.
+  //   3. Otherwise → dim placeholder. The legacy `isActivated` flag is
+  //      intentionally dropped from the member path: with the new poll
+  //      flow, "itinerary is set up" should mean "dates are locked,"
+  //      not "the owner flipped a legacy switch." Owners (below) still
+  //      honor the flag for the rare in-flight legacy trip.
   if (!isOwner) {
-    // Show the live view as soon as there are bookends or content.
-    if (datesSet || isActivated) {
+    if (datesSet) {
       return <ItineraryView trip={trip} isOwner={false} />;
     }
+    if (pollActive) {
+      return <DatePollCard trip={trip} isOwner={false} />;
+    }
     return (
-      <DimPlaceholder text="Your itinerary will appear here once the trip organizer sets it up." />
+      <DimPlaceholder text="Your itinerary will appear here once the organizer locks the trip dates." />
     );
   }
 
@@ -123,11 +143,14 @@ export function ItineraryPanel({
           <button
             type="button"
             onClick={() => setDismissed(false)}
-            className="text-[12px] font-semibold transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1 text-[12px] font-semibold transition-opacity hover:opacity-80"
             style={{ color: "var(--color-bt-accent)" }}
             data-testid="guide-restore-link"
+            aria-label="Show setup guide"
+            title="Show setup guide"
           >
-            ← Setup guide
+            <ListChecks size={14} strokeWidth={2} />
+            Setup guide
           </button>
         }
       />

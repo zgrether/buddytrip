@@ -585,7 +585,6 @@ export default function TripDetailPage() {
           tripId={tripId}
           trip={trip}
           isOwner={isOwner}
-          onTabChange={(tab) => setActiveTab(tab as TabId)}
         />
       )}
 

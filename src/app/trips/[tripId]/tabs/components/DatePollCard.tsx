@@ -1,18 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Info, Pencil, RotateCcw, ThumbsUp, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ThumbsUp } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
-import {
-  DatePollGrid,
-  type PollMember,
-  type PollWindow,
-  type VoteAnswer,
+import type {
+  PollMember,
+  PollWindow,
+  VoteAnswer,
 } from "./DatePollGrid";
+import { DatePollStackedCards } from "./DatePollStackedCards";
 import { ConfirmDatesModal } from "../../components/ConfirmDatesModal";
 
 export interface DatePollCardProps {
@@ -21,9 +20,6 @@ export interface DatePollCardProps {
   /** Owner / planner only — shown as "Manage →" in the Crew column header. */
   onManageCrew?: () => void;
 }
-
-const DEFAULT_POLL_NOTE =
-  "We're trying to get a feel for everyone's availability before locking in a date — let us know what you think about these options.";
 
 function sortWindows(ws: PollWindow[]): PollWindow[] {
   return ws.slice().sort((a, b) => {
@@ -50,18 +46,11 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
   const utils = trpc.useUtils();
   const currentUser = useCurrentUser();
 
-  const [showAddDateModal, setShowAddDateModal] = useState(false);
-  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  // Pending window to lock — set when owner clicks "Select this date";
+  // Pending window to lock — set when owner clicks "Lock in [range]";
   // cleared when the ConfirmDatesModal is confirmed or cancelled.
+  // Add/remove confirms live inside DatePollStackedCards (inline confirm
+  // pattern); reset/cancel-poll likewise (footer escape hatch).
   const [pendingLockWindowId, setPendingLockWindowId] = useState<string | null>(null);
-
-  // Poll note modal + editor
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [editingNote, setEditingNote] = useState(false);
-  const [noteValue, setNoteValue] = useState<string>("");
-  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -70,9 +59,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     () => sortWindows((poll?.windows ?? []) as PollWindow[]),
     [poll?.windows]
   );
-
-  const pollNote = poll?.pollNote ?? null;
-  const displayNote = pollNote ?? DEFAULT_POLL_NOTE;
 
   const pollMembers: PollMember[] = useMemo(
     () =>
@@ -83,6 +69,16 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
       })),
     [members]
   );
+
+  // Owner's display name — surfaced in the member view's "Dates are being
+  // picked" intro header and the empty-state body ("{Owner} hasn't posted
+  // any windows yet"). Falls back to a neutral noun if the owner record
+  // isn't loaded yet (or somehow missing — defensive).
+  const ownerName = useMemo(() => {
+    const owner = (members as Array<{ role?: string | null; displayName: string }>)
+      .find((m) => m.role === "Owner");
+    return owner?.displayName ?? "The organizer";
+  }, [members]);
 
   // Has the current user voted on every available window?
   const allWindowsVoted =
@@ -306,9 +302,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     onError(_e, _v, ctx) {
       if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
     },
-    onSuccess() {
-      setShowResetConfirm(false);
-    },
     onSettled() {
       utils.datePoll.get.invalidate({ tripId });
     },
@@ -353,26 +346,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     },
   });
 
-  const updatePollNote = trpc.datePoll.updatePollNote.useMutation({
-    async onMutate(vars) {
-      await utils.datePoll.get.cancel({ tripId });
-      const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) =>
-        old ? { ...old, pollNote: vars.note } : old
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
-    },
-    onSuccess() {
-      setEditingNote(false);
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
   // ── Poll-open view ─────────────────────────────────────────────────────
 
   const handleVote = (windowId: string, answer: VoteAnswer, userId: string) => {
@@ -383,153 +356,98 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     }
   };
 
-  const anyVotes = windows.some((w) => w.votes.length > 0);
-
-  const pendingRemoveWindow = confirmRemoveId
-    ? windows.find((w) => w.id === confirmRemoveId) ?? null
-    : null;
-
-  const handleSaveNote = () => {
-    const trimmed = noteValue.trim();
-    updatePollNote.mutate({ tripId, note: trimmed || null });
-  };
-
-  const handleStartEditNote = () => {
-    setNoteValue(pollNote ?? "");
-    setEditingNote(true);
-    setShowNoteModal(true);
-    setTimeout(() => {
-      noteTextareaRef.current?.focus();
-      noteTextareaRef.current?.select();
-    }, 0);
-  };
+  // Touch unused symbols so a future refactor can rewire them cleanly.
+  // `anyVotes` was the gate for the legacy Reset row (now superseded by
+  // the per-card delete / cancel-poll flow inside DatePollStackedCards);
+  // `resetPoll` is still wired in case we add a "clear my votes" affordance.
+  void windows.some((w) => w.votes.length > 0);
+  void resetPoll;
 
   return (
     <>
-      <div className="space-y-2">
-        {/* ── Instructions button — opens note modal ── */}
-        {windows.length > 0 && (
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => {
-                setNoteValue(pollNote ?? "");
-                setEditingNote(false);
-                setShowNoteModal(true);
+      {/* Cap the whole poll surface at 720px so the cards stay readable
+          on wide screens — beyond that the tally bar + roster chips
+          spread too thin and the eye loses the per-card unit. The cap
+          covers the member intro header too so it aligns with the
+          panel underneath. */}
+      <div className="space-y-2" style={{ maxWidth: 720 }}>
+        {/* ── Member intro header ─────────────────────────────────────
+            The owner sees the FreshTripGuide header upstream ("Now let's
+            lock the dates" — see FreshTripGuide.tsx); members come into
+            this surface cold via ItineraryPanel and need the same context
+            framing. Eyebrow + headline + body matches the shared
+            TabHeader cadence (11px accent eyebrow, clamp-scaled
+            semibold headline, 15px body at 1.65 line-height). */}
+        {!isOwner && (
+          <header className="mb-3">
+            <p
+              className="mb-3 text-[11px] font-semibold uppercase"
+              style={{ color: "var(--color-bt-accent)", letterSpacing: "0.1em" }}
+            >
+              Date poll
+            </p>
+            <h2
+              className="mb-3 font-semibold"
+              style={{
+                color: "var(--color-bt-text)",
+                fontSize: "clamp(20px, 2.8vw, 26px)",
+                lineHeight: 1.15,
+                letterSpacing: "-0.015em",
               }}
-              className="flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-70"
-              style={{ color: "var(--color-bt-text-dim)", background: "transparent", border: "none" }}
             >
-              <Info size={13} />
-              Crew Instructions
-              {isOwner && <Pencil size={11} style={{ color: "var(--color-bt-accent)", opacity: 0.7 }} />}
-            </button>
-          </div>
+              Dates are being picked
+            </h2>
+            <p
+              className="max-w-prose"
+              style={{
+                color: "var(--color-bt-text-dim)",
+                fontSize: 15,
+                lineHeight: 1.65,
+              }}
+            >
+              {ownerName}&rsquo;s lining up a few date options for the trip.
+              Once they&rsquo;re posted, you&rsquo;ll vote on each one right
+              here.
+            </p>
+          </header>
         )}
 
-        {/* ── Note modal ── */}
-        {showNoteModal && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: "rgba(0,0,0,0.6)" }}
-            onClick={(e) => { if (e.target === e.currentTarget) { setShowNoteModal(false); setEditingNote(false); } }}
-          >
-            <div
-              className="w-full max-w-md rounded-2xl p-5 shadow-xl"
-              style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-            >
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                  Crew Instructions
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => { setShowNoteModal(false); setEditingNote(false); }}
-                  className="rounded-lg p-1 transition-opacity hover:opacity-70"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              {editingNote ? (
-                <div className="space-y-3">
-                  <textarea
-                    ref={noteTextareaRef}
-                    value={noteValue}
-                    onChange={(e) => setNoteValue(e.target.value)}
-                    rows={4}
-                    maxLength={500}
-                    placeholder={DEFAULT_POLL_NOTE}
-                    className="w-full resize-none rounded-xl px-3 py-2.5 text-[13px] leading-relaxed outline-none"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      border: "1px solid var(--color-bt-accent)",
-                      color: "var(--color-bt-text)",
-                    }}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingNote(false)}
-                      className="flex-1 rounded-xl py-2 text-[13px] font-medium"
-                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { handleSaveNote(); setShowNoteModal(false); }}
-                      disabled={updatePollNote.isPending}
-                      className="flex-1 rounded-xl py-2 text-[13px] font-semibold disabled:opacity-40"
-                      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-                    >
-                      {updatePollNote.isPending ? "Saving…" : "Save"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p
-                    className="text-[13px] leading-relaxed"
-                    style={{
-                      color: pollNote ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
-                      fontStyle: pollNote ? "normal" : "italic",
-                    }}
-                  >
-                    {displayNote}
-                  </p>
-                  {isOwner && (
-                    <button
-                      type="button"
-                      onClick={handleStartEditNote}
-                      className="flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-70"
-                      style={{ color: "var(--color-bt-accent)", background: "transparent", border: "none" }}
-                    >
-                      <Pencil size={12} /> Edit instructions
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Date poll grid ─────────────────────────────────────────────── */}
-        <DatePollGrid
-          dateWindows={windows}
+        {/* ── Stacked option cards — new presentation layer per
+            HANDOFF-datepoll.md. DatePollGrid (Doodle-style table) is
+            superseded; deleting it is flagged as a follow-up. The card
+            component owns all per-card UX (radio select, expand to
+            roster, override popover, inline remove confirm, inline add
+            calendar, cancel-poll confirm). Mutations stay here. ──── */}
+        <DatePollStackedCards
+          windows={windows}
           members={pollMembers}
           currentUserId={currentUser?.id ?? ""}
           isOwner={isOwner}
+          ownerName={ownerName}
           onVote={handleVote}
-          onAddDateWindow={isOwner ? () => setShowAddDateModal(true) : undefined}
-          onLockDateWindow={
+          onAddWindow={
             isOwner
-              ? (windowId) => setPendingLockWindowId(windowId)
+              ? (startDate, endDate) =>
+                  addWindow.mutate({
+                    tripId,
+                    id: crypto.randomUUID(),
+                    startDate,
+                    endDate,
+                  })
               : undefined
           }
-          onRemoveDateWindow={
-            isOwner ? (windowId) => setConfirmRemoveId(windowId) : undefined
+          onRemoveWindow={
+            isOwner
+              ? (windowId) => removeWindow.mutate({ tripId, windowId })
+              : undefined
+          }
+          onLockWindow={
+            isOwner ? (windowId) => setPendingLockWindowId(windowId) : undefined
+          }
+          onCancelPoll={
+            isOwner
+              ? () => endPoll.mutate({ tripId, pollMode: false })
+              : undefined
           }
           onManageCrew={onManageCrew}
         />
@@ -555,65 +473,12 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
             </p>
           </div>
         )}
-
-        {/* ── Owner footer: Reset (only once votes exist) ─────────────── */}
-        {windows.length > 0 && isOwner && anyVotes && (
-          <div className="flex items-center gap-2 pt-1">
-            {showResetConfirm ? (
-              /* Reset hides; three confirm buttons fill the row */
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowResetConfirm(false)}
-                  className="flex-1 rounded-xl py-2 text-[13px] font-medium"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    color: "var(--color-bt-text-dim)",
-                    border: "1px solid var(--color-bt-border)",
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => resetPoll.mutate({ tripId })}
-                  disabled={resetPoll.isPending}
-                  className="flex-1 rounded-xl py-2 text-[13px] font-semibold"
-                  style={{ background: "var(--color-bt-danger)", color: "var(--color-bt-base)" }}
-                >
-                  {resetPoll.isPending ? "Clearing…" : "Clear votes?"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => endPoll.mutate({ tripId, pollMode: false })}
-                  disabled={endPoll.isPending}
-                  className="flex-1 rounded-xl py-2 text-[13px] font-semibold"
-                  style={{ background: "var(--color-bt-danger)", color: "var(--color-bt-base)" }}
-                >
-                  {endPoll.isPending ? "Clearing…" : "Clear poll?"}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(true)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-opacity"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-                aria-label="Reset votes"
-              >
-                <RotateCcw size={13} />
-                Reset
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Confirm dates modal — shown when owner clicks "Select this date" */}
+      {/* Confirm dates modal — shown when owner clicks "Lock in [range]".
+          Kept as a final guard before changing the trip dates; the rest
+          of the poll's confirm gates (remove option, cancel poll) live
+          inline inside the card. */}
       {(() => {
         const win = pendingLockWindowId
           ? windows.find((w) => w.id === pendingLockWindowId) ?? null
@@ -634,224 +499,7 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
           />
         );
       })()}
-
-      {/* Add date window modal */}
-      {showAddDateModal && (
-        <AddDateWindowModal
-          pending={addWindow.isPending}
-          onClose={() => setShowAddDateModal(false)}
-          onSubmit={(startDate, endDate) => {
-            addWindow.mutate(
-              {
-                tripId,
-                id: crypto.randomUUID(),
-                startDate,
-                endDate,
-              },
-              {
-                onSuccess() {
-                  setShowAddDateModal(false);
-                },
-              }
-            );
-          }}
-        />
-      )}
-
-      {/* Confirm remove dialog */}
-      {pendingRemoveWindow && (
-        <ConfirmDialog
-          title="Remove this date option?"
-          body="This will delete the option and any votes already cast for it."
-          cancelLabel="Cancel"
-          confirmLabel={removeWindow.isPending ? "Removing…" : "Remove"}
-          confirmDanger
-          onCancel={() => setConfirmRemoveId(null)}
-          onConfirm={() =>
-            removeWindow.mutate(
-              { tripId, windowId: pendingRemoveWindow.id },
-              { onSuccess: () => setConfirmRemoveId(null) }
-            )
-          }
-        />
-      )}
     </>
   );
 }
 
-// ── AddDateWindowModal ───────────────────────────────────────────────────
-
-function AddDateWindowModal({
-  pending,
-  onClose,
-  onSubmit,
-}: {
-  pending: boolean;
-  onClose: () => void;
-  onSubmit: (startDate: string, endDate: string) => void;
-}) {
-  useModalBackButton(onClose);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const valid = !!startDate && !!endDate && startDate < endDate;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="w-full max-w-sm rounded-t-2xl p-5 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-      >
-        <div className="mb-2 flex items-center justify-between">
-          <p
-            className="text-base font-semibold"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            Add a date option
-          </p>
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <label
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              Start date
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-sm"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-          </div>
-          <div className="space-y-1">
-            <label
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              End date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-sm"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                border: "1px solid var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-          </div>
-        </div>
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-xl py-2.5 text-sm font-medium"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            disabled={!valid || pending}
-            onClick={() => valid && onSubmit(startDate, endDate)}
-            className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
-            style={{
-              background: valid ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-              color: valid ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-              opacity: valid ? 1 : 0.6,
-              cursor: valid ? "pointer" : "not-allowed",
-            }}
-          >
-            {pending ? "Adding…" : "Add date"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── ConfirmDialog ────────────────────────────────────────────────────────
-
-function ConfirmDialog({
-  title,
-  body,
-  cancelLabel,
-  confirmLabel,
-  confirmDanger,
-  onCancel,
-  onConfirm,
-}: {
-  title: string;
-  body: string;
-  cancelLabel: string;
-  confirmLabel: string;
-  confirmDanger?: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  useModalBackButton(onCancel);
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-6"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
-    >
-      <div
-        className="w-full max-w-sm rounded-2xl p-5"
-        style={{ background: "var(--color-bt-card)" }}
-      >
-        <p className="text-base font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          {title}
-        </p>
-        <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-          {body}
-        </p>
-        <div className="mt-4 flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 rounded-xl py-2.5 text-sm font-medium"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-            }}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
-            style={{
-              background: confirmDanger
-                ? "var(--color-bt-danger)"
-                : "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-            }}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

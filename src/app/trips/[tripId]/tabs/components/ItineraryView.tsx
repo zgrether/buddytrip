@@ -182,7 +182,12 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
         // same typography pattern the shared TabHeader uses across
         // every entry tab. Row 2: filter pills.
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
+          {/* items-baseline so the eyebrow h2 stays glued to its own
+              baseline instead of being centered against the slightly
+              taller action button — otherwise the row's items-center
+              alignment pushes the h2 ~1px lower than the same eyebrow
+              on the other tabs. */}
+          <div className="flex items-baseline justify-between gap-3">
             <h2
               className="text-[11px] font-semibold uppercase"
               style={{

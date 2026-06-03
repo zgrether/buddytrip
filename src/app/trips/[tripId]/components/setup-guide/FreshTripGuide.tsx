@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Building2, Flag, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
+import { DatePollCard } from "../../tabs/components/DatePollCard";
 import {
   LodgingThumbnail,
   CrewThumbnail,
@@ -33,7 +34,11 @@ import type { TripData } from "../../tabs/types";
 export interface FreshTripGuideProps {
   tripId: string;
   trip: TripData;
-  /** Opens the existing DatesSheet — used by the Poll branch (≥2 crew). */
+  /** Opens the existing DatesSheet. Kept on the interface for the parent
+   *  (ItineraryPanel) to keep wiring — there's no in-guide consumer
+   *  anymore since the inline poll surface (DatePollCard) replaced the
+   *  hand-off-to-DatesSheet placeholder, but the prop is harmless and
+   *  reserved for future "open the full picker" affordances. */
   onOpenDatesSheet?: () => void;
   /** Navigate to a tab — drives the Lodging / Crew / Agenda CTAs and
    *  the Poll-branch "Add the crew first" redirect. */
@@ -45,7 +50,7 @@ export interface FreshTripGuideProps {
 export function FreshTripGuide({
   tripId,
   trip,
-  onOpenDatesSheet,
+  onOpenDatesSheet: _onOpenDatesSheet,
   onTabChange,
   onDismiss,
 }: FreshTripGuideProps) {
@@ -55,9 +60,31 @@ export function FreshTripGuide({
   // Poll-builder takeover: when the user taps "Set up date poll →" on
   // the dates flip card with ≥2 crew, the Set Dates card expands across
   // the whole grid and the other three steps hide until the poll is
-  // committed or cancelled. Starting a poll is a "finish it" task —
-  // splitting attention with the rest of the guide isn't useful.
-  const [pollMode, setPollMode] = useState(false);
+  // committed or cancelled.
+  //
+  // The takeover is driven by two signals OR'd together:
+  //   1. trip.poll_mode (server state) — set true by DatePollCard once the
+  //      owner adds their first window, cleared when they lock a window
+  //      or end the poll. Surviving the local state means a poll-in-flight
+  //      stays present after navigation / reload, on the home tab, for
+  //      both the owner and the crew.
+  //   2. localPollMode (UI state) — flips true the moment the owner taps
+  //      "Set up date poll" so the takeover happens immediately, before
+  //      the first window is added. Cleared on cancel.
+  const [localPollMode, setLocalPollMode] = useState(false);
+  const pollMode = !!trip.poll_mode || localPollMode;
+
+  // When the server-side poll flag flips off (poll committed via Lock, or
+  // dates picked from DatesSheet which ends the poll), drop the local
+  // latch too. Without this, an owner who started the poll in this
+  // session would stay on the poll surface forever — localPollMode
+  // remains true even though trip.poll_mode is false, and the OR keeps
+  // pollMode true.
+  useEffect(() => {
+    if (!trip.poll_mode && localPollMode) {
+      setLocalPollMode(false);
+    }
+  }, [trip.poll_mode, localPollMode]);
 
   // Destination string for the eyebrow + location graphic. Prefer the
   // explicit locked-destination location (semantic geographic string),
@@ -122,11 +149,22 @@ export function FreshTripGuide({
             clamp-scaled semibold headline with -0.015em tracking, 15px
             body at 1.65 line-height, mb-3 rhythm between each row. */}
         <div className="min-w-0 flex-1">
+          {/* Three-stage header copy. Priority order:
+                pollMode → poll-in-flight ("Now let's lock the dates")
+                datesSet → bookends locked ("Add what you've got")
+                otherwise → fresh trip ("Destination — nice pick.")
+              pollMode wins over datesSet because the only way to be in
+              both states is a race; the poll surface is what's actually
+              showing under the header, so the copy should match it. */}
           <p
             className="mb-3 text-[11px] font-semibold uppercase"
             style={{ color: accent, letterSpacing: "0.1em" }}
           >
-            {datesSet ? "Get set up" : `New trip · ${destinationUpper}`}
+            {pollMode
+              ? "Date poll"
+              : datesSet
+                ? "Get set up"
+                : `New trip · ${destinationUpper}`}
           </p>
           <h2
             className="mb-3 font-semibold"
@@ -137,9 +175,11 @@ export function FreshTripGuide({
               letterSpacing: "-0.015em",
             }}
           >
-            {datesSet
-              ? "Add what you've got"
-              : `${destination} — nice pick.`}
+            {pollMode
+              ? "Now let's lock the dates"
+              : datesSet
+                ? "Add what you've got"
+                : `${destination} — nice pick.`}
           </h2>
           <p
             className="max-w-prose"
@@ -149,9 +189,11 @@ export function FreshTripGuide({
               lineHeight: 1.65,
             }}
           >
-            {datesSet
-              ? "Add any of these in any order and they weave into one timeline. Dates frame it best — start there if you can — but nothing's blocked until you do."
-              : "That's the hard part done. Now let's build it out — set your dates, add lodging, pull in the crew. Each piece weaves into one day-by-day timeline, in whatever order you like."}
+            {pollMode
+              ? "The crew's weighing in on which window works — pick the winner once it's clear. Everything else can fill in around it."
+              : datesSet
+                ? "Add any of these in any order and they weave into one timeline. Dates frame it best — start there if you can — but nothing's blocked until you do."
+                : "That's the hard part done. Now let's build it out — set your dates, add lodging, pull in the crew. Each piece weaves into one day-by-day timeline, in whatever order you like."}
           </p>
         </div>
         {/* Toggle to the itinerary view. Sits in the top-right of the
@@ -173,77 +215,73 @@ export function FreshTripGuide({
         )}
       </header>
 
-      {/* ── Step grid — 1 col mobile, 2 col tablet, 4 col desktop.
-              In pollMode the Set Dates card spans the full grid width
-              and the other three steps drop out of the DOM. ─────────── */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Step 1 — Set dates (flip card; primary CTA) */}
-        <div
-          className={
-            pollMode
-              ? "sm:col-span-2 lg:col-span-4"
-              : "sm:col-span-1 lg:col-span-1"
-          }
-        >
+      {/* Body — split on pollMode:
+            • Poll active → DatePollCard rendered flush, no outer card
+              chrome, no "Set your dates" header. The FreshTripGuide
+              header up top already announces the poll context ("Now
+              let's lock the dates").
+            • Otherwise → the four-up step grid. */}
+      {pollMode ? (
+        <div className="mt-4">
+          <DatePollCard
+            trip={trip}
+            isOwner
+            onManageCrew={onTabChange ? () => onTabChange("crew") : undefined}
+          />
+        </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Step 1 — Set dates (flip card; primary CTA) */}
           <SetDatesFlipCard
             tripId={tripId}
             trip={trip}
-            onOpenDatesSheet={onOpenDatesSheet}
             onTabChange={onTabChange}
-            pollMode={pollMode}
-            onPollExpand={() => setPollMode(true)}
-            onPollCancel={() => setPollMode(false)}
+            pollMode={false}
+            onPollExpand={() => setLocalPollMode(true)}
+            onPollCancel={() => setLocalPollMode(false)}
+          />
+          <StepCard
+            number={2}
+            domain="crew"
+            title="Invite the crew"
+            body="Add everyone — they join, share travel, and split costs from their phone."
+            thumbnail={<CrewThumbnail />}
+            cta="Invite crew"
+            ctaIcon={<UserPlus size={14} strokeWidth={2} />}
+            ctaVariant="ghost"
+            onCta={() => onTabChange?.("crew")}
+            done={crewDone}
+            doneCta={crewDone ? crewDoneCta : undefined}
+            testId="guide-step-crew"
+          />
+          <StepCard
+            number={3}
+            domain="lodging"
+            title="Add lodging"
+            body="Properties and rooms. Set nightly dates now or once your trip dates land."
+            thumbnail={<LodgingThumbnail />}
+            cta="Add lodging"
+            ctaIcon={<Building2 size={14} strokeWidth={2} />}
+            ctaVariant="ghost"
+            onCta={() => onTabChange?.("lodging")}
+            done={lodgingDone}
+            doneCta={lodgingDone ? lodgingDoneCta : undefined}
+            testId="guide-step-lodging"
+          />
+          <StepCard
+            number={4}
+            domain="agenda"
+            title="Plan the agenda"
+            body="Tee times, dinners, side games. Slot them onto days whenever you like."
+            thumbnail={<AgendaThumbnail />}
+            cta="Plan agenda"
+            ctaIcon={<Flag size={14} strokeWidth={2} />}
+            ctaVariant="ghost"
+            onCta={() => onTabChange?.("schedule")}
+            testId="guide-step-agenda"
           />
         </div>
-
-        {/* Steps 2-4 hide while a poll is being built — starting a
-            poll is a "finish it" task; the other steps just split
-            attention. They return on cancel/launch. */}
-        {!pollMode && (
-          <>
-            <StepCard
-              number={2}
-              domain="crew"
-              title="Invite the crew"
-              body="Add everyone — they join, share travel, and split costs from their phone."
-              thumbnail={<CrewThumbnail />}
-              cta="Invite crew"
-              ctaIcon={<UserPlus size={14} strokeWidth={2} />}
-              ctaVariant="ghost"
-              onCta={() => onTabChange?.("crew")}
-              done={crewDone}
-              doneCta={crewDone ? crewDoneCta : undefined}
-              testId="guide-step-crew"
-            />
-            <StepCard
-              number={3}
-              domain="lodging"
-              title="Add lodging"
-              body="Properties and rooms. Set nightly dates now or once your trip dates land."
-              thumbnail={<LodgingThumbnail />}
-              cta="Add lodging"
-              ctaIcon={<Building2 size={14} strokeWidth={2} />}
-              ctaVariant="ghost"
-              onCta={() => onTabChange?.("lodging")}
-              done={lodgingDone}
-              doneCta={lodgingDone ? lodgingDoneCta : undefined}
-              testId="guide-step-lodging"
-            />
-            <StepCard
-              number={4}
-              domain="agenda"
-              title="Plan the agenda"
-              body="Tee times, dinners, side games. Slot them onto days whenever you like."
-              thumbnail={<AgendaThumbnail />}
-              cta="Plan agenda"
-              ctaIcon={<Flag size={14} strokeWidth={2} />}
-              ctaVariant="ghost"
-              onCta={() => onTabChange?.("schedule")}
-              testId="guide-step-agenda"
-            />
-          </>
-        )}
-      </div>
+      )}
     </section>
   );
 }

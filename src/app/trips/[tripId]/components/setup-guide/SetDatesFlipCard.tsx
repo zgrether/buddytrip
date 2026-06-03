@@ -3,12 +3,14 @@
 import { useMemo, useState, type FC, type ReactNode } from "react";
 import {
   Calendar,
+  CalendarCheck,
   Check,
   ChevronLeft,
   ChevronRight,
   Pencil,
   User,
   UserPlus,
+  Users,
   Vote,
   X,
 } from "lucide-react";
@@ -29,6 +31,7 @@ import {
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import { formatDateRangeCompact } from "@/lib/dates";
 import { CalendarThumbnail } from "./thumbnails";
+import { DatePollCard } from "../../tabs/components/DatePollCard";
 import type { TripData } from "../../tabs/types";
 
 // ── SetDatesFlipCard ──────────────────────────────────────────────────────
@@ -43,11 +46,8 @@ import type { TripData } from "../../tabs/types";
 export interface SetDatesFlipCardProps {
   tripId: string;
   trip: TripData;
-  /** Opens the existing DatesSheet — only used as a deep fallback if the
-   *  parent decides not to handle pollMode itself. With the inline poll
-   *  builder we now expand the card in place via onPollExpand. */
-  onOpenDatesSheet?: () => void;
-  /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect. */
+  /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect
+   *  and by DatePollCard's "Manage crew →" header link. */
   onTabChange?: (tab: string) => void;
   /** True when the parent has expanded this card to span the whole grid
    *  so the poll builder has room to grow horizontally. The card stays
@@ -62,13 +62,21 @@ export interface SetDatesFlipCardProps {
 
 type PickerTab = "pick" | "poll";
 
-// Compact day cell so a 6-row month fits inside the flipped card.
-const DAY_CELL_PX = 27;
+// Compact row + cap so a 6-row month fits the flipped card without losing
+// the round-cap / fill-bar styling shared with the lodging DatePicker.
+//   ROW_H — height of the day row (the fill bar inset by 2px lives here)
+//   CAP_PX — the round cap circle inside the row. Slightly narrower than
+//   the row so the fill bar peeks out on either side of the cap, matching
+//   the visual rhythm of <DatePicker> (which uses 36 / 32 at full size).
+const ROW_H = 30;
+const CAP_PX = 26;
+// Dark ink on the accent fill — same token DatePicker uses; keeps cap
+// text readable across every domain hue.
+const CAP_TEXT = "var(--color-bt-on-accent, #0d1f1a)";
 
 export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   tripId,
   trip,
-  onOpenDatesSheet,
   onTabChange,
   pollMode = false,
   onPollExpand,
@@ -81,6 +89,12 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   const [flipped, setFlipped] = useState(false);
   const showBack = flipped || pollMode;
   const [tab, setTab] = useState<PickerTab>("pick");
+  // Two-step confirm before launching a poll when dates are already
+  // locked. Tapping "Set up date poll" while datesSet swaps the centered
+  // Poll-tab content for a warning ("you already picked dates — this
+  // will clear them"). Confirming clears the dates AND launches the
+  // poll; cancel just dismisses the warning back to the pitch.
+  const [confirmReplaceWithPoll, setConfirmReplaceWithPoll] = useState(false);
   const utils = trpc.useUtils();
 
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -125,6 +139,62 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  // Clearing locked dates routes through datePoll.unlock — same procedure
+  // DatesSheet uses for its Clear flow. It wipes start_date / end_date
+  // back to null and deletes the underlying window if it had no votes
+  // (so we don't leave orphan windows behind when an owner sets a range
+  // directly and then changes their mind). Used by the calendar's Clear
+  // button when the trip has dates saved: clears the working selection
+  // AND the DB row in one action.
+  const clearLockedDates = trpc.datePoll.unlock.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, start_date: null, end_date: null } : old,
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prev);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      utils.datePoll.get.invalidate({ tripId });
+    },
+  });
+
+  // Flips trip.poll_mode = true the instant the owner taps "Set up date
+  // poll". Doing this server-side here — instead of waiting for the first
+  // window to land — means:
+  //   1. The home tab's pollMode derivation (trip.poll_mode || local) is
+  //      true everywhere, not just on this owner's screen, so members
+  //      who open the trip see the empty-state poll surface immediately.
+  //   2. The card stays expanded across navigation / reload, even with
+  //      zero windows yet — local state alone wouldn't survive that.
+  // Optimistic so the UI doesn't bounce between the resting Set Dates
+  // pitch and the poll surface while the round-trip lands.
+  const activatePoll = trpc.datePoll.setPollMode.useMutation({
+    async onMutate() {
+      await utils.trips.getById.cancel({ tripId });
+      const prev = utils.trips.getById.getData({ tripId });
+      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
+        old ? { ...old, poll_mode: true } : old,
+      );
+      return { prev };
+    },
+    onError(_e, _v, ctx) {
+      if (ctx?.prev !== undefined)
+        utils.trips.getById.setData({ tripId }, ctx.prev);
+    },
+    onSettled() {
+      utils.trips.getById.invalidate({ tripId });
       utils.datePoll.get.invalidate({ tripId });
     },
   });
@@ -244,54 +314,64 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         >
           Set your dates
         </p>
-        <button
-          type="button"
-          onClick={() => {
-            // Always cancel pollMode if active, so the parent collapses
-            // the card back to its column; then flip back to the front.
-            if (pollMode) onPollCancel?.();
-            setFlipped(false);
-          }}
-          aria-label="Close picker"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-          data-testid="guide-dates-flip-back"
-        >
-          <X size={14} />
-        </button>
+        {/* Hide the X when a poll is *server-active* — once the owner has
+            added a window, the only sensible exits are "lock a window"
+            (via DatePollCard's Select-this-date) or "Clear poll" (also
+            inside DatePollCard). A drive-by X that just hides the local
+            pollMode would leave the poll running with no way back to
+            it on the home tab. The X stays when we're flipped only
+            locally (no poll started yet) so users can back out of a
+            curious-tap. */}
+        {!trip.poll_mode && (
+          <button
+            type="button"
+            onClick={() => {
+              if (pollMode) onPollCancel?.();
+              setFlipped(false);
+            }}
+            aria-label="Close picker"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            data-testid="guide-dates-flip-back"
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
 
-      {/* Pick / Poll tabs — full width segmented control. Hidden once
-          the parent has committed to pollMode; the builder is a
-          single-purpose surface and tab-switching mid-build is noise. */}
+      {/* Pick / Poll tabs — mirrors the ModeButton segmented control in
+          DatesSheet (the trip dates modal). Same wrapper (rounded-xl +
+          border + overflow-hidden), same active treatment (card-float
+          surface), same vertical 1px divider between the two halves.
+          Labels are shortened to "Pick" / "Poll" because the full
+          "Pick dates" / "Poll the crew" don't fit the card-column width
+          alongside the leading icons. Hidden once the parent has
+          committed to pollMode; the builder is a single-purpose surface
+          and tab-switching mid-build is noise. */}
       {!pollMode && (
-      <div
-        className="mb-2 grid grid-cols-2 rounded-lg p-0.5"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        {(["pick", "poll"] as const).map((value) => {
-          const active = tab === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTab(value)}
-              className="rounded-md py-1 text-center text-[11px] font-semibold transition-colors"
-              style={
-                active
-                  ? { background: tint.faint, color: tint.color }
-                  : { background: "transparent", color: "var(--color-bt-text-dim)" }
-              }
-              data-testid={`guide-dates-tab-${value}`}
-            >
-              {value === "pick" ? "Pick" : "Poll"}
-            </button>
-          );
-        })}
-      </div>
+        <div
+          className="mb-3 flex overflow-hidden rounded-xl"
+          style={{ border: "1px solid var(--color-bt-border)" }}
+        >
+          <FlipModeButton
+            active={tab === "pick"}
+            onClick={() => setTab("pick")}
+            icon={<CalendarCheck size={13} />}
+            label="Pick"
+            testId="guide-dates-tab-pick"
+          />
+          <div
+            className="w-px self-stretch"
+            style={{ background: "var(--color-bt-border)" }}
+          />
+          <FlipModeButton
+            active={tab === "poll"}
+            onClick={() => setTab("poll")}
+            icon={<Users size={13} />}
+            label="Poll"
+            testId="guide-dates-tab-poll"
+          />
+        </div>
       )}
 
       {tab === "pick" && !pollMode ? (
@@ -299,6 +379,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           initialStart={trip.start_date ?? null}
           initialEnd={trip.end_date ?? null}
           saving={lockDates.isPending}
+          clearing={clearLockedDates.isPending}
           accent={tint.color}
           accentFaint={tint.faint}
           onSave={(start, end) =>
@@ -307,6 +388,13 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
               startDate: start.toISOString().slice(0, 10),
               endDate: end.toISOString().slice(0, 10),
             })
+          }
+          // When dates were already saved, Clear wipes them in the DB too —
+          // not just the working selection. Without this the calendar
+          // would visually empty but the trip would still show the same
+          // bookends elsewhere in the app.
+          onClearSaved={
+            datesSet ? () => clearLockedDates.mutate({ tripId }) : undefined
           }
         />
       ) : crewCount < 2 ? (
@@ -356,22 +444,112 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           </button>
         </div>
       ) : pollMode ? (
-        <PollBuilderPlaceholder
-          accent={tint.color}
-          accentFaint={tint.faint}
-          onCancel={() => {
-            onPollCancel?.();
-            // When the parent collapses the card back to its column,
-            // we also flip back to the front face so the next open
-            // starts clean.
-            setFlipped(false);
-          }}
-          onOpenSheet={() => {
-            onPollCancel?.();
-            setFlipped(false);
-            onOpenDatesSheet?.();
-          }}
-        />
+        // The real DatePollCard takes over the expanded back face. This
+        // is the same surface DatesSheet renders in its poll mode, kept
+        // canonical so there's only one polling UI in the app. Once the
+        // owner adds the first window, DatePollCard sets trip.poll_mode
+        // = true, which keeps pollMode latched on (FreshTripGuide ORs
+        // the server flag with the local flag) — so navigating away and
+        // back, or any member opening the home tab, lands on the poll.
+        // Wrapped in an overflow-y-auto pane so a long crew × windows
+        // grid scrolls inside the card instead of pushing the layout. */}
+        <div
+          className="-mx-3 -mt-1 flex-1 overflow-y-auto px-3"
+          data-testid="poll-builder"
+        >
+          <DatePollCard
+            trip={trip}
+            isOwner
+            onManageCrew={
+              onTabChange ? () => onTabChange("crew") : undefined
+            }
+          />
+        </div>
+      ) : confirmReplaceWithPoll ? (
+        // ≥2 crew + dates already locked + owner tapped "Set up date
+        // poll": red-tinted warning that committing the poll will clear
+        // the existing dates. Both the lock and the (now blank) date
+        // need to be wiped so the poll surface renders cleanly — the
+        // server's datePoll.unlock handles both (start_date/end_date
+        // null + drops the locked window). Then activatePoll launches.
+        <div
+          className="flex flex-1 flex-col items-center justify-center gap-3 px-3 text-center"
+          data-testid="guide-dates-poll-confirm"
+        >
+          <span
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full"
+            style={{
+              background: "var(--color-bt-danger-faint)",
+              color: "var(--color-bt-danger)",
+            }}
+            aria-hidden="true"
+          >
+            <Vote size={22} strokeWidth={1.9} />
+          </span>
+          <p
+            className="text-[15px] font-semibold leading-tight"
+            style={{ color: "var(--color-bt-text)" }}
+          >
+            Start a poll instead?
+          </p>
+          <p
+            className="text-[12px] leading-snug"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            You&rsquo;ve already picked dates for this trip. Starting a
+            poll will clear them and ask the crew which window works
+            best.
+          </p>
+          <div className="mt-1 flex w-full max-w-xs items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmReplaceWithPoll(false)}
+              className="flex-1 rounded-lg py-2 text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                background: "transparent",
+                color: "var(--color-bt-text-dim)",
+                border: "1px solid var(--color-bt-border)",
+              }}
+              data-testid="guide-dates-poll-confirm-cancel"
+            >
+              Keep dates
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // Clear the locked dates (also drops the unvoted
+                // backing window) then launch the poll. Sequential to
+                // avoid the same race the DatesSheet save flow had
+                // (concurrent endPoll + lockDates could leave dangling
+                // state). Optimistic updates inside each mutation
+                // keep the UI snappy.
+                clearLockedDates.mutate(
+                  { tripId },
+                  {
+                    onSettled: () => {
+                      onPollExpand?.();
+                      if (!trip.poll_mode) {
+                        activatePoll.mutate({ tripId, pollMode: true });
+                      }
+                      setConfirmReplaceWithPoll(false);
+                    },
+                  },
+                );
+              }}
+              disabled={clearLockedDates.isPending || activatePoll.isPending}
+              className="flex-1 rounded-lg py-2 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{
+                background: "var(--color-bt-danger)",
+                color: "#ffffff",
+              }}
+              data-testid="guide-dates-poll-confirm-proceed"
+            >
+              {clearLockedDates.isPending || activatePoll.isPending
+                ? "Starting…"
+                : "Start poll"}
+            </button>
+          </div>
+        </div>
       ) : (
         // ≥2 crew — same centered cadence as the no-crew state so the
         // Poll tab feels like one consistent surface across both modes.
@@ -398,7 +576,24 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           </p>
           <button
             type="button"
-            onClick={() => onPollExpand?.()}
+            onClick={() => {
+              // When dates are already locked, route through the
+              // confirm tray first — clearing the existing pick is a
+              // destructive side-effect the owner needs to opt into,
+              // not a silent consequence of starting a poll.
+              if (datesSet) {
+                setConfirmReplaceWithPoll(true);
+                return;
+              }
+              // Local pollMode latches the takeover immediately so the
+              // tap feels instant; activatePoll flips trip.poll_mode
+              // server-side so the home tab defaults to the poll for
+              // every other member, even before any windows exist.
+              onPollExpand?.();
+              if (!trip.poll_mode) {
+                activatePoll.mutate({ tripId, pollMode: true });
+              }
+            }}
             className="mt-1 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold transition-opacity hover:opacity-90"
             style={{
               background: tint.color,
@@ -476,22 +671,77 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   );
 };
 
+// ── FlipModeButton ───────────────────────────────────────────────────────
+//
+// Half of the Pick / Poll segmented control on the flip card's back face.
+// Mirrors DatesSheet's ModeButton (icon + label, card-float surface when
+// active, transparent + dim when not) but sized down a touch — smaller
+// gap, font-size, py — so the row fits the card column without wrapping.
+
+function FlipModeButton({
+  active,
+  onClick,
+  icon,
+  label,
+  testId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      className="flex flex-1 items-center justify-center gap-1.5 py-2 text-[12px] font-semibold transition-colors"
+      style={
+        active
+          ? {
+              background: "var(--color-bt-card-float)",
+              color: "var(--color-bt-text)",
+            }
+          : {
+              background: "transparent",
+              color: "var(--color-bt-text-dim)",
+            }
+      }
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 // ── InlineRangeCalendar ──────────────────────────────────────────────────
 
 function InlineRangeCalendar({
   initialStart,
   initialEnd,
   saving,
+  clearing = false,
   accent,
   accentFaint,
   onSave,
+  onClearSaved,
 }: {
   initialStart: string | null;
   initialEnd: string | null;
   saving: boolean;
+  /** True while the parent's clear mutation is in flight — disables the
+   *  Clear button so a double-tap can't fire twice. */
+  clearing?: boolean;
   accent: string;
   accentFaint: string;
   onSave: (start: Date, end: Date) => void;
+  /** Called when the user taps Clear AND the trip already had dates
+   *  locked. The picker wipes the working selection locally; this
+   *  callback wipes the persisted dates in the DB so the rest of the
+   *  app reflects the cleared state too. Undefined when the trip has
+   *  no locked dates (then Clear just resets the local selection). */
+  onClearSaved?: () => void;
 }) {
   const today = atNoon(new Date());
   const [range, setRange] = useState<DateRange>(() => ({
@@ -501,6 +751,11 @@ function InlineRangeCalendar({
   const [view, setView] = useState<Date>(() =>
     range.start ? startOfMonth(range.start) : startOfMonth(today),
   );
+  // Hover state for the day cells. Mirrors the lodging DatePicker (and
+  // DatesSheet's FullRangeCalendar) — non-cap in-bounds days draw a 1px
+  // inset accent ring on hover so the pointer always reads as a primed
+  // target. Kept at this compact picker too for consistency.
+  const [hovered, setHovered] = useState<Date | null>(null);
 
   const matrix = useMemo(() => monthMatrix(view), [view]);
   const presets = useMemo(() => rangePresets(today), [today]);
@@ -545,8 +800,11 @@ function InlineRangeCalendar({
 
   return (
     <div className="flex flex-1 flex-col">
-      {/* Presets */}
-      <div className="mb-2 flex flex-wrap gap-1">
+      {/* Presets — round-pill quick selections. Same shape as the lodging
+          DatePicker (src/components/DatePicker.tsx) but with slightly
+          smaller padding to keep the wrap to one row in the narrow card
+          column. */}
+      <div className="mb-2 flex flex-wrap gap-1.5">
         {presets.map((p) => (
           <button
             key={p.id}
@@ -555,7 +813,7 @@ function InlineRangeCalendar({
               setRange(p.range);
               if (p.range.start) setView(startOfMonth(p.range.start));
             }}
-            className="rounded-md px-2 py-1 text-[10px] font-medium transition-colors"
+            className="rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{
               background: "var(--color-bt-card-raised)",
               color: "var(--color-bt-text-dim)",
@@ -594,64 +852,87 @@ function InlineRangeCalendar({
         </button>
       </div>
 
-      <div className="grid grid-cols-7 text-center">
+      {/* Weekday header — same SMTWTFS row used by DatePicker, just sized
+          smaller to match the row height below. */}
+      <div className="grid grid-cols-7">
         {["S", "M", "T", "W", "T", "F", "S"].map((w, i) => (
-          <span
+          <div
             key={`${w}-${i}`}
-            className="text-[9px] font-semibold uppercase"
+            className="flex h-5 items-center justify-center text-[9px] font-semibold uppercase"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             {w}
-          </span>
+          </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-y-px">
+      {/* Day grid — same round-cap + fill-bar pattern as the lodging
+          DatePicker (src/components/DatePicker.tsx). Each cell is a
+          positioned row; the in-range fill is an inset bar that sits
+          BEHIND the round cap, with the bar clipped to half the cell on
+          either side of a cap so the cap appears to float on a continuous
+          range strip. Sized down to ROW_H/CAP_PX for the flip card. */}
+      <div className="grid grid-cols-7">
         {matrix.flat().map((day, idx) => {
           const inMonth = day.getMonth() === view.getMonth();
           const isStart = isSameDay(day, range.start);
           const isEnd = isSameDay(day, range.end);
-          const inRange = isWithinRange(day, range);
+          const isCap = isStart || isEnd;
+          const between = isWithinRange(day, range);
+          const hasEnd = !!range.end;
           const isToday = isSameDay(day, today);
+          // Continuous range fill: a bar behind the caps. Bar appears
+          // when we're between the caps OR on a cap that has a partner
+          // (start with an end set, or end itself).
+          const showFill = between || (isStart && hasEnd) || isEnd;
           return (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleDayClick(day)}
-              className="relative flex items-center justify-center text-[11px] font-medium transition-colors"
-              style={{
-                height: DAY_CELL_PX,
-                color: !inMonth
-                  ? "var(--color-bt-text-dim)"
-                  : isStart || isEnd
-                    ? "var(--color-bt-on-accent, #0d1f1a)"
-                    : "var(--color-bt-text)",
-                background: isStart || isEnd
-                  ? accent
-                  : inRange
-                    ? accentFaint
-                    : "transparent",
-                borderRadius:
-                  isStart && isEnd
-                    ? 6
-                    : isStart
-                      ? "6px 0 0 6px"
-                      : isEnd
-                        ? "0 6px 6px 0"
-                        : 0,
-                opacity: inMonth ? 1 : 0.4,
-              }}
-              data-testid={`day-${day.toISOString().slice(0, 10)}`}
-            >
-              {day.getDate()}
-              {isToday && !isStart && !isEnd && (
-                <span
-                  className="absolute bottom-[2px] h-[3px] w-[3px] rounded-full"
-                  style={{ background: accent }}
-                  aria-hidden="true"
+            <div key={idx} className="relative" style={{ height: ROW_H }}>
+              {showFill && (
+                <div
+                  className="absolute inset-y-1"
+                  style={{
+                    left: isStart ? "50%" : 0,
+                    right: isEnd ? "50%" : 0,
+                    background: accentFaint,
+                  }}
                 />
               )}
-            </button>
+              <button
+                type="button"
+                onClick={() => handleDayClick(day)}
+                onMouseEnter={() => setHovered(day)}
+                onMouseLeave={() => setHovered(null)}
+                className="relative mx-auto flex items-center justify-center rounded-full text-[11px] transition-colors"
+                style={{
+                  width: CAP_PX,
+                  height: CAP_PX,
+                  background: isCap ? accent : "transparent",
+                  color: isCap
+                    ? CAP_TEXT
+                    : inMonth
+                      ? "var(--color-bt-text)"
+                      : "var(--color-bt-text-dim)",
+                  fontWeight: isCap ? 700 : 400,
+                  opacity: inMonth ? 1 : 0.45,
+                  // 1px teal inset ring on hover for non-cap days, same
+                  // treatment as DatePicker / DatesSheet's full picker.
+                  boxShadow:
+                    isSameDay(day, hovered) && !isCap
+                      ? `inset 0 0 0 1px ${accent}`
+                      : "none",
+                }}
+                data-testid={`day-${day.toISOString().slice(0, 10)}`}
+              >
+                {day.getDate()}
+                {isToday && !isCap && (
+                  <span
+                    className="absolute bottom-1 h-1 w-1 rounded-full"
+                    style={{ background: accent }}
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+            </div>
           );
         })}
       </div>
@@ -660,18 +941,39 @@ function InlineRangeCalendar({
         // Confirmation chip — selection matches what's already saved,
         // so there's nothing to commit. Same shape as the row's other
         // CTAs (full-width pill); reads as a positive indicator and
-        // not as an action.
-        <div
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-md py-1.5 text-[11px] font-semibold"
-          style={{
-            background: accentFaint,
-            color: accent,
-            border: `1px solid ${accent}`,
-          }}
-          data-testid="guide-dates-confirm-chip"
-        >
-          <Check size={12} strokeWidth={2.6} />
-          Set {initialRangeLabel}
+        // not as an action. Pairs with a quiet Clear link on the right
+        // so the user still has an escape hatch — without it, dates
+        // pre-populated from `initialStart/End` would be uncleanable
+        // from this view (the local Clear branch below only renders
+        // when the working range differs from the saved one).
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div
+            className="flex flex-1 items-center justify-center gap-2 rounded-md py-1.5 text-[11px] font-semibold"
+            style={{
+              background: accentFaint,
+              color: accent,
+              border: `1px solid ${accent}`,
+            }}
+            data-testid="guide-dates-confirm-chip"
+          >
+            <Check size={12} strokeWidth={2.6} />
+            Set {initialRangeLabel}
+          </div>
+          {onClearSaved && (
+            <button
+              type="button"
+              disabled={clearing}
+              onClick={() => {
+                onClearSaved();
+                setRange({ start: null, end: null });
+              }}
+              className="rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              data-testid="guide-dates-clear-saved"
+            >
+              {clearing ? "Clearing…" : "Clear"}
+            </button>
+          )}
         </div>
       ) : (
         <div className="mt-2 flex items-center justify-between gap-2">
@@ -684,18 +986,24 @@ function InlineRangeCalendar({
               : "Pick a range"}
           </span>
           <div className="flex items-center gap-1.5">
-            {/* Quiet Clear — only renders when something is selected.
-                Wipes the working range so the user can start over
-                without hunting through months to deselect. */}
-            {(range.start || range.end) && (
+            {/* Quiet Clear — renders when something is selected OR when
+                the trip already had saved dates. Wipes the working
+                range; if onClearSaved was supplied (i.e. there are
+                persisted dates) it also clears them in the DB so the
+                rest of the app reflects the same empty state. */}
+            {(range.start || range.end || !!onClearSaved) && (
               <button
                 type="button"
-                onClick={() => setRange({ start: null, end: null })}
-                className="rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+                disabled={clearing}
+                onClick={() => {
+                  setRange({ start: null, end: null });
+                  onClearSaved?.();
+                }}
+                className="rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors hover:bg-[var(--color-bt-hover)] disabled:opacity-40"
                 style={{ color: "var(--color-bt-text-dim)" }}
                 data-testid="guide-dates-clear"
               >
-                Clear
+                {clearing ? "Clearing…" : "Clear"}
               </button>
             )}
             <button
@@ -720,149 +1028,3 @@ function InlineRangeCalendar({
   );
 }
 
-// ── PollBuilderPlaceholder ───────────────────────────────────────────────
-//
-// First-cut inline poll builder rendered when the parent grid has
-// expanded the Set Dates card to full width. Lays out a two-column row:
-// the same InlineRangeCalendar on the left for picking a date range +
-// a proposed-ranges rail on the right that grows horizontally as the
-// user adds windows. Launch + Cancel sit in the footer. The polished
-// design lands once the reference screenshot is back in play — this
-// placeholder proves the layout (card expansion + horizontal growth)
-// works and offers a working hand-off to the existing DatesSheet so
-// the underlying feature stays usable while the inline build matures.
-
-function PollBuilderPlaceholder({
-  accent,
-  accentFaint,
-  onCancel,
-  onOpenSheet,
-}: {
-  accent: string;
-  accentFaint: string;
-  onCancel: () => void;
-  onOpenSheet: () => void;
-}) {
-  return (
-    <div className="flex flex-1 flex-col gap-3" data-testid="poll-builder">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p
-            className="text-[14px] font-semibold leading-tight"
-            style={{ color: "var(--color-bt-text)" }}
-          >
-            Set up the date poll
-          </p>
-          <p
-            className="mt-1 text-[12px] leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Propose a few windows the crew can vote on. Add another date
-            range to the right — the rail grows as you go.
-          </p>
-        </div>
-      </div>
-
-      {/* Inline builder canvas — left calendar / right proposed-ranges
-          rail. Right side scrolls horizontally as proposals exceed the
-          available width. */}
-      <div
-        className="flex flex-1 gap-3 overflow-hidden rounded-lg"
-        style={{
-          background: "var(--color-bt-base)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        <div
-          className="flex w-[280px] flex-shrink-0 items-center justify-center p-4 text-center"
-          style={{ borderRight: "1px solid var(--color-bt-border)" }}
-        >
-          <p
-            className="text-[12px] leading-snug"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            The inline calendar lives here.
-            <br />
-            Pick a range and add it as a proposal.
-          </p>
-        </div>
-        <div className="flex flex-1 items-center gap-3 overflow-x-auto p-3">
-          {[1, 2, 3].map((n) => (
-            <div
-              key={n}
-              className="flex h-full w-[170px] flex-shrink-0 flex-col items-center justify-center rounded-md text-center"
-              style={{
-                background: "var(--color-bt-card)",
-                border: `1px dashed ${accent}`,
-              }}
-            >
-              <p
-                className="text-[11px] uppercase tracking-[0.08em]"
-                style={{ color: accent }}
-              >
-                Proposal {n}
-              </p>
-              <p
-                className="mt-1 text-[12px]"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                — pending —
-              </p>
-            </div>
-          ))}
-          <button
-            type="button"
-            className="flex h-full w-[120px] flex-shrink-0 flex-col items-center justify-center rounded-md text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-card-raised)]"
-            style={{
-              border: `1px dashed var(--color-bt-border)`,
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            + Add another
-          </button>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-          data-testid="poll-builder-cancel"
-        >
-          Cancel
-        </button>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onOpenSheet}
-            className="rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{
-              color: "var(--color-bt-text-dim)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-            data-testid="poll-builder-handoff"
-          >
-            Open in dates sheet
-          </button>
-          <button
-            type="button"
-            disabled
-            className="rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
-            style={{
-              background: accent,
-              color: "var(--color-bt-on-accent, #0d1f1a)",
-            }}
-            data-testid="poll-builder-launch"
-          >
-            Launch poll
-          </button>
-          {/* accentFaint reserved for the highlighted-range fill that
-              will sit on the inline calendar once it's wired up. */}
-          <span className="sr-only" style={{ background: accentFaint }} />
-        </div>
-      </div>
-    </div>
-  );
-}
