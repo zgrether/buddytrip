@@ -207,7 +207,7 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
       <button
         type="button"
         onClick={() => setFlipped(true)}
-        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-colors hover:bg-[rgba(255,255,255,0.04)]"
         style={
           datesSet
             ? {

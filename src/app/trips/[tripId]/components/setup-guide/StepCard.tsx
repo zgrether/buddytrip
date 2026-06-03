@@ -122,16 +122,17 @@ export const StepCard: FC<StepCardProps> = ({
         {done && doneSummary ? doneSummary : body}
       </p>
 
-      {/* CTA — mt-auto pins to the bottom; the gap between body text
-          and button is the visible empty space in the middle of the
-          card, intentionally preserved. When done, the CTA becomes an
-          unfilled outline button (the tinted card surface already
-          carries weight; a filled button would compete). */}
+      {/* CTA — generous breathing room above (mt-6) separates the
+          actionable button from the explanatory body so the card
+          reads as "here's the pitch / here's the action" instead of
+          one wall of content. When done, the CTA becomes an unfilled
+          outline button (the tinted card surface already carries
+          weight; a filled button would compete). */}
       <button
         type="button"
         onClick={onCta}
         data-testid={testId}
-        className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-colors hover:bg-[rgba(255,255,255,0.04)]"
         style={
           done
             ? {
