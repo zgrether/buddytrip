@@ -201,6 +201,17 @@ export function DatePollStackedCards({
     () => mostPopularId ?? windows[0]?.id ?? null,
   );
 
+  // selectedId is initialized once at mount, so a window added while the
+  // card is already open (the common flow — start poll, then add the first
+  // option) leaves it null and would hide the Lock footer until a reload
+  // re-mounts the component. Derive the effective selection so the Lock CTA
+  // tracks the current windows live: honor an explicit pick while it still
+  // points at a real window, otherwise fall back to most-popular / first.
+  const effectiveSelectedId =
+    selectedId && windows.some((w) => w.id === selectedId)
+      ? selectedId
+      : mostPopularId ?? windows[0]?.id ?? null;
+
   // Inline add-option calendar. Hidden by default; "+ Add a date option"
   // reveals it. Stays inline so the owner can fire several proposals
   // back-to-back without bouncing through a modal.
@@ -217,6 +228,37 @@ export function DatePollStackedCards({
       windows.every((w) => answerOf(w, m.user_id) != null),
     ).length;
   }, [windows, members]);
+
+  // Cancel-poll affordance — owner only, available the moment the poll
+  // exists (even with zero windows) so the owner can always back out to
+  // direct date entry. Shared between the empty state and the footer.
+  const cancelPollButton =
+    isOwner && onCancelPoll ? (
+      confirmCancelPoll ? (
+        <CancelPollConfirm
+          voteCount={windows.reduce((sum, w) => sum + w.votes.length, 0)}
+          onKeep={() => setConfirmCancelPoll(false)}
+          onConfirm={() => {
+            onCancelPoll();
+            setConfirmCancelPoll(false);
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirmCancelPoll(true)}
+          className="flex w-full items-center justify-center rounded-xl px-4 py-3 text-[14px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{
+            background: "transparent",
+            color: "var(--color-bt-text-dim)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+          data-testid="poll-cancel-link"
+        >
+          Cancel this poll
+        </button>
+      )
+    ) : null;
 
   // ── Empty state — no windows yet ─────────────────────────────────────
   if (windows.length === 0) {
@@ -275,8 +317,11 @@ export function DatePollStackedCards({
       );
     }
     // Owner empty state — calendar glyph + "Add the windows" pitch +
-    // primary CTA that opens the inline picker (handled above).
+    // primary CTA that opens the inline picker (handled above). The
+    // Cancel-poll escape hatch sits below so the owner can bail back to
+    // direct date entry before adding any option.
     return (
+      <div className="space-y-3" data-testid="poll-empty-owner">
       <div
         className="rounded-xl p-6 text-center"
         style={{
@@ -319,6 +364,8 @@ export function DatePollStackedCards({
             </button>
           </div>
         )}
+      </div>
+      {cancelPollButton}
       </div>
     );
   }
@@ -363,7 +410,7 @@ export function DatePollStackedCards({
             members={members}
             currentUserId={currentUserId}
             isOwner={isOwner}
-            isSelected={selectedId === w.id}
+            isSelected={effectiveSelectedId === w.id}
             isMostPopular={mostPopularId === w.id}
             tally={tallies[w.id]!}
             onSelect={() => setSelectedId(w.id)}
@@ -404,54 +451,32 @@ export function DatePollStackedCards({
         )
       )}
 
-      {/* Footer — owner only. Primary Lock action + quiet Cancel-poll
-          escape hatch. Members get a separate "Save my answers" CTA on
-          the per-card segmented control (votes save on click), so no
-          dedicated footer is needed. */}
-      {isOwner && onLockWindow && selectedId && (
+      {/* Footer — owner only. Primary Lock action (shown once there's a
+          window to lock) plus the quiet Cancel-poll escape hatch, which
+          stays present regardless of selection. Members get a separate
+          "Save my answers" CTA on the per-card segmented control (votes
+          save on click), so no dedicated footer is needed. */}
+      {isOwner && (
         <div className="space-y-2 pt-1">
-          <button
-            type="button"
-            onClick={() => onLockWindow(selectedId)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold transition-opacity hover:opacity-90"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-on-accent, #0d1f1a)",
-            }}
-            data-testid="poll-lock"
-          >
-            <Check size={16} strokeWidth={2.6} />
-            Lock in {(() => {
-              const w = windows.find((x) => x.id === selectedId);
-              return w ? fmtRangeShort(w.start_date, w.end_date) : "selected dates";
-            })()}
-          </button>
-          {onCancelPoll && (
-            confirmCancelPoll ? (
-              <CancelPollConfirm
-                voteCount={windows.reduce((sum, w) => sum + w.votes.length, 0)}
-                onKeep={() => setConfirmCancelPoll(false)}
-                onConfirm={() => {
-                  onCancelPoll();
-                  setConfirmCancelPoll(false);
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmCancelPoll(true)}
-                className="flex w-full items-center justify-center rounded-xl px-4 py-3 text-[14px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{
-                  background: "transparent",
-                  color: "var(--color-bt-text-dim)",
-                  border: "1px solid var(--color-bt-border)",
-                }}
-                data-testid="poll-cancel-link"
-              >
-                Cancel this poll
-              </button>
-            )
+          {onLockWindow && effectiveSelectedId && (
+            <button
+              type="button"
+              onClick={() => onLockWindow(effectiveSelectedId)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold transition-opacity hover:opacity-90"
+              style={{
+                background: "var(--color-bt-accent)",
+                color: "var(--color-bt-on-accent, #0d1f1a)",
+              }}
+              data-testid="poll-lock"
+            >
+              <Check size={16} strokeWidth={2.6} />
+              Lock in {(() => {
+                const w = windows.find((x) => x.id === effectiveSelectedId);
+                return w ? fmtRangeShort(w.start_date, w.end_date) : "selected dates";
+              })()}
+            </button>
           )}
+          {cancelPollButton}
         </div>
       )}
     </div>
