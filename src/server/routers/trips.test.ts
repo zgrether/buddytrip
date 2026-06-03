@@ -53,10 +53,13 @@ describe("trips router", () => {
     expect(trips.some((t: { id: string }) => t.id === tripId)).toBe(false);
   });
 
-  // Stage must be 'going' for member visibility (RLS: idea/planning = planner-only)
-  it("setup — advance to going for member visibility", async () => {
-    await ctx.admin.from("trips").update({ stage: "planning" }).eq("id", tripId);
-    await ctx.admin.from("trips").update({ stage: "going" }).eq("id", tripId);
+  // A destination must be locked for member visibility
+  // (RLS: idea phase / no destination = planner-only).
+  it("setup — lock destination for member visibility", async () => {
+    await ctx.admin
+      .from("trips")
+      .update({ locked_destination_at: new Date().toISOString() })
+      .eq("id", tripId);
   });
 
   // getById
@@ -245,9 +248,11 @@ describe("trips router", () => {
   });
 });
 
-// ── Stage model tests ──────────────────────────────────────────────────
+// ── Destination model tests ────────────────────────────────────────────
+// There is no stored stage — a trip's phase is derived from whether a
+// destination is locked (locked_destination_at) plus its dates.
 
-describe("trips router — stage model", () => {
+describe("trips router — destination model", () => {
   let ctx: TestContext;
   let stageTrip: string;
 
@@ -260,78 +265,43 @@ describe("trips router — stage model", () => {
     await ctx.cleanup();
   });
 
-  it("new trip without locked destination starts in idea stage", async () => {
+  it("new trip without a destination has no lock timestamp (idea phase)", async () => {
     const caller = ctx.caller();
-    const id = `test-stage-idea-${Date.now()}`;
-    const trip = await caller.trips.create({ id, title: "Stage Test" });
+    const id = `test-dest-idea-${Date.now()}`;
+    await caller.trips.create({ id, title: "Idea Test" });
     ctx.trackTrip(id);
     stageTrip = id;
 
     const fetched = await caller.trips.getById({ tripId: id });
-    expect((fetched as { stage: string }).stage).toBe("idea");
+    expect(fetched.locked_destination_at).toBeFalsy();
   });
 
-  it("new trip with locked destination starts in planning stage", async () => {
+  it("new trip with a locked destination has a lock timestamp", async () => {
     const caller = ctx.caller();
-    const id = `test-stage-known-${Date.now()}`;
-    const trip = await caller.trips.create({
+    const id = `test-dest-known-${Date.now()}`;
+    await caller.trips.create({
       id,
-      title: "Known Dest Stage",
+      title: "Known Dest",
       lockedDestination: { title: "Pebble Beach", location: "Monterey, CA" },
     });
     ctx.trackTrip(id);
 
     const fetched = await caller.trips.getById({ tripId: id });
-    expect((fetched as { stage: string }).stage).toBe("planning");
+    expect(fetched.locked_destination_at).toBeTruthy();
   });
 
-  it("advanceToPlanning — owner can advance from idea with locked destination", async () => {
-    // Lock destination on the idea trip
+  it("lockDestination moves an idea trip forward (sets the lock timestamp)", async () => {
     const caller = ctx.caller();
-    await caller.trips.lockDestination({
+    const result = await caller.trips.lockDestination({
       tripId: stageTrip,
       title: "Kohler",
       location: "Kohler, WI",
     });
-
-    const result = await caller.trips.advanceToPlanning({ tripId: stageTrip });
-    expect(result.stage).toBe("planning");
+    expect(result.locked_destination_at).toBeTruthy();
+    expect(result.comparison_mode).toBe(false);
   });
 
-  it("advanceToPlanning — cannot advance from planning", async () => {
-    const caller = ctx.caller();
-    await expect(
-      caller.trips.advanceToPlanning({ tripId: stageTrip })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-  });
-
-  it("advanceToPlanning — planner cannot call", async () => {
-    // Create a fresh idea trip for this test
-    const id = `test-stage-planner-${Date.now()}`;
-    const caller = ctx.caller();
-    await caller.trips.create({ id, title: "Planner Test" });
-    ctx.trackTrip(id);
-    await ctx.addTripMember(id, "planner", "Planner");
-    await caller.trips.lockDestination({
-      tripId: id,
-      title: "Test",
-      location: "Test",
-    });
-
-    const plannerCaller = ctx.callerAs("planner");
-    await expect(
-      plannerCaller.trips.advanceToPlanning({ tripId: id })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it("advanceToGoing — requires locked date", async () => {
-    const caller = ctx.caller();
-    await expect(
-      caller.trips.advanceToGoing({ tripId: stageTrip, aboutMessage: "Let's go!" })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-  });
-
-  it("changeDestination — planner can change in planning stage", async () => {
+  it("changeDestination — planner can change once a destination is locked", async () => {
     await ctx.addTripMember(stageTrip, "planner", "Planner");
     const caller = ctx.callerAs("planner");
     const result = await caller.trips.changeDestination({
@@ -339,6 +309,16 @@ describe("trips router — stage model", () => {
       destination: "Bandon Dunes",
     });
     expect(result.locked_destination_title).toBe("Bandon Dunes");
+  });
+
+  it("changeDestination — rejected while the trip is still an idea", async () => {
+    const caller = ctx.caller();
+    const id = `test-dest-nolock-${Date.now()}`;
+    await caller.trips.create({ id, title: "No Lock" });
+    ctx.trackTrip(id);
+    await expect(
+      caller.trips.changeDestination({ tripId: id, destination: "Anywhere" })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("changeDestination — member cannot call", async () => {
@@ -405,7 +385,7 @@ describe("datePoll router — setPollMode", () => {
     pollTripId = id;
     await ctx.admin
       .from("trips")
-      .update({ stage: "planning", locked_destination_title: "Test Dest" })
+      .update({ locked_destination_title: "Test Dest", locked_destination_at: new Date().toISOString() })
       .eq("id", pollTripId);
   });
 
@@ -451,7 +431,7 @@ describe("datePoll router — setPollMode", () => {
     ctx.trackTrip(clearTripId);
     await ctx.admin
       .from("trips")
-      .update({ stage: "planning", locked_destination_title: "Test Dest" })
+      .update({ locked_destination_title: "Test Dest", locked_destination_at: new Date().toISOString() })
       .eq("id", clearTripId);
 
     // Open the poll.
@@ -502,81 +482,4 @@ describe("datePoll router — setPollMode", () => {
   });
 });
 
-// ── skipPlanningTile / unskipPlanningTile ────────────────────────────────
-
-describe("trips router — planning tile skip", () => {
-  let ctx: TestContext;
-  let skipTripId: string;
-
-  beforeAll(async () => {
-    ctx = await TestContext.create();
-    skipTripId = await ctx.createTrip("Skip Tile Test");
-    await ctx.addTripMember(skipTripId, "planner", "Planner");
-    await ctx.addTripMember(skipTripId, "member", "Member");
-  });
-
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
-
-  it("skipPlanningTile — planner can skip a tile", async () => {
-    const caller = ctx.callerAs("planner");
-    const res = await caller.trips.skipPlanningTile({
-      tripId: skipTripId,
-      tile: "lodging",
-    });
-    expect(res.planning_skipped).toEqual(["lodging"]);
-  });
-
-  it("skipPlanningTile — idempotent (same tile twice does not duplicate)", async () => {
-    const caller = ctx.callerAs("planner");
-    const res = await caller.trips.skipPlanningTile({
-      tripId: skipTripId,
-      tile: "lodging",
-    });
-    expect(res.planning_skipped).toEqual(["lodging"]);
-  });
-
-  it("skipPlanningTile — stacks multiple tiles", async () => {
-    const caller = ctx.callerAs("planner");
-    const res = await caller.trips.skipPlanningTile({
-      tripId: skipTripId,
-      tile: "schedule",
-    });
-    expect(res.planning_skipped).toEqual(expect.arrayContaining(["lodging", "schedule"]));
-    expect(res.planning_skipped).toHaveLength(2);
-  });
-
-  it("skipPlanningTile — member is FORBIDDEN", async () => {
-    const caller = ctx.callerAs("member");
-    await expect(
-      caller.trips.skipPlanningTile({ tripId: skipTripId, tile: "crew" })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it("unskipPlanningTile — planner can unskip", async () => {
-    const caller = ctx.callerAs("planner");
-    const res = await caller.trips.unskipPlanningTile({
-      tripId: skipTripId,
-      tile: "lodging",
-    });
-    expect(res.planning_skipped).toEqual(["schedule"]);
-  });
-
-  it("unskipPlanningTile — idempotent on missing tile", async () => {
-    const caller = ctx.callerAs("planner");
-    const res = await caller.trips.unskipPlanningTile({
-      tripId: skipTripId,
-      tile: "dates",
-    });
-    expect(res.planning_skipped).toEqual(["schedule"]);
-  });
-
-  it("unskipPlanningTile — member is FORBIDDEN", async () => {
-    const caller = ctx.callerAs("member");
-    await expect(
-      caller.trips.unskipPlanningTile({ tripId: skipTripId, tile: "schedule" })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-});
 

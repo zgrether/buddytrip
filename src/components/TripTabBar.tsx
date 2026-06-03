@@ -24,8 +24,9 @@ interface TripTabBarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   canEdit?: boolean;
-  /** Trip stage — used to disable Expenses in PLANNING and hide Competition */
-  stage?: string;
+  /** True while the trip is still an idea (no destination locked) — hides
+   *  the Lodging and Expenses tabs, which only matter once it's real. */
+  isIdea?: boolean;
   /**
    * Tabs that have a notification dot. Dot stays visible even on the
    * active tab so the user keeps seeing there's an issue with the
@@ -41,7 +42,7 @@ export const TripTabBar: FC<TripTabBarProps> = ({
   activeTab,
   onTabChange,
   canEdit = false,
-  stage,
+  isIdea = false,
   badges,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,11 +55,10 @@ export const TripTabBar: FC<TripTabBarProps> = ({
       // bottom nav's "Live" entry (the leaderboard route) instead.
       return canEdit;
     }
-    // Lodging and Expenses are only meaningful once a destination is locked in —
-    // keep them out of the IDEA stage. PLANNING and GOING both show all five
-    // primary tabs (Home, Crew, Lodging, Agenda, Receipts) — they share the
-    // same full tabbed interface.
-    if ((t.id === "lodging" || t.id === "expenses") && stage === "idea") return false;
+    // Lodging and Expenses are only meaningful once a destination is locked
+    // in — keep them out of the idea phase. Every later phase shows all five
+    // primary tabs (Home, Crew, Lodging, Agenda, Receipts).
+    if ((t.id === "lodging" || t.id === "expenses") && isIdea) return false;
     // Lodging and Schedule are owner/planner authoring surfaces; the
     // confirmed content surfaces for members on the Home itinerary
     // anyway, so showing dedicated tabs would just duplicate the view.

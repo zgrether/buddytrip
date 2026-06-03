@@ -5,7 +5,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, Calendar, Trophy } from "lucide-react";
 import { useTheme } from "next-themes";
-import { StatusBadge, getTripStatus } from "./StatusBadge";
+import { getTripStatus } from "./StatusBadge";
 import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
 import { isGrayscale as checkGrayscale } from "@/lib/tripStatus";
@@ -25,8 +25,7 @@ interface Trip {
   /** Real-world location string ("Bandon, OR"); preferred over the cute idea title. */
   locked_destination_location?: string | null;
   locked_destination_title?: string | null;
-  trip_status_override?: string | null;
-  stage?: string | null;
+  locked_destination_at?: string | null;
   comparison_mode?: boolean | null;
   myRole?: TripRole | null;
   /** True when at least one competitions row exists for this trip. */
@@ -88,13 +87,14 @@ export const TripCard: FC<TripCardProps> = ({ trip }) => {
     });
   };
 
-  // Countdown — derived from trip dates + stage. Rendered as a flush bar at
-  // the bottom of the card; the same component lives in TripHeader so the
-  // dashboard and trip detail surfaces stay visually consistent.
+  // Countdown — derived from trip dates. Rendered as a flush bar at the
+  // bottom of the card; the same component lives in TripHeader so the
+  // dashboard and trip detail surfaces stay visually consistent. Idea-phase
+  // trips (no destination locked) show no countdown.
   const countdownResult = getTripCountdown(
     trip.start_date,
     trip.end_date,
-    trip.stage ?? "idea",
+    !trip.locked_destination_at,
   );
   const countdown =
     countdownResult.type === "idea" || countdownResult.type === "no_dates"
@@ -200,15 +200,6 @@ export const TripCard: FC<TripCardProps> = ({ trip }) => {
           >
             <Trophy size={10} strokeWidth={2.5} />
           </span>
-        )}
-        {/* "now" is conveyed by the Live countdown bar — no redundant badge needed */}
-        {status !== "now" && (
-          <StatusBadge
-            status={status}
-            // "going" + a future/present countdown → label as UPCOMING so it's
-            // clear the trip hasn't started yet vs. actively happening.
-            label={status === "going" && countdown !== null ? "UPCOMING" : undefined}
-          />
         )}
       </div>
 

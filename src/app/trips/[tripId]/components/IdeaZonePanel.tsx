@@ -1381,8 +1381,6 @@ function SetDestinationSheet({
   }
 
   const lockDestination = trpc.trips.lockDestination.useMutation();
-  const advanceToPlanning = trpc.trips.advanceToPlanning.useMutation();
-  const unlockDestination = trpc.trips.unlockDestination.useMutation();
   const createLogistics = trpc.logistics.create.useMutation();
   const archiveIdea = trpc.archivedIdeas.archive.useMutation();
 
@@ -1441,14 +1439,14 @@ function SetDestinationSheet({
           setLodgingError(
             "Destination set but some lodging options couldn't be copied — add them manually."
           );
-          // Stage advance still proceeds
+          // Locking the destination still stands.
         }
       }
 
       // 3. Archive losing ideas the owner chose to keep for future trips.
-      //    Best-effort: a failed archive doesn't block the stage advance —
-      //    the losing ideas just won't appear in the archive (they remain
-      //    on the trip, which is the safer default).
+      //    Best-effort: a failed archive doesn't block anything — the losing
+      //    ideas just won't appear in the archive (they remain on the trip,
+      //    which is the safer default).
       const toArchive = otherIdeas.filter((i) => archiveIds.has(i.id));
       if (toArchive.length > 0) {
         await Promise.allSettled(
@@ -1458,15 +1456,8 @@ function SetDestinationSheet({
         );
       }
 
-      // 4. Advance to planning
-      try {
-        await advanceToPlanning.mutateAsync({ tripId });
-      } catch {
-        // Rollback the lock if advancing fails
-        await unlockDestination.mutateAsync({ tripId });
-        throw new Error("Failed to advance to planning. Destination lock rolled back.");
-      }
-
+      // Locking the destination is what moves the trip out of the idea
+      // phase — there's no separate stage to advance.
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
       utils.ideas.list.invalidate({ tripId });

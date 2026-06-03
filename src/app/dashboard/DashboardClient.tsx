@@ -19,9 +19,7 @@ interface TripRow {
   /** Real-world location string ("Bandon, OR"); preferred over the cute idea title. */
   locked_destination_location?: string | null;
   locked_destination_title?: string | null;
-  trip_status_override?: string | null;
-  stage?: string | null;
-  saved_at?: string | null;
+  locked_destination_at?: string | null;
   updated_at?: string | null;
   myRole?: TripRole | null;
   myStatus?: string | null;
@@ -31,34 +29,26 @@ interface TripRow {
 function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   const sections: Record<TripStatus, TripRow[]> = {
     idea: [],
-    planning: [],
-    going: [],
+    upcoming: [],
     now: [],
     past: [],
-    saved: [],
   };
   for (const trip of trips) {
     sections[getTripStatus(trip)].push(trip);
   }
-  // now: soonest-ending first; going: soonest-starting first
+  // now: soonest-ending first; upcoming: soonest-starting first
   sections.now.sort((a, b) =>
     (a.end_date ?? "").localeCompare(b.end_date ?? "")
   );
-  sections.going.sort((a, b) =>
+  sections.upcoming.sort((a, b) =>
     (a.start_date ?? "").localeCompare(b.start_date ?? "")
   );
-  // planning + idea: most recently updated first
-  sections.planning.sort((a, b) =>
-    (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
-  );
+  // idea: most recently updated first
   sections.idea.sort((a, b) =>
     (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
   );
   sections.past.sort((a, b) =>
     (b.end_date ?? "").localeCompare(a.end_date ?? "")
-  );
-  sections.saved.sort((a, b) =>
-    (b.saved_at ?? "").localeCompare(a.saved_at ?? "")
   );
   return sections;
 }
@@ -145,11 +135,11 @@ export default function DashboardClient() {
               />
             )}
 
-            {/* Active — groups PLANNING + GOING (idea trips have their own
-                "Ideas" section below so they don't disappear into the main flow). */}
+            {/* Active — upcoming trips (idea trips have their own "Ideas"
+                section below so they don't disappear into the main flow). */}
             <TripSection
               label="Active"
-              trips={[...sections.going, ...sections.planning]}
+              trips={sections.upcoming}
             />
 
             {/* Ideas — trips still in the idea/comparison phase */}

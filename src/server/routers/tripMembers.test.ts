@@ -270,15 +270,13 @@ describe("tripMembers router — travel", () => {
     await ctx.addTripMember(tripId, "planner", "Planner");
     await ctx.addTripMember(tripId, "member", "Member");
 
-    // Set destination + advance through stages
+    // Lock a destination (moves the trip out of the idea phase) + set an
+    // about message.
     const admin = ctx.admin;
     await admin.from("trips").update({
       locked_destination_title: "Test Dest",
       locked_destination_location: "Test, TX",
-    }).eq("id", tripId);
-    await admin.from("trips").update({ stage: "planning" }).eq("id", tripId);
-    await admin.from("trips").update({
-      stage: "going",
+      locked_destination_at: new Date().toISOString(),
       about_message: "Let's go!",
     }).eq("id", tripId);
   });

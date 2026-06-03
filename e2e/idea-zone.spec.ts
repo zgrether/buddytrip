@@ -32,7 +32,7 @@ const IDEA_ID_NO_LODGING = "idea-no-lodging-001";
 const MOCK_TRIP = {
   id: TRIP_ID,
   title: "Lodging Test Trip",
-  stage: "IDEA",
+  locked_destination_at: null,
   destination_title: null,
   destination_location: null,
   series_id: null,

@@ -1,9 +1,14 @@
 /**
  * Trip status utilities.
  *
- * Trips have a stored `stage` column: 'idea' → 'planning' → 'going'.
- * Temporal substates ('now', 'past') are derived at read time from dates.
- * 'saved' is an explicit owner override via trip_status_override.
+ * There is no stored stage. A trip's status is derived entirely from two
+ * things: whether a destination has been locked (`locked_destination_at`)
+ * and the trip's dates. The lifecycle is:
+ *
+ *   idea      — no destination locked yet
+ *   upcoming  — destination locked, trip in the future (or dates TBD)
+ *   now       — within 3 days of the start date, or mid-trip
+ *   past       — more than 3 days after the end date
  *
  * Do not add date-fns or any date library — use these helpers.
  * Extend this file if a new date utility is needed.
@@ -11,20 +16,14 @@
 
 import { parseLocalDate } from "@/lib/dates";
 
-export type TripDisplayStatus =
-  | "idea"
-  | "planning"
-  | "going"
-  | "now"
-  | "past"
-  | "saved";
+export type TripDisplayStatus = "idea" | "upcoming" | "now" | "past";
 
 export interface TripStatusFields {
-  stage?: string | null;
   start_date?: string | null;
   end_date?: string | null;
-  locked_destination_title?: string | null;
-  trip_status_override?: string | null;
+  /** A destination is locked once this timestamp is set — the trip has
+   *  moved out of the idea phase and into its date-driven lifecycle. */
+  locked_destination_at?: string | null;
 }
 
 // ── Date helpers ─────────────────────────────────────────────────────────
@@ -59,42 +58,34 @@ function nextSunday(date: Date): Date {
 /**
  * Compute the effective display status for a trip.
  *
- * Priority:
- * 1. 'saved' — explicitly set by owner
- * 2. 'past' — 3 days after end_date
- * 3. 'now' — going stage, within 3 days of start_date (or past start)
- * 4. 'going' — stage is going
- * 5. 'planning' — stage is planning
- * 6. 'idea' — default
+ * Priority (must stay in sync with the trip_status() SQL function):
+ * 1. 'past'     — more than 3 days after end_date
+ * 2. 'idea'     — no destination locked yet
+ * 3. 'now'      — within 3 days of start_date (or mid-trip)
+ * 4. 'upcoming' — destination locked, trip still ahead (or dates TBD)
  */
 export function getEffectiveStatus(trip: TripStatusFields): TripDisplayStatus {
-  // The 'saved' status override has been retired (the user-facing "save
-  // trip" feature was removed). Any pre-existing rows with
-  // trip_status_override='saved' now fall through to their natural
-  // stage/date-derived status instead.
-
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
-  // Past: 3 days after end_date
+  // Past: 3 days after end_date — date-driven, independent of destination.
   if (trip.end_date) {
     const endDate = parseLocalDate(trip.end_date);
     const pastThreshold = addDays(endDate, 3);
     if (now > pastThreshold) return "past";
   }
 
-  const stage = trip.stage ?? "idea";
+  // Idea: no destination locked.
+  if (!trip.locked_destination_at) return "idea";
 
-  // Now: going stage + within 3 days of start (or past start)
-  if (stage === "going" && trip.start_date) {
+  // Now: within 3 days of start (or past start).
+  if (trip.start_date) {
     const startDate = parseLocalDate(trip.start_date);
     const nowThreshold = subDays(startDate, 3);
     if (now >= nowThreshold) return "now";
   }
 
-  if (stage === "going") return "going";
-  if (stage === "planning") return "planning";
-  return "idea";
+  return "upcoming";
 }
 
 /**

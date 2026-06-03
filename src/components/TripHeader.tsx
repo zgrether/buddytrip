@@ -18,8 +18,6 @@ interface TripHeaderProps {
   lockedTitle?: string | null;
   dateRange?: string;
   isLocked: boolean;
-  /** Trip stage — drives header variant ("idea" hides destination/dates/countdown/gear). */
-  stage: string;
   /** owner/planner can edit destination & dates inline */
   canEdit?: boolean;
   /** Called when destination is edited inline */
@@ -436,13 +434,14 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
 // ── Exported TripHeader ──────────────────────────────────────────────────
 
 export function TripHeader(props: TripHeaderProps) {
-  // Idea stage: stripped-down header — no destination/dates/silhouette/gear/countdown.
-  if (props.stage === "idea") {
+  // Idea phase: stripped-down header — no destination/dates/silhouette/gear/countdown.
+  if (props.status === "idea") {
     return <IdeaHeader tripName={props.tripName} myRole={props.myRole} />;
   }
 
   // Compute countdown once; render only when there's something useful to show.
-  const result = getTripCountdown(props.tripStartDate ?? null, props.tripEndDate ?? null, props.stage);
+  // The idea phase already returned above, so this is never the idea variant.
+  const result = getTripCountdown(props.tripStartDate ?? null, props.tripEndDate ?? null, false);
   const countdown = result.type === "idea" || result.type === "no_dates" ? null : result;
 
   if (props.isLocked) {

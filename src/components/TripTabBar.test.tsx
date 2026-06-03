@@ -79,31 +79,9 @@ describe("TripBottomNav — back navigation contract", () => {
   });
 });
 
-// ── Stage-gating tests ─────────────────────────────────────────────────
+// ── Tab-filtering tests ────────────────────────────────────────────────
 
-describe("Stage-gated bottom nav visibility", () => {
-  function showBottomNav(stage: string) {
-    return stage !== "idea" && stage !== "planning";
-  }
-
-  it("hidden in idea stage", () => {
-    expect(showBottomNav("idea")).toBe(false);
-  });
-
-  it("hidden in planning stage", () => {
-    expect(showBottomNav("planning")).toBe(false);
-  });
-
-  it("visible in going stage", () => {
-    expect(showBottomNav("going")).toBe(true);
-  });
-
-  it("visible in done stage", () => {
-    expect(showBottomNav("done")).toBe(true);
-  });
-});
-
-describe("Stage-gated tab bar — tab filtering", () => {
+describe("Tab bar — tab filtering", () => {
   const ALL_TAB_IDS = ["home", "crew", "schedule", "expenses", "comp"];
 
   // Competition is an owner/organizer-only authoring surface: the tab shows
@@ -131,24 +109,6 @@ describe("Stage-gated tab bar — tab filtering", () => {
   it("Expenses tab is always present in tab list (disabled state handled at click level)", () => {
     const tabs = getVisibleTabs(true);
     expect(tabs).toContain("expenses");
-  });
-});
-
-describe("Competition CTA stage gating", () => {
-  function showCompetitionCTA(stage: string) {
-    return stage !== "idea" && stage !== "planning";
-  }
-
-  it("hidden in idea stage", () => {
-    expect(showCompetitionCTA("idea")).toBe(false);
-  });
-
-  it("hidden in planning stage", () => {
-    expect(showCompetitionCTA("planning")).toBe(false);
-  });
-
-  it("visible in going stage", () => {
-    expect(showCompetitionCTA("going")).toBe(true);
   });
 });
 

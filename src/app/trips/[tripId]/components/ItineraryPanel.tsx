@@ -29,9 +29,7 @@ import {
 export interface ItineraryPanelProps {
   tripId: string;
   tripStartDate?: string | null;
-  /** Trip stage from `trip.stage` ("idea" | "planning" | "going" | …). */
-  stage: string;
-  /** Effective trip status (`getTripStatus(trip)`) — "future" | "now" | "past" | … */
+  /** Effective trip status (`getTripStatus(trip)`) — "idea" | "upcoming" | "now" | "past". */
   status: string;
   onTabChange?: (tab: string) => void;
 }
@@ -353,12 +351,11 @@ function EmptyState({
 export function ItineraryPanel({
   tripId,
   tripStartDate,
-  stage,
   status,
   onTabChange,
 }: ItineraryPanelProps) {
-  // Hidden entirely during the idea stage.
-  const hidden = stage === "idea";
+  // Hidden entirely during the idea phase.
+  const hidden = status === "idea";
 
   // Always call hooks in the same order.
   const scheduleQuery = trpc.schedule.list.useQuery(

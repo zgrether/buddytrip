@@ -29,8 +29,6 @@ const MOCK_TRIP = {
   activities: [],
   golf_courses: [],
   comparison_mode: false,
-  trip_status_override: null,
-  saved_at: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };

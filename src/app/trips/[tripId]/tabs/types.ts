@@ -19,20 +19,10 @@ export interface TripData {
   locked_destination_title?: string | null;
   locked_destination_location?: string | null;
   locked_destination_at?: string | null;
-  stage?: string | null;
-  stage_advanced_to_planning_at?: string | null;
-  stage_advanced_to_going_at?: string | null;
   about_message?: string | null;
   /** Panel activation flag — owner taps the invitation card to flip this on. */
   itinerary_enabled?: boolean | null;
-  /** @deprecated — Travel Plans moved to the Crew tab. Columns kept in DB but
-   *  no longer read; travel surfaces on Home only as woven itinerary arrivals. */
-  getting_there_enabled?: boolean | null;
   travel_plans_crew_visible?: boolean | null;
-  /** @deprecated — column kept in DB but no longer read; the dismiss workflow
-   *  has been retired in favor of the standard enable/disable activation flow. */
-  quick_info_dismissed?: boolean | null;
-  trip_status_override?: string | null;
   series_id?: string | null;
   created_at?: string | null;
 }
