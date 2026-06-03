@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Flag, UserPlus, X } from "lucide-react";
+import { Building2, Flag, UserPlus } from "lucide-react";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
 import {
@@ -109,19 +109,17 @@ export function FreshTripGuide({
               : "That's the hard part done. Now let's build it out — set your dates, add lodging, pull in the crew. Each piece weaves into one day-by-day timeline, in whatever order you like."}
           </p>
         </div>
+        {/* Toggle to the itinerary view. Sits in the top-right of the
+            guide; pairs with the "← Setup guide" link rendered by
+            ItineraryView's header when the guide is dismissed. */}
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Dismiss setup guide"
-          className="absolute right-0 top-0 inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{
-            color: "var(--color-bt-text-dim)",
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-border)",
-          }}
+          className="absolute right-0 top-0 inline-flex items-center gap-1 text-[12px] font-semibold transition-opacity hover:opacity-80"
+          style={{ color: "var(--color-bt-accent)" }}
           data-testid="fresh-trip-guide-dismiss"
         >
-          <X size={16} />
+          View itinerary →
         </button>
       </header>
 

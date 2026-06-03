@@ -51,6 +51,10 @@ export interface ItineraryViewProps {
   /** When provided (owner only), shows an X button on the empty-state
       mock-up that backs out of the activation. */
   onCancel?: () => void;
+  /** Optional slot rendered on the right of the ITINERARY header row.
+   *  ItineraryPanel uses this to inject the "← Setup guide" toggle when
+   *  the guide is currently dismissed. */
+  headerAction?: import("react").ReactNode;
 }
 
 /**
@@ -69,7 +73,7 @@ export interface ItineraryViewProps {
  *      state mirrors the intro modal preview. Owners get an X button
  *      that backs out of the activation entirely.
  */
-export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryViewProps) {
+export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction }: ItineraryViewProps) {
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -173,15 +177,24 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel }: ItineraryVi
     // itinerary full-width — Travel Plans moved to the Crew tab).
     <div className="flex h-full flex-col space-y-3">
       {!isEmpty && (
-        // Header + filters share one row: "ITINERARY" on the left, the filter
-        // pills inline on the right (wrapping below on narrow widths).
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Itinerary
-          </h2>
+        // Two-row header. Row 1: ITINERARY label on the left, the
+        // optional headerAction (e.g. "← Setup guide") on the right.
+        // Row 2: filter pills, only when there's more than one category
+        // worth filtering.
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Itinerary
+            </h2>
+            {headerAction && (
+              <div className="flex flex-shrink-0 items-center">
+                {headerAction}
+              </div>
+            )}
+          </div>
 
           {showFilterPills && (
             <div className="flex flex-wrap items-center gap-2">

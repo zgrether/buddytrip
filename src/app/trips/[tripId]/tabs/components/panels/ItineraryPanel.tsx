@@ -98,34 +98,39 @@ export function ItineraryPanel({
     );
   }
 
-  // ── Owner: dates set OR activated — show real view + restore link ──
+  // ── Owner: dates set OR activated — guide and itinerary toggle ────
+  // Either/or: when the guide is up the itinerary is hidden, and vice
+  // versa. The toggle lives in the top-right of whichever surface is
+  // showing — "View itinerary →" on the guide, "← Setup guide" in the
+  // ITINERARY header.
   if (datesSet || isActivated) {
+    if (!dismissed) {
+      return (
+        <FreshTripGuide
+          tripId={tripId}
+          trip={trip}
+          onOpenDatesSheet={onOpenDatesSheet}
+          onTabChange={onTabChange}
+          onDismiss={() => setDismissed(true)}
+        />
+      );
+    }
     return (
-      <div className="space-y-3">
-        {!dismissed && (
-          <FreshTripGuide
-            tripId={tripId}
-            trip={trip}
-            onOpenDatesSheet={onOpenDatesSheet}
-            onTabChange={onTabChange}
-            onDismiss={() => setDismissed(true)}
-          />
-        )}
-        {dismissed && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setDismissed(false)}
-              className="text-[11px] transition-opacity hover:opacity-80"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              data-testid="guide-restore-link"
-            >
-              Show setup guide
-            </button>
-          </div>
-        )}
-        <ItineraryView trip={trip} isOwner={isOwner} />
-      </div>
+      <ItineraryView
+        trip={trip}
+        isOwner={isOwner}
+        headerAction={
+          <button
+            type="button"
+            onClick={() => setDismissed(false)}
+            className="text-[12px] font-semibold transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-accent)" }}
+            data-testid="guide-restore-link"
+          >
+            ← Setup guide
+          </button>
+        }
+      />
     );
   }
 
