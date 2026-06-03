@@ -111,16 +111,21 @@ export function FreshTripGuide({
         </div>
         {/* Toggle to the itinerary view. Sits in the top-right of the
             guide; pairs with the "← Setup guide" link rendered by
-            ItineraryView's header when the guide is dismissed. */}
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="absolute right-0 top-0 inline-flex items-center gap-1 text-[12px] font-semibold transition-opacity hover:opacity-80"
-          style={{ color: "var(--color-bt-accent)" }}
-          data-testid="fresh-trip-guide-dismiss"
-        >
-          View itinerary →
-        </button>
+            ItineraryView's header when the guide is dismissed. Only
+            shown once dates are locked — before that there's no
+            itinerary to view, so the link would just lead to an empty
+            state. */}
+        {datesSet && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="absolute right-0 top-0 inline-flex items-center gap-1 text-[12px] font-semibold transition-opacity hover:opacity-80"
+            style={{ color: "var(--color-bt-accent)" }}
+            data-testid="fresh-trip-guide-dismiss"
+          >
+            View itinerary →
+          </button>
+        )}
       </header>
 
       {/* ── Step grid — 1 col mobile, 2 col tablet, 4 col desktop.
