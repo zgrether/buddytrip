@@ -155,7 +155,10 @@ export const StepCard: FC<StepCardProps> = ({
                   color: "var(--color-bt-on-accent, #0d1f1a)",
                 }
               : {
-                  background: "var(--color-bt-card-raised)",
+                  // Ghost — transparent so only Set dates carries a
+                  // filled accent. Border keeps the row legible at a
+                  // glance without competing for attention.
+                  background: "transparent",
                   color: "var(--color-bt-text)",
                   border: "1px solid var(--color-bt-border)",
                 }
