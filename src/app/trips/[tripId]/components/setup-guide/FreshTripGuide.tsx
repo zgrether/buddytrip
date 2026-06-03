@@ -87,8 +87,8 @@ export function FreshTripGuide({
   const firstLodging = useMemo(() => {
     const lodgings = (logistics as Array<{
       type?: string | null;
-      property_name?: string | null;
       label?: string | null;
+      property_name?: string | null;
       check_in_time?: string | null;
     }>).filter((l) => l.type === "lodging");
     lodgings.sort((a, b) => {
@@ -102,8 +102,13 @@ export function FreshTripGuide({
     return lodgings[0];
   }, [logistics]);
   const lodgingDone = !!firstLodging;
+  // Read from `label` — AddPropertySheet stores the user-typed title in
+  // the `label` column. `property_name` is misnamed: LodgingPanel writes
+  // the "sleeps" capacity number into it (see LodgingPanel.handleCreate).
+  // Worth a follow-up rename in the schema, but for now `label` is the
+  // right field for "the property's title."
   const lodgingDoneCta =
-    firstLodging?.property_name ?? firstLodging?.label ?? "Lodging added";
+    firstLodging?.label ?? firstLodging?.property_name ?? "Lodging added";
 
   return (
     <section data-testid="fresh-trip-guide">

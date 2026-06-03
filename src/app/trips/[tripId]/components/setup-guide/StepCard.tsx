@@ -142,9 +142,13 @@ export const StepCard: FC<StepCardProps> = ({
         style={
           done && doneCta
             ? {
-                background: "var(--color-bt-accent-faint)",
+                // Done — transparent fill, neutral border, teal text.
+                // Mirrors the resting ghost CTA shape so the row reads
+                // consistently; the check icon + teal label carry the
+                // confirmation signal without a heavy chip fill.
+                background: "transparent",
                 color: "var(--color-bt-accent)",
-                border: "1px solid var(--color-bt-accent)",
+                border: "1px solid var(--color-bt-border)",
               }
             : ctaVariant === "primary"
               ? {
