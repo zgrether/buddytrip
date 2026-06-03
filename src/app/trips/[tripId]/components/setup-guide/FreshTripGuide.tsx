@@ -34,12 +34,6 @@ import type { TripData } from "../../tabs/types";
 export interface FreshTripGuideProps {
   tripId: string;
   trip: TripData;
-  /** Opens the existing DatesSheet. Kept on the interface for the parent
-   *  (ItineraryPanel) to keep wiring — there's no in-guide consumer
-   *  anymore since the inline poll surface (DatePollCard) replaced the
-   *  hand-off-to-DatesSheet placeholder, but the prop is harmless and
-   *  reserved for future "open the full picker" affordances. */
-  onOpenDatesSheet?: () => void;
   /** Navigate to a tab — drives the Lodging / Crew / Agenda CTAs and
    *  the Poll-branch "Add the crew first" redirect. */
   onTabChange?: (tab: string) => void;
@@ -50,7 +44,6 @@ export interface FreshTripGuideProps {
 export function FreshTripGuide({
   tripId,
   trip,
-  onOpenDatesSheet: _onOpenDatesSheet,
   onTabChange,
   onDismiss,
 }: FreshTripGuideProps) {

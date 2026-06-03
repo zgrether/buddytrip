@@ -10,7 +10,7 @@ import type {
   PollMember,
   PollWindow,
   VoteAnswer,
-} from "./DatePollGrid";
+} from "./datePollTypes";
 import { DatePollStackedCards } from "./DatePollStackedCards";
 import { ConfirmDatesModal } from "../../components/ConfirmDatesModal";
 
@@ -214,7 +214,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
         if (!old) {
           return {
             lockedWindowId: null,
-            pollNote: null,
             pollMode: true,
             windows: [newWindow],
           };
@@ -285,28 +284,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
     },
   });
 
-  const resetPoll = trpc.datePoll.resetPoll.useMutation({
-    async onMutate() {
-      await utils.datePoll.get.cancel({ tripId });
-      const prev = utils.datePoll.get.getData({ tripId });
-      utils.datePoll.get.setData({ tripId }, (old) =>
-        old
-          ? {
-              ...old,
-              windows: old.windows.map((w) => ({ ...w, votes: [] })),
-            }
-          : old
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined) utils.datePoll.get.setData({ tripId }, ctx.prev);
-    },
-    onSettled() {
-      utils.datePoll.get.invalidate({ tripId });
-    },
-  });
-
   // Ends (kills) the poll — clears all windows + votes, sets poll_mode = false.
   const endPoll = trpc.datePoll.setPollMode.useMutation({
     async onMutate() {
@@ -355,13 +332,6 @@ export function DatePollCard({ trip, isOwner, onManageCrew }: DatePollCardProps)
       voteForMember.mutate({ tripId, windowId, userId, answer });
     }
   };
-
-  // Touch unused symbols so a future refactor can rewire them cleanly.
-  // `anyVotes` was the gate for the legacy Reset row (now superseded by
-  // the per-card delete / cancel-poll flow inside DatePollStackedCards);
-  // `resetPoll` is still wired in case we add a "clear my votes" affordance.
-  void windows.some((w) => w.votes.length > 0);
-  void resetPoll;
 
   return (
     <>
