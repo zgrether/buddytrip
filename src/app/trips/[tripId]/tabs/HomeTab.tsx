@@ -34,7 +34,8 @@ export function HomeTab({
   isOwner,
   onTabChange,
   onOpenChat,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode }) {
+  onOpenDatesSheet,
+}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode; onOpenDatesSheet?: () => void }) {
   // Prefetch ideas so IdeaZonePanel renders instantly when stage === "idea".
   trpc.ideas.list.useQuery({ tripId: trip.id });
 
@@ -59,16 +60,26 @@ export function HomeTab({
     stage === "planning" ||
     (stage === "going" && (status === "going" || status === "now"));
 
+  // FreshTripGuide owns its own welcoming header when it renders, so the
+  // generic "You're driving this trip" TabHeader collapses to avoid two
+  // intros stacked on top of each other. The guide renders for owners
+  // who haven't dismissed it AND don't yet have a populated itinerary —
+  // matched against the same gates ItineraryPanel uses.
+  const guideOwnsHeader =
+    !!isOwner && !!showFullPanels;
+
+  // pt-1 (4px) lands the guide / ITINERARY eyebrow level with the
+  // other tabs' TabHeader eyebrow (Crew/Lodging/Agenda/Receipts). The
+  // wrapper previously used pt-3, which stacked 12px on top of the
+  // parent's pt-4 and pushed the heading a few pixels below its peers.
   return (
-    <div className="space-y-4 px-4">
+    <div className="space-y-4 px-4 pt-1">
       {showFullPanels && (
         <>
-          {/* Owner intro — same marketing-style typography as the other tabs'
-              TabHeader, but without an eyebrow (the trip header above already
-              announces context). Reinforces what the owner controls and the
-              fact that the crew sees only what's published. Members and
-              planners don't see this — it's owner-coaching copy. */}
-          {isOwner && (
+          {/* Owner intro — only shown when FreshTripGuide isn't (because
+              the guide carries its own welcoming header that already
+              announces context). */}
+          {isOwner && !guideOwnsHeader && (
             <TabHeader
               headline="You're driving this trip"
               body="Lock in dates and destination, invite the crew, and add logistics as they firm up. You decide what the crew sees — from travel plans to a live competition leaderboard — and everyone stays in sync in real time."
@@ -88,6 +99,8 @@ export function HomeTab({
             trip={trip}
             isOwner={!!isOwner}
             isActivated={!!trip.itinerary_enabled}
+            onOpenDatesSheet={onOpenDatesSheet}
+            onTabChange={onTabChange}
           />
         </>
       )}
