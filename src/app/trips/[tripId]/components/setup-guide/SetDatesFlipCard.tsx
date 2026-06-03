@@ -215,9 +215,11 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             ? {
                 // Unfilled outline — the done card already carries the
                 // accent-tinted backdrop; a filled button would compete.
+                // Border stays the neutral border token (not accent) so
+                // it reads as a quiet control, not another teal element.
                 background: "transparent",
                 color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-accent-border)",
+                border: "1px solid var(--color-bt-border)",
               }
             : {
                 background: tint.color,

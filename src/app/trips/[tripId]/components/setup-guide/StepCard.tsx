@@ -142,9 +142,12 @@ export const StepCard: FC<StepCardProps> = ({
         style={
           done
             ? {
+                // Border stays the neutral border token (not accent) so
+                // the button reads as a quiet control next to the
+                // tinted card surface.
                 background: "transparent",
                 color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-accent-border)",
+                border: "1px solid var(--color-bt-border)",
               }
             : ctaVariant === "primary"
               ? {
