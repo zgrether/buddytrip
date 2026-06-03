@@ -6,7 +6,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Pencil,
   User,
   UserPlus,
   Vote,
@@ -203,9 +202,12 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           : "Pick a range or poll the crew. Sets the bookends everything else lands between."}
       </p>
 
-      {/* CTA — primary teal for Set dates; ghost for Edit dates.
-          `mt-auto` keeps it pinned to the bottom even if the preview
-          area stops growing. */}
+      {/* Bottom slot — pre-completion this is the filled-accent "Set
+          dates" CTA. Post-completion it becomes a teal confirmation
+          chip ("✓ Set May 22-26") in the same shape as the other
+          cards' CTAs so the row stays visually aligned. The chip is
+          still clickable so editing remains one tap away — the
+          user just gets a positive indicator instead of a hammer. */}
       <button
         type="button"
         onClick={() => setFlipped(true)}
@@ -213,13 +215,9 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         style={
           datesSet
             ? {
-                // Unfilled outline — the done card already carries the
-                // accent-tinted backdrop; a filled button would compete.
-                // Border stays the neutral border token (not accent) so
-                // it reads as a quiet control, not another teal element.
-                background: "transparent",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
+                background: tint.faint,
+                color: tint.color,
+                border: `1px solid ${tint.color}`,
               }
             : {
                 background: tint.color,
@@ -229,11 +227,13 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         data-testid={datesSet ? "guide-step-dates-edit" : "guide-step-dates-cta"}
       >
         {datesSet ? (
-          <Pencil size={14} strokeWidth={2} />
+          <Check size={14} strokeWidth={2.6} />
         ) : (
           <Calendar size={14} strokeWidth={2} />
         )}
-        {datesSet ? "Edit dates" : "Set dates"}
+        {datesSet
+          ? `Set ${formatDateRangeCompact(trip.start_date, trip.end_date)}`
+          : "Set dates"}
       </button>
     </div>
   );
