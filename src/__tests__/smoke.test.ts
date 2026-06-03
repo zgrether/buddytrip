@@ -44,7 +44,7 @@ describe("Phase 0 Smoke Test", () => {
   });
 
   it("should compute trip_status via Postgres function", async () => {
-    // Trip has no dates/locked destination → 'idea' (stage model default)
+    // Trip has no dates/locked destination → 'idea'
     const admin = ctx.admin;
     const { data, error } = await admin
       .from("trips")

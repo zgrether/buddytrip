@@ -1,7 +1,7 @@
 /**
  * Trip countdown derivation — produces a single human-readable label that
  * answers "how far away is this trip?" / "is it happening?" / "did it
- * happen recently?" from raw trip dates + stage.
+ * happen recently?" from raw trip dates + whether it's still an idea.
  *
  * Driven by the discrete `CountdownResult` type so consumers can switch on
  * `.type` to apply different visual treatments (pulse for happening,
@@ -24,7 +24,7 @@ export type CountdownResult =
  * Derive the countdown state for a trip.
  *
  * Branches:
- * - `idea`         — stage is "idea" (no countdown shown anywhere)
+ * - `idea`         — no destination locked yet (no countdown shown anywhere)
  * - `no_dates`     — no start/end set yet
  * - `weeks`        — > 14 days away (rounded to weeks)
  * - `days`         — 2–14 days away, or "Tomorrow" for daysUntil === 1
@@ -36,9 +36,9 @@ export type CountdownResult =
 export function getTripCountdown(
   startDate: string | null | undefined,
   endDate: string | null | undefined,
-  stage: string,
+  isIdea: boolean,
 ): CountdownResult {
-  if (stage === "idea") return { type: "idea" };
+  if (isIdea) return { type: "idea" };
   if (!startDate || !endDate) return { type: "no_dates" };
 
   const now = new Date();

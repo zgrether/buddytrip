@@ -6,27 +6,23 @@ import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ItineraryPanel as LegacyItineraryPanel } from "../components/ItineraryPanel";
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
 import { TabHeader } from "@/components/TabHeader";
-import type { TripDisplayStatus } from "@/lib/tripStatus";
 import type { TabProps } from "./types";
 
 // ── HomeTab ──────────────────────────────────────────────────────────────
 //
-// PLANNING and GOING stages share the same panel surface (Quick Info +
-// Itinerary). Travel plans used to live here as their own panel but have
-// moved to the Crew tab — each member self-serves their own travel, and it
-// still surfaces here as woven "arrival" items in the itinerary timeline.
-// Previously PLANNING showed a four-tile basic-planning grid (PlanningGrid)
-// with a "View Itinerary →" upgrade modal; that scaffolding has been removed
-// and trips go directly from IDEA → full panel surface when the destination
-// is locked.
+// Once a destination is locked the trip shares one panel surface (Quick Info
+// + Itinerary) for its whole upcoming/now life. Travel plans used to live
+// here as their own panel but have moved to the Crew tab — each member
+// self-serves their own travel, and it still surfaces here as woven "arrival"
+// items in the itinerary timeline.
 //
 // The Competition invitation no longer lives here either — the Comp tab is
 // visible by default to canEdit users and owns the enable flow itself, so
 // surfacing the CTA twice on the home tab was just clutter.
 //
-// IDEA   → IdeaZonePanel
-// PLANNING / GOING(going|now) → full panel layout
-// PAST / SAVED → LegacyItineraryPanel (read-only bucketed view)
+// idea            → IdeaZonePanel
+// upcoming / now  → full panel layout
+// past            → LegacyItineraryPanel (read-only bucketed view)
 
 export function HomeTab({
   trip,
@@ -35,15 +31,14 @@ export function HomeTab({
   onTabChange,
   onOpenChat,
   onOpenDatesSheet,
-}: TabProps & { displayStatus?: TripDisplayStatus; onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onWriteInvitation?: () => void; onAdvanceToGoing?: () => void; actionCenterTitleAction?: React.ReactNode; onOpenDatesSheet?: () => void }) {
-  // Prefetch ideas so IdeaZonePanel renders instantly when stage === "idea".
+}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenChat?: () => void; onOpenDatesSheet?: () => void }) {
+  // Prefetch ideas so IdeaZonePanel renders instantly in the idea phase.
   trpc.ideas.list.useQuery({ tripId: trip.id });
 
   const status = getTripStatus(trip);
-  const stage = trip.stage ?? "idea";
 
-  // IDEA stage: render IdeaZonePanel only — no planning rows
-  if (stage === "idea") {
+  // Idea phase (no destination locked): render IdeaZonePanel only.
+  if (status === "idea") {
     return (
       <IdeaZonePanel
         trip={trip}
@@ -55,10 +50,9 @@ export function HomeTab({
     );
   }
 
-  // PLANNING + GOING(going|now) share the same panel surface.
-  const showFullPanels =
-    stage === "planning" ||
-    (stage === "going" && (status === "going" || status === "now"));
+  // upcoming + now share the same full panel surface; past falls through
+  // to the read-only legacy view below.
+  const showFullPanels = status === "upcoming" || status === "now";
 
   // FreshTripGuide owns its own welcoming header when it renders, so the
   // generic "You're driving this trip" TabHeader collapses to avoid two
@@ -105,15 +99,14 @@ export function HomeTab({
         </>
       )}
 
-      {/* ── PAST / SAVED: keep the legacy ItineraryPanel; it's read-only
-              and its bucketed layout is still useful after the trip.
-              The Competition invitation no longer surfaces here — owners can
-              spin up a retroactive scoreboard from the Comp tab directly. */}
-      {!showFullPanels && stage !== "idea" && (
+      {/* ── PAST: keep the legacy ItineraryPanel; it's read-only and its
+              bucketed layout is still useful after the trip. The Competition
+              invitation no longer surfaces here — owners can spin up a
+              retroactive scoreboard from the Comp tab directly. */}
+      {!showFullPanels && (
         <LegacyItineraryPanel
           tripId={trip.id}
           tripStartDate={trip.start_date}
-          stage={stage}
           status={status}
           onTabChange={onTabChange}
         />

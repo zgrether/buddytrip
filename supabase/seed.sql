@@ -13,7 +13,7 @@
 --   4. Replace OWNER_ID and CREW_ID below with the actual UUIDs
 --   5. Run: psql $DATABASE_URL -f supabase/seed.sql
 --
--- This seed creates ONE trip in PLANNING stage with:
+-- This seed creates ONE trip with a locked destination and:
 --   - destination locked to a real place
 --   - a date window
 --   - 2 confirmed + 1 unconfirmed schedule items (to test the
@@ -47,23 +47,22 @@ INSERT INTO users (id, name, email, created_at) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════
--- 2. ONE TRIP in PLANNING stage with a locked destination
+-- 2. ONE TRIP with a locked destination (derives as "upcoming")
 -- ═══════════════════════════════════════════════════════════════
+-- A locked destination (locked_destination_at set) is what moves a trip out
+-- of the idea phase; from there its status is purely date-driven.
 
 INSERT INTO trips (
-  id, title, description, stage, planning_tier,
+  id, title, description,
   locked_destination_title, locked_destination_location, locked_destination_at,
   start_date, end_date,
   activities, golf_courses,
-  comparison_mode, poll_mode, itinerary_enabled, getting_there_enabled,
-  quick_info_dismissed, travel_plans_crew_visible, planning_skipped,
+  comparison_mode, poll_mode, itinerary_enabled, travel_plans_crew_visible,
   created_at, updated_at
 ) VALUES (
   'seed-trip-bbmi-2027',
   'BBMI 2027',
   'Annual Brad-and-Brothers Mostly Invitational. Bandon Dunes edition.',
-  'planning',
-  'standard',
   'Bandon Dunes',
   'Bandon, OR',
   now(),
@@ -71,7 +70,6 @@ INSERT INTO trips (
   ARRAY['Golf', 'Hiking']::text[],
   ARRAY['Bandon Dunes', 'Pacific Dunes']::text[],
   false, false, true, true,
-  false, true, '{}'::jsonb,
   now(), now()
 )
 ON CONFLICT (id) DO NOTHING;

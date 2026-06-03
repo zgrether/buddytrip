@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Lock, Sparkles } from "lucide-react";
+import { Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { type TabId, TripBottomNav } from "@/components/BottomNav";
@@ -23,8 +23,6 @@ import { CompTab } from "./tabs/CompTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRangeCompact } from "@/lib/dates";
 import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
-import { TripSummaryModal } from "./components/TripSummaryModal";
-import { TripInvitationModal } from "./components/TripInvitationModal";
 import { DatesSheet } from "./components/DatesSheet";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
@@ -56,8 +54,6 @@ export default function TripDetailPage() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [compUnlocked, setCompUnlocked] = useState(false);
-  const [showInvitationModal, setShowInvitationModal] = useState(false);
-  const [showWriteInvitationModal, setShowWriteInvitationModal] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [datesSheetOpen, setDatesSheetOpen] = useState(false);
@@ -81,7 +77,7 @@ export default function TripDetailPage() {
   // gated in dataLoading — datePoll feeds one owner-only "votes in" pill and
   // tiles aren't read in this file, so blocking first paint on the slowest of
   // them just delayed TTFB. They populate in the background; the pill pops in.
-  const { data: poll } = trpc.datePoll.get.useQuery({ tripId });
+  trpc.datePoll.get.useQuery({ tripId });
   trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
@@ -192,8 +188,8 @@ export default function TripDetailPage() {
 
   const status = getTripStatus(trip);
   const tripIsReadOnly = checkReadOnly(trip);
-  const stage = (trip as { stage?: string }).stage ?? "idea";
-  // IDEA stage: IdeaZonePanel renders its own floating action buttons
+  const isIdea = status === "idea";
+  // Idea phase: IdeaZonePanel renders its own floating action buttons
   // When exploring (comparison_mode=true, no lock), don't fall back to
   // trip.location — lockDestination writes to that column and unlockDestination
   // doesn't clear it, so the old destination would bleed through to the header.
@@ -217,11 +213,11 @@ export default function TripDetailPage() {
   // also snaps a member back to "home" if they land on a stale ?tab=comp URL.
   const canShowCompTab = effectiveCanEdit;
   const canShowLodgingTab =
-    stage !== "idea" && effectiveCanEdit;
+    !isIdea && effectiveCanEdit;
   const canShowScheduleTab = effectiveCanEdit;
-  // Receipts is now visible in PLANNING too — unified with GOING. Hidden
-  // only in IDEA where there's nothing to receipt against yet.
-  const canShowExpensesTab = stage !== "idea";
+  // Receipts is hidden only in the idea phase, where there's nothing to
+  // receipt against yet.
+  const canShowExpensesTab = !isIdea;
 
   const activeTab: TabId =
     (activeTabRaw === "comp" && !canShowCompTab) ||
@@ -333,29 +329,6 @@ export default function TripDetailPage() {
     ? () => setShowSettings(true)
     : undefined;
 
-  // Trip summary — compact labelled pill for the owner once the trip is past
-  // idea stage. Filled when the prereqs to advance (destination + dates locked)
-  // are satisfied; outlined while something is still outstanding. Once the
-  // trip is going, those prereqs are definitionally met, so the button stays
-  // filled as a view-only recap.
-  const summaryReady = stage === "going" || (!!trip.locked_destination_title?.trim() && !!poll?.lockedWindowId);
-  const summaryButton = (isOwner && (stage === "planning" || stage === "going")) ? (
-    <button
-      data-testid="trip-summary-btn"
-      onClick={() => setShowInvitationModal(true)}
-      className="flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-opacity hover:opacity-80"
-      style={
-        summaryReady
-          ? { background: "var(--color-bt-accent)", color: "var(--color-bt-base)", border: "1px solid var(--color-bt-accent)" }
-          : { background: "transparent", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent)" }
-      }
-      aria-label={summaryReady ? "Open trip summary" : "Open trip summary (some items still incomplete)"}
-    >
-      <Sparkles size={13} />
-      Summary
-    </button>
-  ) : null;
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div
@@ -370,8 +343,8 @@ export default function TripDetailPage() {
       />
 
       {/* ── Trip content ────────────────────────────────────────────────── */}
-      {stage === "idea" ? (
-        /* Idea stage: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
+      {isIdea ? (
+        /* Idea phase: no tab bar, no sidebar — IdeaZonePanel is the whole page. */
         <>
           <div className="mx-auto max-w-[1280px] px-4 pt-4">
             <TripHeader
@@ -382,7 +355,6 @@ export default function TripDetailPage() {
               lockedTitle={trip.locked_destination_title}
               dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
-              stage={stage}
               canEdit={canEdit}
               myRole={role}
               tripStartDate={trip.start_date}
@@ -407,7 +379,6 @@ export default function TripDetailPage() {
                 role={role}
                 canEdit={effectiveCanEdit}
                 isOwner={isOwner}
-                displayStatus={status}
                 onTabChange={(tab) => setActiveTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => { setCompUnlocked(true); setActiveTab("comp"); } : undefined}
                 compActivated={showComp}
@@ -434,7 +405,6 @@ export default function TripDetailPage() {
               lockedTitle={trip.locked_destination_title}
               dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
-              stage={stage}
               canEdit={canEdit}
               myRole={role}
               tripStartDate={trip.start_date}
@@ -465,7 +435,7 @@ export default function TripDetailPage() {
                 activeTab={activeTab}
                 onTabChange={(tab) => setActiveTab(tab)}
                 canEdit={canEdit}
-                stage={stage}
+                isIdea={isIdea}
                 badges={tabBadges}
               />
               <div className="pt-4 pb-32">
@@ -486,12 +456,8 @@ export default function TripDetailPage() {
                     role={role}
                     canEdit={effectiveCanEdit}
                     isOwner={isOwner}
-                    displayStatus={status}
                     onTabChange={(tab) => setActiveTab(tab as TabId)}
                     onOpenChat={() => setChatOpen(true)}
-                    onWriteInvitation={() => setShowWriteInvitationModal(true)}
-                    onAdvanceToGoing={isOwner ? () => setShowInvitationModal(true) : undefined}
-                    actionCenterTitleAction={summaryButton}
                     onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
                 )}
@@ -556,25 +522,6 @@ export default function TripDetailPage() {
         />
       )}
 
-      {/* ── Trip Summary modal ──────────────────────────────────────────── */}
-      {showInvitationModal && trip && (
-        <TripSummaryModal
-          tripId={tripId}
-          trip={trip}
-          onClose={() => setShowInvitationModal(false)}
-          onAdvanced={() => setShowInvitationModal(false)}
-        />
-      )}
-
-      {/* ── Trip Invitation modal (going-stage owner write-invitation CTA) ── */}
-      {showWriteInvitationModal && trip && (
-        <TripInvitationModal
-          tripId={tripId}
-          trip={trip}
-          onClose={() => setShowWriteInvitationModal(false)}
-        />
-      )}
-
       {/* ── Trip dates sheet (set / poll / clear) ───────────────────────── */}
       {/* Wired to the dates affordance in TripHeader. Owns the full trip
           object so the embedded DatePollCard has everything it needs. */}
@@ -594,7 +541,7 @@ export default function TripDetailPage() {
       <FloatingChatPanel
         tripId={tripId}
         isOpen={chatOpen}
-        ideaStage={stage === "idea"}
+        ideaStage={isIdea}
         onClose={() => setChatOpen(false)}
         memberNames={Object.fromEntries(
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])

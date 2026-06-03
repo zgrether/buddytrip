@@ -518,7 +518,6 @@ export function ScheduleTab({
   onOpenDatesSheet?: () => void;
 }) {
   const tripId = trip.id;
-  const stage = trip.stage ?? "idea";
   const utils = trpc.useUtils();
   const [addMode, setAddMode] = useState<AddMode>(null);
   const [editItem, setEditItem] = useState<ScheduleItem | null>(null);

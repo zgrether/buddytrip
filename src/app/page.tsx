@@ -15,8 +15,8 @@ import { MarketingPage } from "@/components/marketing/MarketingPage";
  *  1. Unauthenticated visitors → full marketing page (`<MarketingPage />`)
  *  2. Authenticated users     → redirect to their most relevant trip via:
  *       a. last visited (localStorage `bt-last-trip-id`, if still a member)
- *       b. NOW stage (going + within 3 days of start)
- *       c. GOING > PLANNING > IDEA
+ *       b. NOW (within 3 days of start, or mid-trip)
+ *       c. UPCOMING > IDEA
  *       d. /dashboard if they have no trips (the dashboard renders the
  *          shared AuthenticatedEmptyState as its body)
  *
@@ -50,14 +50,12 @@ export default function HomePage() {
       if (lastId && trips.some((t) => t.id === lastId)) return lastId;
     }
 
-    // 2-4. Stage priority via getEffectiveStatus
+    // 2-4. Status priority via getEffectiveStatus
     const priority: Record<string, number> = {
       now: 0,
-      going: 1,
-      planning: 2,
-      idea: 3,
-      saved: 4,
-      past: 5,
+      upcoming: 1,
+      idea: 2,
+      past: 3,
     };
     const sorted = [...trips].sort((a, b) => {
       const pa = priority[getEffectiveStatus(a)] ?? 99;

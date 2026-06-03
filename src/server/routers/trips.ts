@@ -137,10 +137,9 @@ export const tripsRouter = router({
         comparison_mode: input.comparisonMode ?? false,
         locked_destination_title: input.lockedDestination?.title ?? null,
         locked_destination_location: input.lockedDestination?.location ?? null,
+        // A locked destination is what moves a trip out of the idea phase;
+        // its absence (null) keeps the trip in idea.
         locked_destination_at: hasLockedDest ? now : null,
-        // Stage: known destination → planning, otherwise → idea
-        stage: hasLockedDest ? "planning" : "idea",
-        ...(hasLockedDest ? { stage_advanced_to_planning_at: now } : {}),
       });
 
       if (error) {
@@ -503,56 +502,6 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // advanceToPlanning — Owner advances trip from IDEA → PLANNING
-  // Requires: destination is locked
-  // -----------------------------------------------------------------------
-  advanceToPlanning: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx }) => {
-      // Fetch current trip state
-      const { data: trip, error: fetchErr } = await ctx.supabase
-        .from("trips")
-        .select("stage, locked_destination_title")
-        .eq("id", ctx.tripId)
-        .single();
-
-      if (fetchErr || !trip) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
-      }
-
-      if (trip.stage !== "idea") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Trip is not in the idea stage.",
-        });
-      }
-
-      if (!trip.locked_destination_title) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Lock a destination before advancing to planning.",
-        });
-      }
-
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({
-          stage: "planning",
-          stage_advanced_to_planning_at: new Date().toISOString(),
-        })
-        .eq("id", ctx.tripId)
-        .select("id, stage")
-        .single();
-
-      if (error || !data) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to advance stage" });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
   // enableItinerary — Owner or Planner activates the Itinerary panel.
   // Idempotent: re-calling on an already-enabled trip is a no-op.
   // -----------------------------------------------------------------------
@@ -599,93 +548,8 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // advanceToGoing — Owner advances trip from PLANNING → GOING
-  // Requires: at least one date is locked. aboutMessage is optional — when
-  // supplied, it's saved to trip.about_message; no email blast is sent.
-  // RSVPs are collected in-app via the going-stage Action Center.
-  // -----------------------------------------------------------------------
-  advanceToGoing: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        aboutMessage: z.string().optional(),
-      })
-    )
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx, input }) => {
-      // Fetch current trip state (dates + skipped array so we can validate in one round-trip)
-      const { data: trip, error: fetchErr } = await ctx.supabase
-        .from("trips")
-        .select("stage, start_date, end_date, planning_skipped")
-        .eq("id", ctx.tripId)
-        .single();
-
-      if (fetchErr || !trip) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
-      }
-
-      if (trip.stage !== "planning") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Trip is not in the planning stage.",
-        });
-      }
-
-      // Dates are required unless the owner explicitly opted out of them.
-      // Accept any of:
-      //   a) dates set directly on the trip (start_date + end_date)
-      //   b) dates tile explicitly skipped via planning_skipped
-      //   c) a date poll with a locked window
-      const planningSkipped: string[] = Array.isArray(trip.planning_skipped)
-        ? (trip.planning_skipped as string[])
-        : [];
-      const hasDirectDates = !!(trip.start_date && trip.end_date);
-      const datesOptedOut = planningSkipped.includes("dates");
-
-      if (!hasDirectDates && !datesOptedOut) {
-        const { data: poll } = await ctx.supabase
-          .from("date_polls")
-          .select("locked_window_id")
-          .eq("trip_id", ctx.tripId)
-          .maybeSingle();
-
-        if (!poll?.locked_window_id) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Set dates before advancing — your crew will want to know when.",
-          });
-        }
-      }
-
-      const trimmedAboutMessage = input.aboutMessage?.trim() ?? "";
-      const stageUpdate: {
-        stage: "going";
-        stage_advanced_to_going_at: string;
-        about_message?: string;
-      } = {
-        stage: "going",
-        stage_advanced_to_going_at: new Date().toISOString(),
-      };
-      if (trimmedAboutMessage) {
-        stageUpdate.about_message = trimmedAboutMessage;
-      }
-
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update(stageUpdate)
-        .eq("id", ctx.tripId)
-        .select("id, stage, about_message")
-        .single();
-
-      if (error || !data) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to advance stage" });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
-  // updateAboutMessage — Owner/Planner can update about_message on a GOING+ trip
+  // updateAboutMessage — Owner/Planner can update about_message once a
+  // destination is locked.
   // -----------------------------------------------------------------------
   updateAboutMessage: authedProcedure
     .input(
@@ -698,7 +562,7 @@ export const tripsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { data: trip, error: fetchErr } = await ctx.supabase
         .from("trips")
-        .select("stage")
+        .select("locked_destination_at")
         .eq("id", ctx.tripId)
         .single();
 
@@ -706,10 +570,10 @@ export const tripsRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
       }
 
-      if (!["planning", "going"].includes(trip.stage ?? "")) {
+      if (!trip.locked_destination_at) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "About message can only be updated in the planning or going stage.",
+          message: "Lock a destination before setting an about message.",
         });
       }
 
@@ -730,8 +594,9 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // changeDestination — Owner/Planner can change destination in PLANNING stage
-  // Resets date poll votes since dates may change
+  // changeDestination — Owner/Planner can change the destination any time
+  // one is already locked (i.e. past the idea phase). Resets date poll votes
+  // since dates may change with a new destination.
   // -----------------------------------------------------------------------
   changeDestination: authedProcedure
     .input(
@@ -742,10 +607,11 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Planner"))
     .mutation(async ({ ctx, input }) => {
-      // Fetch current stage
+      // A destination must already be locked — there's nothing to "change"
+      // while the trip is still an idea (use lockDestination for the first set).
       const { data: trip, error: fetchErr } = await ctx.supabase
         .from("trips")
-        .select("stage")
+        .select("locked_destination_at")
         .eq("id", ctx.tripId)
         .single();
 
@@ -753,10 +619,10 @@ export const tripsRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
       }
 
-      if (trip.stage !== "planning") {
+      if (!trip.locked_destination_at) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Destination can only be changed in the planning stage.",
+          message: "Lock a destination before changing it.",
         });
       }
 
@@ -795,101 +661,4 @@ export const tripsRouter = router({
       return data;
     }),
 
-  // -----------------------------------------------------------------------
-  // skipPlanningTile — mark a planning tile as explicitly skipped.
-  //
-  // The planning Home tab renders a 2×2 tile grid (dates/crew/lodging/
-  // schedule). Each can be "empty", "complete" (data present), or
-  // "skipped". Skipped tiles count as resolved for the View Itinerary
-  // gate, letting the owner advance even when an area doesn't apply.
-  //
-  // Storage: trips.planning_skipped is a JSONB array of tile keys.
-  // We do a read-modify-write rather than an array concat so callers can
-  // invoke this idempotently without creating duplicates.
-  // -----------------------------------------------------------------------
-  skipPlanningTile: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        tile: z.enum(["dates", "crew", "lodging", "schedule"]),
-      })
-    )
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      const { data: trip, error: fetchErr } = await ctx.supabase
-        .from("trips")
-        .select("planning_skipped")
-        .eq("id", ctx.tripId)
-        .single();
-
-      if (fetchErr || !trip) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
-      }
-
-      const current: string[] = Array.isArray(trip.planning_skipped)
-        ? (trip.planning_skipped as string[])
-        : [];
-      const next = current.includes(input.tile) ? current : [...current, input.tile];
-
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({ planning_skipped: next })
-        .eq("id", ctx.tripId)
-        .select("id, planning_skipped")
-        .single();
-
-      if (error || !data) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to skip planning tile",
-        });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
-  // unskipPlanningTile — remove a tile from the skipped list.
-  // Mirror of skipPlanningTile; idempotent on missing entries.
-  // -----------------------------------------------------------------------
-  unskipPlanningTile: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        tile: z.enum(["dates", "crew", "lodging", "schedule"]),
-      })
-    )
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      const { data: trip, error: fetchErr } = await ctx.supabase
-        .from("trips")
-        .select("planning_skipped")
-        .eq("id", ctx.tripId)
-        .single();
-
-      if (fetchErr || !trip) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
-      }
-
-      const current: string[] = Array.isArray(trip.planning_skipped)
-        ? (trip.planning_skipped as string[])
-        : [];
-      const next = current.filter((t) => t !== input.tile);
-
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({ planning_skipped: next })
-        .eq("id", ctx.tripId)
-        .select("id, planning_skipped")
-        .single();
-
-      if (error || !data) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to unskip planning tile",
-        });
-      }
-
-      return data;
-    }),
 });

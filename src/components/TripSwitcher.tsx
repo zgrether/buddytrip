@@ -19,10 +19,10 @@ import { getLocationInfo } from "@/lib/locationUtils";
  * one component, gated by CSS responsive classes. Same data feeds both
  * — only the chrome differs.
  *
- * Trips are grouped Active ({idea, planning, going, now}) and Past, with
- * a section divider only when both groups are populated. The currently
- * visited trip (read from /trips/[tripId] params) gets a tinted icon
- * background + checkmark next to its name.
+ * Trips are grouped Active ({idea, upcoming, now}) and Past, with a section
+ * divider only when both groups are populated. The currently visited trip
+ * (read from /trips/[tripId] params) gets a tinted icon background +
+ * checkmark next to its name.
  */
 
 interface TripSwitcherProps {
@@ -48,22 +48,20 @@ type SwitcherTrip = TripStatusFields & {
 // bottom. Mirrors the dashboard's section order.
 const ACTIVE_PRIORITY: Record<TripDisplayStatus, number> = {
   now: 0,
-  going: 1,
-  planning: 2,
-  idea: 3,
-  past: 4,
-  saved: 5,
+  upcoming: 1,
+  idea: 2,
+  past: 3,
 };
 
 // Tiebreak within a single phase: dated phases by their relevant date,
-// undated phases (planning/idea) by most-recently-touched.
+// undated phases (idea) by most-recently-touched.
 function phaseTiebreak(
   a: SwitcherTrip,
   b: SwitcherTrip,
   status: TripDisplayStatus
 ): number {
   if (status === "now") return (a.end_date ?? "").localeCompare(b.end_date ?? "");
-  if (status === "going")
+  if (status === "upcoming")
     return (a.start_date ?? "").localeCompare(b.start_date ?? "");
   const ak = a.updated_at ?? a.created_at ?? "";
   const bk = b.updated_at ?? b.created_at ?? "";
@@ -85,11 +83,10 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     const past: SwitcherTrip[] = [];
     for (const t of trips as SwitcherTrip[]) {
       const status = getEffectiveStatus(t);
-      // 'saved' is treated as past for the switcher.
-      if (status === "past" || status === "saved") past.push(t);
+      if (status === "past") past.push(t);
       else active.push(t);
     }
-    // Active: Now → Going → Planning → Idea (then within-phase tiebreak).
+    // Active: Now → Upcoming → Idea (then within-phase tiebreak).
     active.sort((a, b) => {
       const sa = getEffectiveStatus(a);
       const sb = getEffectiveStatus(b);
@@ -483,12 +480,7 @@ const STAGE_BADGE_STYLES: Record<
     fg: "#60a5fa",
     border: "rgba(96, 165, 250, 0.2)",
   },
-  planning: {
-    bg: "rgba(96, 165, 250, 0.1)",
-    fg: "#60a5fa",
-    border: "rgba(96, 165, 250, 0.2)",
-  },
-  going: {
+  upcoming: {
     bg: "rgba(45, 212, 191, 0.1)",
     fg: "#2dd4bf",
     border: "rgba(45, 212, 191, 0.2)",
@@ -503,18 +495,11 @@ const STAGE_BADGE_STYLES: Record<
     fg: "var(--color-bt-text-dim)",
     border: "var(--color-bt-border)",
   },
-  saved: {
-    bg: "var(--color-bt-card-raised)",
-    fg: "var(--color-bt-text-dim)",
-    border: "var(--color-bt-border)",
-  },
 };
 
 const STAGE_LABELS: Record<TripDisplayStatus, string> = {
   idea: "Idea",
-  planning: "Planning",
-  going: "Going",
+  upcoming: "Upcoming",
   now: "Now",
   past: "Past",
-  saved: "Saved",
 };
