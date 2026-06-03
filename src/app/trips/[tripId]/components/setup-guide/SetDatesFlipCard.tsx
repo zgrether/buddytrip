@@ -163,6 +163,14 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
       if (ctx?.prev !== undefined)
         utils.trips.getById.setData({ tripId }, ctx.prev);
     },
+    onSuccess() {
+      // Clearing dates resets the guide: flip back to the front face and
+      // reset the picker tab. Without this the card stays stranded on the
+      // (now empty) date-setter calendar instead of returning to the
+      // resting "Set dates" pitch.
+      setFlipped(false);
+      setTab("pick");
+    },
     onSettled() {
       utils.trips.getById.invalidate({ tripId });
       utils.trips.list.invalidate();
