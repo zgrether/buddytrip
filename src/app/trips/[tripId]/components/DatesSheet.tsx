@@ -89,7 +89,11 @@ export function DatesSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  useModalBackButton(isOpen ? onClose : () => {});
+  // DatesSheet is always mounted on the trip page (visibility gated by
+  // isOpen), so pass isOpen as the `enabled` flag — otherwise the hook
+  // pushes a phantom history entry even while closed and silently eats the
+  // first back-press on every trip page.
+  useModalBackButton(onClose, isOpen);
 
   // ── Mutations ──────────────────────────────────────────────────────────
 
