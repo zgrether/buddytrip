@@ -25,9 +25,9 @@ import type { TripData } from "../../tabs/types";
 //     eyebrow + "Add what you've got" + the in-progress copy.
 //
 // Below the header, a 4-up responsive grid of step cards (set dates /
-// invite the crew / add lodging / plan the agenda). Every card is the
-// same fixed height as the flipped Set-dates card so nothing jumps when
-// the picker opens.
+// invite the crew / add lodging / plan the agenda). Each card sizes to
+// its own content; the Set Dates card grows in place when the user
+// flips it open to reveal the calendar.
 
 export interface FreshTripGuideProps {
   tripId: string;
@@ -40,11 +40,6 @@ export interface FreshTripGuideProps {
   /** Owner dismissed the guide. */
   onDismiss: () => void;
 }
-
-// Match the flipped Set-dates card height so every step card holds the
-// same shape before AND after the picker opens. Tuned to fit calendar +
-// presets + Save row at the picker's tightest layout.
-const CARD_MIN_H = 420;
 
 export function FreshTripGuide({
   tripId,
@@ -147,7 +142,6 @@ export function FreshTripGuide({
             trip={trip}
             onOpenDatesSheet={onOpenDatesSheet}
             onTabChange={onTabChange}
-            minHeight={CARD_MIN_H}
             pollMode={pollMode}
             onPollExpand={() => setPollMode(true)}
             onPollCancel={() => setPollMode(false)}
@@ -169,7 +163,6 @@ export function FreshTripGuide({
               ctaIcon={<UserPlus size={14} strokeWidth={2} />}
               ctaVariant="ghost"
               onCta={() => onTabChange?.("crew")}
-              minHeight={CARD_MIN_H}
               testId="guide-step-crew"
             />
             <StepCard
@@ -182,7 +175,6 @@ export function FreshTripGuide({
               ctaIcon={<Building2 size={14} strokeWidth={2} />}
               ctaVariant="ghost"
               onCta={() => onTabChange?.("lodging")}
-              minHeight={CARD_MIN_H}
               testId="guide-step-lodging"
             />
             <StepCard
@@ -195,7 +187,6 @@ export function FreshTripGuide({
               ctaIcon={<Flag size={14} strokeWidth={2} />}
               ctaVariant="ghost"
               onCta={() => onTabChange?.("schedule")}
-              minHeight={CARD_MIN_H}
               testId="guide-step-agenda"
             />
           </>

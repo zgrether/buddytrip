@@ -47,10 +47,6 @@ export interface StepCardProps {
   /** Shown above the body when done — what the user actually picked,
    *  e.g. "May 22 – 26, 2026 · 5 days. These frame your whole itinerary." */
   doneSummary?: string;
-  /** Outer card min-height in px. Defaults to none. FreshTripGuide sets
-   *  this so every step card matches the flipped Set-dates height and
-   *  nothing jars when the picker opens. */
-  minHeight?: number;
   /** Test id for the CTA. */
   testId?: string;
 }
@@ -67,7 +63,6 @@ export const StepCard: FC<StepCardProps> = ({
   onCta,
   done = false,
   doneSummary,
-  minHeight,
   testId,
 }) => {
   const tint = DOMAIN_COLORS[domain];
@@ -79,12 +74,10 @@ export const StepCard: FC<StepCardProps> = ({
         background:
           "linear-gradient(180deg, var(--color-bt-accent-faint), transparent 60%)",
         border: "1px solid var(--color-bt-accent-border)",
-        minHeight,
       }
     : {
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
-        minHeight,
       };
   return (
     <div

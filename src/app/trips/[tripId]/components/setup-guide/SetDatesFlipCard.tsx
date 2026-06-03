@@ -48,9 +48,6 @@ export interface SetDatesFlipCardProps {
   onOpenDatesSheet?: () => void;
   /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect. */
   onTabChange?: (tab: string) => void;
-  /** Card min-height in px. FreshTripGuide passes this so all four step
-   *  cards (this one and the three StepCards) share the same shape. */
-  minHeight?: number;
   /** True when the parent has expanded this card to span the whole grid
    *  so the poll builder has room to grow horizontally. The card stays
    *  flipped to its back face while this is on. */
@@ -72,7 +69,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   trip,
   onOpenDatesSheet,
   onTabChange,
-  minHeight,
   pollMode = false,
   onPollExpand,
   onPollCancel,
@@ -428,28 +424,30 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
     </div>
   );
 
+  // Calendar + presets + Save row need ≈420px of vertical room. We only
+  // pin that height while the back face is up (flipped or pollMode);
+  // the front face sizes to its own content so we don't push the
+  // resting card taller than it needs to be.
+  const FLIPPED_MIN_H = 420;
+
   return (
-    <div
-      className="relative h-full w-full"
-      style={{ perspective: 1200, minHeight }}
-    >
+    <div className="relative" style={{ perspective: 1200 }}>
       <div
-        className="absolute inset-0 h-full w-full"
+        className="relative w-full"
         style={{
           transformStyle: "preserve-3d",
           transform: showBack ? "rotateY(180deg)" : "rotateY(0deg)",
           transition: "transform 450ms cubic-bezier(.2,.8,.2,1)",
+          minHeight: showBack ? FLIPPED_MIN_H : undefined,
         }}
         data-testid="guide-step-dates"
         data-pollmode={pollMode ? "true" : "false"}
       >
-        {/* Front — absolutely positioned so it stretches to the wrapper's
-            minHeight. Same treatment as the back face; without this, the
-            front face sized to its content (~230px) while the wrapper
-            held the 420px minHeight, so the card looked shorter than its
-            siblings. */}
+        {/* Front — sizes to its own content. Not absolute so it
+            collapses cleanly when the back face's minHeight isn't
+            applied. */}
         <div
-          className="absolute inset-0 rounded-xl"
+          className="rounded-xl"
           style={{
             ...cardSurface,
             backfaceVisibility: "hidden",
@@ -459,7 +457,8 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         >
           {front}
         </div>
-        {/* Back */}
+        {/* Back — absolute inset-0; relies on the wrapper's minHeight
+            (set above only when showBack) to give it vertical room. */}
         <div
           className="absolute inset-0 rounded-xl"
           style={{
