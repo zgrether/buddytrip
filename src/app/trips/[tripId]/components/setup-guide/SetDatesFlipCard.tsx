@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Pencil,
   User,
   UserPlus,
   Vote,
@@ -199,11 +200,11 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
       </p>
 
       {/* Bottom slot — pre-completion this is the filled-accent "Set
-          dates" CTA. Post-completion it becomes a teal confirmation
-          chip ("✓ Set May 22-26") in the same shape as the other
-          cards' CTAs so the row stays visually aligned. The chip is
-          still clickable so editing remains one tap away — the
-          user just gets a positive indicator instead of a hammer. */}
+          dates" CTA. Post-completion it becomes "Edit dates" in the
+          same ghost outline used by the other steps' done CTAs (the
+          actual date range is reinforced on the back face via the
+          confirmation chip in the picker footer, so we don't need to
+          double-print it here). */}
       <button
         type="button"
         onClick={() => setFlipped(true)}
@@ -211,9 +212,9 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         style={
           datesSet
             ? {
-                background: tint.faint,
+                background: "transparent",
                 color: tint.color,
-                border: `1px solid ${tint.color}`,
+                border: "1px solid var(--color-bt-border)",
               }
             : {
                 background: tint.color,
@@ -223,13 +224,11 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         data-testid={datesSet ? "guide-step-dates-edit" : "guide-step-dates-cta"}
       >
         {datesSet ? (
-          <Check size={14} strokeWidth={2.6} />
+          <Pencil size={14} strokeWidth={2} />
         ) : (
           <Calendar size={14} strokeWidth={2} />
         )}
-        {datesSet
-          ? `Set ${formatDateRangeCompact(trip.start_date, trip.end_date)}`
-          : "Set dates"}
+        {datesSet ? "Edit dates" : "Set dates"}
       </button>
     </div>
   );
