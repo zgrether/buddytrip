@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Building2, Flag, UserPlus } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
 import {
@@ -64,6 +65,45 @@ export function FreshTripGuide({
   const destination =
     trip.locked_destination_location ?? trip.location ?? trip.title;
   const destinationUpper = destination?.toUpperCase() ?? "";
+
+  // ── Done-state derivations for the Crew + Lodging steps ───────────
+  //
+  // Crew:    counts non-owner members. "3 added" type label.
+  // Lodging: first lodging entry sorted by check-in date; CTA shows
+  //          its property_name. Trips can have multiple properties
+  //          (lake house → resort), so we surface the earliest one
+  //          since that's the trip's opening lodging.
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
+  const { data: logistics = [] } = trpc.logistics.list.useQuery({ tripId });
+
+  const crewAdded = useMemo(() => {
+    return (members as Array<{ role?: string | null }>).filter(
+      (m) => m.role !== "Owner",
+    ).length;
+  }, [members]);
+  const crewDone = crewAdded > 0;
+  const crewDoneCta = `${crewAdded} added`;
+
+  const firstLodging = useMemo(() => {
+    const lodgings = (logistics as Array<{
+      type?: string | null;
+      property_name?: string | null;
+      label?: string | null;
+      check_in_time?: string | null;
+    }>).filter((l) => l.type === "lodging");
+    lodgings.sort((a, b) => {
+      const ax = a.check_in_time ?? "";
+      const bx = b.check_in_time ?? "";
+      if (!ax && !bx) return 0;
+      if (!ax) return 1;
+      if (!bx) return -1;
+      return ax.localeCompare(bx);
+    });
+    return lodgings[0];
+  }, [logistics]);
+  const lodgingDone = !!firstLodging;
+  const lodgingDoneCta =
+    firstLodging?.property_name ?? firstLodging?.label ?? "Lodging added";
 
   return (
     <section data-testid="fresh-trip-guide">
@@ -166,6 +206,8 @@ export function FreshTripGuide({
               ctaIcon={<UserPlus size={14} strokeWidth={2} />}
               ctaVariant="ghost"
               onCta={() => onTabChange?.("crew")}
+              done={crewDone}
+              doneCta={crewDone ? crewDoneCta : undefined}
               testId="guide-step-crew"
             />
             <StepCard
@@ -178,6 +220,8 @@ export function FreshTripGuide({
               ctaIcon={<Building2 size={14} strokeWidth={2} />}
               ctaVariant="ghost"
               onCta={() => onTabChange?.("lodging")}
+              done={lodgingDone}
+              doneCta={lodgingDone ? lodgingDoneCta : undefined}
               testId="guide-step-lodging"
             />
             <StepCard

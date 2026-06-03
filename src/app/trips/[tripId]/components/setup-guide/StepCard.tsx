@@ -47,6 +47,10 @@ export interface StepCardProps {
   /** Shown above the body when done — what the user actually picked,
    *  e.g. "May 22 – 26, 2026 · 5 days. These frame your whole itinerary." */
   doneSummary?: string;
+  /** CTA label when done. Pairs with the inverted teal styling and a
+   *  leading check (e.g. "3 added", "Pinehurst Resort"). Falls back to
+   *  the normal `cta` label if not supplied. */
+  doneCta?: string;
   /** Test id for the CTA. */
   testId?: string;
 }
@@ -63,6 +67,7 @@ export const StepCard: FC<StepCardProps> = ({
   onCta,
   done = false,
   doneSummary,
+  doneCta,
   testId,
 }) => {
   const tint = DOMAIN_COLORS[domain];
@@ -125,23 +130,21 @@ export const StepCard: FC<StepCardProps> = ({
       {/* CTA — generous breathing room above (mt-6) separates the
           actionable button from the explanatory body so the card
           reads as "here's the pitch / here's the action" instead of
-          one wall of content. When done, the CTA becomes an unfilled
-          outline button (the tinted card surface already carries
-          weight; a filled button would compete). */}
+          one wall of content. When done with a doneCta label, the
+          button flips to a teal confirmation chip ("✓ 3 added" /
+          "✓ Pinehurst Resort"), mirroring SetDatesFlipCard's done
+          state. */}
       <button
         type="button"
         onClick={onCta}
         data-testid={testId}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-semibold transition-colors hover:bg-[rgba(255,255,255,0.04)]"
         style={
-          done
+          done && doneCta
             ? {
-                // Border stays the neutral border token (not accent) so
-                // the button reads as a quiet control next to the
-                // tinted card surface.
-                background: "transparent",
-                color: "var(--color-bt-text)",
-                border: "1px solid var(--color-bt-border)",
+                background: "var(--color-bt-accent-faint)",
+                color: "var(--color-bt-accent)",
+                border: "1px solid var(--color-bt-accent)",
               }
             : ctaVariant === "primary"
               ? {
@@ -158,8 +161,12 @@ export const StepCard: FC<StepCardProps> = ({
                 }
         }
       >
-        {ctaIcon}
-        {cta}
+        {done && doneCta ? (
+          <Check size={14} strokeWidth={2.6} />
+        ) : (
+          ctaIcon
+        )}
+        {done && doneCta ? doneCta : cta}
       </button>
     </div>
   );
