@@ -417,8 +417,8 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             className="text-[12px] leading-snug"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            It's just you so far — invite at least one more person and
-            you can poll everyone for the dates that work.
+            It&rsquo;s just you so far — invite at least one more person
+            and you can poll everyone for the dates that work.
           </p>
           <button
             type="button"

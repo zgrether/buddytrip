@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Building2, Flag, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { StepCard } from "./StepCard";
@@ -57,34 +57,15 @@ export function FreshTripGuide({
   const datesSet = !!(trip.start_date && trip.end_date);
   const accent = DOMAIN_COLORS.home.color;
 
-  // Poll-builder takeover: when the user taps "Set up date poll →" on
-  // the dates flip card with ≥2 crew, the Set Dates card expands across
-  // the whole grid and the other three steps hide until the poll is
-  // committed or cancelled.
-  //
-  // The takeover is driven by two signals OR'd together:
-  //   1. trip.poll_mode (server state) — set true by DatePollCard once the
-  //      owner adds their first window, cleared when they lock a window
-  //      or end the poll. Surviving the local state means a poll-in-flight
-  //      stays present after navigation / reload, on the home tab, for
-  //      both the owner and the crew.
-  //   2. localPollMode (UI state) — flips true the moment the owner taps
-  //      "Set up date poll" so the takeover happens immediately, before
-  //      the first window is added. Cleared on cancel.
-  const [localPollMode, setLocalPollMode] = useState(false);
-  const pollMode = !!trip.poll_mode || localPollMode;
-
-  // When the server-side poll flag flips off (poll committed via Lock, or
-  // dates picked from DatesSheet which ends the poll), drop the local
-  // latch too. Without this, an owner who started the poll in this
-  // session would stay on the poll surface forever — localPollMode
-  // remains true even though trip.poll_mode is false, and the OR keeps
-  // pollMode true.
-  useEffect(() => {
-    if (!trip.poll_mode && localPollMode) {
-      setLocalPollMode(false);
-    }
-  }, [trip.poll_mode, localPollMode]);
+  // Poll-builder takeover: derived purely from trip.poll_mode. The
+  // server flag flips true the moment the owner taps "Set up date poll"
+  // — activatePoll's tRPC mutation does an optimistic cache write that
+  // sets trip.poll_mode = true synchronously, so the takeover feels
+  // instant without needing a separate local latch. Clearing follows
+  // the same path: locking a window / cancelling the poll / picking
+  // dates via DatesSheet all set poll_mode = false and the surface
+  // collapses back to the normal grid.
+  const pollMode = !!trip.poll_mode;
 
   // Destination string for the eyebrow + location graphic. Prefer the
   // explicit locked-destination location (semantic geographic string),
@@ -232,13 +213,19 @@ export function FreshTripGuide({
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* Step 1 — Set dates (flip card; primary CTA) */}
+          {/* SetDatesFlipCard's onPollExpand / onPollCancel are no-ops
+              now — the takeover is purely server-state-driven via
+              activatePoll's optimistic write to trip.poll_mode, which
+              FreshTripGuide reads as `pollMode` and branches on
+              upstream. The callbacks remain on the interface for
+              future "local optimism" flows. */}
           <SetDatesFlipCard
             tripId={tripId}
             trip={trip}
             onTabChange={onTabChange}
             pollMode={false}
-            onPollExpand={() => setLocalPollMode(true)}
-            onPollCancel={() => setLocalPollMode(false)}
+            onPollExpand={() => {}}
+            onPollCancel={() => {}}
           />
           <StepCard
             number={2}
