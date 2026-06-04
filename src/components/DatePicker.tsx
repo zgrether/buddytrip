@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import {
   addMonths,
   applyRangeClick,
@@ -308,6 +309,7 @@ export function DatePicker(props: DatePickerProps) {
       {/* ── Popover calendar (portaled to <body> so it escapes any clipping
             ancestor and floats above the surrounding panel) ─────────────── */}
       {open && typeof document !== "undefined" && createPortal(
+        <ScrollLock>
         <div
           ref={popoverRef}
           role="dialog"
@@ -494,7 +496,8 @@ export function DatePicker(props: DatePickerProps) {
               Apply
             </button>
           </div>
-        </div>,
+        </div>
+        </ScrollLock>,
         document.body
       )}
     </div>
