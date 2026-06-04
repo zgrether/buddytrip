@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Pause, Pencil, Radio, Trash2, Trophy, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { ScrollLock } from "@/hooks/useScrollLock";
 
 interface Competition {
   id: string;
@@ -243,6 +244,7 @@ function DeleteCompetitionConfirmModal({
   const summary = describeCascade(teamsCount, eventsCount);
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -306,6 +308,7 @@ function DeleteCompetitionConfirmModal({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 
@@ -370,6 +373,7 @@ function CompetitionEditModal({
   const disabled = updateComp.isPending || trimmedName.length < 2;
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -490,6 +494,7 @@ function CompetitionEditModal({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 

@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { ScrollLock } from "@/hooks/useScrollLock";
 
 interface Props {
   competitionId: string;
@@ -567,6 +568,7 @@ function DeleteEventConfirmModal({
   onConfirm: () => void;
 }) {
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -630,6 +632,7 @@ function DeleteEventConfirmModal({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 

@@ -23,6 +23,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "./CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
@@ -840,6 +841,7 @@ function RemoveIdeaModal({
   };
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -886,6 +888,7 @@ function RemoveIdeaModal({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 

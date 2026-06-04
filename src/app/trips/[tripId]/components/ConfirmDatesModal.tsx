@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Calendar } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { parseLocalDate } from "@/lib/dates";
 
 export interface ConfirmDatesModalProps {
@@ -63,6 +64,7 @@ export function ConfirmDatesModal({
   const showClearWarning = hasPoll && !fromPollWindow && matchingWindow === null;
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-6"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -175,5 +177,6 @@ export function ConfirmDatesModal({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
