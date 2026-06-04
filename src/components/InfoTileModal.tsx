@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FC } from "react";
+import { createPortal } from "react-dom";
 import {
   Lock,
   Wifi,
@@ -382,7 +383,13 @@ export function InfoTileModal({
     remove.mutate({ tripId, tileId: tile.id });
   };
 
-  return (
+  // Portaled to <body> so the modal escapes the TripHeader subtree and lands
+  // in the root stacking context. Rendered inline, the tab FABs (also
+  // position:fixed, lower z-index, but in a sibling subtree) paint on top of
+  // it once react-remove-scroll sets `position: relative` on <body> during the
+  // scroll lock. AboutModal / FeedbackModal portal for the same reason.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <ScrollLock>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Scrim */}
@@ -570,7 +577,8 @@ export function InfoTileModal({
         </div>
       </div>
     </div>
-    </ScrollLock>
+    </ScrollLock>,
+    document.body,
   );
 }
 
