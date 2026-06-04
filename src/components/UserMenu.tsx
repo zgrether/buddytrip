@@ -29,6 +29,16 @@ export function UserMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  // Warm the /profile route chunk the moment the menu opens. The user
+  // has signalled intent (they tapped the avatar); by the time they
+  // pick "Account preferences" the JS for /profile is already downloaded
+  // so router.push lands the page instantly instead of waiting on the
+  // route bundle.
+  useEffect(() => {
+    if (!open) return;
+    router.prefetch("/profile");
+  }, [open, router]);
+
   // Outside-click + Escape to close. Listeners are only attached while
   // open, so they're registered AFTER the click that opened the menu —
   // the opening tap's mousedown has already fired and won't self-close.
