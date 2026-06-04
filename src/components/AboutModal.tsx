@@ -29,7 +29,12 @@ interface AboutModalProps {
 }
 
 export function AboutModal({ open, onClose }: AboutModalProps) {
-  useModalBackButton(open ? onClose : () => {});
+  // AboutModal is always mounted (UserMenu renders it on every TopNav-
+  // bearing page), so pass `open` as the `enabled` flag — otherwise the
+  // hook pushes a phantom history entry on mount and silently eats the
+  // first back-press on every page. Same bug class PR #288 fixed for
+  // DatesSheet; re-introduced here when AboutModal landed.
+  useModalBackButton(onClose, open);
 
   // ESC to close. Click-outside is handled by the scrim's onClick.
   useEffect(() => {
