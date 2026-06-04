@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { IconSettings, IconLogout } from "@tabler/icons-react";
+import { IconInfoCircle, IconSettings, IconLogout } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
+import { AboutModal } from "@/components/AboutModal";
+import { APP_VERSION } from "@/lib/version";
 
 /**
  * Top-right user affordance — the avatar opens a dropdown menu:
@@ -28,6 +30,11 @@ export function UserMenu() {
   const { data: me } = trpc.users.getMe.useQuery();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // About modal — opens from the highlighted "About BuddyTrip" row below
+  // and renders on top of the standard scrim. Keeping the state up here
+  // (vs. inside a sub-component) keeps the close-the-menu-then-open-the-
+  // modal sequencing trivially correct.
+  const [aboutOpen, setAboutOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   // SSR-safe portal target — the mobile dim backdrop has to render
   // outside the TopNav (which sets backdrop-filter, creating a
@@ -172,6 +179,46 @@ export function UserMenu() {
               Account preferences
             </button>
 
+            {/* About BuddyTrip — highlighted row with version tag on the
+                right. Per spec, the row uses an accent-faint fill +
+                accent border so the entry feels distinguished without
+                competing with the primary nav actions. Tapping it
+                closes the menu and opens AboutModal. */}
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="user-menu-about"
+              onClick={() => {
+                setOpen(false);
+                setAboutOpen(true);
+              }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{
+                color: "var(--color-bt-text)",
+                background: "var(--color-bt-accent-faint)",
+                borderTop: "0.5px solid var(--color-bt-accent-border)",
+                borderBottom: "0.5px solid var(--color-bt-accent-border)",
+              }}
+            >
+              <IconInfoCircle
+                size={16}
+                stroke={1.75}
+                style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
+                aria-hidden="true"
+              />
+              <span className="flex-1">About BuddyTrip</span>
+              <span
+                style={{
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 11,
+                  color: "var(--color-bt-text-dim)",
+                }}
+              >
+                {APP_VERSION}
+              </span>
+            </button>
+
             {/* Log out — separate section */}
             <button
               type="button"
@@ -195,6 +242,11 @@ export function UserMenu() {
           </div>
         </>
       )}
+
+      {/* About modal — opens from the highlighted row above. Rendered as
+          a sibling of the dropdown so the dropdown's outside-click /
+          containing-block logic doesn't entangle with the modal scrim. */}
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
 }
