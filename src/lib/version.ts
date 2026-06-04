@@ -1,19 +1,10 @@
-// ── App version metadata ─────────────────────────────────────────────────
+// ── App build metadata ───────────────────────────────────────────────────
 //
-// Single source of truth for the version + build strings surfaced in:
-//   • UserMenu's "About BuddyTrip" row (small "v0.9" tag on the right)
-//   • AboutModal's version pill in the header
-//   • AboutModal's mono build line at the bottom
-//
-// When bumping a release, edit APP_VERSION here. APP_BUILD is the date the
-// release went out — change it any time you cut a build the public will
-// see. Keep them in lockstep with `package.json`'s version if you wire
-// that up later; for now they live here so a non-trivial CI rewire isn't
-// required.
-
-/** Public version string (e.g. "v0.9"). Shown in the avatar-menu tag and
- *  the about-modal header pill. */
-export const APP_VERSION = "v0.9";
+// Single source of truth for the build date + last-shipped date surfaced
+// in the AboutModal. A user-facing version string (e.g. "v1.0") is
+// intentionally NOT defined here yet — the app hasn't formally versioned
+// a release, so the modal omits the version pill until that lands. When
+// it does, add `APP_VERSION` here and wire it back in.
 
 /** Build date in YYYY.MM.DD form. Shown in the about-modal's mono build
  *  line. Doesn't need to be precise to the commit — release-day date is

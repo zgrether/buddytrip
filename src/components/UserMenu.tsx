@@ -8,7 +8,6 @@ import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { AboutModal } from "@/components/AboutModal";
-import { APP_VERSION } from "@/lib/version";
 
 /**
  * Top-right user affordance — the avatar opens a dropdown menu:
@@ -179,11 +178,10 @@ export function UserMenu() {
               Account preferences
             </button>
 
-            {/* About BuddyTrip — highlighted row with version tag on the
-                right. Per spec, the row uses an accent-faint fill +
-                accent border so the entry feels distinguished without
-                competing with the primary nav actions. Tapping it
-                closes the menu and opens AboutModal. */}
+            {/* About BuddyTrip — styled identically to Account
+                preferences so it sits in the same visual rhythm. The
+                highlighted teal-tinted treatment was tried first and
+                dropped — too loud for what's a static info surface. */}
             <button
               type="button"
               role="menuitem"
@@ -193,30 +191,15 @@ export function UserMenu() {
                 setAboutOpen(true);
               }}
               className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{
-                color: "var(--color-bt-text)",
-                background: "var(--color-bt-accent-faint)",
-                borderTop: "0.5px solid var(--color-bt-accent-border)",
-                borderBottom: "0.5px solid var(--color-bt-accent-border)",
-              }}
+              style={{ color: "var(--color-bt-text)" }}
             >
               <IconInfoCircle
                 size={16}
                 stroke={1.75}
-                style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
+                style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
                 aria-hidden="true"
               />
-              <span className="flex-1">About BuddyTrip</span>
-              <span
-                style={{
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, monospace",
-                  fontSize: 11,
-                  color: "var(--color-bt-text-dim)",
-                }}
-              >
-                {APP_VERSION}
-              </span>
+              About BuddyTrip
             </button>
 
             {/* Log out — separate section */}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, Info, Megaphone, Shield, Tag, X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
-import { APP_BUILD, APP_LAST_SHIPPED, APP_VERSION } from "@/lib/version";
+import { APP_BUILD, APP_LAST_SHIPPED } from "@/lib/version";
 
 // ── AboutModal ───────────────────────────────────────────────────────────
 //
@@ -60,52 +60,25 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
       role="dialog"
       aria-modal="true"
       aria-label="About BuddyTrip"
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
       onClick={onClose}
     >
+      {/* Chrome mirrors TripSettingsModal exactly: mobile bottom-sheet
+          (top corners only, full width) → desktop centered dialog at
+          lg+ with all four corners. max-h-[85vh] + overflow-y-auto
+          keeps the modal inside the viewport on short screens — the
+          earlier version had no scroll containment and would drift off
+          the top edge when the content exceeded the viewport. */}
       <div
-        // Bottom-sheet shape on phones (top corners only, no side border);
-        // centered dialog on sm+ (full rounded-xl + shadow + border).
-        // animate-fade-in adds the spec'd 4px translateY + opacity fade.
-        className="animate-fade-in relative w-full sm:max-w-[460px]"
+        className="animate-fade-in w-full max-w-[460px] max-h-[85vh] overflow-y-auto rounded-t-2xl lg:rounded-2xl"
         style={{
           background: "var(--color-bt-card)",
           border: "1px solid var(--color-bt-border)",
-          borderRadius: 0,
-          // CSS doesn't let us set a single token for "top-corners on
-          // mobile, all corners on desktop". Inline both via the
-          // computed style below.
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Hack the radius via inline style so mobile gets top-only and
-            desktop gets all four. Tailwind arbitrary classes don't compose
-            cleanly across breakpoints for radius. */}
-        <style>{`
-          .bt-about-shell {
-            border-radius: 18px 18px 0 0;
-            box-shadow: var(--shadow-floating);
-          }
-          @media (min-width: 640px) {
-            .bt-about-shell { border-radius: var(--radius-xl, 16px); }
-          }
-        `}</style>
-        <div className="bt-about-shell">
-          {/* ── Mobile grab handle ─────────────────────────────────── */}
-          <div className="flex justify-center pt-2 sm:hidden">
-            <span
-              aria-hidden="true"
-              style={{
-                display: "block",
-                width: 36,
-                height: 4,
-                borderRadius: 999,
-                background: "var(--color-bt-border)",
-              }}
-            />
-          </div>
-
+        <div>
           {/* ── Header row ─────────────────────────────────────────── */}
           <div
             className="flex items-center"
@@ -133,20 +106,6 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
               }}
             >
               BuddyTrip
-            </span>
-            <span
-              style={{
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--color-bt-accent)",
-                background: "var(--color-bt-accent-faint)",
-                border: "1px solid var(--color-bt-accent-border)",
-                borderRadius: 9999,
-                padding: "2px 8px",
-              }}
-            >
-              {APP_VERSION}
             </span>
             <span
               style={{
@@ -182,11 +141,8 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
           </div>
 
           {/* ── Origin story ───────────────────────────────────────── */}
-          {/* Copy is verbatim per spec. Paragraphs 1 + 4 use the strong
-              text color; 2 + 3 use the dim color. Final clause is accent
-              + 600. ⚠️ Spec notes "BBMI is the tool we wished we'd had"
-              even though the product is BuddyTrip — flagged for founder
-              review in the handoff doc. Rendering as written. */}
+          {/* Paragraphs 1 + 4 use the strong text color; 2 + 3 use the
+              dim color. Final clause is accent + 600. */}
           <div
             style={{
               padding: "8px 18px 4px",
@@ -216,7 +172,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
               left in the cart.
             </p>
             <p style={{ color: "var(--color-bt-text)", margin: 0 }}>
-              BBMI is the tool we wished we&rsquo;d had from year one.{" "}
+              BuddyTrip is the tool we wished we&rsquo;d had from year one.{" "}
               <span
                 style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}
               >
@@ -280,7 +236,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
                 color: "var(--color-bt-text-dim)",
               }}
             >
-              {APP_VERSION} · build {APP_BUILD}
+              build {APP_BUILD}
             </span>
             <span
               style={{
@@ -289,7 +245,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
                 color: "var(--color-bt-text-dim)",
               }}
             >
-              Made for BBMI · Pinehurst, NC
+              Made for BuddyTrip
             </span>
           </div>
         </div>
