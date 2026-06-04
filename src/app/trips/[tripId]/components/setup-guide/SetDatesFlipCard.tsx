@@ -31,7 +31,6 @@ import {
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import { formatDateRangeCompact } from "@/lib/dates";
 import { CalendarThumbnail } from "./thumbnails";
-import { DatePollCard } from "../../tabs/components/DatePollCard";
 import type { TripData } from "../../tabs/types";
 
 // ── SetDatesFlipCard ──────────────────────────────────────────────────────
@@ -46,18 +45,8 @@ import type { TripData } from "../../tabs/types";
 export interface SetDatesFlipCardProps {
   tripId: string;
   trip: TripData;
-  /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect
-   *  and by DatePollCard's "Manage crew →" header link. */
+  /** Navigate to the Crew tab — used by the Poll-branch <2 crew redirect. */
   onTabChange?: (tab: string) => void;
-  /** True when the parent has expanded this card to span the whole grid
-   *  so the poll builder has room to grow horizontally. The card stays
-   *  flipped to its back face while this is on. */
-  pollMode?: boolean;
-  /** Called when the user taps "Set up date poll →" with ≥2 crew. The
-   *  parent flips pollMode on and re-renders the grid full-width. */
-  onPollExpand?: () => void;
-  /** Cancels poll mode and returns the parent to the regular 4-up grid. */
-  onPollCancel?: () => void;
 }
 
 type PickerTab = "pick" | "poll";
@@ -78,16 +67,15 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   tripId,
   trip,
   onTabChange,
-  pollMode = false,
-  onPollExpand,
-  onPollCancel,
 }) => {
   const tint = DOMAIN_COLORS.home;
-  // While pollMode is on, the card stays on its back face — the parent
-  // has already widened the column, so flipping back to the front face
-  // mid-poll would just show a stretched-out Set Dates card.
+  // Local flip state — the card sits on its front face until the owner
+  // opens the picker, then flips to the back face. The poll surface
+  // lives entirely upstream now (FreshTripGuide swaps to <DatePollCard>
+  // at the section level when trip.poll_mode is true), so there's no
+  // server-state-driven flip override here anymore.
   const [flipped, setFlipped] = useState(false);
-  const showBack = flipped || pollMode;
+  const showBack = flipped;
   const [tab, setTab] = useState<PickerTab>("pick");
   // Two-step confirm before launching a poll when dates are already
   // locked. Tapping "Set up date poll" while datesSet swaps the centered
@@ -322,29 +310,16 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         >
           Set your dates
         </p>
-        {/* Hide the X when a poll is *server-active* — once the owner has
-            added a window, the only sensible exits are "lock a window"
-            (via DatePollCard's Select-this-date) or "Clear poll" (also
-            inside DatePollCard). A drive-by X that just hides the local
-            pollMode would leave the poll running with no way back to
-            it on the home tab. The X stays when we're flipped only
-            locally (no poll started yet) so users can back out of a
-            curious-tap. */}
-        {!trip.poll_mode && (
-          <button
-            type="button"
-            onClick={() => {
-              if (pollMode) onPollCancel?.();
-              setFlipped(false);
-            }}
-            aria-label="Close picker"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            data-testid="guide-dates-flip-back"
-          >
-            <X size={14} />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setFlipped(false)}
+          aria-label="Close picker"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          data-testid="guide-dates-flip-back"
+        >
+          <X size={14} />
+        </button>
       </div>
 
       {/* Pick / Poll tabs — mirrors the ModeButton segmented control in
@@ -353,36 +328,32 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           surface), same vertical 1px divider between the two halves.
           Labels are shortened to "Pick" / "Poll" because the full
           "Pick dates" / "Poll the crew" don't fit the card-column width
-          alongside the leading icons. Hidden once the parent has
-          committed to pollMode; the builder is a single-purpose surface
-          and tab-switching mid-build is noise. */}
-      {!pollMode && (
+          alongside the leading icons. */}
+      <div
+        className="mb-3 flex overflow-hidden rounded-xl"
+        style={{ border: "1px solid var(--color-bt-border)" }}
+      >
+        <FlipModeButton
+          active={tab === "pick"}
+          onClick={() => setTab("pick")}
+          icon={<CalendarCheck size={13} />}
+          label="Pick"
+          testId="guide-dates-tab-pick"
+        />
         <div
-          className="mb-3 flex overflow-hidden rounded-xl"
-          style={{ border: "1px solid var(--color-bt-border)" }}
-        >
-          <FlipModeButton
-            active={tab === "pick"}
-            onClick={() => setTab("pick")}
-            icon={<CalendarCheck size={13} />}
-            label="Pick"
-            testId="guide-dates-tab-pick"
-          />
-          <div
-            className="w-px self-stretch"
-            style={{ background: "var(--color-bt-border)" }}
-          />
-          <FlipModeButton
-            active={tab === "poll"}
-            onClick={() => setTab("poll")}
-            icon={<Users size={13} />}
-            label="Poll"
-            testId="guide-dates-tab-poll"
-          />
-        </div>
-      )}
+          className="w-px self-stretch"
+          style={{ background: "var(--color-bt-border)" }}
+        />
+        <FlipModeButton
+          active={tab === "poll"}
+          onClick={() => setTab("poll")}
+          icon={<Users size={13} />}
+          label="Poll"
+          testId="guide-dates-tab-poll"
+        />
+      </div>
 
-      {tab === "pick" && !pollMode ? (
+      {tab === "pick" ? (
         <InlineRangeCalendar
           initialStart={trip.start_date ?? null}
           initialEnd={trip.end_date ?? null}
@@ -451,28 +422,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
             or just pick the dates yourself
           </button>
         </div>
-      ) : pollMode ? (
-        // The real DatePollCard takes over the expanded back face. This
-        // is the same surface DatesSheet renders in its poll mode, kept
-        // canonical so there's only one polling UI in the app. Once the
-        // owner adds the first window, DatePollCard sets trip.poll_mode
-        // = true, which keeps pollMode latched on (FreshTripGuide ORs
-        // the server flag with the local flag) — so navigating away and
-        // back, or any member opening the home tab, lands on the poll.
-        // Wrapped in an overflow-y-auto pane so a long crew × windows
-        // grid scrolls inside the card instead of pushing the layout. */}
-        <div
-          className="-mx-3 -mt-1 flex-1 overflow-y-auto px-3"
-          data-testid="poll-builder"
-        >
-          <DatePollCard
-            trip={trip}
-            isOwner
-            onManageCrew={
-              onTabChange ? () => onTabChange("crew") : undefined
-            }
-          />
-        </div>
       ) : confirmReplaceWithPoll ? (
         // ≥2 crew + dates already locked + owner tapped "Set up date
         // poll": red-tinted warning that committing the poll will clear
@@ -535,7 +484,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
                   { tripId },
                   {
                     onSettled: () => {
-                      onPollExpand?.();
                       if (!trip.poll_mode) {
                         activatePoll.mutate({ tripId, pollMode: true });
                       }
@@ -593,11 +541,11 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
                 setConfirmReplaceWithPoll(true);
                 return;
               }
-              // Local pollMode latches the takeover immediately so the
-              // tap feels instant; activatePoll flips trip.poll_mode
-              // server-side so the home tab defaults to the poll for
-              // every other member, even before any windows exist.
-              onPollExpand?.();
+              // activatePoll flips trip.poll_mode server-side; the
+              // optimistic cache write inside the mutation makes the
+              // takeover feel instant for everyone watching the trip
+              // (FreshTripGuide swaps to <DatePollCard> on its next
+              // render).
               if (!trip.poll_mode) {
                 activatePoll.mutate({ tripId, pollMode: true });
               }
@@ -627,9 +575,9 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   );
 
   // Calendar + presets + Save row need ≈420px of vertical room. We only
-  // pin that height while the back face is up (flipped or pollMode);
-  // the front face sizes to its own content so we don't push the
-  // resting card taller than it needs to be.
+  // pin that height while the back face is up; the front face sizes
+  // to its own content so we don't push the resting card taller than
+  // it needs to be.
   const FLIPPED_MIN_H = 420;
 
   return (
@@ -643,7 +591,6 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
           minHeight: showBack ? FLIPPED_MIN_H : undefined,
         }}
         data-testid="guide-step-dates"
-        data-pollmode={pollMode ? "true" : "false"}
       >
         {/* Front — sizes to its own content. Not absolute so it
             collapses cleanly when the back face's minHeight isn't

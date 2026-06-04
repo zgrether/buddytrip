@@ -261,35 +261,6 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // unlockDestination — Owner only
-  // -----------------------------------------------------------------------
-  unlockDestination: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx }) => {
-      const { data, error } = await ctx.supabase
-        .from("trips")
-        .update({
-          locked_destination_title: null,
-          locked_destination_location: null,
-          locked_destination_at: null,
-          comparison_mode: true,
-        })
-        .eq("id", ctx.tripId)
-        .select()
-        .single();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to unlock destination",
-        });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
   // renameTripName — Owner or Planner can rename
   // -----------------------------------------------------------------------
   renameTripName: authedProcedure

@@ -63,22 +63,6 @@ describe("schedule router", () => {
     expect(items.length).toBe(2);
   });
 
-  // ── confirm ───────────────────────────────────────────────────────────
-
-  it("confirm — planner can confirm a tentative item", async () => {
-    const caller = ctx.callerAs("planner");
-    const confirmed = await caller.schedule.confirm({ tripId, itemId: itemAId });
-    expect(confirmed.is_confirmed).toBe(true);
-    expect(confirmed.confirmed_at).toBeTruthy();
-  });
-
-  it("confirm — member cannot confirm", async () => {
-    const caller = ctx.callerAs("member");
-    await expect(
-      caller.schedule.confirm({ tripId, itemId: itemAId })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
   // ── reorder ───────────────────────────────────────────────────────────
 
   it("reorder — planner can reorder items", async () => {

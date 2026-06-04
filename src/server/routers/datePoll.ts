@@ -566,47 +566,4 @@ export const datePollRouter = router({
       return { success: true };
     }),
 
-  // -----------------------------------------------------------------------
-  // resetPoll — Owner or Planner: clear all votes. Windows are preserved.
-  // -----------------------------------------------------------------------
-  resetPoll: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { data: windows, error: winErr } = await ctx.supabase
-        .from("date_windows")
-        .select("id")
-        .eq("trip_id", ctx.tripId);
-
-      if (winErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to read date windows: ${winErr.message}`,
-        });
-      }
-
-      const ids = (windows ?? []).map((w) => w.id);
-      if (ids.length > 0) {
-        const { error } = await ctx.supabase
-          .from("date_poll_votes")
-          .delete()
-          .in("window_id", ids);
-
-        if (error) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to reset votes: ${error.message}`,
-          });
-        }
-      }
-
-      await ctx.supabase
-        .from("date_polls")
-        .upsert(
-          { trip_id: ctx.tripId, open: true },
-          { onConflict: "trip_id" }
-        );
-
-      return { success: true };
-    }),
 });

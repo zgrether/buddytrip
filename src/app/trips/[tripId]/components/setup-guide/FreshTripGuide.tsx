@@ -206,19 +206,10 @@ export function FreshTripGuide({
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* Step 1 — Set dates (flip card; primary CTA) */}
-          {/* SetDatesFlipCard's onPollExpand / onPollCancel are no-ops
-              now — the takeover is purely server-state-driven via
-              activatePoll's optimistic write to trip.poll_mode, which
-              FreshTripGuide reads as `pollMode` and branches on
-              upstream. The callbacks remain on the interface for
-              future "local optimism" flows. */}
           <SetDatesFlipCard
             tripId={tripId}
             trip={trip}
             onTabChange={onTabChange}
-            pollMode={false}
-            onPollExpand={() => {}}
-            onPollCancel={() => {}}
           />
           <StepCard
             number={2}
