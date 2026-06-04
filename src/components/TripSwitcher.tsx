@@ -80,7 +80,13 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
   // otherwise the backdrop is sized to the header bounds and only
   // dims the title bar — exactly the bug this whole component had.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    // Canonical "are we in the browser" flag for the portal target.
+    // Synchronizing with an external system (document) is exactly the
+    // setState-in-effect use the React docs whitelist.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   const { data: trips = [] } = trpc.trips.list.useQuery(undefined, {
     enabled: open, // don't fire query until user opens the switcher

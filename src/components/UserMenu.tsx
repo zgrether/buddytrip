@@ -35,7 +35,13 @@ export function UserMenu() {
   // backdrop is sized to the header bounds and only dims the title
   // bar instead of the content below.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    // Canonical "are we in the browser" flag for the portal target.
+    // Synchronizing with an external system (document) is exactly the
+    // setState-in-effect use the React docs whitelist.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   // Warm the /profile route chunk the moment the menu opens. The user
   // has signalled intent (they tapped the avatar); by the time they

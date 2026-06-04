@@ -128,11 +128,20 @@ export default function TripDetailPage() {
   // until their tripMembers.list cache goes stale or they reload.
   useRealtimeMembers(tripId);
 
-  // Remember the most recently visited trip so root-route redirect
-  // (src/app/page.tsx) can drop the user back here on return visits.
+  // Remember the most recently visited trip so the root-route Server
+  // Component (src/app/page.tsx) can 307 the user back here on return
+  // visits without any client work. The cookie has to be readable
+  // server-side, so document.cookie writes the same value the
+  // localStorage entry holds — kept in sync here and in the same
+  // tick. 1 year expiry, lax SameSite (sent on direct navigation
+  // back to /), Path=/ so / and /trips/* both see it.
   useEffect(() => {
     if (tripId && typeof window !== "undefined") {
       window.localStorage.setItem("bt-last-trip-id", tripId);
+      const oneYearSec = 60 * 60 * 24 * 365;
+      document.cookie =
+        `bt-last-trip-id=${encodeURIComponent(tripId)}; ` +
+        `Max-Age=${oneYearSec}; Path=/; SameSite=Lax`;
     }
   }, [tripId]);
 
