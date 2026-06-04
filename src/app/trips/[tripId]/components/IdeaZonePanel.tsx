@@ -1280,7 +1280,7 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
   useModalBackButton(onClose);
 
   return (
-    <>
+    <ScrollLock>
       {/* Mobile — bottom sheet */}
       <div
         className="fixed inset-0 z-50 flex items-end lg:hidden"
@@ -1332,7 +1332,7 @@ function AddIdeasModal({ tripId, onClose }: { tripId: string; onClose: () => voi
           <EmptyStateOnboarding tripId={tripId} onClose={onClose} />
         </div>
       </div>
-    </>
+    </ScrollLock>
   );
 }
 
@@ -1474,6 +1474,7 @@ function SetDestinationSheet({
   };
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -1630,6 +1631,7 @@ function SetDestinationSheet({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 
@@ -1743,6 +1745,7 @@ function MobileCoPlannerSheet({
   useModalBackButton(onClose);
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end lg:hidden"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -1825,6 +1828,7 @@ function MobileCoPlannerSheet({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 
@@ -1898,13 +1902,6 @@ export default function IdeaZonePanel({
     setEmailPreselectIds(memberIds);
     setShowEmailModal(true);
   };
-
-  useEffect(() => {
-    if (showAddModal) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
-    }
-  }, [showAddModal]);
 
   const { data: ideas = [] } = trpc.ideas.list.useQuery({ tripId });
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -2177,6 +2174,7 @@ export default function IdeaZonePanel({
           invitation ("I'm starting to plan a trip and could use your help")
           rather than the going-stage "it's on" copy. */}
       {showEmailModal && (
+        <ScrollLock>
         <div
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
           style={{ background: "var(--color-bt-overlay)" }}
@@ -2197,6 +2195,7 @@ export default function IdeaZonePanel({
             />
           </div>
         </div>
+        </ScrollLock>
       )}
 
       {/* Member editor — drawer on desktop, bottom sheet on mobile (the

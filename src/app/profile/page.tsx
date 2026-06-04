@@ -14,6 +14,7 @@ import {
   IconArrowLeft,
 } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
 import { TopNav } from "@/components/TopNav";
@@ -764,6 +765,7 @@ function SheetShell({
   children: React.ReactNode;
 }) {
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center md:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -796,6 +798,7 @@ function SheetShell({
         <div className="px-5 py-5">{children}</div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 

@@ -797,6 +797,7 @@ export function EventSheet({
   ) / 1e9;
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -1066,6 +1067,7 @@ export function EventSheet({
         )}
       </div>
     </div>
+    </ScrollLock>
   );
 }
 

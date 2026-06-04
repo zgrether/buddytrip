@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, X, Search, MapPin, Flag, Clock } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { DatePicker } from "@/components/DatePicker";
@@ -407,7 +408,7 @@ export function AddScheduleItemSheet({
     (isGolf ? !!selectedCourse : !!title.trim()) && isDirty;
 
   return (
-    <>
+    <ScrollLock>
       {/* Tiered backdrop tokens — sheet (mobile) vs drawer (desktop). */}
       <div
         className="fixed inset-0 z-40 sm:hidden"
@@ -982,6 +983,6 @@ export function AddScheduleItemSheet({
           </button>
         </div>
       </div>
-    </>
+    </ScrollLock>
   );
 }

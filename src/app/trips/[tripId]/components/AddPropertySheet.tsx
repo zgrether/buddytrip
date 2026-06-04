@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { Hotel, Link, MapPin, ImagePlus, X, Clock } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { createClient } from "@/lib/supabase";
 import { DatePicker } from "@/components/DatePicker";
 import { TimePicker } from "@/components/TimePicker";
@@ -376,7 +377,7 @@ export function AddPropertySheet({
   };
 
   return (
-    <>
+    <ScrollLock>
       {/* Backdrops — separate elements so each can carry the right
           overlay token for its breakpoint (sheet alpha on mobile,
           drawer alpha on desktop), matching the MemberEditor pattern. */}
@@ -794,6 +795,6 @@ export function AddPropertySheet({
           </button>
         </div>
       </div>
-    </>
+    </ScrollLock>
   );
 }

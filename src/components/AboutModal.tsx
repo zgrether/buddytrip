@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { ExternalLink, Info, Megaphone, Shield, Tag, X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { APP_BUILD, APP_LAST_SHIPPED } from "@/lib/version";
 
 // ── AboutModal ───────────────────────────────────────────────────────────
@@ -80,6 +81,7 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
   if (!open || !mounted) return null;
 
   return createPortal(
+    <ScrollLock>
     <div
       role="dialog"
       aria-modal="true"
@@ -277,7 +279,8 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
           </div>
         </div>
       </div>
-    </div>,
+    </div>
+    </ScrollLock>,
     document.body,
   );
 }

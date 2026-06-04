@@ -21,6 +21,7 @@ import {
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
 import { trpc } from "@/lib/trpc-client";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
 import { DND_EVENT_KEY } from "@/components/competition/EventsPanel";
@@ -1490,7 +1491,7 @@ export function ScheduleTab({
 
       {/* Day-picker sheet — mobile scheduling for On Deck items */}
       {dayPickerItem && (
-        <>
+        <ScrollLock>
           {/* Tiered backdrop tokens — sheet (mobile) vs drawer (desktop),
               matching AddScheduleItemSheet. */}
           <div
@@ -1619,11 +1620,12 @@ export function ScheduleTab({
               </button>
             </div>
           </div>
-        </>
+        </ScrollLock>
       )}
 
       {/* Competition event linker — mobile picker to link a comp event to an agenda item */}
       {linkCompEvent && (
+        <ScrollLock>
         <div
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
           style={{ background: "var(--color-bt-overlay)" }}
@@ -1689,6 +1691,7 @@ export function ScheduleTab({
             </div>
           </div>
         </div>
+        </ScrollLock>
       )}
 
       {/* Delete confirmation dialog */}

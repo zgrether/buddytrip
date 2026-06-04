@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { RoleBadge } from "@/components/RoleBadge";
 import { formatDateRangeCompact, parseLocalDate, toISODate } from "@/lib/dates";
 import { DatePicker } from "@/components/DatePicker";
@@ -200,6 +201,7 @@ export function TripSettingsModal({
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -927,5 +929,6 @@ export function TripSettingsModal({
 
       </div>
     </div>
+    </ScrollLock>
   );
 }
