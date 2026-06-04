@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { ChevronRight } from "lucide-react";
 import {
   IconUser,
@@ -17,8 +18,54 @@ import { createClient } from "@/lib/supabase";
 import { useAuthLoaded, useAuthUser } from "@/lib/auth-context";
 import { TopNav } from "@/components/TopNav";
 import { Avatar } from "@/components/Avatar";
-import { AvatarIconPicker } from "@/components/AvatarIconPicker";
-import { ArchivedIdeasPanel } from "@/components/profile/ArchivedIdeasPanel";
+
+// Lazy-loaded — both panels are heavy (AvatarIconPicker statically
+// references all 96 Tabler icons via AVATAR_ICON_COMPONENTS; the
+// archived-ideas panel pulls its own tRPC query and list UI). Splitting
+// them into their own chunks keeps the profile route's initial JS
+// payload small so the page paints sooner. Each ships a tiny skeleton
+// placeholder so the layout doesn't reflow when the chunk lands.
+const AvatarIconPicker = dynamic(
+  () =>
+    import("@/components/AvatarIconPicker").then((m) => ({
+      default: m.AvatarIconPicker,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="rounded-xl"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "0.5px solid var(--color-bt-border)",
+          height: 244,
+        }}
+        aria-hidden
+      />
+    ),
+  },
+);
+
+const ArchivedIdeasPanel = dynamic(
+  () =>
+    import("@/components/profile/ArchivedIdeasPanel").then((m) => ({
+      default: m.ArchivedIdeasPanel,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex justify-center py-12">
+        <div
+          className="h-5 w-5 animate-spin rounded-full border-2"
+          style={{
+            borderColor: "var(--color-bt-accent)",
+            borderTopColor: "transparent",
+          }}
+        />
+      </div>
+    ),
+  },
+);
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -101,21 +148,11 @@ export default function ProfilePage() {
   // ── OAuth detection ───────────────────────────────────────────────────
   const isGoogleUser = authUser?.app_metadata?.provider === "google";
 
-  if (!authLoaded || isLoading || !me) {
-    return (
-      <div className="min-h-screen" style={{ background: "var(--color-bt-base)" }}>
-        <TopNav hideTripSwitcher hideNews />
-        <div className="flex justify-center py-16">
-          <div
-            className="h-6 w-6 animate-spin rounded-full border-2"
-            style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  const displayName = me.name ?? me.email ?? "You";
+  // Page-data readiness — gates ONLY the content area. The chrome
+  // (TopNav, sidebar, mobile back button) renders immediately so the
+  // user sees something useful while users.getMe is in flight.
+  const dataReady = authLoaded && !!me;
+  const displayName = me?.name ?? me?.email ?? "You";
 
   return (
     <div
@@ -152,6 +189,22 @@ export default function ProfilePage() {
               </button>
             </div>
 
+            {!dataReady ? (
+              // Content-area loading state. The shell above (TopNav +
+              // sidebar) has already rendered, so the page reads as
+              // "loaded" while users.getMe finishes. Subsumes both the
+              // auth-hydration race and the initial query.
+              <div className="flex justify-center py-16">
+                <div
+                  className="h-6 w-6 animate-spin rounded-full border-2"
+                  style={{
+                    borderColor: "var(--color-bt-accent)",
+                    borderTopColor: "transparent",
+                  }}
+                />
+              </div>
+            ) : (
+            <>
             {/* Mobile shows everything stacked. Desktop renders only the
                 section matching the active sidebar tab. */}
 
@@ -365,15 +418,17 @@ export default function ProfilePage() {
                 </button>
               </Section>
             </div>
+            </>
+            )}
           </div>
         </main>
       </div>
 
       {/* ── Sheets ─────────────────────────────────────────────────────── */}
-      {openSheet === "name" && (
+      {me && openSheet === "name" && (
         <NameSheet currentName={me.name ?? ""} onClose={() => setOpenSheet(null)} />
       )}
-      {openSheet === "email" && (
+      {me && openSheet === "email" && (
         <EmailSheet currentEmail={me.email ?? ""} onClose={() => setOpenSheet(null)} />
       )}
       {openSheet === "password" && (

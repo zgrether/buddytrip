@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { IconSettings, IconLogout } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
@@ -28,6 +29,29 @@ export function UserMenu() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // SSR-safe portal target — the mobile dim backdrop has to render
+  // outside the TopNav (which sets backdrop-filter, creating a
+  // containing block for position:fixed descendants), otherwise the
+  // backdrop is sized to the header bounds and only dims the title
+  // bar instead of the content below.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // Canonical "are we in the browser" flag for the portal target.
+    // Synchronizing with an external system (document) is exactly the
+    // setState-in-effect use the React docs whitelist.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
+
+  // Warm the /profile route chunk the moment the menu opens. The user
+  // has signalled intent (they tapped the avatar); by the time they
+  // pick "Account preferences" the JS for /profile is already downloaded
+  // so router.push lands the page instantly instead of waiting on the
+  // route bundle.
+  useEffect(() => {
+    if (!open) return;
+    router.prefetch("/profile");
+  }, [open, router]);
 
   // Outside-click + Escape to close. Listeners are only attached while
   // open, so they're registered AFTER the click that opened the menu —
@@ -81,14 +105,20 @@ export function UserMenu() {
 
       {open && (
         <>
-          {/* Mobile dim backdrop — sm:hidden so it disappears once the
-              panel switches to absolute positioning on larger screens. */}
-          <div
-            className="fixed inset-0 z-40 sm:hidden"
-            style={{ background: "var(--color-bt-overlay)" }}
-            onClick={() => setOpen(false)}
-            aria-hidden="true"
-          />
+          {/* Mobile dim backdrop — portaled to <body> so it escapes
+              TopNav's containing block (the header sets backdrop-filter,
+              which per spec creates a containing block for descendant
+              position:fixed elements — a backdrop rendered inline would
+              be sized to the header and only dim the title bar). */}
+          {mounted && createPortal(
+            <div
+              className="fixed inset-0 z-30 sm:hidden"
+              style={{ background: "var(--color-bt-overlay)" }}
+              onClick={() => setOpen(false)}
+              aria-hidden="true"
+            />,
+            document.body,
+          )}
 
           <div
             role="menu"
