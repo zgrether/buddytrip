@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useParams } from "next/navigation";
 import { IconCheck, IconPlus } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
@@ -72,6 +73,14 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
   const router = useRouter();
   const params = useParams<{ tripId?: string }>();
   const currentTripId = params?.tripId ?? null;
+
+  // SSR-safe portal target. The mobile dim backdrop needs to render
+  // outside the TopNav (which sets backdrop-filter and therefore
+  // becomes a containing block for any descendant position:fixed),
+  // otherwise the backdrop is sized to the header bounds and only
+  // dims the title bar — exactly the bug this whole component had.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const { data: trips = [] } = trpc.trips.list.useQuery(undefined, {
     enabled: open, // don't fire query until user opens the switcher
@@ -145,19 +154,21 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
   return (
     <>
       {/* Mobile dim backdrop — sm:hidden so it disappears once the panel
-          switches to absolute positioning on larger screens. Mirrors the
-          same pattern as the notifications bell panel.
-          z-30 keeps the backdrop UNDER the TopNav header (z-40) so the
-          title bar stays at full clarity while the page content below
-          dims. Equal z-indices defer to DOM order; the backdrop is a
-          child of TopNav and rendered after, so a tied z-40 would
-          inadvertently cover the header. */}
-      <div
-        className="fixed inset-0 z-30 sm:hidden"
-        style={{ background: "var(--color-bt-overlay)" }}
-        onClick={onClose}
-        aria-hidden="true"
-      />
+          switches to absolute positioning on larger screens.
+          Portaled to <body> so it escapes TopNav's containing block
+          (the header sets backdrop-filter, which per spec creates a
+          containing block for descendant position:fixed elements — a
+          backdrop rendered inline here would be sized to the header
+          and only dim the title bar). */}
+      {mounted && createPortal(
+        <div
+          className="fixed inset-0 z-30 sm:hidden"
+          style={{ background: "var(--color-bt-overlay)" }}
+          onClick={onClose}
+          aria-hidden="true"
+        />,
+        document.body,
+      )}
 
       {/* Panel — fixed on mobile (drops below nav), absolute on desktop.
           fixed top-14 = 56px from the header's own top edge (backdrop-filter

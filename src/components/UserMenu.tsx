@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { IconSettings, IconLogout } from "@tabler/icons-react";
 import { trpc } from "@/lib/trpc-client";
@@ -28,6 +29,13 @@ export function UserMenu() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // SSR-safe portal target — the mobile dim backdrop has to render
+  // outside the TopNav (which sets backdrop-filter, creating a
+  // containing block for position:fixed descendants), otherwise the
+  // backdrop is sized to the header bounds and only dims the title
+  // bar instead of the content below.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Warm the /profile route chunk the moment the menu opens. The user
   // has signalled intent (they tapped the avatar); by the time they
@@ -91,19 +99,20 @@ export function UserMenu() {
 
       {open && (
         <>
-          {/* Mobile dim backdrop — sm:hidden so it disappears once the
-              panel switches to absolute positioning on larger screens.
-              z-30 keeps the backdrop UNDER the TopNav header (z-40) so
-              the title bar stays at full clarity while the page content
-              below dims. Equal z-indices defer to DOM order; this
-              backdrop is rendered after the header in the same tree,
-              so a tied z-40 would inadvertently cover the title bar. */}
-          <div
-            className="fixed inset-0 z-30 sm:hidden"
-            style={{ background: "var(--color-bt-overlay)" }}
-            onClick={() => setOpen(false)}
-            aria-hidden="true"
-          />
+          {/* Mobile dim backdrop — portaled to <body> so it escapes
+              TopNav's containing block (the header sets backdrop-filter,
+              which per spec creates a containing block for descendant
+              position:fixed elements — a backdrop rendered inline would
+              be sized to the header and only dim the title bar). */}
+          {mounted && createPortal(
+            <div
+              className="fixed inset-0 z-30 sm:hidden"
+              style={{ background: "var(--color-bt-overlay)" }}
+              onClick={() => setOpen(false)}
+              aria-hidden="true"
+            />,
+            document.body,
+          )}
 
           <div
             role="menu"

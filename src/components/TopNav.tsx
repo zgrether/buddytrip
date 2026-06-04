@@ -158,7 +158,10 @@ export const TopNav: FC<TopNavProps> = ({
               onClick={() => setSwitcherOpen((p) => !p)}
               className="flex min-w-0 items-center gap-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{
-                background: "var(--color-bt-card-raised)",
+                // Transparent fill — the border alone is enough
+                // affordance and a card-raised surface read as a heavy
+                // chip against the translucent title bar.
+                background: "transparent",
                 border: "1px solid var(--color-bt-border)",
                 borderRadius: 9,
                 padding: "5px 9px 5px 7px",
