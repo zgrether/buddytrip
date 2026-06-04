@@ -64,11 +64,11 @@ import {
   type DateRange,
 } from "@/lib/calendar";
 import { parseLocalDate } from "@/lib/dates";
-import type { PollMember, PollWindow, VoteAnswer } from "./DatePollGrid";
+import type { PollMember, PollWindow, VoteAnswer } from "./datePollTypes";
 
 // ── Public types (re-export the bits callers already use) ────────────────
 
-export type { PollMember, PollWindow, VoteAnswer } from "./DatePollGrid";
+export type { PollMember, PollWindow, VoteAnswer } from "./datePollTypes";
 
 export interface DatePollStackedCardsProps {
   windows: PollWindow[];

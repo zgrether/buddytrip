@@ -41,10 +41,10 @@ export const datePollRouter = router({
         votesByWindow.set(v.window_id, arr);
       }
 
-      // Fetch locked_window_id + poll_note from date_polls
+      // Fetch locked_window_id from date_polls
       const { data: poll } = await ctx.supabase
         .from("date_polls")
-        .select("locked_window_id, poll_note")
+        .select("locked_window_id")
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
 
@@ -57,7 +57,6 @@ export const datePollRouter = router({
 
       return {
         lockedWindowId: poll?.locked_window_id ?? null,
-        pollNote: poll?.poll_note ?? null,
         pollMode: trip?.poll_mode ?? false,
         windows: (windows ?? []).map((w) => ({
           ...w,
@@ -567,77 +566,4 @@ export const datePollRouter = router({
       return { success: true };
     }),
 
-  // -----------------------------------------------------------------------
-  // updatePollNote — Owner: set the free-text note shown to crew at the top
-  // of the date poll. Pass null to clear it (UI falls back to default text).
-  // -----------------------------------------------------------------------
-  updatePollNote: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        note: z.string().max(500).nullable(),
-      })
-    )
-    .use(requireTripRole("Owner"))
-    .mutation(async ({ ctx, input }) => {
-      const { error } = await ctx.supabase
-        .from("date_polls")
-        .upsert(
-          { trip_id: ctx.tripId, open: true, poll_note: input.note },
-          { onConflict: "trip_id" }
-        );
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to update poll note: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // resetPoll — Owner or Planner: clear all votes. Windows are preserved.
-  // -----------------------------------------------------------------------
-  resetPoll: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { data: windows, error: winErr } = await ctx.supabase
-        .from("date_windows")
-        .select("id")
-        .eq("trip_id", ctx.tripId);
-
-      if (winErr) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to read date windows: ${winErr.message}`,
-        });
-      }
-
-      const ids = (windows ?? []).map((w) => w.id);
-      if (ids.length > 0) {
-        const { error } = await ctx.supabase
-          .from("date_poll_votes")
-          .delete()
-          .in("window_id", ids);
-
-        if (error) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to reset votes: ${error.message}`,
-          });
-        }
-      }
-
-      await ctx.supabase
-        .from("date_polls")
-        .upsert(
-          { trip_id: ctx.tripId, open: true },
-          { onConflict: "trip_id" }
-        );
-
-      return { success: true };
-    }),
 });

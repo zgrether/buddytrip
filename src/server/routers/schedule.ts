@@ -1,31 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
-
-/** Shared between schedule.listGolf and competitions.hydrate. */
-export async function listGolfSchedule(
-  ctx: { supabase: SupabaseClient },
-  tripId: string,
-) {
-  const { data, error } = await ctx.supabase
-    .from("schedule_items")
-    .select("*, course:golf_courses(*)")
-    .eq("trip_id", tripId)
-    .eq("item_type", "golf")
-    .eq("is_confirmed", true)
-    .order("scheduled_date", { ascending: true, nullsFirst: false })
-    .order("scheduled_time", { ascending: true, nullsFirst: false });
-
-  if (error) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Failed to fetch golf schedule items",
-    });
-  }
-  return data ?? [];
-}
 
 export const scheduleRouter = router({
   // -----------------------------------------------------------------------
@@ -51,17 +27,6 @@ export const scheduleRouter = router({
 
       return data ?? [];
     }),
-
-  // -----------------------------------------------------------------------
-  // listGolf — confirmed golf schedule items only, ordered chronologically.
-  // Used by VenuesPanel to surface tee times that can be linked to comp
-  // events. Unconfirmed items are still being negotiated in the Schedule
-  // tab and shouldn't be structural to the competition.
-  // -----------------------------------------------------------------------
-  listGolf: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripMember)
-    .query(({ ctx }) => listGolfSchedule(ctx, ctx.tripId!)),
 
   // -----------------------------------------------------------------------
   // create — Planner+ can add schedule items
@@ -182,64 +147,6 @@ export const scheduleRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update schedule item",
-        });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
-  // confirm — Planner+ can confirm a tentative schedule item
-  // -----------------------------------------------------------------------
-  confirm: authedProcedure
-    .input(z.object({ tripId: z.string(), itemId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      const { data, error } = await ctx.supabase
-        .from("schedule_items")
-        .update({
-          is_confirmed: true,
-          confirmed_at: new Date().toISOString(),
-          confirmed_by: ctx.user!.id,
-        })
-        .eq("id", input.itemId)
-        .eq("trip_id", ctx.tripId)
-        .select()
-        .single();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to confirm schedule item",
-        });
-      }
-
-      return data;
-    }),
-
-  // -----------------------------------------------------------------------
-  // unconfirm — Planner+ can unconfirm a confirmed schedule item
-  // -----------------------------------------------------------------------
-  unconfirm: authedProcedure
-    .input(z.object({ tripId: z.string(), itemId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx, input }) => {
-      const { data, error } = await ctx.supabase
-        .from("schedule_items")
-        .update({
-          is_confirmed: false,
-          confirmed_at: null,
-          confirmed_by: null,
-        })
-        .eq("id", input.itemId)
-        .eq("trip_id", ctx.tripId)
-        .select()
-        .single();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to unconfirm schedule item",
         });
       }
 

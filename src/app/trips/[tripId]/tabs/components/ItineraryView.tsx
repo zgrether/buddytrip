@@ -176,70 +176,69 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
     // the parent has no defined height (the Home tab now renders the
     // itinerary full-width — Travel Plans moved to the Crew tab).
     <div className="flex h-full flex-col space-y-3">
-      {!isEmpty && (
-        // Two-row header. Row 1: ITINERARY eyebrow on the left, the
-        // optional headerAction (e.g. "← Setup guide") on the right —
-        // same typography pattern the shared TabHeader uses across
-        // every entry tab. Row 2: filter pills.
-        <div className="space-y-4">
-          {/* items-baseline so the eyebrow h2 stays glued to its own
-              baseline instead of being centered against the slightly
-              taller action button — otherwise the row's items-center
-              alignment pushes the h2 ~1px lower than the same eyebrow
-              on the other tabs. */}
-          <div className="flex items-baseline justify-between gap-3">
-            <h2
-              className="text-[11px] font-semibold uppercase"
-              style={{
-                color: "var(--color-bt-accent)",
-                letterSpacing: "0.1em",
-              }}
-            >
-              Itinerary
-            </h2>
-            {headerAction && (
-              <div className="flex flex-shrink-0 items-center">
-                {headerAction}
-              </div>
-            )}
-          </div>
-
-          {showFilterPills && (
-            <div className="flex flex-wrap items-center gap-2">
-              <FilterPill
-                label="All"
-                tone="all"
-                active={activeFilters.has("all")}
-                onClick={() => toggleFilter("all")}
-              />
-              {hasLodging && (
-                <FilterPill
-                  label="Lodging"
-                  tone="lodging"
-                  active={activeFilters.has("lodging")}
-                  onClick={() => toggleFilter("lodging")}
-                />
-              )}
-              {hasTravel && (
-                <FilterPill
-                  label="Travel"
-                  tone="travel"
-                  active={activeFilters.has("travel")}
-                  onClick={() => toggleFilter("travel")}
-                />
-              )}
-              {hasEvents && (
-                <FilterPill
-                  label="Events"
-                  tone="events"
-                  active={activeFilters.has("events")}
-                  onClick={() => toggleFilter("events")}
-                />
-              )}
+      {/* Header — ITINERARY eyebrow on the left, optional headerAction
+          (e.g. the "Setup guide" toggle) on the right. Always rendered
+          so the orienting label and the route back to the guide stay
+          available even on the empty-state mockup. Filter pills under
+          the row only render when there's actually content to filter
+          (visibleCategoryCount > 1).
+          items-baseline so the eyebrow h2 stays glued to its own
+          baseline instead of being centered against the slightly
+          taller action button — otherwise items-center pushes the h2
+          ~1px lower than the same eyebrow on other tabs. */}
+      <div className="space-y-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2
+            className="text-[11px] font-semibold uppercase"
+            style={{
+              color: "var(--color-bt-accent)",
+              letterSpacing: "0.1em",
+            }}
+          >
+            Itinerary
+          </h2>
+          {headerAction && (
+            <div className="flex flex-shrink-0 items-center">
+              {headerAction}
             </div>
           )}
         </div>
-      )}
+
+        {!isEmpty && showFilterPills && (
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterPill
+              label="All"
+              tone="all"
+              active={activeFilters.has("all")}
+              onClick={() => toggleFilter("all")}
+            />
+            {hasLodging && (
+              <FilterPill
+                label="Lodging"
+                tone="lodging"
+                active={activeFilters.has("lodging")}
+                onClick={() => toggleFilter("lodging")}
+              />
+            )}
+            {hasTravel && (
+              <FilterPill
+                label="Travel"
+                tone="travel"
+                active={activeFilters.has("travel")}
+                onClick={() => toggleFilter("travel")}
+              />
+            )}
+            {hasEvents && (
+              <FilterPill
+                label="Events"
+                tone="events"
+                active={activeFilters.has("events")}
+                onClick={() => toggleFilter("events")}
+              />
+            )}
+          </div>
+        )}
+      </div>
 
       {isEmpty ? (
         <EmptyItineraryState onCancel={onCancel} />

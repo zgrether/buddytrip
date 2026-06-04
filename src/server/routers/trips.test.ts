@@ -74,7 +74,7 @@ describe("trips router", () => {
     await expect(caller.trips.getById({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // lockDestination / unlockDestination
+  // lockDestination
   it("lockDestination — owner can lock", async () => {
     const caller = ctx.caller();
     const trip = await caller.trips.lockDestination({
@@ -91,13 +91,6 @@ describe("trips router", () => {
     await expect(
       caller.trips.lockDestination({ tripId, title: "Somewhere", location: "Nowhere" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it("unlockDestination — owner can unlock and restores comparison_mode", async () => {
-    const caller = ctx.caller();
-    const trip = await caller.trips.unlockDestination({ tripId });
-    expect(trip.locked_destination_title).toBeNull();
-    expect(trip.comparison_mode).toBe(true);
   });
 
   // create with comparisonMode + lockedDestination

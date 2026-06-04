@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { ListChecks } from "lucide-react";
-import { trpc } from "@/lib/trpc-client";
 import { ItineraryView } from "../ItineraryView";
 import { DatePollCard } from "../DatePollCard";
 import {
@@ -59,33 +57,6 @@ export function ItineraryPanel({
   onTabChange,
 }: ItineraryPanelProps) {
   const [dismissed, setDismissed] = useGuideDismissed(tripId);
-  const utils = trpc.useUtils();
-  // Suppress the unused-warning for the legacy disable mutation — kept on
-  // standby for the (very rare) "back out of activation" flow if we wire
-  // it back in later. For now FreshTripGuide replaces the activation UI.
-  void useState; // imported above; tree-shaken if not used
-
-  // Legacy disable hook — no longer surfaced in the UI, but kept available
-  // so any prod data with itinerary_enabled=true and no content can still
-  // be reverted via a future affordance without re-plumbing.
-  const _disableItinerary = trpc.trips.disableItinerary.useMutation({
-    async onMutate() {
-      await utils.trips.getById.cancel({ tripId });
-      const prev = utils.trips.getById.getData({ tripId });
-      utils.trips.getById.setData({ tripId }, (old: TripData | undefined) =>
-        old ? { ...old, itinerary_enabled: false } : old,
-      );
-      return { prev };
-    },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev !== undefined)
-        utils.trips.getById.setData({ tripId }, ctx.prev);
-    },
-    onSettled() {
-      utils.trips.getById.invalidate({ tripId });
-    },
-  });
-  void _disableItinerary;
 
   const datesSet = !!(trip.start_date && trip.end_date);
   const pollActive = !!trip.poll_mode;
@@ -129,7 +100,6 @@ export function ItineraryPanel({
         <FreshTripGuide
           tripId={tripId}
           trip={trip}
-          onOpenDatesSheet={onOpenDatesSheet}
           onTabChange={onTabChange}
           onDismiss={() => setDismissed(true)}
         />
@@ -171,7 +141,6 @@ export function ItineraryPanel({
     <FreshTripGuide
       tripId={tripId}
       trip={trip}
-      onOpenDatesSheet={onOpenDatesSheet}
       onTabChange={onTabChange}
       onDismiss={() => setDismissed(true)}
     />

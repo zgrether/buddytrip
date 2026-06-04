@@ -914,7 +914,3 @@ function RoleControl({
 
 // (Task 55 inlined the role-change confirmation row into the drawer
 // footer; the standalone RoleConfirmationRow component is gone.)
-
-// Suppress unused-icon lint warning — `Mail` is referenced indirectly
-// in some build configurations.
-void Mail;

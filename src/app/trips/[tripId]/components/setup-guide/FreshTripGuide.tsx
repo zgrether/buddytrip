@@ -34,12 +34,6 @@ import type { TripData } from "../../tabs/types";
 export interface FreshTripGuideProps {
   tripId: string;
   trip: TripData;
-  /** Opens the existing DatesSheet. Kept on the interface for the parent
-   *  (ItineraryPanel) to keep wiring — there's no in-guide consumer
-   *  anymore since the inline poll surface (DatePollCard) replaced the
-   *  hand-off-to-DatesSheet placeholder, but the prop is harmless and
-   *  reserved for future "open the full picker" affordances. */
-  onOpenDatesSheet?: () => void;
   /** Navigate to a tab — drives the Lodging / Crew / Agenda CTAs and
    *  the Poll-branch "Add the crew first" redirect. */
   onTabChange?: (tab: string) => void;
@@ -50,7 +44,6 @@ export interface FreshTripGuideProps {
 export function FreshTripGuide({
   tripId,
   trip,
-  onOpenDatesSheet: _onOpenDatesSheet,
   onTabChange,
   onDismiss,
 }: FreshTripGuideProps) {
@@ -213,19 +206,10 @@ export function FreshTripGuide({
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* Step 1 — Set dates (flip card; primary CTA) */}
-          {/* SetDatesFlipCard's onPollExpand / onPollCancel are no-ops
-              now — the takeover is purely server-state-driven via
-              activatePoll's optimistic write to trip.poll_mode, which
-              FreshTripGuide reads as `pollMode` and branches on
-              upstream. The callbacks remain on the interface for
-              future "local optimism" flows. */}
           <SetDatesFlipCard
             tripId={tripId}
             trip={trip}
             onTabChange={onTabChange}
-            pollMode={false}
-            onPollExpand={() => {}}
-            onPollCancel={() => {}}
           />
           <StepCard
             number={2}
