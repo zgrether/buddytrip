@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import {
   addMonths,
   applyRangeClick,
@@ -247,7 +248,7 @@ export function DatesSheet({
   if (!isOpen) return null;
 
   return (
-    <>
+    <ScrollLock>
       {/* Backdrop + centred container. Click outside to dismiss. */}
       <div
         className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
@@ -369,7 +370,7 @@ export function DatesSheet({
           )}
         </div>
       </div>
-    </>
+    </ScrollLock>
   );
 }
 

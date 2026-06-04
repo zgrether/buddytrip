@@ -8,6 +8,7 @@ import { trpc } from "@/lib/trpc-client";
 import { createClient } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { AboutModal } from "@/components/AboutModal";
+import { ScrollLock } from "@/hooks/useScrollLock";
 
 /**
  * Top-right user affordance — the avatar opens a dropdown menu:
@@ -133,6 +134,7 @@ export function UserMenu({ onOpenFeedback }: UserMenuProps = {}) {
             document.body,
           )}
 
+          <ScrollLock>
           <div
             role="menu"
             aria-label="Account menu"
@@ -230,6 +232,7 @@ export function UserMenu({ onOpenFeedback }: UserMenuProps = {}) {
               Log out
             </button>
           </div>
+          </ScrollLock>
         </>
       )}
 

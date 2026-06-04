@@ -5,6 +5,7 @@ import { Mail, Plus, ShieldCheck, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
 import type { TabProps } from "./types";
@@ -899,6 +900,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           other tabs (Add Property, Add Receipt, Add Agenda) per
           round-4 item 9. */}
       {isOwner && showMobileAdd && (
+        <ScrollLock>
         <div className="fixed inset-0 z-50 sm:hidden">
           <div
             className="absolute inset-0"
@@ -961,11 +963,13 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             </div>
           </div>
         </div>
+        </ScrollLock>
       )}
 
       {/* Crew Email modal — kept from the previous design; out of spec
           scope but still useful. */}
       {showEmailModal && (
+        <ScrollLock>
         <div
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
           style={{ background: "var(--color-bt-overlay)" }}
@@ -988,6 +992,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
             />
           </div>
         </div>
+        </ScrollLock>
       )}
 
       {/* Member editor — drawer on desktop, bottom sheet on mobile.

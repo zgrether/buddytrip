@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { SplitPanel } from "./SplitPanel";
@@ -217,7 +218,7 @@ export function EditExpenseModal({
   }
 
   return (
-    <>
+    <ScrollLock>
       {/* Tiered backdrops — sheet alpha mobile, drawer alpha desktop. */}
       <div
         className="fixed inset-0 z-40 sm:hidden"
@@ -417,6 +418,6 @@ export function EditExpenseModal({
           </div>
         </div>
       </div>
-    </>
+    </ScrollLock>
   );
 }

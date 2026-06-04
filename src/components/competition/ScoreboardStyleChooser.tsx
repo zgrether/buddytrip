@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, X } from "lucide-react";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import {
   STYLE_COMPONENTS,
   STYLE_META,
@@ -33,6 +34,7 @@ export function ScoreboardStyleChooser({
   const ids = Object.keys(STYLE_META) as ScoreboardStyleId[];
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -140,5 +142,6 @@ export function ScoreboardStyleChooser({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }

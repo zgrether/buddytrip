@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Clock } from "lucide-react";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import {
   formatTime12,
   DAYPART_PRESETS,
@@ -205,6 +206,7 @@ export function TimePicker({
 
       {/* ── Popover wheels (portaled to <body>) ───────────────────────── */}
       {open && typeof document !== "undefined" && createPortal(
+        <ScrollLock>
         <div
           ref={popoverRef}
           role="dialog"
@@ -310,7 +312,8 @@ export function TimePicker({
               Set time
             </button>
           </div>
-        </div>,
+        </div>
+        </ScrollLock>,
         document.body
       )}
     </div>

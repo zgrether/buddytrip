@@ -358,6 +358,49 @@ split row when one doesn't exist yet, not just flip `opted_out`.
 
 ---
 
+### Unified `<Overlay>` primitive (portal + scroll lock + back button + backdrop)
+
+Overlay concerns are currently spread across separate cross-cutting
+hooks and hand-rolled markup in ~30 components: `useScrollLock`
+(react-remove-scroll), `useModalBackButton`, the backdrop/scrim div,
+and `createPortal`. Each overlay re-implements the same scaffolding by
+hand, and the four concerns are wired independently per component.
+
+A shared `<Overlay>` (or `<Modal>` / `<Sheet>`) primitive would absorb
+all four into one place: render children into a `document.body` portal,
+engage scroll lock while mounted, register the back-button intercept,
+and provide the standard scrim with click-to-dismiss.
+
+**Why it's worth doing (not just cosmetic):** today the non-portaled
+overlays (TripSettingsModal, InfoTileModal, expense modals, sheets,
+competition modals, etc.) are correct *only because* nothing above them
+in the tree sets `transform` / `filter` / `backdrop-filter`. Any of
+those properties on an ancestor becomes the containing block for
+`position: fixed` descendants — which is exactly why AboutModal,
+FeedbackModal, UserMenu, and TripSwitcher already have to portal out of
+`TopNav`'s `backdrop-filter` (`TopNav.tsx:99`). A primitive that always
+portals to `document.body` immunizes every overlay against this
+class of future breakage and makes the portal/no-portal split a
+non-decision.
+
+**What to build:**
+- `<Overlay>` component: `createPortal` to `document.body`, wrap content
+  in `ScrollLock`, call `useModalBackButton`, render scrim + centered/
+  bottom-sheet container variants.
+- Keep `useScrollLock` and `useModalBackButton` as the underlying
+  primitives (the Overlay composes them); they stay usable standalone
+  for the anchored popovers (DatePicker/TimePicker) that need bespoke
+  coordinate positioning rather than a scrim.
+- Migrate the ~30 overlays incrementally — no big-bang rewrite. The
+  scroll-lock + back-button wiring already exists, so migration is
+  mostly deleting per-component scaffolding.
+
+**When:** post-launch, as a consolidation pass. Not blocking — every
+overlay is functionally correct today. Revisit if/when page content
+gains a transformed or filtered ancestor, which would force the issue.
+
+---
+
 ## UX Polish (Logged, Not Urgent)
 
 ### Field Mode (outdoor scoring)

@@ -19,6 +19,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 
 type Visibility = "crew" | "planning";
 
@@ -353,19 +354,17 @@ function FloatingChatPanelInner({
     } catch { /* localStorage unavailable */ }
   }, [sheetHeight]);
 
-  // Mobile-only: lock body scroll while open.
+  // Mobile-only scroll lock: the bottom sheet locks the page behind it, but
+  // the desktop side panel must leave the page scrollable. Both subtrees live
+  // in the same (CSS-toggled) render, so we track the viewport and only enable
+  // <ScrollLock> on the mobile sheet at the mobile breakpoint.
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   useEffect(() => {
-    const mq = typeof window !== "undefined" ? window.matchMedia("(max-width: 1023px)") : null;
-    if (!mq) return;
-    const apply = () => {
-      document.body.style.overflow = mq.matches ? "hidden" : "";
-    };
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const apply = () => setIsMobileViewport(mq.matches);
     apply();
     mq.addEventListener("change", apply);
-    return () => {
-      mq.removeEventListener("change", apply);
-      document.body.style.overflow = "";
-    };
+    return () => mq.removeEventListener("change", apply);
   }, []);
 
   const sendMessage = trpc.messages.send.useMutation({
@@ -567,6 +566,7 @@ function FloatingChatPanelInner({
       </div>
 
       {/* ── Mobile: bottom sheet ───────────────────────────────────────── */}
+      <ScrollLock enabled={isMobileViewport}>
       <div
         className="lg:hidden fixed inset-0 z-50 flex items-end"
         style={{
@@ -623,6 +623,7 @@ function FloatingChatPanelInner({
           {body}
         </div>
       </div>
+      </ScrollLock>
     </>
   );
 }

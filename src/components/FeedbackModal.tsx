@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { trpc } from "@/lib/trpc-client";
 import { APP_BUILD } from "@/lib/version";
 
@@ -199,6 +200,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   };
 
   return createPortal(
+    <ScrollLock>
     <div
       role="dialog"
       aria-modal="true"
@@ -488,7 +490,8 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           </div>
         )}
       </div>
-    </div>,
+    </div>
+    </ScrollLock>,
     document.body,
   );
 }

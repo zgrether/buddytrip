@@ -5,6 +5,7 @@ import { ArrowUpCircle, Check, Mail, Plane, X } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import {
   useEmailValidation,
@@ -313,7 +314,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <>
+    <ScrollLock>
       {/* Backdrop — two tokens because drawer scrims are lighter than
           the modal/sheet ones (see Task 1). */}
       <div
@@ -754,7 +755,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           })()}
         </div>
       </div>
-    </>
+    </ScrollLock>
   );
 }
 

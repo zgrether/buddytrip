@@ -12,6 +12,7 @@ import {
 } from "@/lib/tripStatus";
 import { formatDateRange } from "@/lib/dates";
 import { getLocationInfo } from "@/lib/locationUtils";
+import { ScrollLock } from "@/hooks/useScrollLock";
 
 /**
  * Trip switcher — opens from the grid icon in TopNav.
@@ -181,6 +182,7 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
           makes the header the containing block for fixed children), which
           places the panel flush below the nav bar. Same trick as the bell
           notification dropdown. */}
+      <ScrollLock>
       <div
         ref={dropdownRef}
         role="dialog"
@@ -215,6 +217,7 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
           {body}
         </div>
       </div>
+      </ScrollLock>
     </>
   );
 }

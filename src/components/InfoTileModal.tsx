@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import type { LucideIcon } from "lucide-react";
 
 // ── Shared types + icon map ───────────────────────────────────────────────
@@ -382,6 +383,7 @@ export function InfoTileModal({
   };
 
   return (
+    <ScrollLock>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Scrim */}
       <div
@@ -568,6 +570,7 @@ export function InfoTileModal({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 

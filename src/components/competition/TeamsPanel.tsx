@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { TeamMemberChip } from "./TeamMemberChip";
 
@@ -592,6 +593,7 @@ function DeleteTeamConfirmModal({
   onConfirm: () => void;
 }) {
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -658,6 +660,7 @@ function DeleteTeamConfirmModal({
         </div>
       </div>
     </div>
+    </ScrollLock>
   );
 }
 
@@ -1057,6 +1060,7 @@ function TeamSheet({
   }
 
   return (
+    <ScrollLock>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       style={{ background: "var(--color-bt-overlay)" }}
@@ -1244,6 +1248,7 @@ function TeamSheet({
         )}
       </div>
     </div>
+    </ScrollLock>
   );
 }
 
