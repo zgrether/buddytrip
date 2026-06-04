@@ -26,9 +26,13 @@ import { APP_BUILD, APP_LAST_SHIPPED } from "@/lib/version";
 interface AboutModalProps {
   open: boolean;
   onClose: () => void;
+  /** When provided, the "Send feedback" row opens the shared FeedbackModal
+   *  instead of the mailto: fallback. UserMenu wires this through from
+   *  TopNav so the same modal serves both entry points. */
+  onOpenFeedback?: () => void;
 }
 
-export function AboutModal({ open, onClose }: AboutModalProps) {
+export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
   // AboutModal is always mounted (UserMenu renders it on every TopNav-
   // bearing page), so pass `open` as the `enabled` flag — otherwise the
   // hook pushes a phantom history entry on mount and silently eats the
@@ -219,12 +223,15 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
               icon={<Megaphone size={15} />}
               label="Send feedback"
               sub={<>Straight to the founder &mdash; it&rsquo;s beta, holler</>}
-              // The handoff says this should open the SAME feedback modal
-              // as the title-bar Feedback button. That modal doesn't exist
-              // yet (no shared FeedbackModal lives in src/components as of
-              // this writing). Falling back to a mailto: keeps the action
-              // functional; swap to the modal trigger when it lands.
-              href="mailto:hello@buddytrip.app?subject=BuddyTrip%20feedback"
+              // When onOpenFeedback is wired through (UserMenu → AboutModal),
+              // the row opens the shared FeedbackModal. Older call sites
+              // that don't pass the callback still get a functional mailto
+              // fallback so the row is never a dead link.
+              {...(onOpenFeedback
+                ? { onClick: onOpenFeedback }
+                : {
+                    href: "mailto:hello@buddytrip.app?subject=BuddyTrip%20feedback",
+                  })}
             />
             <AboutLink
               icon={<Shield size={15} />}
@@ -285,25 +292,35 @@ function AboutLink({
   label,
   sub,
   href,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: React.ReactNode;
   sub: React.ReactNode;
-  href: string;
+  /** External link target. Mutually exclusive with onClick — onClick wins
+   *  when both are passed so the in-app handler runs instead of opening
+   *  a new tab. */
+  href?: string;
+  /** In-app action (e.g. open another modal). Renders as a <button>. */
+  onClick?: () => void;
 }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center transition-colors hover:bg-[var(--color-bt-hover)]"
-      style={{
-        gap: 11,
-        padding: 10,
-        borderRadius: 10,
-        textDecoration: "none",
-      }}
-    >
+  const sharedClassName =
+    "flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]";
+  const sharedStyle: React.CSSProperties = {
+    gap: 11,
+    padding: 10,
+    borderRadius: 10,
+    textDecoration: "none",
+    textAlign: "left",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    color: "inherit",
+    font: "inherit",
+  };
+
+  const inner = (
+    <>
       <span
         aria-hidden="true"
         className="flex flex-shrink-0 items-center justify-center"
@@ -336,12 +353,39 @@ function AboutLink({
           {sub}
         </span>
       </span>
-      <ExternalLink
-        size={14}
-        strokeWidth={1.75}
-        style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
-        aria-hidden="true"
-      />
+      {!onClick && (
+        <ExternalLink
+          size={14}
+          strokeWidth={1.75}
+          style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
+          aria-hidden="true"
+        />
+      )}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={sharedClassName}
+        style={sharedStyle}
+      >
+        {inner}
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={sharedClassName}
+      style={sharedStyle}
+    >
+      {inner}
     </a>
   );
 }

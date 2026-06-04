@@ -25,7 +25,14 @@ import { AboutModal } from "@/components/AboutModal";
  * panels in TopNav (mousedown-outside + Escape; fixed below the nav on
  * mobile, absolute-anchored on desktop).
  */
-export function UserMenu() {
+interface UserMenuProps {
+  /** Hands a callback through to AboutModal so the "Send feedback" row
+   *  there opens the same FeedbackModal the title-bar megaphone uses. The
+   *  modal itself lives in TopNav so both entry points share one mount. */
+  onOpenFeedback?: () => void;
+}
+
+export function UserMenu({ onOpenFeedback }: UserMenuProps = {}) {
   const { data: me } = trpc.users.getMe.useQuery();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -229,7 +236,18 @@ export function UserMenu() {
       {/* About modal — opens from the highlighted row above. Rendered as
           a sibling of the dropdown so the dropdown's outside-click /
           containing-block logic doesn't entangle with the modal scrim. */}
-      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <AboutModal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        onOpenFeedback={
+          onOpenFeedback
+            ? () => {
+                setAboutOpen(false);
+                onOpenFeedback();
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
