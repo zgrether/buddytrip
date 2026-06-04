@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ExternalLink, Info, Megaphone, Shield, Tag, X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { APP_BUILD, APP_LAST_SHIPPED } from "@/lib/version";
@@ -53,9 +54,23 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
     return `${days} days ago`;
   });
 
-  if (!open) return null;
+  // SSR-safe portal target. The modal MUST render outside the TopNav
+  // tree — TopNav sets backdrop-filter: blur(14px), which per spec
+  // creates a containing block for any descendant position:fixed
+  // element. Inline, our `fixed inset-0` was sized to the TopNav's
+  // ~56px header instead of the viewport, so the centered dialog
+  // ended up clipped above and below the title bar. document.body
+  // has no such containing block — inset-0 is viewport-relative
+  // again. Same fix we applied to TripSwitcher / UserMenu backdrops.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
-  return (
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -250,7 +265,8 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
