@@ -92,9 +92,14 @@ export function UserMenu() {
       {open && (
         <>
           {/* Mobile dim backdrop — sm:hidden so it disappears once the
-              panel switches to absolute positioning on larger screens. */}
+              panel switches to absolute positioning on larger screens.
+              z-30 keeps the backdrop UNDER the TopNav header (z-40) so
+              the title bar stays at full clarity while the page content
+              below dims. Equal z-indices defer to DOM order; this
+              backdrop is rendered after the header in the same tree,
+              so a tied z-40 would inadvertently cover the title bar. */}
           <div
-            className="fixed inset-0 z-40 sm:hidden"
+            className="fixed inset-0 z-30 sm:hidden"
             style={{ background: "var(--color-bt-overlay)" }}
             onClick={() => setOpen(false)}
             aria-hidden="true"

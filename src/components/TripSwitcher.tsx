@@ -146,9 +146,14 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
     <>
       {/* Mobile dim backdrop — sm:hidden so it disappears once the panel
           switches to absolute positioning on larger screens. Mirrors the
-          same pattern as the notifications bell panel. */}
+          same pattern as the notifications bell panel.
+          z-30 keeps the backdrop UNDER the TopNav header (z-40) so the
+          title bar stays at full clarity while the page content below
+          dims. Equal z-indices defer to DOM order; the backdrop is a
+          child of TopNav and rendered after, so a tied z-40 would
+          inadvertently cover the header. */}
       <div
-        className="fixed inset-0 z-40 sm:hidden"
+        className="fixed inset-0 z-30 sm:hidden"
         style={{ background: "var(--color-bt-overlay)" }}
         onClick={onClose}
         aria-hidden="true"
