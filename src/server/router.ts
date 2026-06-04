@@ -17,6 +17,7 @@ import { scheduleRouter } from "./routers/schedule";
 import { golfCoursesRouter } from "./routers/golfCourses";
 import { ideaLodgingRouter } from "./routers/ideaLodging";
 import { archivedIdeasRouter } from "./routers/archivedIdeas";
+import { feedbackRouter } from "./routers/feedback";
 
 export const appRouter = router({
   health: publicProcedure.query(() => {
@@ -40,6 +41,7 @@ export const appRouter = router({
   golfCourses: golfCoursesRouter,
   ideaLodging: ideaLodgingRouter,
   archivedIdeas: archivedIdeasRouter,
+  feedback: feedbackRouter,
 });
 
 export type AppRouter = typeof appRouter;

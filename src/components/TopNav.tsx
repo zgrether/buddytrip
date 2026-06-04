@@ -3,10 +3,11 @@
 import type { FC } from "react";
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Pin, MessageCircle, ChevronDown } from "lucide-react";
+import { Pin, MessageCircle, Megaphone, ChevronDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
+import { FeedbackModal } from "./FeedbackModal";
 import { trpc } from "@/lib/trpc-client";
 import { useChatUnreadCount } from "./FloatingChatPanel";
 
@@ -69,6 +70,11 @@ export const TopNav: FC<TopNavProps> = ({
   const params = useParams<{ tripId?: string }>();
   const currentTripId = params?.tripId ?? null;
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  // FeedbackModal lives at the TopNav level so the same modal is reachable
+  // from the title-bar megaphone AND from the AboutModal "Send feedback"
+  // row (which opens via UserMenu → AboutModal → onOpenFeedback). One
+  // form, two entry points.
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   // Drives the breadcrumb label + Owner pill. TanStack dedupes against the
   // same query the page may already be running.
@@ -215,6 +221,21 @@ export const TopNav: FC<TopNavProps> = ({
           />
         )}
 
+        {/* Feedback — beta-only outbound channel. Megaphone in accent so
+            it visually distinguishes itself from Chat's message-circle.
+            No badge: feedback is outbound, an unread dot reads as the
+            wrong signal. */}
+        <ToolButton
+          icon={Megaphone}
+          label="Feedback"
+          count={0}
+          badgeBg="var(--color-bt-accent)"
+          iconColor="var(--color-bt-accent)"
+          onClick={() => setFeedbackOpen(true)}
+          ariaLabel="Send feedback"
+          testId="feedback-button"
+        />
+
         {/* Divider between tools and identity. */}
         <span
           aria-hidden="true"
@@ -227,8 +248,13 @@ export const TopNav: FC<TopNavProps> = ({
           }}
         />
 
-        <UserMenu />
+        <UserMenu onOpenFeedback={() => setFeedbackOpen(true)} />
       </div>
+
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+      />
     </header>
   );
 };
@@ -273,6 +299,7 @@ function ToolButton({
   onClick,
   ariaLabel,
   testId,
+  iconColor,
 }: {
   icon: LucideIcon;
   label: string;
@@ -282,6 +309,9 @@ function ToolButton({
   onClick?: () => void;
   ariaLabel: string;
   testId: string;
+  /** Override the icon stroke color. Defaults to the inherited text color so
+   *  News/Chat keep their current treatment; Feedback uses the accent. */
+  iconColor?: string;
 }) {
   const showBadge = count > 0;
   const badgeLabel = count > 99 ? "99+" : String(count);
@@ -301,7 +331,12 @@ function ToolButton({
         cursor: "pointer",
       }}
     >
-      <Icon size={16} strokeWidth={2} aria-hidden="true" />
+      <Icon
+        size={16}
+        strokeWidth={2}
+        aria-hidden="true"
+        style={iconColor ? { color: iconColor } : undefined}
+      />
       <span className="@max-[600px]:hidden">{label}</span>
 
       {showBadge && (
