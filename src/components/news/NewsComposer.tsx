@@ -730,14 +730,18 @@ function CrewFields({
               style={{
                 padding: "2px 5px 2px 2px",
                 borderRadius: 9999,
-                background: `color-mix(in srgb, ${p.color} 12%, var(--color-bt-card-raised))`,
-                border: `1px solid color-mix(in srgb, ${p.color} 40%, var(--color-bt-border))`,
+                background: p.color
+                  ? `color-mix(in srgb, ${p.color} 12%, var(--color-bt-card-raised))`
+                  : "var(--color-bt-card-raised)",
+                border: p.color
+                  ? `1px solid color-mix(in srgb, ${p.color} 40%, var(--color-bt-border))`
+                  : "1px solid var(--color-bt-border)",
                 fontSize: 12,
                 fontWeight: 600,
                 color: "var(--color-bt-text)",
               }}
             >
-              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color} sizePx={16} />
+              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} sizePx={16} />
               {p.name}
               <button
                 type="button"
@@ -772,7 +776,7 @@ function CrewFields({
               className="flex items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{ background: "transparent", border: "none", cursor: "pointer" }}
             >
-              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color} sizePx={20} />
+              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} sizePx={20} />
               <span style={{ fontSize: 13, color: "var(--color-bt-text)" }}>{p.name}</span>
             </button>
           ))}

@@ -256,23 +256,25 @@ describe("news router", () => {
       ]);
     });
 
-    it("roster — returns every member with name + initials + color", async () => {
+    it("roster — returns every member with name + initials", async () => {
       const people = await ctx.caller().news.roster({ tripId: drawTrip });
       expect(people.length).toBe(3);
       for (const p of people) {
         expect(p.userId).toBeTruthy();
         expect(p.name).toBeTruthy();
         expect(p.initials).toMatch(/^[A-Z?]{1,2}$/);
-        expect(p.color).toBeTruthy();
       }
     });
 
-    it("roster — assigned members take their team color", async () => {
+    it("roster — assigned members take their team color; unassigned have none", async () => {
       const people = await ctx.caller().news.roster({ tripId: drawTrip });
       const owner = people.find((p) => p.userId === ctx.user.id);
       const planner = people.find((p) => p.userId === ctx.getUser("planner").id);
+      const member = people.find((p) => p.userId === ctx.getUser("member").id);
       expect(owner?.color).toBe("#3b82f6");
       expect(planner?.color).toBe("#2dd4bf");
+      // No team assignment → no color (no palette fallback).
+      expect(member?.color ?? null).toBeNull();
     });
 
     it("competitionDraw — returns the teams with their rosters", async () => {

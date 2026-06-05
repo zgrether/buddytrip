@@ -13,25 +13,6 @@ import {
   type NewsTeam,
 } from "@/lib/news";
 
-// Mention/crew pill palette — used when a member isn't on a competition team.
-// Picked deterministically by user id so a person's color is stable.
-const MENTION_PALETTE = [
-  "#3b82f6", // blue
-  "#2dd4bf", // teal
-  "#a855f7", // purple
-  "#f97316", // orange
-  "#22c55e", // green
-  "#ec4899", // pink
-  "#eab308", // yellow
-  "#06b6d4", // cyan
-];
-
-function paletteColor(userId: string): string {
-  let h = 0;
-  for (let i = 0; i < userId.length; i++) h = (h + userId.charCodeAt(i)) % MENTION_PALETTE.length;
-  return MENTION_PALETTE[h];
-}
-
 /** "Zach Grether" → "ZG"; "Llama" → "L". Server-side twin of Avatar.initialsFor. */
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -241,7 +222,9 @@ export const newsRouter = router({
           userId: m.user_id as string,
           name: m.displayName,
           initials: initialsOf(m.displayName),
-          color: teamColor.get(m.user_id as string) ?? paletteColor(m.user_id as string),
+          // Only a real team assignment yields a color; no team → null, so the
+          // chip/avatar render in the neutral default rather than a fake color.
+          color: teamColor.get(m.user_id as string) ?? null,
           avatarIcon: m.user?.avatar_icon ?? null,
         }));
     }),

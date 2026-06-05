@@ -46,14 +46,21 @@ function imageUrl(url: string | null | undefined): string | null {
 // their plain name — no "@". The chip is tinted by the same color so a team
 // captain's pill reads as their team's.
 function Mention({ person }: { person: NewsPerson }) {
+  // A color only when the member is actually on a competition team — otherwise
+  // the standard avatar + a neutral chip (no fake team color).
+  const team = person.color || null;
   return (
     <span
       className="inline-flex items-center gap-1.5"
       style={{
         padding: "2px 9px 2px 2px",
         borderRadius: 9999,
-        background: `color-mix(in srgb, ${person.color} 12%, var(--color-bt-card-raised))`,
-        border: `1px solid color-mix(in srgb, ${person.color} 40%, var(--color-bt-border))`,
+        background: team
+          ? `color-mix(in srgb, ${team} 12%, var(--color-bt-card-raised))`
+          : "var(--color-bt-card-raised)",
+        border: team
+          ? `1px solid color-mix(in srgb, ${team} 40%, var(--color-bt-border))`
+          : "1px solid var(--color-bt-border)",
         fontSize: 12.5,
         fontWeight: 600,
         color: "var(--color-bt-text)",
@@ -64,7 +71,7 @@ function Mention({ person }: { person: NewsPerson }) {
       <Avatar
         name={person.name}
         avatarIcon={person.avatarIcon ?? null}
-        teamColor={person.color}
+        teamColor={team ?? undefined}
         sizePx={18}
       />
       {person.name}
