@@ -565,15 +565,19 @@ function FloatingChatPanelInner({
         {body}
       </div>
 
-      {/* ── Mobile: bottom sheet ───────────────────────────────────────── */}
+      {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
+          Starts BELOW the title bar (top-14 = the 56px nav) so the News/Chat
+          buttons stay lit and tappable above the scrim — tap News to swap
+          panels in place without closing first. maxHeight 100% keeps the sheet
+          from riding up over the bar. */}
       <ScrollLock enabled={isMobileViewport}>
       <div
-        className="lg:hidden fixed inset-0 z-50 flex items-end"
+        className="lg:hidden fixed inset-x-0 top-14 z-50 flex items-end"
         style={{
           background: "var(--color-bt-overlay)",
-          // Same as desktop: stop the sheet + backdrop at the top of the trip
-          // bottom nav so it stays visible/usable and the input never hides
-          // behind it. Resolves to 0px when no nav is mounted.
+          // Stop the sheet + backdrop at the top of the trip bottom nav so it
+          // stays visible/usable and the input never hides behind it. Resolves
+          // to 0px when no nav is mounted.
           bottom: BOTTOM_NAV_OFFSET,
         }}
         onClick={onClose}
@@ -584,6 +588,7 @@ function FloatingChatPanelInner({
           style={{
             background: "var(--color-bt-card)",
             height: sheetHeight != null ? sheetHeight : "85vh",
+            maxHeight: "100%",
           }}
           onClick={(e) => e.stopPropagation()}
         >

@@ -315,17 +315,25 @@ function NewsPanelInner({
         </div>
       </div>
 
-      {/* ── Mobile: bottom sheet ─────────────────────────────────────────── */}
+      {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
+          Starts BELOW the title bar (top-14 = the 56px nav) so the News/Chat
+          buttons stay lit and tappable above the scrim — tap the other one to
+          swap panels in place without closing first. maxHeight 100% keeps the
+          sheet from ever riding up over the bar. */}
       <ScrollLock enabled={isMobileViewport}>
         <div
-          className="lg:hidden fixed inset-0 z-50 flex items-end"
+          className="lg:hidden fixed inset-x-0 top-14 z-50 flex items-end"
           style={{ background: "var(--color-bt-overlay)", bottom: BOTTOM_NAV_OFFSET }}
           onClick={onClose}
         >
           <div
             ref={sheetRef}
             className="flex w-full flex-col rounded-t-[18px]"
-            style={{ background: "var(--color-bt-card)", height: sheetHeight != null ? sheetHeight : "85vh" }}
+            style={{
+              background: "var(--color-bt-card)",
+              height: sheetHeight != null ? sheetHeight : "85vh",
+              maxHeight: "100%",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
