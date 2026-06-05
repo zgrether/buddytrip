@@ -10,6 +10,7 @@ import { TripSwitcher } from "./TripSwitcher";
 import { FeedbackModal } from "./FeedbackModal";
 import { trpc } from "@/lib/trpc-client";
 import { useChatUnreadCount } from "./FloatingChatPanel";
+import { useNewsUnreadCount } from "./NewsPanel";
 
 /**
  * App title bar — two zones:
@@ -20,16 +21,10 @@ import { useChatUnreadCount } from "./FloatingChatPanel";
  * collapse below 600px keys off the bar's OWN width — not the viewport —
  * which keeps it correct inside any future split/columned layout.
  *
- * Notifications were removed entirely; "News" occupies that slot
- * conceptually but is a persistent broadcast surface, not a notification
- * stream.
+ * Notifications were removed entirely; "News" occupies that slot — a
+ * trip-scoped owner/organizer broadcast surface (the NewsPanel), not a
+ * notification stream.
  */
-
-// News has no backing feature yet (no news/broadcast surface exists). The
-// button is rendered to spec but inert, and its unread badge is driven by this
-// placeholder count — 0 keeps the badge hidden until the feature ships. Flip
-// this to a real selector once News exists.
-const NEWS_PLACEHOLDER_COUNT = 0;
 
 interface TopNavProps {
   /** Wordmark next to the flag. Always "BuddyTrip" per the design; kept as a
@@ -43,6 +38,11 @@ interface TopNavProps {
   /** Reflects whether the FloatingChatPanel is currently open — paints the
    *  Chat tool in its active state. */
   chatOpen?: boolean;
+  /** Opens the NewsPanel. Required alongside tripId to show the News tool. */
+  onOpenNews?: () => void;
+  /** Reflects whether the NewsPanel is currently open — paints the News tool
+   *  in its active state. */
+  newsOpen?: boolean;
   /** Hide the trip-breadcrumb switcher (e.g. on the profile page, which
    *  isn't trip-scoped). */
   hideTripSwitcher?: boolean;
@@ -63,6 +63,8 @@ export const TopNav: FC<TopNavProps> = ({
   tripId,
   onOpenChat,
   chatOpen = false,
+  onOpenNews,
+  newsOpen = false,
   hideTripSwitcher = false,
   hideNews = false,
 }) => {
@@ -201,16 +203,10 @@ export const TopNav: FC<TopNavProps> = ({
 
       {/* ── RIGHT: global tools + me ───────────────────────────────────── */}
       <div className="flex flex-shrink-0 items-center gap-1">
-        {/* News — inert placeholder; persistent broadcast surface (TBD). */}
-        {!hideNews && (
-          <ToolButton
-            icon={Pin}
-            label="News"
-            count={NEWS_PLACEHOLDER_COUNT}
-            badgeBg="var(--color-bt-accent)"
-            ariaLabel="News"
-            testId="news-button"
-          />
+        {/* News — owner/organizer announcements. Trip-scoped, same as Chat:
+            only renders when a trip is in scope and the page wires onOpenNews. */}
+        {!hideNews && tripId && onOpenNews && (
+          <NewsToolButton tripId={tripId} onClick={onOpenNews} active={newsOpen} />
         )}
 
         {tripId && onOpenChat && (
@@ -269,6 +265,32 @@ export const TopNav: FC<TopNavProps> = ({
     </header>
   );
 };
+
+// ── NewsToolButton ──────────────────────────────────────────────────────────
+// Thin wrapper so useNewsUnreadCount only mounts on trip pages (tripId present).
+function NewsToolButton({
+  tripId,
+  onClick,
+  active,
+}: {
+  tripId: string;
+  onClick: () => void;
+  active: boolean;
+}) {
+  const unread = useNewsUnreadCount(tripId);
+  return (
+    <ToolButton
+      icon={Pin}
+      label="News"
+      count={unread}
+      badgeBg="var(--color-bt-accent)"
+      active={active}
+      onClick={onClick}
+      ariaLabel="News"
+      testId="news-button"
+    />
+  );
+}
 
 // ── ChatToolButton ──────────────────────────────────────────────────────────
 // Thin wrapper so useChatUnreadCount only mounts on trip pages (tripId present).
