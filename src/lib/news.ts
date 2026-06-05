@@ -25,6 +25,9 @@ export interface NewsPerson {
   /** The member's chosen Tabler avatar icon id, so the pill shows the same
    *  avatar as everywhere else in the app. Null/absent → initials fallback. */
   avatarIcon?: string | null;
+  /** True when this person is a guest / not yet a full member — drives the
+   *  muted (gray) avatar treatment, reserving teal for real members. */
+  placeholder?: boolean;
 }
 
 /** A team card in the draw — synced from the Competition feature. */
@@ -138,6 +141,7 @@ const personSchema = z.object({
   initials: z.string().min(1).max(4),
   color: z.string().min(1).max(40).nullish(),
   avatarIcon: z.string().max(50).nullish(),
+  placeholder: z.boolean().optional(),
 });
 
 const segmentSchema = z.union([

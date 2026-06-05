@@ -226,6 +226,8 @@ export const newsRouter = router({
           // chip/avatar render in the neutral default rather than a fake color.
           color: teamColor.get(m.user_id as string) ?? null,
           avatarIcon: m.user?.avatar_icon ?? null,
+          // Guests aren't full members → gray (muted) avatar.
+          placeholder: m.isGuest,
         }));
     }),
 
