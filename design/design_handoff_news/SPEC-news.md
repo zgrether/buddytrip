@@ -53,6 +53,15 @@ syntax, and there is **no free text color** (brand discipline). The six:
 > poll / table / quote / divider / heading / free-color blocks. If a use case
 > seems unmet, stop and ask — it maps to one of the six.
 
+> 📝 **Post-handoff decision (PR4):** a **Heading** block (a plain title line,
+> `{ type: "heading", text }`) was added as a 7th type at the product owner's
+> request — long posts needed section titles, which none of the six covered.
+> The "stop and ask" rule was followed; this is the agreed exception, not a
+> silent expansion. The rest of the closed set still holds: no poll / table /
+> quote / divider / free-color. Also: **lists** in the Text toolbar are
+> deferred to a later pass — the Text editor ships **bold · italic · link · @**
+> for now (the Steps block already covers numbered lists).
+
 Block render CSS: `.post`, `.blk-p`, `.blk-teams/.team-card`, `.blk-video`,
 `.blk-steps/.step`, `.blk-callout` are in `explorations-board.jsx`;
 `.blk-crew`, `.blk-crewrow`, `.blk-photo` in `explorations-pinned.jsx`.

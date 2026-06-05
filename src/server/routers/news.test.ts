@@ -177,6 +177,50 @@ describe("news router", () => {
     ).rejects.toThrow();
   });
 
+  // ── heading block + rich-text segments (PR4) ──────────────────────────────
+
+  it("create — a heading block round-trips", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "heading", text: "Saturday — Championship Day" }],
+    });
+    expect(post.blocks[0]).toEqual({ type: "heading", text: "Saturday — Championship Day" });
+  });
+
+  it("create — rejects an empty-text heading", async () => {
+    await expect(
+      ctx.caller().news.create({ tripId, blocks: [{ type: "heading", text: "" }] })
+    ).rejects.toThrow();
+  });
+
+  it("create — rich-text segments (bold, link, mention) round-trip intact", async () => {
+    const blocks: NewsBlock[] = [
+      {
+        type: "text",
+        segments: [
+          "See ",
+          { text: "the leaderboard", bold: true },
+          " at ",
+          { link: "https://example.com/board", text: "this link" },
+          " — nice work ",
+          { mention: { userId: null, name: "Buddy", initials: "BB", color: null } },
+          "!",
+        ],
+      },
+    ];
+    const post = await ctx.caller().news.create({ tripId, blocks });
+    expect(post.blocks[0]).toEqual(blocks[0]);
+  });
+
+  it("create — a link segment keeps its href (not flattened to plain text)", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", segments: [{ link: "https://buddytrip.app", text: "site" }] }],
+    });
+    const block = post.blocks[0] as Extract<NewsBlock, { type: "text" }>;
+    expect(block.segments?.[0]).toEqual({ link: "https://buddytrip.app", text: "site" });
+  });
+
   // ── update / setPinned / delete ──────────────────────────────────────────
 
   it("update — owner edits blocks and pin state", async () => {

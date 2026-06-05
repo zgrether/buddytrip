@@ -80,17 +80,44 @@ function Mention({ person }: { person: NewsPerson }) {
   );
 }
 
-function RichText({ segments, dim }: { segments: NewsSegment[]; dim?: boolean }) {
+function Segment({ seg }: { seg: NewsSegment }) {
+  if (typeof seg === "string") return <span>{seg}</span>;
+  if ("mention" in seg) return <Mention person={seg.mention} />;
+  if ("link" in seg) {
+    return (
+      <a
+        href={seg.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "var(--color-bt-accent)", textDecoration: "underline" }}
+      >
+        {seg.text}
+      </a>
+    );
+  }
+  // Formatted run — bold / italic.
   return (
-    <p style={paragraphStyle(dim)}>
-      {segments.map((seg, i) =>
-        typeof seg === "string" ? (
-          <span key={i}>{seg}</span>
-        ) : (
-          <Mention key={i} person={seg.mention} />
-        )
-      )}
-    </p>
+    <span
+      style={{
+        fontWeight: seg.bold ? 700 : undefined,
+        fontStyle: seg.italic ? "italic" : undefined,
+      }}
+    >
+      {seg.text}
+    </span>
+  );
+}
+
+function RichText({ segments, dim }: { segments: NewsSegment[]; dim?: boolean }) {
+  // A <div>, not a <p>: an inline mention renders the Avatar (a <div>), and a
+  // <div> inside <p> is invalid HTML (hydration error). The paragraph styling
+  // is applied inline, so a div reads identically.
+  return (
+    <div style={paragraphStyle(dim)}>
+      {segments.map((seg, i) => (
+        <Segment key={i} seg={seg} />
+      ))}
+    </div>
   );
 }
 
@@ -106,6 +133,21 @@ function paragraphStyle(dim?: boolean): React.CSSProperties {
 // ── One block ──────────────────────────────────────────────────────────────
 export function NewsBlockView({ block }: { block: NewsBlock }) {
   switch (block.type) {
+    case "heading":
+      return (
+        <h3
+          style={{
+            fontSize: 16.5,
+            fontWeight: 700,
+            lineHeight: 1.3,
+            color: "var(--color-bt-text)",
+            margin: 0,
+          }}
+        >
+          {block.text}
+        </h3>
+      );
+
     case "text":
       return block.segments ? (
         <RichText segments={block.segments} dim={block.dim} />
