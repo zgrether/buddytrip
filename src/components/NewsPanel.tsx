@@ -551,9 +551,12 @@ function NewsPostCard({
         borderRadius: 14,
         background: "var(--color-bt-card)",
         // A soft lift so posts read as separate cards rather than running into
-        // each other (post bg matches the panel bg, so the border alone was
-        // too subtle).
-        boxShadow: "var(--shadow-card)",
+        // each other (post bg matches the panel bg, so the border alone was too
+        // subtle). On dark a plain drop-shadow is invisible, so pair a light
+        // inset top-edge highlight with the drop shadow — same recipe as the
+        // trip header dock.
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.06), 0 3px 12px rgba(0,0,0,0.22)",
         overflow: "hidden",
       }}
       data-testid="news-post"
