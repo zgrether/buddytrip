@@ -84,13 +84,28 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
           earlier version had no scroll containment and would drift off
           the top edge when the content exceeded the viewport. */}
       <div
-        className="animate-fade-in w-full max-w-[460px] max-h-[85vh] overflow-y-auto rounded-t-2xl lg:rounded-2xl"
+        className="animate-fade-in w-full max-w-[460px] max-h-[85vh] overflow-y-auto rounded-t-[18px] lg:rounded-2xl"
         style={{
-          background: "var(--color-bt-card)",
+          background: "var(--color-bt-card-float)",
           border: "1px solid var(--color-bt-border)",
+          boxShadow: "var(--shadow-floating)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ── Mobile grab handle ─────────────────────────────────── */}
+        <div
+          aria-hidden="true"
+          className="mx-auto lg:hidden"
+          style={{
+            width: 36,
+            height: 4,
+            borderRadius: 9999,
+            background: "var(--color-bt-border)",
+            marginTop: 10,
+            marginBottom: 4,
+          }}
+        />
+
         <div>
           {/* ── Header row ─────────────────────────────────────────── */}
           <div
@@ -139,17 +154,16 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
               type="button"
               onClick={onClose}
               aria-label="Close"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{
                 marginLeft: "auto",
-                background: "transparent",
+                background: "var(--color-bt-card-raised)",
                 border: "none",
                 color: "var(--color-bt-text-dim)",
                 cursor: "pointer",
-                padding: 4,
-                lineHeight: 0,
               }}
             >
-              <X size={17} strokeWidth={1.75} />
+              <X size={15} strokeWidth={1.75} />
             </button>
           </div>
 
