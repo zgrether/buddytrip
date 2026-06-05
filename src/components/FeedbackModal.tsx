@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePathname, useParams } from "next/navigation";
+import { usePathname, useParams, useSearchParams } from "next/navigation";
 import {
   Bug,
   HelpCircle,
@@ -106,7 +106,11 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   // ── Auto-captured context ──────────────────────────────────────────────
   // Read at render-time off Next's route hooks so the values reflect
   // the page the user was on when they opened the modal.
+  // useSearchParams captures ?tab= and any other query params — the trip
+  // page keeps its active tab in ?tab=<id>, so pathname alone always
+  // returns /trips/[tripId] regardless of which tab is showing.
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const params = useParams<{ tripId?: string }>();
   const currentTripId = params?.tripId ?? null;
 
@@ -115,7 +119,18 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   });
   const { data: me } = trpc.users.getMe.useQuery(undefined, { enabled: open });
 
-  const screenLabel = useMemo(() => labelForPath(pathname ?? ""), [pathname]);
+  // Full relative URL (pathname + query string) — gives exact page + tab.
+  const fullUrl = useMemo(() => {
+    const qs = searchParams.toString();
+    return qs ? `${pathname}?${qs}` : (pathname ?? "");
+  }, [pathname, searchParams]);
+
+  // Human-friendly label shown in the email subject + screen row.
+  const screenLabel = useMemo(
+    () => labelForPath(pathname ?? "", searchParams.get("tab")),
+    [pathname, searchParams],
+  );
+
   const tripLabel = useMemo(() => {
     if (!currentTripId || !trips) return null;
     const t = (trips as Array<{ id: string; title: string }>).find(
@@ -183,7 +198,12 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
       category,
       message: text.trim(),
       replyTo,
+      // Pass both the friendly label and the raw URL. The router merges them
+      // into the email context table so you see e.g.:
+      //   Screen   Trip · Crew
+      //   URL      /trips/abc123?tab=crew
       screen: screenLabel,
+      url: fullUrl,
       tripLabel,
       platform,
       build: APP_BUILD,
@@ -426,12 +446,13 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 
 // ── labelForPath ─────────────────────────────────────────────────────────
 //
-// Friendly screen label from the pathname. Cheap and intentionally
-// shallow — the goal is to give the founder enough context to triage,
-// not to reproduce every nested route.
-function labelForPath(path: string): string {
+// Friendly screen label from the pathname + active tab query param.
+// The trip page keeps its active tab in ?tab=<id> (not a route segment),
+// so the tab must be read from searchParams and passed in here.
+function labelForPath(path: string, tab?: string | null): string {
   if (!path || path === "/") return "Landing";
   if (path.startsWith("/dashboard")) return "Dashboard";
+  if (path.startsWith("/profile/archived-ideas")) return "Profile · Archived ideas";
   if (path.startsWith("/profile")) return "Profile";
   if (path.startsWith("/changelog")) return "Changelog";
   if (path.startsWith("/privacy")) return "Privacy";
@@ -439,11 +460,21 @@ function labelForPath(path: string): string {
   if (path.startsWith("/invite")) return "Invite";
   if (path.startsWith("/trips/")) {
     const parts = path.split("/").filter(Boolean);
-    // /trips/[tripId]/[tab?]
-    const tab = parts[2];
-    return tab
-      ? `Trip · ${tab.charAt(0).toUpperCase() + tab.slice(1)}`
-      : "Trip";
+    // /trips/[tripId]/events/[eventId] — event detail page
+    if (parts[2] === "events" && parts[3]) return "Trip · Event detail";
+    // Active tab from ?tab= query param
+    if (tab) {
+      const TAB_LABELS: Record<string, string> = {
+        home: "Home",
+        schedule: "Schedule",
+        crew: "Crew",
+        lodging: "Lodging",
+        comp: "Competition",
+        expenses: "Expenses",
+      };
+      return `Trip · ${TAB_LABELS[tab] ?? tab}`;
+    }
+    return "Trip · Home";
   }
   return path;
 }

@@ -24,6 +24,9 @@ export const feedbackRouter = router({
         // Auto-captured context — all optional, all surfaced in the email
         // so the founder has enough to triage without bouncing back.
         screen: z.string().max(200).nullable().optional(),
+        // Full relative URL including query string (e.g. /trips/abc?tab=crew).
+        // Complements the friendly `screen` label with the exact location.
+        url: z.string().max(500).nullable().optional(),
         tripLabel: z.string().max(200).nullable().optional(),
         platform: z.string().max(40).nullable().optional(),
         build: z.string().max(40).nullable().optional(),
@@ -53,6 +56,7 @@ export const feedbackRouter = router({
           message: input.message,
           replyTo: input.replyTo ?? null,
           screen: input.screen ?? null,
+          url: input.url ?? null,
           tripLabel: input.tripLabel ?? null,
           platform: input.platform ?? null,
           build: input.build ?? null,
