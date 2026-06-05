@@ -419,7 +419,7 @@ export default function TripDetailPage() {
           className="mx-auto max-w-[1280px] px-4 pt-4 transition-[margin-right] duration-200"
           style={{ marginRight: chatOpen ? undefined : undefined }}
         >
-          <div className={chatOpen || newsOpen ? "lg:mr-[380px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
+          <div className={chatOpen || newsOpen ? "lg:mr-[400px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
             <TripHeader
               tripId={trip.id}
               tripName={trip.title}

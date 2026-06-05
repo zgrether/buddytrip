@@ -9,19 +9,24 @@ import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
 import type { NewsPost } from "@/lib/news";
+import {
+  RAIL_DEFAULT_WIDTH,
+  clampRailWidth,
+  readRailWidth,
+  persistRailWidth,
+  readRailSheetHeight,
+  persistRailSheetHeight,
+} from "@/lib/railLayout";
 
 // ── NewsPanel — the Trip Board ──────────────────────────────────────────────
 //
 // Owner/organizer announcement posts. A SEPARATE panel from Chat that shares
-// its behavior: docked right rail on desktop (no scrim — the page stays
-// usable), draggable bottom sheet on mobile. PR1 is read-only; the composer
-// (New post / ⋯ Edit) lands in PR2 behind onNewPost / onManagePost.
+// its window style AND size (see src/lib/railLayout.ts): docked right rail on
+// desktop (no scrim — the page stays usable), draggable bottom sheet on
+// mobile. The title-bar News/Chat buttons act as radio buttons — switching
+// keeps the same size/position. PR1 is read-only; the composer (New post /
+// ⋯ Edit) lands in PR2 behind onNewPost / onManagePost.
 
-const MIN_WIDTH = 340;
-const MAX_WIDTH = 680;
-const DEFAULT_WIDTH = 400;
-const WIDTH_KEY = "bt-news-rail-width";
-const SHEET_KEY = "bt-news-sheet-height";
 // Live height of the trip bottom nav (0px when none) — the rail + sheet anchor
 // their bottom to it so the nav stays visible. Same var the chat panel uses.
 const BOTTOM_NAV_OFFSET = "var(--bt-bottomnav-height, 0px)";
@@ -131,22 +136,14 @@ function NewsPanelInner({
     markReadMutate({ tripId });
   }, [tripId, posts, isLoading, markReadMutate]);
 
-  // ── Desktop rail resize (drag left edge; persist width) ───────────────────
-  const [panelWidth, setPanelWidth] = useState<number>(() => {
-    if (typeof window === "undefined") return DEFAULT_WIDTH;
-    const saved = parseInt(localStorage.getItem(WIDTH_KEY) ?? "", 10);
-    return Number.isNaN(saved) ? DEFAULT_WIDTH : Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, saved));
-  });
+  // ── Desktop rail resize (drag left edge; persist width — shared with Chat) ─
+  const [panelWidth, setPanelWidth] = useState<number>(readRailWidth);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
-  const dragStartWidth = useRef(DEFAULT_WIDTH);
+  const dragStartWidth = useRef(RAIL_DEFAULT_WIDTH);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(WIDTH_KEY, String(panelWidth));
-    } catch {
-      /* localStorage unavailable */
-    }
+    persistRailWidth(panelWidth);
   }, [panelWidth]);
 
   const handleDragStart = useCallback(
@@ -161,7 +158,7 @@ function NewsPanelInner({
         if (!isDragging.current) return;
         if (ev.buttons === 0) return onUp();
         const delta = dragStartX.current - ev.clientX;
-        setPanelWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, dragStartWidth.current + delta)));
+        setPanelWidth(clampRailWidth(dragStartWidth.current + delta));
       }
       function onUp() {
         isDragging.current = false;
@@ -176,21 +173,8 @@ function NewsPanelInner({
     [panelWidth]
   );
 
-  // ── Mobile sheet resize (drag handle; persist as vh fraction) ─────────────
-  const [sheetHeight, setSheetHeight] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const ratio = parseFloat(localStorage.getItem(SHEET_KEY) ?? "");
-      if (!Number.isNaN(ratio)) {
-        const min = window.innerHeight * 0.25;
-        const max = window.innerHeight * 0.95;
-        return Math.round(Math.min(max, Math.max(min, ratio * window.innerHeight)));
-      }
-    } catch {
-      /* localStorage unavailable */
-    }
-    return null;
-  });
+  // ── Mobile sheet resize (drag handle; persist as vh fraction — shared) ────
+  const [sheetHeight, setSheetHeight] = useState<number | null>(readRailSheetHeight);
   const sheetRef = useRef<HTMLDivElement>(null);
   const isSheetDragging = useRef(false);
   const sheetPrevY = useRef(0);
@@ -236,11 +220,7 @@ function NewsPanelInner({
 
   useEffect(() => {
     if (sheetHeight == null) return;
-    try {
-      localStorage.setItem(SHEET_KEY, String(sheetHeight / window.innerHeight));
-    } catch {
-      /* localStorage unavailable */
-    }
+    persistRailSheetHeight(sheetHeight);
   }, [sheetHeight]);
 
   // Mobile-only scroll lock: the bottom sheet locks the page; the desktop rail
