@@ -329,12 +329,17 @@ export interface TripHeaderDockProps {
   countdown: CountdownResult | null;
   /** Owner / Planner — gates the [+] button and tile click-to-edit. */
   canEdit: boolean;
+  /** Trip has start + end dates set. When false the dock is hidden entirely
+   *  — tiles and the empty-CTA are suppressed until the dates bookend the
+   *  trip, keeping the onboarding surface focused on the setup guide. */
+  hasDates: boolean;
 }
 
 export function TripHeaderDock({
   tripId,
   countdown,
   canEdit,
+  hasDates,
 }: TripHeaderDockProps) {
   const { data: tiles = [] } =
     trpc.quickInfoTiles.list.useQuery({ tripId });
@@ -418,6 +423,11 @@ export function TripHeaderDock({
     // on the empty-state edge, not every time it flips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasTiles]);
+
+  // No dates yet → hide the dock entirely. The setup guide cards already
+  // occupy the onboarding surface; adding the tile rail (or its empty-CTA)
+  // before the trip is bookended just adds noise before planning has started.
+  if (!hasDates) return null;
 
   // Nothing to show? Hide the dock entirely.
   if (!hasCountdown && !hasTiles && !canEdit) {

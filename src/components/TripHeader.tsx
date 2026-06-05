@@ -335,6 +335,7 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
           tripId={tripId}
           countdown={countdown}
           canEdit={!!canEdit}
+          hasDates={!!tripStartDate}
         />
       )}
     </div>
@@ -425,6 +426,7 @@ const HeroHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledCo
           tripId={tripId}
           countdown={countdown}
           canEdit={!!canEdit}
+          hasDates={!!tripStartDate}
         />
       )}
     </LocationHero>
