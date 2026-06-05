@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pin, X, Pencil, MoreHorizontal, Trash2 } from "lucide-react";
+import { Pin, X, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -321,34 +321,29 @@ function NewsPanelInner({
     </div>
   );
 
-  const feedScroll = (
-    <div
-      className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
-      data-testid="news-feed"
-    >
-      {/* Composing is launched from the pinned "New post" title-bar button,
-          which stays visible while the feed scrolls — so there's no in-feed
-          compose row to scroll away. */}
-      {isLoading ? null : posts.length === 0 ? (
-        <NewsEmpty canPost={canPost} />
-      ) : (
-        posts.map((p) => (
-          <NewsPostCard
-            key={p.id}
-            post={p}
-            author={authors[p.authorId]}
-            now={now}
-            canManage={canPost}
-            onEdit={() => setCompose({ mode: "edit", post: p })}
-            onTogglePin={() =>
-              setPinnedM.mutate({ tripId, postId: p.id, pinned: !p.pinned })
-            }
-            onDelete={() => deleteM.mutate({ tripId, postId: p.id })}
-          />
-        ))
-      )}
-    </div>
+  // Composing is launched from the pinned "New post" title-bar button, which
+  // stays visible while the feed scrolls.
+  const feedContent = isLoading ? null : posts.length === 0 ? (
+    <NewsEmpty canPost={canPost} />
+  ) : (
+    posts.map((p) => (
+      <NewsPostCard
+        key={p.id}
+        post={p}
+        author={authors[p.authorId]}
+        now={now}
+        canManage={canPost}
+        onEdit={() => setCompose({ mode: "edit", post: p })}
+        onTogglePin={() =>
+          setPinnedM.mutate({ tripId, postId: p.id, pinned: !p.pinned })
+        }
+        onDelete={() => deleteM.mutate({ tripId, postId: p.id })}
+      />
+    ))
   );
+  // A component (not a shared element) so the desktop rail + mobile sheet each
+  // get an independent scroll ref + arrow state.
+  const feedScroll = <NewsFeedScroll>{feedContent}</NewsFeedScroll>;
 
   // Either the composer or the feed (header + scroll), placed inside each
   // chrome's flex-col. Composer renders its own header + footer.
@@ -446,6 +441,76 @@ function NewsPanelInner({
       </ScrollLock>
     </>,
     document.body
+  );
+}
+
+// ── Scrollable feed + jump arrow ───────────────────────────────────────────
+// A component (not a shared JSX element) so the desktop rail and mobile sheet
+// each own an independent scroll ref. Mirrors chat's jump-to-latest, but the
+// arrow is position-aware: scrolled down → up-arrow to the top (newest +
+// pinned live there); at the top → down-arrow to the bottom (oldest).
+function NewsFeedScroll({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [dir, setDir] = useState<"up" | "down" | null>(null);
+
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const scrollable = el.scrollHeight - el.clientHeight > 40;
+    if (!scrollable) {
+      setDir(null);
+      return;
+    }
+    setDir(el.scrollTop < 40 ? "down" : "up");
+  }, []);
+
+  // Recompute on mount, content changes, and size changes (a wider rail makes
+  // images taller, so scrollHeight shifts).
+  useEffect(() => {
+    // Measuring the scroll container is exactly the "sync from an external
+    // system" case the rule whitelists; the value comes from the DOM, not state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    update();
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [update, children]);
+
+  const jump = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTo({ top: dir === "up" ? 0 : el.scrollHeight, behavior: "smooth" });
+  };
+
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={ref}
+        onScroll={update}
+        className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
+        data-testid="news-feed"
+      >
+        {children}
+      </div>
+      {dir && (
+        <button
+          type="button"
+          onClick={jump}
+          aria-label={dir === "up" ? "Scroll to top" : "Scroll to bottom"}
+          className="absolute bottom-3 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{
+            background: "var(--color-bt-card-float)",
+            color: "var(--color-bt-text)",
+            border: "1px solid var(--color-bt-border)",
+            boxShadow: "var(--shadow-floating)",
+          }}
+        >
+          {dir === "up" ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+      )}
+    </div>
   );
 }
 
