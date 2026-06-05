@@ -592,7 +592,7 @@ function FloatingChatPanelInner({
           onClick={(e) => e.stopPropagation()}
         >
           <div
-            className="flex justify-center pt-3 pb-2 cursor-ns-resize touch-none group"
+            className="group flex cursor-ns-resize touch-none justify-center pt-2 pb-1"
             onMouseDown={handleSheetDragStart}
             onTouchStart={handleSheetDragStart}
           >

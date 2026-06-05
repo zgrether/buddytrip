@@ -337,7 +337,7 @@ function NewsPanelInner({
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className="group flex cursor-ns-resize touch-none justify-center pt-3 pb-2"
+              className="group flex cursor-ns-resize touch-none justify-center pt-2 pb-1"
               onMouseDown={handleSheetDragStart}
               onTouchStart={handleSheetDragStart}
             >

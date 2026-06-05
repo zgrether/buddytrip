@@ -363,6 +363,10 @@ export default function TripDetailPage() {
         chatOpen={chatOpen}
         onOpenNews={openNews}
         newsOpen={newsOpen}
+        onDismissPanels={() => {
+          setChatOpen(false);
+          setNewsOpen(false);
+        }}
       />
 
       {/* ── Trip content ────────────────────────────────────────────────── */}
