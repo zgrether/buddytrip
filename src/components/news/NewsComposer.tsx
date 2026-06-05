@@ -15,10 +15,13 @@ import {
   Users,
   Trophy,
   RefreshCw,
+  HelpCircle,
   type LucideIcon,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
+import { NewsBlocks } from "@/components/news/NewsBlock";
+import { NewsHelpModal } from "@/components/news/NewsHelpModal";
 import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news";
 
 // ── NewsComposer ────────────────────────────────────────────────────────────
@@ -111,6 +114,8 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
     () => post?.blocks ?? [{ type: "text", text: "" }]
   );
   const [pinned, setPinned] = useState<boolean>(post?.pinned ?? false);
+  const [view, setView] = useState<"edit" | "preview">("edit");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const refresh = () => {
     utils.news.list.invalidate({ tripId });
@@ -177,16 +182,98 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
         </span>
         <button
           type="button"
+          onClick={() => setHelpOpen(true)}
+          aria-label="How posts work"
+          title="How posts work"
+          className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <HelpCircle size={16} />
+        </button>
+        <button
+          type="button"
           onClick={onDone}
           aria-label="Cancel"
-          className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+          className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           <X size={16} />
         </button>
       </div>
 
-      {/* ── Body: block editor stack + add-a-block ─────────────────────── */}
+      {/* ── Edit / Preview toggle ──────────────────────────────────────── */}
+      <div className={`flex flex-shrink-0 gap-1 ${px} pt-2.5`}>
+        {(["edit", "preview"] as const).map((v) => {
+          const on = view === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              style={{
+                flex: 1,
+                padding: "6px 0",
+                borderRadius: 8,
+                fontSize: 12.5,
+                fontWeight: 600,
+                textTransform: "capitalize",
+                cursor: "pointer",
+                color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                background: on ? "var(--color-bt-accent-faint)" : "transparent",
+                border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+              }}
+            >
+              {v}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Preview: the post rendered as the crew will see it ─────────── */}
+      {view === "preview" ? (
+        <div className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${px} py-3`}>
+          {cleaned.length === 0 ? (
+            <p
+              className="text-center"
+              style={{ margin: "32px 0", fontSize: 13, color: "var(--color-bt-text-dim)" }}
+            >
+              Nothing to preview yet — add a block.
+            </p>
+          ) : (
+            <div
+              style={{
+                border: "1px solid var(--color-bt-border)",
+                borderRadius: 14,
+                background: "var(--color-bt-card)",
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 20px rgba(0,0,0,0.38)",
+                padding: "14px 16px 16px",
+              }}
+            >
+              {pinned && (
+                <span
+                  className="mb-3 inline-flex items-center gap-1"
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    color: "var(--color-bt-owner)",
+                    background: "var(--color-bt-warning-faint)",
+                    border: "1px solid var(--color-bt-warning-border)",
+                    borderRadius: 5,
+                    padding: "2px 6px",
+                  }}
+                >
+                  <Pin size={10} /> Pinned
+                </span>
+              )}
+              <NewsBlocks blocks={cleaned} />
+            </div>
+          )}
+        </div>
+      ) : (
+      /* ── Body: block editor stack + add-a-block ─────────────────────── */
       <div className={`flex min-h-0 flex-1 flex-col gap-[10px] overflow-y-auto ${px} py-3`}>
         {blocks.map((b, i) => (
           <BlockEditor
@@ -249,6 +336,7 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
           </div>
         </div>
       </div>
+      )}
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       <div
@@ -330,6 +418,8 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
           </button>
         </div>
       </div>
+
+      <NewsHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </>
   );
 }
