@@ -127,4 +127,110 @@ describe("news router", () => {
     const count = await ctx.callerAs("member").news.unreadCount({ tripId });
     expect(count).toBe(1);
   });
+
+  // ── create ─────────────────────────────────────────────────────────────────
+
+  it("create — owner can post; it lands in the feed", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "callout", text: "Heads up" }, { type: "text", text: "Body" }],
+      pinned: true,
+    });
+    expect(post.authorId).toBe(ctx.user.id);
+    expect(post.pinned).toBe(true);
+    expect(post.blocks).toHaveLength(2);
+
+    const posts = await ctx.caller().news.list({ tripId });
+    expect(posts.some((p) => p.id === post.id)).toBe(true);
+  });
+
+  it("create — planner can post", async () => {
+    const post = await ctx.callerAs("planner").news.create({
+      tripId,
+      blocks: [{ type: "text", text: "Planner says hi" }],
+    });
+    expect(post.pinned).toBe(false);
+  });
+
+  it("create — a plain member cannot post", async () => {
+    await expect(
+      ctx.callerAs("member").news.create({
+        tripId,
+        blocks: [{ type: "text", text: "nope" }],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("create — rejects an unknown block type (closed set enforced)", async () => {
+    await expect(
+      ctx.caller().news.create({
+        tripId,
+        // @ts-expect-error — 'poll' is not one of the six block types
+        blocks: [{ type: "poll", options: ["a", "b"] }],
+      })
+    ).rejects.toThrow();
+  });
+
+  it("create — rejects an empty block stack", async () => {
+    await expect(
+      ctx.caller().news.create({ tripId, blocks: [] })
+    ).rejects.toThrow();
+  });
+
+  // ── update / setPinned / delete ──────────────────────────────────────────
+
+  it("update — owner edits blocks and pin state", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", text: "v1" }],
+    });
+    const updated = await ctx.caller().news.update({
+      tripId,
+      postId: post.id,
+      blocks: [{ type: "text", text: "v2 edited" }],
+      pinned: true,
+    });
+    expect(updated.blocks[0]).toMatchObject({ text: "v2 edited" });
+    expect(updated.pinned).toBe(true);
+  });
+
+  it("update — a member cannot edit", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", text: "owned by owner" }],
+    });
+    await expect(
+      ctx.callerAs("member").news.update({
+        tripId,
+        postId: post.id,
+        blocks: [{ type: "text", text: "hijack" }],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("setPinned — toggles pin without resending blocks", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", text: "pin me" }],
+    });
+    const res = await ctx.caller().news.setPinned({ tripId, postId: post.id, pinned: true });
+    expect(res.pinned).toBe(true);
+    const posts = await ctx.caller().news.list({ tripId });
+    expect(posts.find((p) => p.id === post.id)?.pinned).toBe(true);
+  });
+
+  it("delete — owner removes a post; member cannot", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", text: "temporary" }],
+    });
+    await expect(
+      ctx.callerAs("member").news.delete({ tripId, postId: post.id })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const res = await ctx.caller().news.delete({ tripId, postId: post.id });
+    expect(res.id).toBe(post.id);
+    const posts = await ctx.caller().news.list({ tripId });
+    expect(posts.some((p) => p.id === post.id)).toBe(false);
+  });
 });
