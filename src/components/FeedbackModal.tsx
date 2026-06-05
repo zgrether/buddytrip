@@ -9,7 +9,6 @@ import {
   Heart,
   Lightbulb,
   Megaphone,
-  Paperclip,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -127,27 +126,16 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   const platform = "web";
 
   // ── Form state ─────────────────────────────────────────────────────────
-  // emailOverride is null until the user actually edits the email field —
-  // until then the rendered value falls back to the signed-in user's
-  // email. This avoids a useEffect that would otherwise cascade a render
-  // every time getMe resolves (and trips react-hooks/set-state-in-effect).
   const [category, setCategory] = useState<Category>("bug");
   const [text, setText] = useState("");
-  const [emailOverride, setEmailOverride] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const emailValue = emailOverride ?? me?.email ?? "";
-
-  // Reset transient form state on each open transition. setState-in-effect
-  // is the right tool here: the reset is the React-side "external system"
-  // synchronization — when `open` flips true, the form must be a known
-  // blank slate. Same pattern as AboutModal's mounted-flag effect.
+  // Reset transient form state on each open transition.
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCategory("bug");
     setText("");
-    setEmailOverride(null);
     setToast(null);
   }, [open]);
 
@@ -170,7 +158,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 
   const send = trpc.feedback.send.useMutation({
     onSuccess: () => {
-      setToast("Thanks — sent straight to the founder.");
+      setToast("Thanks — the developer appreciates it!");
       // Brief delay so the toast is perceptible before the modal closes.
       window.setTimeout(() => onClose(), 900);
     },
@@ -185,13 +173,16 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 
   if (!open || !mounted) return null;
 
+  // Pull the user's email from session so the tRPC procedure can include it
+  // in the report as a reply-to address — silently, without showing the field.
+  const replyTo = me?.email ?? null;
+
   const handleSubmit = () => {
     if (!canSend) return;
-    const trimmedEmail = emailValue.trim();
     send.mutate({
       category,
       message: text.trim(),
-      replyTo: trimmedEmail ? trimmedEmail : null,
+      replyTo,
       screen: screenLabel,
       tripLabel,
       platform,
@@ -355,69 +346,6 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           />
         </div>
 
-        {/* ── Email (optional) ─────────────────────────────────────────── */}
-        <div style={{ padding: "8px 18px 4px" }}>
-          <input
-            type="email"
-            value={emailValue}
-            onChange={(e) => setEmailOverride(e.target.value)}
-            placeholder="you@email.com"
-            data-testid="feedback-email"
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid var(--color-bt-border)",
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              fontSize: 13,
-              outline: "none",
-            }}
-          />
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 11,
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            Optional — drop it if you want a reply when we fix it.
-          </div>
-        </div>
-
-        {/* ── Auto-captured context ────────────────────────────────────── */}
-        <div
-          className="flex items-center"
-          style={{
-            margin: "10px 18px 0",
-            padding: "8px 10px",
-            gap: 8,
-            borderRadius: 9,
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-subtle-border)",
-          }}
-        >
-          <Paperclip
-            size={13}
-            strokeWidth={1.75}
-            style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
-            aria-hidden="true"
-          />
-          <span
-            className="truncate"
-            style={{
-              fontSize: 11.5,
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            Attached automatically:{" "}
-            <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
-              {[screenLabel, tripLabel, platform].filter(Boolean).join(" · ")}
-            </span>
-          </span>
-        </div>
-
         {/* ── Footer ───────────────────────────────────────────────────── */}
         <div
           className="flex items-center"
@@ -435,7 +363,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
               color: "var(--color-bt-text-dim)",
             }}
           >
-            Goes straight to the founder.
+            The developer appreciates any and all feedback.
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
             <button
