@@ -594,6 +594,12 @@ function NewsPostCard({
 }
 
 // ── Post ⋯ menu (Edit / Pin / Delete) ──────────────────────────────────────
+// The dropdown is portaled to <body> with fixed positioning so it escapes the
+// post card's overflow:hidden AND the feed's scroll clipping. It flips above
+// the button when there isn't room below, and closes on outside-click / Esc /
+// scroll / resize (a fixed-position menu would otherwise drift from its anchor).
+const POST_MENU_HEIGHT = 132; // ~3 rows — enough to decide flip direction
+
 function PostMenu({
   pinned,
   onEdit,
@@ -607,86 +613,112 @@ function PostMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setConfirming(false);
+  }, []);
+
+  const toggle = () => {
+    if (open) return close();
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const flipUp = r.bottom + POST_MENU_HEIGHT > window.innerHeight;
+    setCoords({
+      top: flipUp ? r.top - POST_MENU_HEIGHT - 4 : r.bottom + 4,
+      right: window.innerWidth - r.right,
+    });
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setConfirming(false);
-      }
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setOpen(false);
-        setConfirming(false);
-      }
+      if (e.key === "Escape") close();
     };
+    // A fixed menu can't follow the anchor — close on scroll/resize instead.
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
-  }, [open]);
+  }, [open, close]);
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         aria-label="Manage post"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         className="flex h-[26px] w-[26px] items-center justify-center rounded-md transition-colors hover:bg-[var(--color-bt-hover)]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
         <MoreHorizontal size={16} />
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-10 mt-1 overflow-hidden"
-          style={{
-            minWidth: 168,
-            background: "var(--color-bt-card-float)",
-            border: "1px solid var(--color-bt-border)",
-            borderRadius: 10,
-            boxShadow: "var(--shadow-floating)",
-          }}
-        >
-          <MenuItem
-            icon={<Pencil size={14} />}
-            label="Edit"
-            onClick={() => {
-              setOpen(false);
-              onEdit();
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-[60] overflow-hidden"
+            style={{
+              top: coords.top,
+              right: coords.right,
+              minWidth: 168,
+              background: "var(--color-bt-card-float)",
+              border: "1px solid var(--color-bt-border)",
+              borderRadius: 10,
+              boxShadow: "var(--shadow-floating)",
             }}
-          />
-          <MenuItem
-            icon={<Pin size={14} />}
-            label={pinned ? "Unpin" : "Pin to top"}
-            onClick={() => {
-              setOpen(false);
-              onTogglePin();
-            }}
-          />
-          <MenuItem
-            icon={<Trash2 size={14} />}
-            label={confirming ? "Tap to confirm" : "Delete"}
-            danger
-            onClick={() => {
-              if (!confirming) {
-                setConfirming(true);
-                return;
-              }
-              setOpen(false);
-              setConfirming(false);
-              onDelete();
-            }}
-          />
-        </div>
-      )}
-    </div>
+          >
+            <MenuItem
+              icon={<Pencil size={14} />}
+              label="Edit"
+              onClick={() => {
+                close();
+                onEdit();
+              }}
+            />
+            <MenuItem
+              icon={<Pin size={14} />}
+              label={pinned ? "Unpin" : "Pin to top"}
+              onClick={() => {
+                close();
+                onTogglePin();
+              }}
+            />
+            <MenuItem
+              icon={<Trash2 size={14} />}
+              label={confirming ? "Tap to confirm" : "Delete"}
+              danger
+              onClick={() => {
+                if (!confirming) {
+                  setConfirming(true);
+                  return;
+                }
+                close();
+                onDelete();
+              }}
+            />
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
