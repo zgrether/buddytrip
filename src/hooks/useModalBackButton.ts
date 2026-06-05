@@ -26,6 +26,21 @@ import { useEffect, useRef } from "react";
  *      every always-rendered modal silently consumes one back-press on
  *      page mount.
  */
+// ── Shared modal stack ───────────────────────────────────────────────────────
+// Modals can nest (e.g. the "How posts work" help opens on top of the News
+// panel). History-based back interception has to be stack-aware or the layers
+// stomp each other:
+//
+//   • Only the TOP modal reacts to a real back-press (inner closes first).
+//   • When a modal closes via its X / scrim, its cleanup pops the phantom
+//     entry with history.back(). That emits a popstate an OUTER modal would
+//     otherwise mistake for a user back-press and close on. `suppressNextPop`
+//     marks that single programmatic pop so the outer layer ignores it.
+//
+// The ids are per-mounted-instance; the array is module-global on purpose.
+const modalStack: symbol[] = [];
+let suppressNextPop = false;
+
 export function useModalBackButton(onClose: () => void, enabled: boolean = true) {
   const onCloseRef = useRef(onClose);
 
@@ -37,37 +52,47 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
   useEffect(() => {
     if (!enabled) return;
 
+    const id = Symbol("modal");
+    modalStack.push(id);
+
     // Push a phantom entry so back has something to pop.
     window.history.pushState({ modal: true }, "");
 
-    // Instead of a fragile setTimeout(0) race, use a counter to ignore
-    // spurious popstate events. Next.js / React may fire popstate during
-    // its own history manipulation on mount. We skip the first N events
-    // (where N is the number of spurious pops we've re-pushed for), and
-    // only act once we receive a popstate that pops our phantom entry
-    // after the dust has settled.
-    //
-    // The key insight: every spurious pop triggers a re-push, so the
-    // history depth stays correct. We only call onClose when we see a
-    // pop whose state is NOT our phantom marker — meaning the user
-    // actually pressed back and popped our entry.
+    // Spurious popstate guard: Next.js / React may fire popstate during their
+    // own history churn on mount. Until things settle we re-push instead of
+    // treating it as a user back-press.
     let settled = false;
     const settleId = setTimeout(() => {
       settled = true;
     }, 100); // 100ms is long enough for any framework-level history churn
 
+    // Set when WE close via the back button, so cleanup knows the phantom was
+    // already popped by the navigation and must NOT history.back() again
+    // (doing so would pop an outer modal's phantom).
+    let closedByBack = false;
+
     const handlePopState = (e: PopStateEvent) => {
-      // Always stop propagation to prevent Next.js from navigating.
+      // Only the topmost modal handles a pop. Outer layers bail without
+      // stopping propagation so the event reaches the top modal's listener.
+      if (modalStack[modalStack.length - 1] !== id) return;
+
+      // Top modal owns this event — stop Next.js's bubble-phase navigation.
       e.stopImmediatePropagation();
 
+      // A programmatic pop from an inner modal's cleanup — not a user action.
+      if (suppressNextPop) {
+        suppressNextPop = false;
+        return;
+      }
+
       if (!settled) {
-        // Spurious popstate during mount — re-push the phantom entry
-        // so the intercept remains in place for real user interaction.
+        // Spurious popstate during mount — re-push so the intercept holds.
         window.history.pushState({ modal: true }, "");
         return;
       }
 
-      // Real user back-press — close the modal.
+      // Real user back-press — close this (topmost) modal.
+      closedByBack = true;
       onCloseRef.current();
     };
 
@@ -77,9 +102,14 @@ export function useModalBackButton(onClose: () => void, enabled: boolean = true)
     return () => {
       clearTimeout(settleId);
       window.removeEventListener("popstate", handlePopState, { capture: true });
-      // If the modal was closed by the X / overlay (not the back button),
-      // the phantom entry is still in history — clean it up.
-      if (window.history.state?.modal) {
+      const idx = modalStack.lastIndexOf(id);
+      if (idx !== -1) modalStack.splice(idx, 1);
+
+      // Closed by X / scrim (not the back button): the phantom entry is still
+      // in history, so pop it. If another modal is still open underneath, flag
+      // the resulting popstate as programmatic so it doesn't close that one.
+      if (!closedByBack && window.history.state?.modal) {
+        if (modalStack.length > 0) suppressNextPop = true;
         window.history.back();
       }
     };

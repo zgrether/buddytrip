@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pin, X, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Pin, X, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
 import { NewsComposer } from "@/components/news/NewsComposer";
+import { NewsHelpModal } from "@/components/news/NewsHelpModal";
 import type { NewsPost } from "@/lib/news";
 import {
   RAIL_DEFAULT_WIDTH,
@@ -250,6 +251,26 @@ function NewsPanelInner({
     </span>
   );
 
+  // ── "How posts work" help (lives next to the News title) ──────────────────
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpBtn = (
+    <button
+      type="button"
+      onClick={() => setHelpOpen(true)}
+      aria-label="How posts work"
+      title="How posts work"
+      className="inline-flex items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)] hover:text-[var(--color-bt-accent)]"
+      style={{
+        height: 28,
+        width: 28,
+        background: "transparent",
+        color: "var(--color-bt-text-dim)",
+      }}
+    >
+      <HelpCircle size={17} />
+    </button>
+  );
+
   // ── Compose state — null = viewing the feed ───────────────────────────────
   const [compose, setCompose] = useState<
     { mode: "add" } | { mode: "edit"; post: NewsPost } | null
@@ -316,6 +337,7 @@ function NewsPanelInner({
       style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
     >
       {titleRow}
+      {helpBtn}
       {newPostBtn}
       {closeBtn(variant)}
     </div>
@@ -382,7 +404,7 @@ function NewsPanelInner({
         <div
           className="absolute right-0 top-0 bottom-0 flex flex-col"
           style={{
-            background: "var(--color-bt-card)",
+            background: "var(--color-bt-card-float)",
             borderLeft: "1px solid var(--color-bt-border)",
             width: panelWidth,
           }}
@@ -426,7 +448,7 @@ function NewsPanelInner({
             ref={sheetRef}
             className="flex w-full flex-col rounded-t-[18px]"
             style={{
-              background: "var(--color-bt-card)",
+              background: "var(--color-bt-card-float)",
               height: sheetHeight != null ? sheetHeight : "85vh",
               maxHeight: "100%",
             }}
@@ -455,6 +477,8 @@ function NewsPanelInner({
           </div>
         </div>
       </ScrollLock>
+
+      <NewsHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </>,
     document.body
   );
@@ -468,11 +492,18 @@ function NewsPanelInner({
 function NewsFeedScroll({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [dir, setDir] = useState<"up" | "down" | null>(null);
+  // Edge fades: shown when content is scrolled off the top / bottom so the
+  // feed reads as continuing past the panel chrome rather than hard-cut.
+  const [fadeTop, setFadeTop] = useState(false);
+  const [fadeBottom, setFadeBottom] = useState(false);
 
   const update = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const scrollable = el.scrollHeight - el.clientHeight > 40;
+    // A few px of slack so the fade clears fully at the very top/bottom.
+    setFadeTop(scrollable && el.scrollTop > 4);
+    setFadeBottom(scrollable && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
     if (!scrollable) {
       setDir(null);
       return;
@@ -510,6 +541,27 @@ function NewsFeedScroll({ children }: { children: React.ReactNode }) {
       >
         {children}
       </div>
+      {/* Top / bottom scroll shadows — a soft black gradient (matching the
+          app's other shadows) so off-screen content reads as tucked under the
+          chrome, not hard-cut. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-200"
+        style={{
+          height: 24,
+          opacity: fadeTop ? 1 : 0,
+          background: "linear-gradient(to bottom, rgba(0,0,0,0.40), transparent)",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 transition-opacity duration-200"
+        style={{
+          height: 24,
+          opacity: fadeBottom ? 1 : 0,
+          background: "linear-gradient(to top, rgba(0,0,0,0.40), transparent)",
+        }}
+      />
       {dir && (
         <button
           type="button"

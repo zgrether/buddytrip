@@ -522,7 +522,7 @@ function FloatingChatPanelInner({
         <div
           className="absolute right-0 top-0 bottom-0 flex flex-col"
           style={{
-            background: "var(--color-bt-card)",
+            background: "var(--color-bt-card-float)",
             borderLeft: "1px solid var(--color-bt-border)",
             width: panelWidth,
           }}
@@ -596,7 +596,7 @@ function FloatingChatPanelInner({
           ref={sheetRef}
           className="flex w-full flex-col rounded-t-2xl"
           style={{
-            background: "var(--color-bt-card)",
+            background: "var(--color-bt-card-float)",
             height: sheetHeight != null ? sheetHeight : "85vh",
             maxHeight: "100%",
           }}
@@ -891,7 +891,7 @@ function ChatBody({
         >
           <div
             className="pointer-events-none sticky top-0 z-10 h-8 -mb-8"
-            style={{ background: "linear-gradient(to bottom, var(--color-bt-card), transparent)" }}
+            style={{ background: "linear-gradient(to bottom, var(--color-bt-card-float), transparent)" }}
           />
           <div className="space-y-1.5 px-3 py-2">
             {loadingOlder && (
