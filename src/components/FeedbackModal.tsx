@@ -269,21 +269,6 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           >
             Send feedback
           </span>
-          <span
-            style={{
-              fontSize: 9.5,
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              color: "var(--color-bt-warning)",
-              background: "var(--color-bt-warning-faint)",
-              border: "1px solid var(--color-bt-warning-border)",
-              borderRadius: 9999,
-              padding: "2px 8px",
-            }}
-          >
-            Beta
-          </span>
           <button
             type="button"
             onClick={onClose}
@@ -300,6 +285,29 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           >
             <X size={17} strokeWidth={1.75} />
           </button>
+        </div>
+
+        {/* ── Beta banner ──────────────────────────────────────────────── */}
+        <div
+          style={{
+            margin: "0 18px 14px",
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "var(--color-bt-accent-faint)",
+            border: "1px solid var(--color-bt-accent-border)",
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "var(--color-bt-text-dim)",
+            }}
+          >
+            BuddyTrip is in beta — your feedback goes straight to the developer
+            and shapes what gets built next.
+          </p>
         </div>
 
         {/* ── Category chips ───────────────────────────────────────────── */}
@@ -380,15 +388,6 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
             gap: 10,
           }}
         >
-          <span
-            className="hidden sm:inline"
-            style={{
-              fontSize: 11.5,
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            The developer appreciates any and all feedback.
-          </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
             <button
               type="button"
