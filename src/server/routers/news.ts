@@ -2,7 +2,58 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
-import { newsBlocksSchema, type NewsBlock, type NewsPost } from "@/lib/news";
+import { listMembers } from "./tripMembers";
+import { listTeams } from "./teams";
+import { listTeamAssignments } from "./teamAssignments";
+import {
+  newsBlocksSchema,
+  type NewsBlock,
+  type NewsPerson,
+  type NewsPost,
+  type NewsTeam,
+} from "@/lib/news";
+
+// Mention/crew pill palette — used when a member isn't on a competition team.
+// Picked deterministically by user id so a person's color is stable.
+const MENTION_PALETTE = [
+  "#3b82f6", // blue
+  "#2dd4bf", // teal
+  "#a855f7", // purple
+  "#f97316", // orange
+  "#22c55e", // green
+  "#ec4899", // pink
+  "#eab308", // yellow
+  "#06b6d4", // cyan
+];
+
+function paletteColor(userId: string): string {
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) h = (h + userId.charCodeAt(i)) % MENTION_PALETTE.length;
+  return MENTION_PALETTE[h];
+}
+
+/** "Zach Grether" → "ZG"; "Llama" → "L". Server-side twin of Avatar.initialsFor. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts.map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 2);
+}
+
+// Load the trip's single competition (MVP one-per-trip) — null if none.
+async function getCompetitionId(
+  ctx: { supabase: { from: (t: string) => unknown } },
+  tripId: string,
+): Promise<string | null> {
+  const { data } = await (ctx.supabase
+    .from("competitions") as unknown as {
+      select: (s: string) => { eq: (c: string, v: string) => { limit: (n: number) => { maybeSingle: () => Promise<{ data: { id: string } | null }> } } };
+    })
+    .select("id")
+    .eq("trip_id", tripId)
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
 
 // ── news router ────────────────────────────────────────────────────────────
 //
@@ -154,6 +205,79 @@ export const newsRouter = router({
       }
 
       return { lastReadAt: (data as { last_read_at: string }).last_read_at };
+    }),
+
+  // -----------------------------------------------------------------------
+  // roster — people for the @Crew block picker. Each carries the denormalized
+  // name/initials/color a mention pill needs, so a saved post renders without
+  // a roster round-trip. Color = the member's competition team color when
+  // assigned, else a stable per-user palette color.
+  // -----------------------------------------------------------------------
+  roster: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }): Promise<NewsPerson[]> => {
+      const members = await listMembers(ctx, ctx.tripId!);
+      const compId = await getCompetitionId(ctx, ctx.tripId!);
+
+      const teamColor = new Map<string, string>();
+      if (compId) {
+        const [teams, assignments] = await Promise.all([
+          listTeams(ctx, compId),
+          listTeamAssignments(ctx, compId),
+        ]);
+        const colorByTeam = new Map(
+          (teams as { id: string; color: string | null }[]).map((t) => [t.id, t.color]),
+        );
+        for (const a of assignments as { user_id: string; team_id: string }[]) {
+          const c = colorByTeam.get(a.team_id);
+          if (c) teamColor.set(a.user_id, c);
+        }
+      }
+
+      return members
+        .filter((m) => !!m.user_id)
+        .map((m) => ({
+          userId: m.user_id as string,
+          name: m.displayName,
+          initials: initialsOf(m.displayName),
+          color: teamColor.get(m.user_id as string) ?? paletteColor(m.user_id as string),
+        }));
+    }),
+
+  // -----------------------------------------------------------------------
+  // competitionDraw — the team draw for the Teams block, ready to embed.
+  // null when there's no competition or no teams yet.
+  // -----------------------------------------------------------------------
+  competitionDraw: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }): Promise<{ teams: NewsTeam[] } | null> => {
+      const compId = await getCompetitionId(ctx, ctx.tripId!);
+      if (!compId) return null;
+
+      const [teams, assignments, members] = await Promise.all([
+        listTeams(ctx, compId),
+        listTeamAssignments(ctx, compId),
+        listMembers(ctx, ctx.tripId!),
+      ]);
+      if ((teams as unknown[]).length === 0) return null;
+
+      const nameByUser = new Map(members.map((m) => [m.user_id as string, m.displayName]));
+      const playersByTeam = new Map<string, string[]>();
+      for (const a of assignments as { user_id: string; team_id: string }[]) {
+        const list = playersByTeam.get(a.team_id) ?? [];
+        list.push(nameByUser.get(a.user_id) ?? "Unknown");
+        playersByTeam.set(a.team_id, list);
+      }
+
+      return {
+        teams: (teams as { id: string; name: string; color: string | null }[]).map((t) => ({
+          name: t.name,
+          color: t.color ?? "var(--color-bt-accent)",
+          players: playersByTeam.get(t.id) ?? [],
+        })),
+      };
     }),
 
   // -----------------------------------------------------------------------

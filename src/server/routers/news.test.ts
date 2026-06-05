@@ -233,4 +233,67 @@ describe("news router", () => {
     const posts = await ctx.caller().news.list({ tripId });
     expect(posts.some((p) => p.id === post.id)).toBe(false);
   });
+
+  // ── roster + competitionDraw (PR3) ────────────────────────────────────────
+  // Own trip + competition so the post tests above aren't affected.
+  describe("roster + competitionDraw", () => {
+    let drawTrip: string;
+    let compId: string;
+    let teamA: string;
+    let teamB: string;
+
+    beforeAll(async () => {
+      drawTrip = await ctx.createTrip("Draw Test");
+      await ctx.addTripMember(drawTrip, "planner", "Planner");
+      await ctx.addTripMember(drawTrip, "member", "Member");
+      compId = await ctx.createCompetition(drawTrip);
+      teamA = await ctx.createTeam(compId, "The Usual Suspects", { color: "#3b82f6" });
+      teamB = await ctx.createTeam(compId, "Buddy's Last Stand", { color: "#2dd4bf" });
+      // Owner → A, planner → B; member stays unassigned.
+      await ctx.admin.from("team_assignments").insert([
+        { competition_id: compId, user_id: ctx.user.id, team_id: teamA },
+        { competition_id: compId, user_id: ctx.getUser("planner").id, team_id: teamB },
+      ]);
+    });
+
+    it("roster — returns every member with name + initials + color", async () => {
+      const people = await ctx.caller().news.roster({ tripId: drawTrip });
+      expect(people.length).toBe(3);
+      for (const p of people) {
+        expect(p.userId).toBeTruthy();
+        expect(p.name).toBeTruthy();
+        expect(p.initials).toMatch(/^[A-Z?]{1,2}$/);
+        expect(p.color).toBeTruthy();
+      }
+    });
+
+    it("roster — assigned members take their team color", async () => {
+      const people = await ctx.caller().news.roster({ tripId: drawTrip });
+      const owner = people.find((p) => p.userId === ctx.user.id);
+      const planner = people.find((p) => p.userId === ctx.getUser("planner").id);
+      expect(owner?.color).toBe("#3b82f6");
+      expect(planner?.color).toBe("#2dd4bf");
+    });
+
+    it("competitionDraw — returns the teams with their rosters", async () => {
+      const draw = await ctx.caller().news.competitionDraw({ tripId: drawTrip });
+      expect(draw).not.toBeNull();
+      expect(draw!.teams.length).toBe(2);
+      const a = draw!.teams.find((t) => t.name === "The Usual Suspects");
+      expect(a?.color).toBe("#3b82f6");
+      expect(a?.players.length).toBe(1);
+    });
+
+    it("competitionDraw — null when the trip has no competition", async () => {
+      const plain = await ctx.createTrip("No Comp Trip");
+      const draw = await ctx.caller().news.competitionDraw({ tripId: plain });
+      expect(draw).toBeNull();
+    });
+
+    it("roster — a non-member is forbidden", async () => {
+      await expect(
+        ctx.callerAs("outsider").news.roster({ tripId: drawTrip })
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+  });
 });

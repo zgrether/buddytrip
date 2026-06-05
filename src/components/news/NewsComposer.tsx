@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   X,
   Plus,
@@ -8,15 +8,17 @@ import {
   Pin,
   ChevronUp,
   ChevronDown,
+  GripVertical,
   Type,
   Image as ImageIcon,
   ListOrdered,
   Users,
   Trophy,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import type { NewsBlock, NewsBlockType, NewsPost } from "@/lib/news";
+import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news";
 
 // ── NewsComposer ────────────────────────────────────────────────────────────
 //
@@ -25,16 +27,16 @@ import type { NewsBlock, NewsBlockType, NewsPost } from "@/lib/news";
 // footer — placed directly in the rail's flex-col so the header/footer pin and
 // the body scrolls.
 //
-// PR2 scope: Text · Media · Steps · Callout editors, up/down reorder, remove,
-// pin toggle, create/edit/delete. The @Crew picker, Teams-from-Competition
-// picker, drag-reorder, and the Text formatting toolbar land in PR3. When
-// EDITING a post that already contains crew/teams blocks (e.g. the seed
-// welcome post), those render as read-only reference rows here and are
-// preserved on save — never silently dropped.
+// The six block editors, drag-to-reorder, pin, create/edit/delete. @Crew pulls
+// from the trip roster; Teams pulls the draw from Competition. The inline-@
+// mentions inside Text paragraphs and the bold/italic/list/link toolbar are a
+// later pass (they need a rich-text editor); a plain textarea backs Text here.
 
-// Block types the composer can ADD in PR2.
+// Block types the composer can ADD, in catalog order.
 const ADDABLE: { type: NewsBlockType; label: string; icon: LucideIcon }[] = [
   { type: "text", label: "Text", icon: Type },
+  { type: "crew", label: "@Crew", icon: Users },
+  { type: "teams", label: "Teams", icon: Trophy },
   { type: "media", label: "Media", icon: ImageIcon },
   { type: "steps", label: "Steps", icon: ListOrdered },
   { type: "callout", label: "Callout", icon: Pin },
@@ -44,6 +46,10 @@ function blankBlock(type: NewsBlockType): NewsBlock {
   switch (type) {
     case "text":
       return { type: "text", text: "" };
+    case "crew":
+      return { type: "crew", label: "", people: [] };
+    case "teams":
+      return { type: "teams", teams: [] };
     case "media":
       return { type: "media", kind: "video", src: "", title: "", meta: "" };
     case "steps":
@@ -51,7 +57,6 @@ function blankBlock(type: NewsBlockType): NewsBlock {
     case "callout":
       return { type: "callout", text: "" };
     default:
-      // crew/teams aren't addable in PR2; fall back to text.
       return { type: "text", text: "" };
   }
 }
@@ -77,8 +82,11 @@ function cleanBlocks(blocks: NewsBlock[]): NewsBlock[] {
       if (b.kind === "photo" || (b.src ?? "").trim().length > 0) {
         out.push({ ...b, src: b.src?.trim() });
       }
+    } else if (b.type === "crew") {
+      if (b.people.length > 0) out.push(b);
+    } else if (b.type === "teams") {
+      if (b.teams.length > 0) out.push(b);
     } else {
-      // crew / teams — preserved untouched.
       out.push(b);
     }
   }
@@ -129,6 +137,18 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
     });
   const addBlock = (type: NewsBlockType) => setBlocks((bs) => [...bs, blankBlock(type)]);
 
+  // Drag-to-reorder (desktop, via the grip). Up/down arrows stay as the
+  // touch/keyboard fallback. dragFrom holds the picked-up block's index.
+  const dragFrom = useRef<number | null>(null);
+  const reorder = (from: number, to: number) =>
+    setBlocks((bs) => {
+      if (from === to || from < 0 || to < 0 || from >= bs.length || to >= bs.length) return bs;
+      const copy = bs.slice();
+      const [moved] = copy.splice(from, 1);
+      copy.splice(to, 0, moved);
+      return copy;
+    });
+
   const submit = () => {
     if (!canSubmit) return;
     if (editing && post) {
@@ -170,12 +190,20 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
         {blocks.map((b, i) => (
           <BlockEditor
             key={i}
+            tripId={tripId}
             block={b}
             index={i}
             count={blocks.length}
             onChange={(next) => setBlock(i, next)}
             onRemove={() => removeBlock(i)}
             onMove={(dir) => moveBlock(i, dir)}
+            onDragStartBlock={() => {
+              dragFrom.current = i;
+            }}
+            onDropBlock={() => {
+              if (dragFrom.current !== null) reorder(dragFrom.current, i);
+              dragFrom.current = null;
+            }}
           />
         ))}
 
@@ -307,20 +335,31 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
 
 // ── Block editor shell ──────────────────────────────────────────────────────
 function BlockEditor({
+  tripId,
   block,
   index,
   count,
   onChange,
   onRemove,
   onMove,
+  onDragStartBlock,
+  onDropBlock,
 }: {
+  tripId: string;
   block: NewsBlock;
   index: number;
   count: number;
   onChange: (b: NewsBlock) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
+  onDragStartBlock: () => void;
+  onDropBlock: () => void;
 }) {
+  // Drag is armed only while the grip is held, so dragging the block never
+  // hijacks text selection inside its inputs.
+  const [armed, setArmed] = useState(false);
+  const [dropTarget, setDropTarget] = useState(false);
+
   const kindLabel: Record<NewsBlockType, string> = {
     text: "Text",
     crew: "@Crew · from the roster",
@@ -342,16 +381,46 @@ function BlockEditor({
   return (
     <div
       className="flex-shrink-0"
+      draggable={armed}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        onDragStartBlock();
+      }}
+      onDragEnd={() => {
+        setArmed(false);
+        setDropTarget(false);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDropTarget(true);
+      }}
+      onDragLeave={() => setDropTarget(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDropTarget(false);
+        onDropBlock();
+      }}
       style={{
         position: "relative",
-        border: "1px solid var(--color-bt-border)",
+        border: `1px solid ${dropTarget ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
         borderRadius: 11,
         background: "var(--color-bt-card-raised)",
         padding: "10px 12px 12px",
       }}
     >
-      <div className="mb-2 flex items-center gap-2">
-        {/* Reorder (up/down — drag handle upgrade is PR3) */}
+      <div className="mb-2 flex items-center gap-1.5">
+        {/* Drag handle — arms HTML5 drag on press (desktop). */}
+        <span
+          aria-hidden="true"
+          onMouseDown={() => setArmed(true)}
+          onMouseUp={() => setArmed(false)}
+          title="Drag to reorder"
+          className="flex h-5 w-4 cursor-grab items-center justify-center active:cursor-grabbing"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <GripVertical size={14} />
+        </span>
+        {/* Up/down — touch/keyboard fallback for reordering. */}
         <div className="flex items-center">
           <button
             type="button"
@@ -398,7 +467,7 @@ function BlockEditor({
         </button>
       </div>
 
-      <BlockFields block={block} onChange={onChange} />
+      <BlockFields tripId={tripId} block={block} onChange={onChange} />
     </div>
   );
 }
@@ -416,7 +485,15 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
 };
 
-function BlockFields({ block, onChange }: { block: NewsBlock; onChange: (b: NewsBlock) => void }) {
+function BlockFields({
+  tripId,
+  block,
+  onChange,
+}: {
+  tripId: string;
+  block: NewsBlock;
+  onChange: (b: NewsBlock) => void;
+}) {
   switch (block.type) {
     case "text":
       return (
@@ -514,16 +591,10 @@ function BlockFields({ block, onChange }: { block: NewsBlock; onChange: (b: News
       return <StepsFields block={block} onChange={onChange} />;
 
     case "crew":
+      return <CrewFields tripId={tripId} block={block} onChange={onChange} />;
+
     case "teams":
-      // Not editable in PR2 — shown so an edited post keeps these blocks.
-      return (
-        <p style={{ margin: 0, fontSize: 12, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}>
-          {block.type === "crew"
-            ? `${block.people.length} ${block.people.length === 1 ? "person" : "people"} tagged. `
-            : `${block.teams.length} ${block.teams.length === 1 ? "team" : "teams"} from the draw. `}
-          Editing this block type is coming soon — it&rsquo;s kept as-is when you save.
-        </p>
-      );
+      return <TeamsFields tripId={tripId} block={block} onChange={onChange} />;
 
     default:
       return null;
@@ -604,6 +675,214 @@ function StepsFields({
       >
         <Plus size={13} /> Add step
       </button>
+    </div>
+  );
+}
+
+// ── @Crew editor ────────────────────────────────────────────────────────────
+// Optional label ("Captains") + a searchable roster picker → people pills.
+function CrewFields({
+  tripId,
+  block,
+  onChange,
+}: {
+  tripId: string;
+  block: Extract<NewsBlock, { type: "crew" }>;
+  onChange: (b: NewsBlock) => void;
+}) {
+  const { data: roster = [] } = trpc.news.roster.useQuery({ tripId });
+  const [query, setQuery] = useState("");
+
+  const chosen = new Set(block.people.map((p) => p.userId).filter(Boolean) as string[]);
+  const q = query.trim().toLowerCase();
+  const matches = roster
+    .filter((p) => !chosen.has(p.userId ?? ""))
+    .filter((p) => (q ? p.name.toLowerCase().includes(q) : true))
+    .slice(0, 6);
+
+  const add = (p: NewsPerson) => {
+    onChange({ ...block, people: [...block.people, p] });
+    setQuery("");
+  };
+  const remove = (i: number) =>
+    onChange({ ...block, people: block.people.filter((_, j) => j !== i) });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <input
+        value={block.label ?? ""}
+        onChange={(e) => onChange({ ...block, label: e.target.value })}
+        placeholder="Label (optional) — e.g. Captains, Pairing"
+        style={inputStyle}
+      />
+
+      {block.people.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {block.people.map((p, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1.5"
+              style={{
+                padding: "3px 6px 3px 3px",
+                borderRadius: 9999,
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--color-bt-accent)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: "50%",
+                  background: p.color,
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 8,
+                  fontWeight: 700,
+                }}
+              >
+                {p.initials}
+              </span>
+              {p.name}
+              <button
+                type="button"
+                aria-label={`Remove ${p.name}`}
+                onClick={() => remove(i)}
+                className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Add crew — type a name…"
+        style={inputStyle}
+      />
+      {query && matches.length > 0 && (
+        <div
+          className="flex flex-col overflow-hidden"
+          style={{ border: "1px solid var(--color-bt-border)", borderRadius: 8, background: "var(--color-bt-card)" }}
+        >
+          {matches.map((p) => (
+            <button
+              key={p.userId}
+              type="button"
+              onClick={() => add(p)}
+              className="flex items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ background: "transparent", border: "none", cursor: "pointer" }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: "50%",
+                  background: p.color,
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {p.initials}
+              </span>
+              <span style={{ fontSize: 13, color: "var(--color-bt-text)" }}>{p.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {query && matches.length === 0 && (
+        <p style={{ margin: 0, fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+          No one left to add by that name.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Teams editor (pulled from Competition) ──────────────────────────────────
+function TeamsFields({
+  tripId,
+  block,
+  onChange,
+}: {
+  tripId: string;
+  block: Extract<NewsBlock, { type: "teams" }>;
+  onChange: (b: NewsBlock) => void;
+}) {
+  const { data: draw, isLoading } = trpc.news.competitionDraw.useQuery({ tripId });
+
+  // Auto-fill once when a freshly-added (empty) Teams block first sees a draw.
+  const filledRef = useRef(false);
+  useEffect(() => {
+    if (filledRef.current) return;
+    if (block.teams.length === 0 && draw && draw.teams.length > 0) {
+      filledRef.current = true;
+      onChange({ ...block, teams: draw.teams });
+    }
+  }, [draw, block, onChange]);
+
+  if (isLoading) {
+    return <p style={{ margin: 0, fontSize: 12, color: "var(--color-bt-text-dim)" }}>Loading the draw…</p>;
+  }
+
+  if (!draw || draw.teams.length === 0) {
+    return (
+      <p style={{ margin: 0, fontSize: 12, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}>
+        No draw yet — set up teams in the Competition tab, then come back and add this block.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        className="flex items-center gap-2"
+        style={{
+          padding: "8px 10px",
+          borderRadius: 8,
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+        }}
+      >
+        <Trophy size={15} style={{ color: "var(--color-bt-accent)" }} />
+        <span style={{ fontSize: 12.5, color: "var(--color-bt-text)" }}>
+          The draw · {block.teams.length || draw.teams.length} teams
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange({ ...block, teams: draw.teams })}
+          className="ml-auto inline-flex items-center gap-1.5"
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--color-bt-accent)",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          <RefreshCw size={12} /> Refresh
+        </button>
+      </div>
+      <p style={{ margin: 0, fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+        Rosters stay in sync with Competition — you don&rsquo;t retype them.
+      </p>
     </div>
   );
 }
