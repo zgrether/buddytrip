@@ -263,7 +263,6 @@ function NewsPanelInner({
       style={{
         height: 28,
         width: 28,
-        border: "1px solid var(--color-bt-border)",
         background: "transparent",
         color: "var(--color-bt-text-dim)",
       }}
