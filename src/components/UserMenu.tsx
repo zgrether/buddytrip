@@ -31,9 +31,12 @@ interface UserMenuProps {
    *  there opens the same FeedbackModal the title-bar megaphone uses. The
    *  modal itself lives in TopNav so both entry points share one mount. */
   onOpenFeedback?: () => void;
+  /** Fired when the account menu opens. The page uses it to close the
+   *  News/Chat rail so the dropdown isn't trapped behind the mobile sheet. */
+  onOpen?: () => void;
 }
 
-export function UserMenu({ onOpenFeedback }: UserMenuProps = {}) {
+export function UserMenu({ onOpenFeedback, onOpen }: UserMenuProps = {}) {
   const { data: me } = trpc.users.getMe.useQuery();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -106,7 +109,12 @@ export function UserMenu({ onOpenFeedback }: UserMenuProps = {}) {
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid="user-menu-btn"
-        onClick={() => setOpen((p) => !p)}
+        onClick={() =>
+          setOpen((p) => {
+            if (!p) onOpen?.();
+            return !p;
+          })
+        }
         className="flex items-center rounded-full transition-opacity hover:opacity-80"
       >
         <Avatar

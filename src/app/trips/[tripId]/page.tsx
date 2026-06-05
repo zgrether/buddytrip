@@ -12,6 +12,7 @@ import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
 import { TopNav } from "@/components/TopNav";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
+import { NewsPanel, type NewsAuthorMeta } from "@/components/NewsPanel";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeEvents } from "@/hooks/useRealtimeEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
@@ -56,6 +57,17 @@ export default function TripDetailPage() {
   const [compUnlocked, setCompUnlocked] = useState(false);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  // News + Chat both dock to the right rail, so they're mutually exclusive:
+  // opening one closes the other.
+  const [newsOpen, setNewsOpen] = useState(false);
+  const openChat = () => {
+    setNewsOpen(false);
+    setChatOpen((prev) => !prev);
+  };
+  const openNews = () => {
+    setChatOpen(false);
+    setNewsOpen((prev) => !prev);
+  };
   const [datesSheetOpen, setDatesSheetOpen] = useState(false);
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -347,8 +359,14 @@ export default function TripDetailPage() {
       {/* ── Top nav ────────────────────────────────────────────────────────── */}
       <TopNav
         tripId={tripId}
-        onOpenChat={() => setChatOpen((prev) => !prev)}
+        onOpenChat={openChat}
         chatOpen={chatOpen}
+        onOpenNews={openNews}
+        newsOpen={newsOpen}
+        onDismissPanels={() => {
+          setChatOpen(false);
+          setNewsOpen(false);
+        }}
       />
 
       {/* ── Trip content ────────────────────────────────────────────────── */}
@@ -405,7 +423,7 @@ export default function TripDetailPage() {
           className="mx-auto max-w-[1280px] px-4 pt-4 transition-[margin-right] duration-200"
           style={{ marginRight: chatOpen ? undefined : undefined }}
         >
-          <div className={chatOpen ? "lg:mr-[380px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
+          <div className={chatOpen || newsOpen ? "lg:mr-[400px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
             <TripHeader
               tripId={trip.id}
               tripName={trip.title}
@@ -554,6 +572,35 @@ export default function TripDetailPage() {
         onClose={() => setChatOpen(false)}
         memberNames={Object.fromEntries(
           members.map((m: { user_id: string | null; memberId: string; displayName: string }) => [m.user_id ?? m.memberId, m.displayName])
+        )}
+      />
+
+      {/* ── News panel ──────────────────────────────────────────────────
+          Owner/organizer announcement board. Sibling of chat: docked rail
+          on desktop, bottom sheet on mobile. Opened from the News tool in
+          the TopNav. */}
+      <NewsPanel
+        tripId={tripId}
+        isOpen={newsOpen}
+        onClose={() => setNewsOpen(false)}
+        canPost={role === "Owner" || role === "Planner"}
+        authors={Object.fromEntries(
+          members.map(
+            (m: {
+              user_id: string | null;
+              memberId: string;
+              displayName: string;
+              role: NewsAuthorMeta["role"];
+              user: { avatar_icon: string | null } | null;
+            }) => [
+              m.user_id ?? m.memberId,
+              {
+                name: m.displayName,
+                role: m.role,
+                avatarIcon: m.user?.avatar_icon ?? null,
+              },
+            ]
+          )
         )}
       />
 

@@ -157,4 +157,46 @@ INSERT INTO event_point_distributions (id, event_id, position, label, points) VA
   (gen_random_uuid()::text, 'seed-event-r1', 2, '2nd Place', 4)
 ON CONFLICT DO NOTHING;
 
+-- ═══════════════════════════════════════════════════════════════
+-- 8. NEWS — canonical pinned post (every block type) + a plain one
+-- ═══════════════════════════════════════════════════════════════
+-- Blocks are an ordered JSONB stack of the six closed types (see
+-- src/lib/news.ts). Both posts are owner-authored — only Owner/Planner can
+-- post (RLS), so a member-authored seed would misrepresent the model. The
+-- per-team / per-mention `color` values are content data (team identity
+-- colors), not UI tokens, so hex here is intentional. Dollar-quoted to dodge
+-- apostrophe escaping.
+
+INSERT INTO news_posts (id, trip_id, author_id, blocks, pinned, created_at) VALUES
+  ('seed-news-welcome', 'seed-trip-bbmi-2027', :owner_id, $json$[
+    { "type": "callout", "text": "Read this before you pack. Yes, all of it." },
+    { "type": "text", "text": "Gentlemen. Year 19. Some of you weren't legally allowed to drink at year one. Let that sink in." },
+    { "type": "text", "segments": ["Everything lives in the app now — scores, schedule, trash talk. ", { "mention": { "name": "Zach", "initials": "ZG", "color": "#2dd4bf" } }, " built it, so route the bug reports to him, not me."] },
+    { "type": "crew", "label": "Captains", "people": [
+      { "name": "Brad", "initials": "BG", "color": "#3b82f6" },
+      { "name": "Buddy", "initials": "BB", "color": "#2dd4bf" },
+      { "name": "Zach", "initials": "ZG", "color": "#a855f7" },
+      { "name": "Mike", "initials": "MS", "color": "#d97706" }
+    ] },
+    { "type": "text", "text": "Without further whining from me, here's the draw:" },
+    { "type": "teams", "teams": [
+      { "name": "The Usual Suspects", "color": "#3b82f6", "players": ["Brad G", "Tyler L", "JD S", "Rob D"] },
+      { "name": "Buddy's Last Stand", "color": "#2dd4bf", "players": ["Buddy B", "Bill G", "Charlie P", "BJ D"] },
+      { "name": "Not Golfing, Just Vibing", "color": "#a855f7", "players": ["Zach G", "John R", "Jeremy M", "Marcus T"] },
+      { "name": "Former Breeders II", "color": "#d97706", "players": ["Mike S", "Dave K", "Chris W", "Pat O"] }
+    ] },
+    { "type": "steps", "steps": [
+      { "label": "Scores", "body": "enter your own after each hole. Forget, and your captain does it. Publicly." },
+      { "label": "Leaderboard", "body": "live all week — tap the trophy from anywhere." },
+      { "label": "Schedule", "body": "tee times and dinners are in Agenda. Don't ask me when dinner is." }
+    ] },
+    { "type": "media", "kind": "video", "title": "BBMI 2024 — The Annual Recap", "meta": "Charlie Piper · 8 min · YouTube", "src": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+    { "type": "text", "dim": true, "text": "May the best team win. May the worst team engrave something." }
+  ]$json$::jsonb, true, now() - interval '2 days'),
+  ('seed-news-recap', 'seed-trip-bbmi-2027', :owner_id, $json$[
+    { "type": "text", "text": "Recap's rendering now — should be up tonight. The back nine is… something." },
+    { "type": "media", "kind": "photo", "ph": "18th green · 2024" }
+  ]$json$::jsonb, false, now() - interval '5 hours')
+ON CONFLICT (id) DO NOTHING;
+
 COMMIT;

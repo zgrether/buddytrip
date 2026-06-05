@@ -1,11 +1,16 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from "react";
-import { Send, X, ChevronDown } from "lucide-react";
+import { Send, X, ChevronDown, MessageCircle } from "lucide-react";
+import {
+  RAIL_DEFAULT_WIDTH,
+  clampRailWidth,
+  readRailWidth,
+  persistRailWidth,
+  readRailSheetHeight,
+  persistRailSheetHeight,
+} from "@/lib/railLayout";
 
-const MIN_WIDTH = 280;
-const MAX_WIDTH = 720;
-const DEFAULT_WIDTH = 380;
 // Chat history page size — how many messages each lazy "load older" fetch pulls.
 const CHAT_PAGE_SIZE = 50;
 // Live height of the trip bottom nav, published by BottomNav as a CSS var
@@ -98,10 +103,17 @@ function FloatingChatPanelInner({
   const [drafts, setDrafts] = useState<Record<Visibility, string>>({ crew: "", planning: "" });
   const [selectedChannel, setSelectedChannel] = useState<Visibility>("crew");
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
+  // Width is shared with the News rail (see src/lib/railLayout.ts) so the two
+  // panels act as radio buttons — switching keeps the same size. Read the last
+  // persisted width on mount; persist on every change.
+  const [panelWidth, setPanelWidth] = useState<number>(readRailWidth);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
-  const dragStartWidth = useRef(DEFAULT_WIDTH);
+  const dragStartWidth = useRef(RAIL_DEFAULT_WIDTH);
+
+  useEffect(() => {
+    persistRailWidth(panelWidth);
+  }, [panelWidth]);
 
   // Derived, not stored: non-organizers can never resolve to the planning
   // channel even if they were demoted mid-session with the panel open. The
@@ -121,19 +133,8 @@ function FloatingChatPanelInner({
     [activeChannel]
   );
 
-  // Mobile sheet drag state — restored from localStorage as a vh fraction.
-  const [sheetHeight, setSheetHeight] = useState<number | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const ratio = parseFloat(localStorage.getItem("bt-chat-sheet-height") ?? "");
-      if (!isNaN(ratio)) {
-        const min = window.innerHeight * 0.25;
-        const max = window.innerHeight * 0.95;
-        return Math.round(Math.min(max, Math.max(min, ratio * window.innerHeight)));
-      }
-    } catch { /* localStorage unavailable */ }
-    return null;
-  });
+  // Mobile sheet drag state — shared with the News rail (vh fraction).
+  const [sheetHeight, setSheetHeight] = useState<number | null>(readRailSheetHeight);
   const sheetRef = useRef<HTMLDivElement>(null);
   const isSheetDragging = useRef(false);
   const sheetDragStartY = useRef(0);
@@ -206,7 +207,7 @@ function FloatingChatPanelInner({
       if (!isDragging.current) return;
       if (ev.buttons === 0) { onUp(); return; }
       const delta = dragStartX.current - ev.clientX;
-      setPanelWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, dragStartWidth.current + delta)));
+      setPanelWidth(clampRailWidth(dragStartWidth.current + delta));
     }
     function onUp() {
       isDragging.current = false;
@@ -346,12 +347,10 @@ function FloatingChatPanelInner({
     markReadMutate({ tripId, visibility: activeChannel });
   }, [tripId, activeChannel, displayed, markReadMutate]);
 
-  // Persist sheet height as a vh fraction so it survives close/reopen.
+  // Persist sheet height (shared with News) so it survives close/reopen/switch.
   useEffect(() => {
     if (sheetHeight == null) return;
-    try {
-      localStorage.setItem("bt-chat-sheet-height", String(sheetHeight / window.innerHeight));
-    } catch { /* localStorage unavailable */ }
+    persistRailSheetHeight(sheetHeight);
   }, [sheetHeight]);
 
   // Mobile-only scroll lock: the bottom sheet locks the page behind it, but
@@ -427,58 +426,55 @@ function FloatingChatPanelInner({
     ? "var(--color-bt-accent-border)"
     : "var(--color-bt-planning-border)";
 
-  // Header — channel tabs for organizers, static label otherwise. In the
-  // IDEA stage the Crew channel is hidden (everyone is an organizer), so the
-  // toggle collapses to a single "Organizers" label. Shared between the
-  // desktop panel and the mobile sheet.
-  const header = ideaSolo ? (
-    <p
-      className="text-[11px] font-semibold uppercase tracking-wider"
-      style={{ color: "var(--color-bt-accent)" }}
+  // Unified title bar — matches the News rail: a "Chat" title row, with the
+  // channel tabs dropped to a SECOND row beneath it (News has no tabs; this is
+  // the only structural difference between the two panels). The tabs row only
+  // renders when there's a real choice — organizers see Crew/Organizers; in
+  // the IDEA stage (everyone's an organizer) and for plain members there's a
+  // single channel, so the title alone carries it.
+  const titleRow = (
+    <span
+      className="inline-flex items-center gap-2"
+      style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}
     >
-      Organizers
-    </p>
-  ) : canSeeOrganizers ? (
-    <div className="flex items-center gap-1">
-      {([
-        { ch: "crew" as const, label: "Crew", unread: crewUnread },
-        { ch: "planning" as const, label: "Organizers", unread: planningUnread },
-      ]).map(({ ch, label, unread }) => {
-        const active = activeChannel === ch;
-        // Organizers = teal accent, Crew = planning-blue — same hues as the
-        // CrewTab section headers so the two surfaces feel like one system.
-        const org = ch === "planning";
-        const fg = org ? "var(--color-bt-accent)" : "var(--color-bt-planning)";
-        const faint = org ? "var(--color-bt-accent-faint)" : "var(--color-bt-planning-faint)";
-        const bdr = org ? "var(--color-bt-accent-border)" : "var(--color-bt-planning-border)";
-        return (
-          <button
-            key={ch}
-            type="button"
-            onClick={() => setActiveChannel(ch)}
-            className="relative flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors"
-            style={{
-              color: active ? fg : "var(--color-bt-text-dim)",
-              background: active ? faint : "transparent",
-              border: `1px solid ${active ? bdr : "transparent"}`,
-            }}
-          >
-            {label}
-            {unread > 0 && !active && (
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: fg }} />
-            )}
-          </button>
-        );
-      })}
-    </div>
-  ) : (
-    <p
-      className="text-[11px] font-semibold uppercase tracking-wider"
-      style={{ color: "var(--color-bt-text-dim)" }}
-    >
-      Crew Chat
-    </p>
+      <MessageCircle size={17} style={{ color: "var(--color-bt-accent)" }} /> Chat
+    </span>
   );
+  const tabsRow =
+    canSeeOrganizers && !ideaSolo ? (
+      <div className="flex items-center gap-1">
+        {([
+          { ch: "crew" as const, label: "Crew", unread: crewUnread },
+          { ch: "planning" as const, label: "Organizers", unread: planningUnread },
+        ]).map(({ ch, label, unread }) => {
+          const active = activeChannel === ch;
+          // Organizers = teal accent, Crew = planning-blue — same hues as the
+          // CrewTab section headers so the two surfaces feel like one system.
+          const org = ch === "planning";
+          const fg = org ? "var(--color-bt-accent)" : "var(--color-bt-planning)";
+          const faint = org ? "var(--color-bt-accent-faint)" : "var(--color-bt-planning-faint)";
+          const bdr = org ? "var(--color-bt-accent-border)" : "var(--color-bt-planning-border)";
+          return (
+            <button
+              key={ch}
+              type="button"
+              onClick={() => setActiveChannel(ch)}
+              className="relative flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+              style={{
+                color: active ? fg : "var(--color-bt-text-dim)",
+                background: active ? faint : "transparent",
+                border: `1px solid ${active ? bdr : "transparent"}`,
+              }}
+            >
+              {label}
+              {unread > 0 && !active && (
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: fg }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
 
   // Panel body — shared content between desktop + mobile wrappers. It MUST be
   // its own component (not inline JSX rendered twice) so each of the two
@@ -548,32 +544,39 @@ function FloatingChatPanelInner({
         </div>
 
         <div
-          className="flex flex-shrink-0 items-center justify-between gap-2 px-3 py-2"
-          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+          className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
+          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
-          {header}
+          {titleRow}
           <button
+            type="button"
             onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{ color: "var(--color-bt-text-dim)" }}
             aria-label="Close chat"
             title="Close"
           >
-            <X size={13} />
+            <X size={16} />
           </button>
         </div>
+        {/* Channel tabs live BELOW the divider bar (the title's own band). */}
+        {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
         {body}
       </div>
 
-      {/* ── Mobile: bottom sheet ───────────────────────────────────────── */}
+      {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
+          Starts BELOW the title bar (top-14 = the 56px nav) so the News/Chat
+          buttons stay lit and tappable above the scrim — tap News to swap
+          panels in place without closing first. maxHeight 100% keeps the sheet
+          from riding up over the bar. */}
       <ScrollLock enabled={isMobileViewport}>
       <div
-        className="lg:hidden fixed inset-0 z-50 flex items-end"
+        className="lg:hidden fixed inset-x-0 top-14 z-50 flex items-end"
         style={{
           background: "var(--color-bt-overlay)",
-          // Same as desktop: stop the sheet + backdrop at the top of the trip
-          // bottom nav so it stays visible/usable and the input never hides
-          // behind it. Resolves to 0px when no nav is mounted.
+          // Stop the sheet + backdrop at the top of the trip bottom nav so it
+          // stays visible/usable and the input never hides behind it. Resolves
+          // to 0px when no nav is mounted.
           bottom: BOTTOM_NAV_OFFSET,
         }}
         onClick={onClose}
@@ -584,11 +587,12 @@ function FloatingChatPanelInner({
           style={{
             background: "var(--color-bt-card)",
             height: sheetHeight != null ? sheetHeight : "85vh",
+            maxHeight: "100%",
           }}
           onClick={(e) => e.stopPropagation()}
         >
           <div
-            className="flex justify-center pt-3 pb-2 cursor-ns-resize touch-none group"
+            className="group flex cursor-ns-resize touch-none justify-center pt-2 pb-1"
             onMouseDown={handleSheetDragStart}
             onTouchStart={handleSheetDragStart}
           >
@@ -607,19 +611,22 @@ function FloatingChatPanelInner({
             </div>
           </div>
           <div
-            className="flex items-center justify-between px-4 pb-2"
-            style={{ borderBottom: "1px solid var(--color-bt-border)" }}
+            className="flex flex-shrink-0 items-center gap-2 px-3 pb-2"
+            style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
           >
-            {header}
+            {titleRow}
             <button
+              type="button"
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-full"
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
               aria-label="Close chat"
             >
               <X size={16} />
             </button>
           </div>
+          {/* Channel tabs live BELOW the divider bar. */}
+          {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
           {body}
         </div>
       </div>
@@ -885,11 +892,43 @@ function ChatBody({
               </p>
             )}
             {displayed.length === 0 && (
-              <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
-                {isPlanningChannel
-                  ? "No organizer chatter yet — this channel is just for owners and organizers."
-                  : "No messages yet. Say something!"}
-              </p>
+              <div
+                className="flex items-center justify-center text-center"
+                style={{ padding: "40px 8px" }}
+              >
+                <div className="flex max-w-[320px] flex-col items-center gap-[13px]">
+                  <span
+                    className="inline-flex items-center justify-center"
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 15,
+                      background: "var(--color-bt-accent-faint)",
+                      border: "1px solid var(--color-bt-accent-border)",
+                    }}
+                  >
+                    <MessageCircle size={24} style={{ color: "var(--color-bt-accent)" }} />
+                  </span>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>
+                      {isPlanningChannel ? "Organizers only" : "No messages yet"}
+                    </div>
+                    <p
+                      style={{
+                        margin: "7px 0 0",
+                        fontSize: 13,
+                        lineHeight: 1.45,
+                        color: "var(--color-bt-text-dim)",
+                        textWrap: "pretty",
+                      }}
+                    >
+                      {isPlanningChannel
+                        ? "Just owners and organizers in here. Hash out the plans the crew doesn't need to see yet."
+                        : "Say something — this is where the whole crew talks. Your first message sets the tone."}
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
             {displayed.map((msg) => {
               // "New" divider — sits just above the first message that arrived
