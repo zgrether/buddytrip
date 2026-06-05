@@ -371,7 +371,12 @@ function NewsPanelInner({
       <div
         className="hidden lg:block fixed inset-0 z-50"
         style={{ background: "var(--color-bt-overlay)" }}
-        onClick={onClose}
+        // Close only on a press that lands directly on the scrim. Using
+        // pointerdown (not click) means a resize drag — which starts on the
+        // grip and may release over the scrim — never fires a close.
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
       >
         <div
           className="absolute right-0 top-0 bottom-0 flex flex-col"
@@ -412,7 +417,9 @@ function NewsPanelInner({
         <div
           className="lg:hidden fixed inset-x-0 top-14 z-50 flex items-end"
           style={{ background: "var(--color-bt-overlay)", bottom: BOTTOM_NAV_OFFSET }}
-          onClick={onClose}
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget) onClose();
+          }}
         >
           <div
             ref={sheetRef}
@@ -556,7 +563,7 @@ function NewsPostCard({
         // inset top-edge highlight with the drop shadow — same recipe as the
         // trip header dock.
         boxShadow:
-          "inset 0 1px 0 rgba(255,255,255,0.06), 0 3px 12px rgba(0,0,0,0.22)",
+          "inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 20px rgba(0,0,0,0.38)",
         overflow: "hidden",
       }}
       data-testid="news-post"

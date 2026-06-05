@@ -511,7 +511,12 @@ function FloatingChatPanelInner({
       <div
         className="hidden lg:block fixed inset-0 z-50"
         style={{ background: "var(--color-bt-overlay)" }}
-        onClick={onClose}
+        // Close only on a press that lands directly on the scrim. Using
+        // pointerdown (not click) means a resize drag — which starts on the
+        // grip and may release over the scrim — never fires a close.
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
       >
         <div
           className="absolute right-0 top-0 bottom-0 flex flex-col"
@@ -582,7 +587,9 @@ function FloatingChatPanelInner({
           // to 0px when no nav is mounted.
           bottom: BOTTOM_NAV_OFFSET,
         }}
-        onClick={onClose}
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
       >
         <div
           ref={sheetRef}
