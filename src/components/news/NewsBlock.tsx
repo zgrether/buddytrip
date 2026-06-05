@@ -1,6 +1,7 @@
 "use client";
 
 import { Pin, Play } from "lucide-react";
+import { Avatar } from "@/components/Avatar";
 import type {
   NewsBlock,
   NewsPerson,
@@ -39,49 +40,42 @@ function imageUrl(url: string | null | undefined): string | null {
   return null;
 }
 
-// ── @Crew mention pill ──────────────────────────────────────────────────
-function MiniAvatar({ person, size = 17 }: { person: NewsPerson; size?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: person.color,
-        color: "#fff",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: Math.round(size * 0.5),
-        fontWeight: 700,
-        flexShrink: 0,
-      }}
-    >
-      {person.initials}
-    </span>
-  );
-}
-
+// ── @Crew person chip ─────────────────────────────────────────────────────
+// Renders like the app's member chips (TeamMemberChip): the person's real
+// Avatar (their Tabler icon, or initials) backed by their team color, plus
+// their plain name — no "@". The chip is tinted by the same color so a team
+// captain's pill reads as their team's.
 function Mention({ person }: { person: NewsPerson }) {
+  // A color only when the member is actually on a competition team — otherwise
+  // the standard avatar + a neutral chip (no fake team color).
+  const team = person.color || null;
   return (
     <span
+      className="inline-flex items-center gap-1.5"
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        padding: "1px 8px 1px 2px",
+        padding: "2px 9px 2px 2px",
         borderRadius: 9999,
-        background: "var(--color-bt-accent-faint)",
-        border: "1px solid var(--color-bt-accent-border)",
-        fontWeight: 600,
-        color: "var(--color-bt-accent)",
+        background: team
+          ? `color-mix(in srgb, ${team} 12%, var(--color-bt-card-raised))`
+          : "var(--color-bt-card-raised)",
+        border: team
+          ? `1px solid color-mix(in srgb, ${team} 40%, var(--color-bt-border))`
+          : "1px solid var(--color-bt-border)",
         fontSize: 12.5,
+        fontWeight: 600,
+        color: "var(--color-bt-text)",
         lineHeight: 1,
-        verticalAlign: "-3px",
+        verticalAlign: "-5px",
       }}
     >
-      <MiniAvatar person={person} />@{person.name}
+      <Avatar
+        name={person.name}
+        avatarIcon={person.avatarIcon ?? null}
+        teamColor={team ?? undefined}
+        muted={!!person.placeholder}
+        sizePx={18}
+      />
+      {person.name}
     </span>
   );
 }
