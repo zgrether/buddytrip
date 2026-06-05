@@ -72,6 +72,7 @@ function Mention({ person }: { person: NewsPerson }) {
         name={person.name}
         avatarIcon={person.avatarIcon ?? null}
         teamColor={team ?? undefined}
+        muted={!team}
         sizePx={18}
       />
       {person.name}

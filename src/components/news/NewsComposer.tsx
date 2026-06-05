@@ -741,7 +741,7 @@ function CrewFields({
                 color: "var(--color-bt-text)",
               }}
             >
-              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} sizePx={16} />
+              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} muted={!p.color} sizePx={16} />
               {p.name}
               <button
                 type="button"
@@ -776,7 +776,7 @@ function CrewFields({
               className="flex items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{ background: "transparent", border: "none", cursor: "pointer" }}
             >
-              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} sizePx={20} />
+              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} muted={!p.color} sizePx={20} />
               <span style={{ fontSize: 13, color: "var(--color-bt-text)" }}>{p.name}</span>
             </button>
           ))}

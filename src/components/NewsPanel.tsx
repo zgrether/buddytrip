@@ -547,7 +547,7 @@ function NewsPostCard({
       data-testid="news-post"
     >
       <div className="flex items-center gap-[11px]" style={{ padding: "14px 16px 0" }}>
-        <Avatar name={name} avatarIcon={author?.avatarIcon ?? null} sizePx={38} />
+        <Avatar name={name} avatarIcon={author?.avatarIcon ?? null} muted sizePx={38} />
         <div className="min-w-0 flex-1">
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--color-bt-text)" }}>{name}</div>
           <div style={{ fontSize: 11, fontWeight: 600, marginTop: 1, color: role.color }}>{role.label}</div>
