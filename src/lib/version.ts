@@ -1,18 +1,17 @@
-// ── App build metadata ───────────────────────────────────────────────────
+// ── App build metadata ────────────────────────────────────────────────────
 //
-// Single source of truth for the build date + last-shipped date surfaced
-// in the AboutModal. A user-facing version string (e.g. "v1.0") is
-// intentionally NOT defined here yet — the app hasn't formally versioned
-// a release, so the modal omits the version pill until that lands. When
-// it does, add `APP_VERSION` here and wire it back in.
+// Stamped at build time by next.config.ts via execSync — no manual updates
+// needed. Format: YYYY.MM.DD.<short-sha>  e.g. 2026.06.05.a1b2c3d
+//
+//   Date  = last git commit date (not wall-clock build time)
+//   SHA   = first 7 chars of the commit hash — paste into `git show <sha>`
+//
+// Falls back to static strings when the env vars aren't present (local dev
+// without a Next.js build, unit tests, etc.).
 
-/** Build date in YYYY.MM.DD form. Shown in the about-modal's mono build
- *  line. Doesn't need to be precise to the commit — release-day date is
- *  enough for the audience. */
-export const APP_BUILD = "2026.06.04";
+const date = process.env.NEXT_PUBLIC_BUILD_DATE ?? "0000.00.00";
+const sha = process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev";
 
-/** When the latest user-facing changelog entry shipped. Drives the
- *  "What's new" link's subline in the about modal ("last shipped N days
- *  ago"). Update this alongside APP_BUILD when changelog entries land.
- *  ISO YYYY-MM-DD. */
-export const APP_LAST_SHIPPED = "2026-06-01";
+/** Full build string shown in the AboutModal mono build line.
+ *  e.g. "2026.06.05.a1b2c3d" */
+export const APP_BUILD = `${date}.${sha}`;
