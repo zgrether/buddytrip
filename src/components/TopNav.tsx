@@ -1,7 +1,7 @@
 "use client";
 
 import type { FC } from "react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Pin, MessageCircle, Megaphone, ChevronDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -255,10 +255,17 @@ export const TopNav: FC<TopNavProps> = ({
         <UserMenu onOpenFeedback={() => setFeedbackOpen(true)} />
       </div>
 
-      <FeedbackModal
-        open={feedbackOpen}
-        onClose={() => setFeedbackOpen(false)}
-      />
+      {/* FeedbackModal calls useSearchParams() to capture the active tab
+          (?tab=crew etc). Next.js requires any useSearchParams() caller to
+          be wrapped in Suspense during static prerendering — without this,
+          build fails on pages like /profile/archived-ideas that are
+          statically generated. fallback={null} keeps the UX unchanged. */}
+      <Suspense fallback={null}>
+        <FeedbackModal
+          open={feedbackOpen}
+          onClose={() => setFeedbackOpen(false)}
+        />
+      </Suspense>
     </header>
   );
 };
