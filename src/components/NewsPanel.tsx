@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pin, X } from "lucide-react";
+import { Pin, X, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
+import { NewsComposer } from "@/components/news/NewsComposer";
 import type { NewsPost } from "@/lib/news";
 import {
   RAIL_DEFAULT_WIDTH,
@@ -249,17 +250,117 @@ function NewsPanelInner({
     </span>
   );
 
-  const feed = (
-    <>
-      {isLoading ? null : posts.length === 0 ? (
-        <NewsEmpty canPost={canPost} />
-      ) : (
-        posts.map((p) => (
-          <NewsPostCard key={p.id} post={p} author={authors[p.authorId]} now={now} />
-        ))
-      )}
-    </>
+  // ── Compose state — null = viewing the feed ───────────────────────────────
+  const [compose, setCompose] = useState<
+    { mode: "add" } | { mode: "edit"; post: NewsPost } | null
+  >(null);
+
+  const setPinnedM = trpc.news.setPinned.useMutation({
+    onSuccess: () => utils.news.list.invalidate({ tripId }),
+  });
+  const deleteM = trpc.news.delete.useMutation({
+    onSuccess: () => {
+      utils.news.list.invalidate({ tripId });
+      utils.news.unreadCount.invalidate({ tripId });
+    },
+  });
+
+  // The "New post" header button (owner/organizer only).
+  const newPostBtn = canPost ? (
+    <button
+      type="button"
+      onClick={() => setCompose({ mode: "add" })}
+      data-testid="news-new-post"
+      className="ml-auto inline-flex items-center gap-1.5 rounded-[9px]"
+      style={{
+        background: "var(--color-bt-accent)",
+        color: "#0d1f1a",
+        padding: "6px 11px",
+        fontSize: 12.5,
+        fontWeight: 600,
+        cursor: "pointer",
+        border: "none",
+      }}
+    >
+      <Pencil size={12} /> New post
+    </button>
+  ) : null;
+
+  const closeBtn = (variant: "desktop" | "mobile") => (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close news"
+      className={
+        canPost
+          ? variant === "mobile"
+            ? "flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            : "flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+          : variant === "mobile"
+            ? "ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+            : "ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+      }
+      style={
+        variant === "mobile"
+          ? { background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }
+          : { color: "var(--color-bt-text-dim)" }
+      }
+    >
+      <X size={16} />
+    </button>
   );
+
+  const feedHeader = (variant: "desktop" | "mobile") => (
+    <div
+      className={`flex flex-shrink-0 items-center gap-2 px-3 ${variant === "mobile" ? "pb-2" : "py-2"}`}
+      style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+    >
+      {titleRow}
+      {newPostBtn}
+      {closeBtn(variant)}
+    </div>
+  );
+
+  // Composing is launched from the pinned "New post" title-bar button, which
+  // stays visible while the feed scrolls.
+  const feedContent = isLoading ? null : posts.length === 0 ? (
+    <NewsEmpty canPost={canPost} />
+  ) : (
+    posts.map((p) => (
+      <NewsPostCard
+        key={p.id}
+        post={p}
+        author={authors[p.authorId]}
+        now={now}
+        canManage={canPost}
+        onEdit={() => setCompose({ mode: "edit", post: p })}
+        onTogglePin={() =>
+          setPinnedM.mutate({ tripId, postId: p.id, pinned: !p.pinned })
+        }
+        onDelete={() => deleteM.mutate({ tripId, postId: p.id })}
+      />
+    ))
+  );
+  // A component (not a shared element) so the desktop rail + mobile sheet each
+  // get an independent scroll ref + arrow state.
+  const feedScroll = <NewsFeedScroll>{feedContent}</NewsFeedScroll>;
+
+  // Either the composer or the feed (header + scroll), placed inside each
+  // chrome's flex-col. Composer renders its own header + footer.
+  const inner = (variant: "desktop" | "mobile") =>
+    compose ? (
+      <NewsComposer
+        tripId={tripId}
+        variant={variant}
+        post={compose.mode === "edit" ? compose.post : null}
+        onDone={() => setCompose(null)}
+      />
+    ) : (
+      <>
+        {feedHeader(variant)}
+        {feedScroll}
+      </>
+    );
 
   return createPortal(
     <>
@@ -291,28 +392,7 @@ function NewsPanelInner({
           </div>
         </div>
 
-        <div
-          className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
-          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-        >
-          {titleRow}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close news"
-            className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div
-          className="flex flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
-          data-testid="news-feed"
-        >
-          {feed}
-        </div>
+        {inner("desktop")}
       </div>
 
       {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
@@ -355,22 +435,7 @@ function NewsPanelInner({
                 ))}
               </div>
             </div>
-            <div
-              className="flex flex-shrink-0 items-center gap-2 px-3 pb-2"
-              style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-            >
-              {titleRow}
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close news"
-                className="ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="flex flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]">{feed}</div>
+            {inner("mobile")}
           </div>
         </div>
       </ScrollLock>
@@ -379,20 +444,100 @@ function NewsPanelInner({
   );
 }
 
+// ── Scrollable feed + jump arrow ───────────────────────────────────────────
+// A component (not a shared JSX element) so the desktop rail and mobile sheet
+// each own an independent scroll ref. Mirrors chat's jump-to-latest, but the
+// arrow is position-aware: scrolled down → up-arrow to the top (newest +
+// pinned live there); at the top → down-arrow to the bottom (oldest).
+function NewsFeedScroll({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [dir, setDir] = useState<"up" | "down" | null>(null);
+
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const scrollable = el.scrollHeight - el.clientHeight > 40;
+    if (!scrollable) {
+      setDir(null);
+      return;
+    }
+    setDir(el.scrollTop < 40 ? "down" : "up");
+  }, []);
+
+  // Recompute on mount, content changes, and size changes (a wider rail makes
+  // images taller, so scrollHeight shifts).
+  useEffect(() => {
+    // Measuring the scroll container is exactly the "sync from an external
+    // system" case the rule whitelists; the value comes from the DOM, not state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    update();
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [update, children]);
+
+  const jump = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTo({ top: dir === "up" ? 0 : el.scrollHeight, behavior: "smooth" });
+  };
+
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={ref}
+        onScroll={update}
+        className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
+        data-testid="news-feed"
+      >
+        {children}
+      </div>
+      {dir && (
+        <button
+          type="button"
+          onClick={jump}
+          aria-label={dir === "up" ? "Scroll to top" : "Scroll to bottom"}
+          className="absolute bottom-3 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+          style={{
+            background: "var(--color-bt-card-float)",
+            color: "var(--color-bt-text)",
+            border: "1px solid var(--color-bt-border)",
+            boxShadow: "var(--shadow-floating)",
+          }}
+        >
+          {dir === "up" ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Post card ────────────────────────────────────────────────────────────
 function NewsPostCard({
   post,
   author,
   now,
+  canManage,
+  onEdit,
+  onTogglePin,
+  onDelete,
 }: {
   post: NewsPost;
   author: NewsAuthorMeta | undefined;
   now: number;
+  /** Owner/organizer (and, by construction, the author) — shows the ⋯ menu. */
+  canManage: boolean;
+  onEdit: () => void;
+  onTogglePin: () => void;
+  onDelete: () => void;
 }) {
   const name = author?.name ?? "Someone";
   const role = roleLine(author?.role ?? "Member");
   return (
     <div
+      className="flex-shrink-0"
       style={{
         border: "1px solid var(--color-bt-border)",
         borderRadius: 14,
@@ -431,13 +576,149 @@ function NewsPostCard({
           <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", fontFamily: "var(--font-mono)" }}>
             {relativeTime(post.createdAt, now)}
           </span>
-          {/* ⋯ manage menu (Edit / Pin / Delete) lands in PR2 with the composer. */}
+          {canManage && (
+            <PostMenu
+              pinned={post.pinned}
+              onEdit={onEdit}
+              onTogglePin={onTogglePin}
+              onDelete={onDelete}
+            />
+          )}
         </div>
       </div>
       <div style={{ padding: "12px 16px 16px" }}>
         <NewsBlocks blocks={post.blocks} />
       </div>
     </div>
+  );
+}
+
+// ── Post ⋯ menu (Edit / Pin / Delete) ──────────────────────────────────────
+function PostMenu({
+  pinned,
+  onEdit,
+  onTogglePin,
+  onDelete,
+}: {
+  pinned: boolean;
+  onEdit: () => void;
+  onTogglePin: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setConfirming(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setConfirming(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="Manage post"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-[26px] w-[26px] items-center justify-center rounded-md transition-colors hover:bg-[var(--color-bt-hover)]"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-10 mt-1 overflow-hidden"
+          style={{
+            minWidth: 168,
+            background: "var(--color-bt-card-float)",
+            border: "1px solid var(--color-bt-border)",
+            borderRadius: 10,
+            boxShadow: "var(--shadow-floating)",
+          }}
+        >
+          <MenuItem
+            icon={<Pencil size={14} />}
+            label="Edit"
+            onClick={() => {
+              setOpen(false);
+              onEdit();
+            }}
+          />
+          <MenuItem
+            icon={<Pin size={14} />}
+            label={pinned ? "Unpin" : "Pin to top"}
+            onClick={() => {
+              setOpen(false);
+              onTogglePin();
+            }}
+          />
+          <MenuItem
+            icon={<Trash2 size={14} />}
+            label={confirming ? "Tap to confirm" : "Delete"}
+            danger
+            onClick={() => {
+              if (!confirming) {
+                setConfirming(true);
+                return;
+              }
+              setOpen(false);
+              setConfirming(false);
+              onDelete();
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+      style={{
+        fontSize: 13,
+        fontWeight: 500,
+        color: danger ? "var(--color-bt-danger)" : "var(--color-bt-text)",
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 

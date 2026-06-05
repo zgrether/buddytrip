@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember } from "../middleware";
-import type { NewsBlock, NewsPost } from "@/lib/news";
+import { requireTripMember, requireTripRole } from "../middleware";
+import { newsBlocksSchema, type NewsBlock, type NewsPost } from "@/lib/news";
 
 // ── news router ────────────────────────────────────────────────────────────
 //
@@ -154,5 +154,139 @@ export const newsRouter = router({
       }
 
       return { lastReadAt: (data as { last_read_at: string }).last_read_at };
+    }),
+
+  // -----------------------------------------------------------------------
+  // create — Owner / Planner posts an announcement. blocks validated against
+  // the closed six-type schema (the DB stores them as opaque JSON, so this is
+  // the only guard on the invariant). INSERT then SELECT separately — the
+  // RLS-RETURNING race pattern (CLAUDE.md #4).
+  // -----------------------------------------------------------------------
+  create: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        blocks: newsBlocksSchema,
+        pinned: z.boolean().default(false),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }): Promise<NewsPost> => {
+      const id = crypto.randomUUID();
+      const { error: insErr } = await ctx.supabase.from("news_posts").insert({
+        id,
+        trip_id: ctx.tripId!,
+        author_id: ctx.user!.id,
+        blocks: input.blocks,
+        pinned: input.pinned,
+      });
+      if (insErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to create post: ${insErr.message}`,
+        });
+      }
+
+      const { data, error: selErr } = await ctx.supabase
+        .from("news_posts")
+        .select("id, trip_id, author_id, blocks, pinned, created_at, updated_at")
+        .eq("id", id)
+        .single();
+      if (selErr || !data) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Post created but could not be read back",
+        });
+      }
+      return toPost(data as NewsPostRow);
+    }),
+
+  // -----------------------------------------------------------------------
+  // update — edit a post's blocks (and pin state). Owner/Planner may edit any
+  // post; since only Owner/Planner can author, this also covers "author edits
+  // own". Scoped to (id, trip_id) so a postId can't be edited cross-trip.
+  // -----------------------------------------------------------------------
+  update: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        postId: z.string(),
+        blocks: newsBlocksSchema,
+        pinned: z.boolean().optional(),
+      })
+    )
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }): Promise<NewsPost> => {
+      const patch: Record<string, unknown> = {
+        blocks: input.blocks,
+        updated_at: new Date().toISOString(),
+      };
+      if (input.pinned !== undefined) patch.pinned = input.pinned;
+
+      const { error: updErr } = await ctx.supabase
+        .from("news_posts")
+        .update(patch)
+        .eq("id", input.postId)
+        .eq("trip_id", ctx.tripId!);
+      if (updErr) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update post: ${updErr.message}`,
+        });
+      }
+
+      const { data, error: selErr } = await ctx.supabase
+        .from("news_posts")
+        .select("id, trip_id, author_id, blocks, pinned, created_at, updated_at")
+        .eq("id", input.postId)
+        .eq("trip_id", ctx.tripId!)
+        .single();
+      if (selErr || !data) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Post not found" });
+      }
+      return toPost(data as NewsPostRow);
+    }),
+
+  // -----------------------------------------------------------------------
+  // setPinned — quick pin/unpin (the ⋯ menu shortcut). Folded separately from
+  // update so the menu toggle doesn't have to round-trip the whole block stack.
+  // -----------------------------------------------------------------------
+  setPinned: authedProcedure
+    .input(z.object({ tripId: z.string(), postId: z.string(), pinned: z.boolean() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }): Promise<{ pinned: boolean }> => {
+      const { error } = await ctx.supabase
+        .from("news_posts")
+        .update({ pinned: input.pinned, updated_at: new Date().toISOString() })
+        .eq("id", input.postId)
+        .eq("trip_id", ctx.tripId!);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to update pin: ${error.message}`,
+        });
+      }
+      return { pinned: input.pinned };
+    }),
+
+  // -----------------------------------------------------------------------
+  // delete — remove a post. Owner/Planner only (RLS also enforces).
+  // -----------------------------------------------------------------------
+  delete: authedProcedure
+    .input(z.object({ tripId: z.string(), postId: z.string() }))
+    .use(requireTripRole("Planner"))
+    .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
+      const { error } = await ctx.supabase
+        .from("news_posts")
+        .delete()
+        .eq("id", input.postId)
+        .eq("trip_id", ctx.tripId!);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to delete post: ${error.message}`,
+        });
+      }
+      return { id: input.postId };
     }),
 });

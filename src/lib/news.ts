@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 // ── News block model ──────────────────────────────────────────────────────
 //
 // A News post is an ordered stack of BLOCKS. There are exactly SIX block
@@ -117,3 +119,75 @@ export const NEWS_BLOCK_TYPES: NewsBlockType[] = [
   "steps",
   "callout",
 ];
+
+// ── Validation ──────────────────────────────────────────────────────────────
+//
+// Server-side guard that a post's blocks are exactly the closed six types and
+// well-formed. The DB stores blocks as opaque JSON, so this schema is the only
+// thing enforcing the "closed set" invariant on write. Keep it in lockstep
+// with the NewsBlock union above.
+
+const personSchema = z.object({
+  userId: z.string().nullish(),
+  name: z.string().min(1).max(80),
+  initials: z.string().min(1).max(4),
+  color: z.string().min(1).max(40),
+});
+
+const segmentSchema = z.union([
+  z.string(),
+  z.object({ mention: personSchema }),
+]);
+
+export const newsBlockSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("text"),
+    text: z.string().max(5000).optional(),
+    segments: z.array(segmentSchema).max(200).optional(),
+    dim: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal("crew"),
+    label: z.string().max(60).optional(),
+    people: z.array(personSchema).max(50),
+  }),
+  z.object({
+    type: z.literal("teams"),
+    eventId: z.string().nullish(),
+    teams: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(120),
+          color: z.string().min(1).max(40),
+          players: z.array(z.string().max(80)).max(40),
+        })
+      )
+      .max(20),
+  }),
+  z.object({
+    type: z.literal("media"),
+    kind: z.enum(["video", "photo"]),
+    src: z.string().max(2000).nullish(),
+    title: z.string().max(200).optional(),
+    meta: z.string().max(200).optional(),
+    ph: z.string().max(120).optional(),
+  }),
+  z.object({
+    type: z.literal("steps"),
+    steps: z
+      .array(
+        z.object({
+          label: z.string().max(120),
+          body: z.string().max(2000),
+        })
+      )
+      .max(30),
+  }),
+  z.object({
+    type: z.literal("callout"),
+    text: z.string().min(1).max(500),
+  }),
+]);
+
+/** A post's full block stack. Capped so a single post can't be unbounded. */
+export const newsBlocksSchema = z.array(newsBlockSchema).min(1).max(50);
