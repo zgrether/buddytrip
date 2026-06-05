@@ -293,8 +293,8 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
             margin: "0 18px 14px",
             padding: "10px 14px",
             borderRadius: 10,
-            background: "var(--color-bt-accent-faint)",
-            border: "1px solid var(--color-bt-accent-border)",
+            background: "var(--color-bt-warning-faint)",
+            border: "1px solid var(--color-bt-warning-border)",
           }}
         >
           <p
@@ -302,7 +302,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
               margin: 0,
               fontSize: 13,
               lineHeight: 1.5,
-              color: "var(--color-bt-text-dim)",
+              color: "var(--color-bt-warning)",
             }}
           >
             BuddyTrip is in beta — your feedback goes straight to the developer
