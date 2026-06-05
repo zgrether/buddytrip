@@ -221,8 +221,9 @@ export const TopNav: FC<TopNavProps> = ({
           />
         )}
 
-        {/* Feedback — beta-only outbound channel. Megaphone in accent so
-            it visually distinguishes itself from Chat's message-circle.
+        {/* Feedback — beta-only outbound channel. Slight teal resting bg
+            so it reads as a distinct CTA in the tool cluster without
+            overwhelming the bar. White icon + text against the teal fill.
             No badge: feedback is outbound, an unread dot reads as the
             wrong signal. */}
         <ToolButton
@@ -230,7 +231,10 @@ export const TopNav: FC<TopNavProps> = ({
           label="Feedback"
           count={0}
           badgeBg="var(--color-bt-accent)"
-          iconColor="var(--color-bt-accent)"
+          iconColor="white"
+          restingBg="var(--color-bt-accent-faint)"
+          restingBorder="1px solid var(--color-bt-accent-border)"
+          labelColor="var(--color-bt-accent)"
           onClick={() => setFeedbackOpen(true)}
           ariaLabel="Send feedback"
           testId="feedback-button"
@@ -300,6 +304,9 @@ function ToolButton({
   ariaLabel,
   testId,
   iconColor,
+  restingBg,
+  restingBorder,
+  labelColor,
 }: {
   icon: LucideIcon;
   label: string;
@@ -309,9 +316,15 @@ function ToolButton({
   onClick?: () => void;
   ariaLabel: string;
   testId: string;
-  /** Override the icon stroke color. Defaults to the inherited text color so
-   *  News/Chat keep their current treatment; Feedback uses the accent. */
+  /** Override the icon stroke color. Defaults to the inherited text color. */
   iconColor?: string;
+  /** Resting background. Defaults to none; use for buttons that need a
+   *  subtle filled surface (e.g. the Feedback CTA). */
+  restingBg?: string;
+  /** Border applied in the resting state alongside restingBg. */
+  restingBorder?: string;
+  /** Override the label text color. Defaults to var(--color-bt-text). */
+  labelColor?: string;
 }) {
   const showBadge = count > 0;
   const badgeLabel = count > 99 ? "99+" : String(count);
@@ -323,8 +336,8 @@ function ToolButton({
       data-testid={testId}
       className="relative inline-flex h-9 items-center gap-[7px] rounded-[9px] px-2.5 transition-colors hover:bg-[var(--color-bt-hover)] @max-[600px]:w-9 @max-[600px]:justify-center @max-[600px]:gap-0 @max-[600px]:px-0"
       style={{
-        background: active ? "var(--color-bt-hover)" : "none",
-        border: "none",
+        background: active ? "var(--color-bt-hover)" : (restingBg ?? "none"),
+        border: restingBorder ?? "none",
         color: "var(--color-bt-text)",
         fontSize: 13,
         fontWeight: 600,
@@ -337,7 +350,12 @@ function ToolButton({
         aria-hidden="true"
         style={iconColor ? { color: iconColor } : undefined}
       />
-      <span className="@max-[600px]:hidden">{label}</span>
+      <span
+        className="@max-[600px]:hidden"
+        style={labelColor ? { color: labelColor } : undefined}
+      >
+        {label}
+      </span>
 
       {showBadge && (
         <>
