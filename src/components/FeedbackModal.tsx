@@ -302,66 +302,53 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           </button>
         </div>
 
-        {/* ── Body — inset panel one step below card-float so there's clear
-             surface hierarchy: dialog (card-float) → body panel (card) →
-             chips/textarea (card-raised). ───────────────────────────── */}
+        {/* ── Category chips ───────────────────────────────────────────── */}
         <div
           style={{
-            margin: "0 14px 14px",
-            padding: "14px",
-            borderRadius: 12,
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
+            padding: "0 18px 10px",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            gap: 8,
           }}
         >
-          {/* ── Category chips ─────────────────────────────────────────── */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: 8,
-            }}
-          >
-            {CATEGORIES.map((c) => {
-              const selected = c.key === category;
-              const Icon = c.icon;
-              return (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => setCategory(c.key)}
-                  aria-pressed={selected}
-                  data-testid={`feedback-category-${c.key}`}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 4,
-                    padding: "10px 4px",
-                    borderRadius: 10,
-                    cursor: "pointer",
-                    background: selected
-                      ? colorFaintToken(c)
-                      : "var(--color-bt-card)",
-                    border: `1px solid ${selected ? colorBorderToken(c) : "var(--color-bt-border)"}`,
-                    color: selected ? colorToken(c) : "var(--color-bt-text-dim)",
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    transition: "background-color 120ms, border-color 120ms, color 120ms",
-                  }}
-                >
-                  <Icon size={18} strokeWidth={2} aria-hidden="true" />
-                  <span>{c.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {CATEGORIES.map((c) => {
+            const selected = c.key === category;
+            const Icon = c.icon;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setCategory(c.key)}
+                aria-pressed={selected}
+                data-testid={`feedback-category-${c.key}`}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  padding: "10px 4px",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  background: selected
+                    ? colorFaintToken(c)
+                    : "var(--color-bt-card-raised)",
+                  border: `1px solid ${selected ? colorBorderToken(c) : "var(--color-bt-border)"}`,
+                  color: selected ? colorToken(c) : "var(--color-bt-text-dim)",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  transition: "background-color 120ms, border-color 120ms, color 120ms",
+                }}
+              >
+                <Icon size={18} strokeWidth={2} aria-hidden="true" />
+                <span>{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
-          {/* ── Free text ──────────────────────────────────────────────── */}
+        {/* ── Free text ────────────────────────────────────────────────── */}
+        <div style={{ padding: "0 18px 12px" }}>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -375,7 +362,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
               padding: "10px 12px",
               borderRadius: 10,
               border: "1px solid var(--color-bt-border)",
-              background: "var(--color-bt-card)",
+              background: "var(--color-bt-card-raised)",
               color: "var(--color-bt-text)",
               fontSize: 14,
               lineHeight: 1.45,
