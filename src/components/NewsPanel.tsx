@@ -337,14 +337,23 @@ function NewsPanelInner({
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className="group flex touch-none cursor-ns-resize justify-center pt-3 pb-2"
+              className="group flex cursor-ns-resize touch-none justify-center pt-3 pb-2"
               onMouseDown={handleSheetDragStart}
               onTouchStart={handleSheetDragStart}
             >
-              <div
-                aria-hidden="true"
-                style={{ width: 38, height: 4, borderRadius: 9999, background: "var(--color-bt-border)" }}
-              />
+              <div className="relative flex flex-row gap-[3px] rounded px-1.5 py-1">
+                <div
+                  className="absolute inset-0 rounded opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                  style={{ background: "var(--color-bt-accent-faint)" }}
+                />
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="relative h-[3px] w-[3px] rounded-full"
+                    style={{ background: "var(--color-bt-border)" }}
+                  />
+                ))}
+              </div>
             </div>
             <div
               className="flex flex-shrink-0 items-center gap-2 px-3 pb-2"
@@ -355,8 +364,8 @@ function NewsPanelInner({
                 type="button"
                 onClick={onClose}
                 aria-label="Close news"
-                className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ color: "var(--color-bt-text-dim)" }}
+                className="ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
               >
                 <X size={16} />
               </button>

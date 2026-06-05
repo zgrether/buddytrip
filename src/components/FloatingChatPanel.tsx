@@ -544,24 +544,23 @@ function FloatingChatPanelInner({
         </div>
 
         <div
-          className="flex flex-shrink-0 flex-col"
+          className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
           style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
         >
-          <div className="flex items-center gap-2 px-3 py-2">
-            {titleRow}
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)" }}
-              aria-label="Close chat"
-              title="Close"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          {tabsRow && <div className="px-3 pb-2">{tabsRow}</div>}
+          {titleRow}
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+            style={{ color: "var(--color-bt-text-dim)" }}
+            aria-label="Close chat"
+            title="Close"
+          >
+            <X size={16} />
+          </button>
         </div>
+        {/* Channel tabs live BELOW the divider bar (the title's own band). */}
+        {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
         {body}
       </div>
 
@@ -612,23 +611,22 @@ function FloatingChatPanelInner({
             </div>
           </div>
           <div
-            className="flex flex-shrink-0 flex-col"
+            className="flex flex-shrink-0 items-center gap-2 px-3 pb-2"
             style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
           >
-            <div className="flex items-center gap-2 px-4 pb-2">
-              {titleRow}
-              <button
-                type="button"
-                onClick={onClose}
-                className="ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
-                style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-                aria-label="Close chat"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            {tabsRow && <div className="px-4 pb-2">{tabsRow}</div>}
+            {titleRow}
+            <button
+              type="button"
+              onClick={onClose}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
+              aria-label="Close chat"
+            >
+              <X size={16} />
+            </button>
           </div>
+          {/* Channel tabs live BELOW the divider bar. */}
+          {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
           {body}
         </div>
       </div>
@@ -894,11 +892,43 @@ function ChatBody({
               </p>
             )}
             {displayed.length === 0 && (
-              <p className="text-center text-xs mt-8" style={{ color: "var(--color-bt-text-dim)" }}>
-                {isPlanningChannel
-                  ? "No organizer chatter yet — this channel is just for owners and organizers."
-                  : "No messages yet. Say something!"}
-              </p>
+              <div
+                className="flex items-center justify-center text-center"
+                style={{ padding: "40px 8px" }}
+              >
+                <div className="flex max-w-[320px] flex-col items-center gap-[13px]">
+                  <span
+                    className="inline-flex items-center justify-center"
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 15,
+                      background: "var(--color-bt-accent-faint)",
+                      border: "1px solid var(--color-bt-accent-border)",
+                    }}
+                  >
+                    <MessageCircle size={24} style={{ color: "var(--color-bt-accent)" }} />
+                  </span>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>
+                      {isPlanningChannel ? "Organizers only" : "No messages yet"}
+                    </div>
+                    <p
+                      style={{
+                        margin: "7px 0 0",
+                        fontSize: 13,
+                        lineHeight: 1.45,
+                        color: "var(--color-bt-text-dim)",
+                        textWrap: "pretty",
+                      }}
+                    >
+                      {isPlanningChannel
+                        ? "Just owners and organizers in here. Hash out the plans the crew doesn't need to see yet."
+                        : "Say something — this is where the whole crew talks. Your first message sets the tone."}
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
             {displayed.map((msg) => {
               // "New" divider — sits just above the first message that arrived
