@@ -273,17 +273,16 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
             type="button"
             onClick={onClose}
             aria-label="Close"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{
               marginLeft: "auto",
-              background: "transparent",
+              background: "var(--color-bt-card-raised)",
               border: "none",
               color: "var(--color-bt-text-dim)",
               cursor: "pointer",
-              padding: 4,
-              lineHeight: 0,
             }}
           >
-            <X size={17} strokeWidth={1.75} />
+            <X size={15} strokeWidth={1.75} />
           </button>
         </div>
 
