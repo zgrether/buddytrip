@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Fragment } from "react";
-import { Send, X, ChevronDown, MessageCircle, Maximize2 } from "lucide-react";
+import { Send, X, ChevronDown, MessageCircle } from "lucide-react";
 import {
   RAIL_DEFAULT_WIDTH,
   clampRailWidth,
@@ -551,18 +551,8 @@ function FloatingChatPanelInner({
             {titleRow}
             <button
               type="button"
-              aria-label="Resize"
-              title="Drag the left edge to resize"
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-              style={{ color: "var(--color-bt-text-dim)", cursor: "ew-resize" }}
-              onMouseDown={handleDragStart}
-            >
-              <Maximize2 size={15} />
-            </button>
-            <button
-              type="button"
               onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{ color: "var(--color-bt-text-dim)" }}
               aria-label="Close chat"
               title="Close"

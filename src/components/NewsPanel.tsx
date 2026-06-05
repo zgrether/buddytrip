@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pin, X, Maximize2 } from "lucide-react";
+import { Pin, X } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -298,19 +298,9 @@ function NewsPanelInner({
           {titleRow}
           <button
             type="button"
-            aria-label="Resize"
-            title="Drag the left edge to resize"
-            className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)", cursor: "ew-resize" }}
-            onMouseDown={handleDragStart}
-          >
-            <Maximize2 size={15} />
-          </button>
-          <button
-            type="button"
             onClick={onClose}
             aria-label="Close news"
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             <X size={16} />
