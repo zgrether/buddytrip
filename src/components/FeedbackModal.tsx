@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePathname, useParams } from "next/navigation";
+import { usePathname, useParams, useSearchParams } from "next/navigation";
 import {
   Bug,
+  CheckCircle,
   HelpCircle,
   Heart,
   Lightbulb,
   Megaphone,
-  Paperclip,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -107,7 +107,11 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   // ── Auto-captured context ──────────────────────────────────────────────
   // Read at render-time off Next's route hooks so the values reflect
   // the page the user was on when they opened the modal.
+  // useSearchParams captures ?tab= and any other query params — the trip
+  // page keeps its active tab in ?tab=<id>, so pathname alone always
+  // returns /trips/[tripId] regardless of which tab is showing.
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const params = useParams<{ tripId?: string }>();
   const currentTripId = params?.tripId ?? null;
 
@@ -116,7 +120,18 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   });
   const { data: me } = trpc.users.getMe.useQuery(undefined, { enabled: open });
 
-  const screenLabel = useMemo(() => labelForPath(pathname ?? ""), [pathname]);
+  // Full relative URL (pathname + query string) — gives exact page + tab.
+  const fullUrl = useMemo(() => {
+    const qs = searchParams.toString();
+    return qs ? `${pathname}?${qs}` : (pathname ?? "");
+  }, [pathname, searchParams]);
+
+  // Human-friendly label shown in the email subject + screen row.
+  const screenLabel = useMemo(
+    () => labelForPath(pathname ?? "", searchParams.get("tab")),
+    [pathname, searchParams],
+  );
+
   const tripLabel = useMemo(() => {
     if (!currentTripId || !trips) return null;
     const t = (trips as Array<{ id: string; title: string }>).find(
@@ -127,31 +142,21 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   const platform = "web";
 
   // ── Form state ─────────────────────────────────────────────────────────
-  // emailOverride is null until the user actually edits the email field —
-  // until then the rendered value falls back to the signed-in user's
-  // email. This avoids a useEffect that would otherwise cascade a render
-  // every time getMe resolves (and trips react-hooks/set-state-in-effect).
   const [category, setCategory] = useState<Category>("bug");
   const [text, setText] = useState("");
-  const [emailOverride, setEmailOverride] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [succeeded, setSucceeded] = useState(false);
 
-  const emailValue = emailOverride ?? me?.email ?? "";
-
-  // Reset transient form state on each open transition. setState-in-effect
-  // is the right tool here: the reset is the React-side "external system"
-  // synchronization — when `open` flips true, the form must be a known
-  // blank slate. Same pattern as AboutModal's mounted-flag effect.
+  // Reset transient form state on each open transition.
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCategory("bug");
     setText("");
-    setEmailOverride(null);
-    setToast(null);
+    setSucceeded(false);
   }, [open]);
 
   // ESC to close. Click-outside is handled by the scrim's onClick.
+  // Allow ESC even on the success screen so the user isn't trapped.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -161,6 +166,13 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Auto-close 3 s after a successful send.
+  useEffect(() => {
+    if (!succeeded) return;
+    const t = window.setTimeout(() => onClose(), 3000);
+    return () => window.clearTimeout(t);
+  }, [succeeded, onClose]);
+
   // SSR-safe portal target. See AboutModal for the containing-block note.
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -169,13 +181,9 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   }, []);
 
   const send = trpc.feedback.send.useMutation({
-    onSuccess: () => {
-      setToast("Thanks — sent straight to the founder.");
-      // Brief delay so the toast is perceptible before the modal closes.
-      window.setTimeout(() => onClose(), 900);
-    },
+    onSuccess: () => setSucceeded(true),
     onError: () => {
-      setToast("Couldn't send. Try again in a moment.");
+      // Keep the form open so the user can retry.
     },
   });
 
@@ -185,14 +193,22 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 
   if (!open || !mounted) return null;
 
+  // Pull the user's email from session so the tRPC procedure can include it
+  // in the report as a reply-to address — silently, without showing the field.
+  const replyTo = me?.email ?? null;
+
   const handleSubmit = () => {
     if (!canSend) return;
-    const trimmedEmail = emailValue.trim();
     send.mutate({
       category,
       message: text.trim(),
-      replyTo: trimmedEmail ? trimmedEmail : null,
+      replyTo,
+      // Pass both the friendly label and the raw URL. The router merges them
+      // into the email context table so you see e.g.:
+      //   Screen   Trip · Crew
+      //   URL      /trips/abc123?tab=crew
       screen: screenLabel,
+      url: fullUrl,
       tripLabel,
       platform,
       build: APP_BUILD,
@@ -212,12 +228,53 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
       <div
         className="animate-fade-in w-full max-w-[480px] max-h-[90vh] overflow-y-auto rounded-t-[18px] lg:rounded-2xl"
         style={{
-          background: "var(--color-bt-card)",
+          // card-float (#2a3654 dark / #e8edf5 light) matches InfoTileModal
+          // and other floating dialogs. The style guide docs say "card" for
+          // modals, but every implemented reference (InfoTileModal, etc.) uses
+          // card-float — it's the token that actually clears the
+          // overlay-darkened page. The style guide is wrong here; card-float
+          // is correct for floating dialogs.
+          background: "var(--color-bt-card-float)",
           border: "1px solid var(--color-bt-border)",
           boxShadow: "var(--shadow-floating)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ── Success state — replaces the form after a successful send ── */}
+        {succeeded ? (
+          <div
+            className="flex flex-col items-center justify-center text-center"
+            style={{ padding: "48px 32px" }}
+          >
+            <CheckCircle
+              size={48}
+              strokeWidth={1.5}
+              style={{ color: "var(--color-bt-accent)", marginBottom: 16 }}
+              aria-hidden="true"
+            />
+            <p
+              style={{
+                margin: "0 0 8px",
+                fontSize: 18,
+                fontWeight: 600,
+                color: "var(--color-bt-text)",
+              }}
+            >
+              Thank you!
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                color: "var(--color-bt-text-dim)",
+                lineHeight: 1.5,
+              }}
+            >
+              Your feedback was sent. It helps more than you know.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* ── Mobile grab handle (hidden on desktop) ────────────────────── */}
         <div
           aria-hidden="true"
@@ -227,15 +284,15 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
             height: 4,
             borderRadius: 9999,
             background: "var(--color-bt-border)",
-            marginTop: 8,
-            marginBottom: 2,
+            marginTop: 10,
+            marginBottom: 4,
           }}
         />
 
         {/* ── Header ───────────────────────────────────────────────────── */}
         <div
           className="flex items-center"
-          style={{ padding: "16px 18px 8px", gap: 10 }}
+          style={{ padding: "18px 18px 14px", gap: 10 }}
         >
           <Megaphone
             size={20}
@@ -252,43 +309,50 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           >
             Send feedback
           </span>
-          <span
-            style={{
-              fontSize: 9.5,
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              color: "var(--color-bt-warning)",
-              background: "var(--color-bt-warning-faint)",
-              border: "1px solid var(--color-bt-warning-border)",
-              borderRadius: 9999,
-              padding: "2px 8px",
-            }}
-          >
-            Beta
-          </span>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
             style={{
               marginLeft: "auto",
-              background: "transparent",
+              background: "var(--color-bt-card-raised)",
               border: "none",
               color: "var(--color-bt-text-dim)",
               cursor: "pointer",
-              padding: 4,
-              lineHeight: 0,
             }}
           >
-            <X size={17} strokeWidth={1.75} />
+            <X size={15} strokeWidth={1.75} />
           </button>
+        </div>
+
+        {/* ── Beta banner ──────────────────────────────────────────────── */}
+        <div
+          style={{
+            margin: "0 18px 14px",
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "var(--color-bt-warning-faint)",
+            border: "1px solid var(--color-bt-warning-border)",
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "var(--color-bt-warning)",
+            }}
+          >
+            BuddyTrip is in beta — your feedback goes straight to the developer
+            and shapes what gets built next.
+          </p>
         </div>
 
         {/* ── Category chips ───────────────────────────────────────────── */}
         <div
           style={{
-            padding: "6px 18px 4px",
+            padding: "0 18px 10px",
             display: "grid",
             gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
             gap: 8,
@@ -331,7 +395,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
         </div>
 
         {/* ── Free text ────────────────────────────────────────────────── */}
-        <div style={{ padding: "10px 18px 4px" }}>
+        <div style={{ padding: "0 18px 12px" }}>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -355,88 +419,14 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           />
         </div>
 
-        {/* ── Email (optional) ─────────────────────────────────────────── */}
-        <div style={{ padding: "8px 18px 4px" }}>
-          <input
-            type="email"
-            value={emailValue}
-            onChange={(e) => setEmailOverride(e.target.value)}
-            placeholder="you@email.com"
-            data-testid="feedback-email"
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid var(--color-bt-border)",
-              background: "var(--color-bt-card-raised)",
-              color: "var(--color-bt-text)",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              fontSize: 13,
-              outline: "none",
-            }}
-          />
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 11,
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            Optional — drop it if you want a reply when we fix it.
-          </div>
-        </div>
-
-        {/* ── Auto-captured context ────────────────────────────────────── */}
-        <div
-          className="flex items-center"
-          style={{
-            margin: "10px 18px 0",
-            padding: "8px 10px",
-            gap: 8,
-            borderRadius: 9,
-            background: "var(--color-bt-card-raised)",
-            border: "1px solid var(--color-bt-subtle-border)",
-          }}
-        >
-          <Paperclip
-            size={13}
-            strokeWidth={1.75}
-            style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
-            aria-hidden="true"
-          />
-          <span
-            className="truncate"
-            style={{
-              fontSize: 11.5,
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            Attached automatically:{" "}
-            <span style={{ color: "var(--color-bt-text)", fontWeight: 500 }}>
-              {[screenLabel, tripLabel, platform].filter(Boolean).join(" · ")}
-            </span>
-          </span>
-        </div>
-
         {/* ── Footer ───────────────────────────────────────────────────── */}
         <div
           className="flex items-center"
           style={{
-            padding: "14px 18px 16px",
+            padding: "0 18px 18px",
             gap: 10,
-            marginTop: 10,
-            borderTop: "1px solid var(--color-bt-subtle-border)",
           }}
         >
-          <span
-            className="hidden sm:inline"
-            style={{
-              fontSize: 11.5,
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            Goes straight to the founder.
-          </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
             <button
               type="button"
@@ -476,18 +466,20 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           </div>
         </div>
 
-        {toast && (
-          <div
-            role="status"
+        {send.isError && (
+          <p
+            role="alert"
             style={{
-              padding: "0 18px 14px",
+              margin: "0 18px 14px",
               fontSize: 12,
-              color: "var(--color-bt-text-dim)",
+              color: "var(--color-bt-danger)",
               textAlign: "right",
             }}
           >
-            {toast}
-          </div>
+            Couldn&apos;t send — try again in a moment.
+          </p>
+        )}
+          </>
         )}
       </div>
     </div>
@@ -498,12 +490,13 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 
 // ── labelForPath ─────────────────────────────────────────────────────────
 //
-// Friendly screen label from the pathname. Cheap and intentionally
-// shallow — the goal is to give the founder enough context to triage,
-// not to reproduce every nested route.
-function labelForPath(path: string): string {
+// Friendly screen label from the pathname + active tab query param.
+// The trip page keeps its active tab in ?tab=<id> (not a route segment),
+// so the tab must be read from searchParams and passed in here.
+function labelForPath(path: string, tab?: string | null): string {
   if (!path || path === "/") return "Landing";
   if (path.startsWith("/dashboard")) return "Dashboard";
+  if (path.startsWith("/profile/archived-ideas")) return "Profile · Archived ideas";
   if (path.startsWith("/profile")) return "Profile";
   if (path.startsWith("/changelog")) return "Changelog";
   if (path.startsWith("/privacy")) return "Privacy";
@@ -511,11 +504,21 @@ function labelForPath(path: string): string {
   if (path.startsWith("/invite")) return "Invite";
   if (path.startsWith("/trips/")) {
     const parts = path.split("/").filter(Boolean);
-    // /trips/[tripId]/[tab?]
-    const tab = parts[2];
-    return tab
-      ? `Trip · ${tab.charAt(0).toUpperCase() + tab.slice(1)}`
-      : "Trip";
+    // /trips/[tripId]/events/[eventId] — event detail page
+    if (parts[2] === "events" && parts[3]) return "Trip · Event detail";
+    // Active tab from ?tab= query param
+    if (tab) {
+      const TAB_LABELS: Record<string, string> = {
+        home: "Home",
+        schedule: "Schedule",
+        crew: "Crew",
+        lodging: "Lodging",
+        comp: "Competition",
+        expenses: "Expenses",
+      };
+      return `Trip · ${TAB_LABELS[tab] ?? tab}`;
+    }
+    return "Trip · Home";
   }
   return path;
 }

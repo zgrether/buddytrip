@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, Info, Megaphone, Shield, Tag, X } from "lucide-react";
+import { ExternalLink, Info, Megaphone, Shield, X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
-import { APP_BUILD, APP_LAST_SHIPPED } from "@/lib/version";
+import { APP_BUILD } from "@/lib/version";
 
 // ── AboutModal ───────────────────────────────────────────────────────────
 //
@@ -51,19 +51,6 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // "Last shipped N days ago" — computed once on mount via lazy
-  // useState init so we don't call Date.now() during render (would
-  // trip react-hooks/no-impure-in-render). The exact phrasing changing
-  // mid-session would be jarring anyway; lock it to mount time.
-  const [lastShippedLabel] = useState(() => {
-    const shipped = Date.parse(APP_LAST_SHIPPED);
-    if (Number.isNaN(shipped)) return "Recently";
-    const days = Math.max(0, Math.round((Date.now() - shipped) / 86400000));
-    if (days === 0) return "today";
-    if (days === 1) return "yesterday";
-    return `${days} days ago`;
-  });
-
   // SSR-safe portal target. The modal MUST render outside the TopNav
   // tree — TopNav sets backdrop-filter: blur(14px), which per spec
   // creates a containing block for any descendant position:fixed
@@ -97,13 +84,28 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
           earlier version had no scroll containment and would drift off
           the top edge when the content exceeded the viewport. */}
       <div
-        className="animate-fade-in w-full max-w-[460px] max-h-[85vh] overflow-y-auto rounded-t-2xl lg:rounded-2xl"
+        className="animate-fade-in w-full max-w-[460px] max-h-[85vh] overflow-y-auto rounded-t-[18px] lg:rounded-2xl"
         style={{
-          background: "var(--color-bt-card)",
+          background: "var(--color-bt-card-float)",
           border: "1px solid var(--color-bt-border)",
+          boxShadow: "var(--shadow-floating)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ── Mobile grab handle ─────────────────────────────────── */}
+        <div
+          aria-hidden="true"
+          className="mx-auto lg:hidden"
+          style={{
+            width: 36,
+            height: 4,
+            borderRadius: 9999,
+            background: "var(--color-bt-border)",
+            marginTop: 10,
+            marginBottom: 4,
+          }}
+        />
+
         <div>
           {/* ── Header row ─────────────────────────────────────────── */}
           <div
@@ -152,17 +154,16 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
               type="button"
               onClick={onClose}
               aria-label="Close"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{
                 marginLeft: "auto",
-                background: "transparent",
+                background: "var(--color-bt-card-raised)",
                 border: "none",
                 color: "var(--color-bt-text-dim)",
                 cursor: "pointer",
-                padding: 4,
-                lineHeight: 0,
               }}
             >
-              <X size={17} strokeWidth={1.75} />
+              <X size={15} strokeWidth={1.75} />
             </button>
           </div>
 
@@ -216,19 +217,9 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
             }}
           >
             <AboutLink
-              icon={<Tag size={15} />}
-              label={<>What&rsquo;s new</>}
-              sub={`Changelog · last shipped ${lastShippedLabel}`}
-              href="/changelog"
-            />
-            <AboutLink
               icon={<Megaphone size={15} />}
               label="Send feedback"
               sub={<>Straight to the founder &mdash; it&rsquo;s beta, holler</>}
-              // When onOpenFeedback is wired through (UserMenu → AboutModal),
-              // the row opens the shared FeedbackModal. Older call sites
-              // that don't pass the callback still get a functional mailto
-              // fallback so the row is never a dead link.
               {...(onOpenFeedback
                 ? { onClick: onOpenFeedback }
                 : {
@@ -238,8 +229,8 @@ export function AboutModal({ open, onClose, onOpenFeedback }: AboutModalProps) {
             <AboutLink
               icon={<Shield size={15} />}
               label="Privacy"
-              sub={<>What we keep, what we don&rsquo;t</>}
-              href="/privacy"
+              sub="Working on a policy — coming soon."
+              disabled
             />
           </div>
 
@@ -296,19 +287,17 @@ function AboutLink({
   sub,
   href,
   onClick,
+  disabled = false,
 }: {
   icon: React.ReactNode;
   label: React.ReactNode;
   sub: React.ReactNode;
-  /** External link target. Mutually exclusive with onClick — onClick wins
-   *  when both are passed so the in-app handler runs instead of opening
-   *  a new tab. */
   href?: string;
-  /** In-app action (e.g. open another modal). Renders as a <button>. */
   onClick?: () => void;
+  /** When true: renders as a non-interactive div, fully dimmed, no
+   *  external-link affordance. Use for rows that aren't ready yet. */
+  disabled?: boolean;
 }) {
-  const sharedClassName =
-    "flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]";
   const sharedStyle: React.CSSProperties = {
     gap: 11,
     padding: 10,
@@ -317,9 +306,10 @@ function AboutLink({
     textAlign: "left",
     background: "transparent",
     border: "none",
-    cursor: "pointer",
+    cursor: disabled ? "default" : "pointer",
     color: "inherit",
     font: "inherit",
+    opacity: disabled ? 0.45 : 1,
   };
 
   const inner = (
@@ -356,7 +346,7 @@ function AboutLink({
           {sub}
         </span>
       </span>
-      {!onClick && (
+      {!onClick && !disabled && (
         <ExternalLink
           size={14}
           strokeWidth={1.75}
@@ -367,12 +357,20 @@ function AboutLink({
     </>
   );
 
+  if (disabled) {
+    return (
+      <div className="flex w-full items-center" style={sharedStyle}>
+        {inner}
+      </div>
+    );
+  }
+
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className={sharedClassName}
+        className="flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]"
         style={sharedStyle}
       >
         {inner}
@@ -385,7 +383,7 @@ function AboutLink({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className={sharedClassName}
+      className="flex w-full items-center transition-colors hover:bg-[var(--color-bt-hover)]"
       style={sharedStyle}
     >
       {inner}

@@ -32,19 +32,20 @@ these tokens.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card` | `--color-bt-card` |
-| Value | `#ffffff` (white) | `#111827` |
+| Value | `#ffffff` (white) | `#161e2f` |
 
-**Use:** collapsible panels, card containers, modals, bottom sheets —
-anything that floats above the page.
+**Use:** collapsible panels, card containers, inset form bodies inside
+floating dialogs, anything that sits one level above the page but below
+a floating dialog.
 **Examples:** PlanningRow panels (Destination, Crew, Dates, Logistics),
-TripCard, AddDateSheet, LockConfirmDialog, TripSettingsModal.
+TripCard, section bodies within modals.
 
 ### Level 2 — Elevated / Raised Surface
 
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card-raised` | `--color-bt-card-raised` |
-| Value | `#f4f7fa` | `#1a2130` |
+| Value | `#f4f7fa` | `#1f2a40` |
 
 **Use:** elements sitting ON a card/panel — inactive buttons, zebra
 table rows, input backgrounds, inactive compact chips.
@@ -56,10 +57,14 @@ in the dates response grid, inactive filter chips.
 | | Light | Dark |
 |-------|-------|------|
 | Token | `--color-bt-card-float` | `--color-bt-card-float` |
-| Value | `#e8edf5` | `#222b3d` |
+| Value | `#e8edf5` | `#2a3654` |
 
-**Use:** deeply nested elevated elements, tooltips, popovers.
-**Examples:** reserved for future nesting needs.
+**Use:** floating dialogs (modals, bottom sheets) and deeply nested
+elevated elements (tooltips, popovers). This is the correct token for
+any panel that floats above the overlay-darkened page — `card` alone
+does not provide enough visual lift in dark mode.
+**Examples:** InfoTileModal, FeedbackModal, AboutModal, any centered
+dialog or bottom sheet rendered via `createPortal`.
 
 ### Chrome Surface (navigation elements)
 

@@ -134,6 +134,7 @@ export async function sendFeedback({
   message,
   replyTo,
   screen,
+  url,
   tripLabel,
   platform,
   build,
@@ -143,7 +144,10 @@ export async function sendFeedback({
   category: "bug" | "idea" | "confusing" | "love";
   message: string;
   replyTo?: string | null;
+  /** Human-friendly page label, e.g. "Trip · Crew" */
   screen?: string | null;
+  /** Full relative URL including query string, e.g. "/trips/abc?tab=crew" */
+  url?: string | null;
   tripLabel?: string | null;
   platform?: string | null;
   build?: string | null;
@@ -161,7 +165,8 @@ export async function sendFeedback({
   if (reporterName) ctxRows.push(["From", reporterName]);
   if (reporterEmail) ctxRows.push(["Account", reporterEmail]);
   if (replyTo && replyTo !== reporterEmail) ctxRows.push(["Reply-to", replyTo]);
-  if (screen) ctxRows.push(["Screen", screen]);
+  if (screen) ctxRows.push(["Page", screen]);
+  if (url) ctxRows.push(["URL", url]);
   if (tripLabel) ctxRows.push(["Trip", tripLabel]);
   if (platform) ctxRows.push(["Platform", platform]);
   if (build) ctxRows.push(["Build", build]);
@@ -169,7 +174,7 @@ export async function sendFeedback({
   const ctxHtml = ctxRows
     .map(
       ([k, v]) =>
-        `<tr><td style="padding:2px 12px 2px 0;color:#64748b;font-size:12px">${escapeHtml(k)}</td><td style="padding:2px 0;font-size:12px;color:#0f172a">${escapeHtml(v)}</td></tr>`,
+        `<tr><td style="padding:2px 12px 2px 0;color:#64748b;font-size:12px;white-space:nowrap;vertical-align:top">${escapeHtml(k)}</td><td style="padding:2px 0;font-size:12px;color:#0f172a;font-family:${k === "URL" ? "ui-monospace,monospace" : "inherit"}">${escapeHtml(v)}</td></tr>`,
     )
     .join("");
 
@@ -184,7 +189,7 @@ export async function sendFeedback({
       <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">
         <p style="margin:0 0 4px;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.08em">${escapeHtml(label)}</p>
         <p style="margin:0 0 16px;white-space:pre-wrap;color:#0f172a;font-size:15px;line-height:1.5">${escapeHtml(message)}</p>
-        ${ctxRows.length ? `<table style="margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px">${ctxHtml}</table>` : ""}
+        ${ctxRows.length ? `<table style="margin:16px 0 0;border-top:1px solid #e2e8f0;padding-top:12px;border-spacing:0">${ctxHtml}</table>` : ""}
       </div>
     `,
   });
