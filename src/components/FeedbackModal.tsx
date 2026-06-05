@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { usePathname, useParams, useSearchParams } from "next/navigation";
 import {
   Bug,
+  CheckCircle,
   HelpCircle,
   Heart,
   Lightbulb,
@@ -143,7 +144,7 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   // ── Form state ─────────────────────────────────────────────────────────
   const [category, setCategory] = useState<Category>("bug");
   const [text, setText] = useState("");
-  const [toast, setToast] = useState<string | null>(null);
+  const [succeeded, setSucceeded] = useState(false);
 
   // Reset transient form state on each open transition.
   useEffect(() => {
@@ -151,10 +152,11 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCategory("bug");
     setText("");
-    setToast(null);
+    setSucceeded(false);
   }, [open]);
 
   // ESC to close. Click-outside is handled by the scrim's onClick.
+  // Allow ESC even on the success screen so the user isn't trapped.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -164,6 +166,13 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Auto-close 3 s after a successful send.
+  useEffect(() => {
+    if (!succeeded) return;
+    const t = window.setTimeout(() => onClose(), 3000);
+    return () => window.clearTimeout(t);
+  }, [succeeded, onClose]);
+
   // SSR-safe portal target. See AboutModal for the containing-block note.
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -172,13 +181,9 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
   }, []);
 
   const send = trpc.feedback.send.useMutation({
-    onSuccess: () => {
-      setToast("Thanks — the developer appreciates it!");
-      // Brief delay so the toast is perceptible before the modal closes.
-      window.setTimeout(() => onClose(), 900);
-    },
+    onSuccess: () => setSucceeded(true),
     onError: () => {
-      setToast("Couldn't send. Try again in a moment.");
+      // Keep the form open so the user can retry.
     },
   });
 
@@ -235,6 +240,41 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ── Success state — replaces the form after a successful send ── */}
+        {succeeded ? (
+          <div
+            className="flex flex-col items-center justify-center text-center"
+            style={{ padding: "48px 32px" }}
+          >
+            <CheckCircle
+              size={48}
+              strokeWidth={1.5}
+              style={{ color: "var(--color-bt-accent)", marginBottom: 16 }}
+              aria-hidden="true"
+            />
+            <p
+              style={{
+                margin: "0 0 8px",
+                fontSize: 18,
+                fontWeight: 600,
+                color: "var(--color-bt-text)",
+              }}
+            >
+              Thank you!
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                color: "var(--color-bt-text-dim)",
+                lineHeight: 1.5,
+              }}
+            >
+              Your feedback was sent. It helps more than you know.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* ── Mobile grab handle (hidden on desktop) ────────────────────── */}
         <div
           aria-hidden="true"
@@ -426,18 +466,20 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           </div>
         </div>
 
-        {toast && (
-          <div
-            role="status"
+        {send.isError && (
+          <p
+            role="alert"
             style={{
-              padding: "0 18px 14px",
+              margin: "0 18px 14px",
               fontSize: 12,
-              color: "var(--color-bt-text-dim)",
+              color: "var(--color-bt-danger)",
               textAlign: "right",
             }}
           >
-            {toast}
-          </div>
+            Couldn&apos;t send — try again in a moment.
+          </p>
+        )}
+          </>
         )}
       </div>
     </div>
