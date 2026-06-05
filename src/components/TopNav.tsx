@@ -234,7 +234,7 @@ export const TopNav: FC<TopNavProps> = ({
           iconColor="white"
           restingBg="var(--color-bt-accent-faint)"
           restingBorder="1px solid var(--color-bt-accent-border)"
-          labelColor="var(--color-bt-accent)"
+          labelColor="white"
           onClick={() => setFeedbackOpen(true)}
           ariaLabel="Send feedback"
           testId="feedback-button"
