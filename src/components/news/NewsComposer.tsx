@@ -490,13 +490,19 @@ function BlockFields({ block, onChange }: { block: NewsBlock; onChange: (b: News
           ) : (
             <>
               <input
+                value={block.src ?? ""}
+                onChange={(e) => onChange({ ...block, src: e.target.value })}
+                placeholder="Paste an image or GIF link (…/clip.gif)"
+                style={{ ...inputStyle, fontFamily: "var(--font-mono)", fontSize: 13 }}
+              />
+              <input
                 value={block.ph ?? ""}
                 onChange={(e) => onChange({ ...block, ph: e.target.value })}
-                placeholder="Caption — e.g. 18th green · 2024"
+                placeholder="Caption (optional) — e.g. 18th green · 2024"
                 style={inputStyle}
               />
               <p style={{ margin: 0, fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-                Photo upload is coming soon — for now this shows a captioned placeholder.
+                Paste a direct image or GIF link and it renders here. (File upload is coming soon.)
               </p>
             </>
           )}

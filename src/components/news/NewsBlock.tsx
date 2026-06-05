@@ -25,6 +25,20 @@ function youTubeThumb(url: string | null | undefined): string | null {
   return m ? `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` : null;
 }
 
+// A directly-renderable image/GIF URL — a file with an image extension, or a
+// known GIF CDN (Giphy/Tenor "media" hosts). Lets a pasted GIF/photo link
+// render inline with no upload pipeline. Share-PAGE links (giphy.com/gifs/…)
+// aren't direct media and return null (they'd need the provider's API).
+function imageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const u = url.trim();
+  if (/\.(gif|png|jpe?g|webp|avif)(\?.*)?$/i.test(u)) return u;
+  if (/^https?:\/\/(?:media\d*\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)\//i.test(u)) {
+    return u;
+  }
+  return null;
+}
+
 // ── @Crew mention pill ──────────────────────────────────────────────────
 function MiniAvatar({ person, size = 17 }: { person: NewsPerson; size?: number }) {
   return (
@@ -169,6 +183,41 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
 
     case "media":
       if (block.kind === "photo") {
+        // A pasted image/GIF link renders inline at its natural aspect (GIFs
+        // animate); only when there's no renderable URL do we show the
+        // captioned placeholder.
+        const img = imageUrl(block.src);
+        if (img) {
+          return (
+            <figure
+              style={{
+                margin: 0,
+                border: "1px solid var(--color-bt-border)",
+                borderRadius: 11,
+                overflow: "hidden",
+                background: "var(--color-bt-card-raised)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img}
+                alt={block.ph || "Image"}
+                style={{ display: "block", width: "100%", height: "auto", maxHeight: 480, objectFit: "contain" }}
+              />
+              {block.ph && (
+                <figcaption
+                  style={{
+                    padding: "8px 12px",
+                    fontSize: 11.5,
+                    color: "var(--color-bt-text-dim)",
+                  }}
+                >
+                  {block.ph}
+                </figcaption>
+              )}
+            </figure>
+          );
+        }
         return (
           <div
             style={{
