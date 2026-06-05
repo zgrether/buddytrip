@@ -15,13 +15,11 @@ import {
   Users,
   Trophy,
   RefreshCw,
-  HelpCircle,
   type LucideIcon,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
-import { NewsHelpModal } from "@/components/news/NewsHelpModal";
 import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news";
 
 // ── NewsComposer ────────────────────────────────────────────────────────────
@@ -115,7 +113,6 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
   );
   const [pinned, setPinned] = useState<boolean>(post?.pinned ?? false);
   const [view, setView] = useState<"edit" | "preview">("edit");
-  const [helpOpen, setHelpOpen] = useState(false);
 
   const refresh = () => {
     utils.news.list.invalidate({ tripId });
@@ -145,13 +142,19 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
 
   // Drag-to-reorder (desktop, via the grip). Up/down arrows stay as the
   // touch/keyboard fallback. dragFrom holds the picked-up block's index.
+  // `ins` is the insertion slot in the *original* array (0..length) — the gap
+  // the block should land in, derived from which edge of the hovered block the
+  // cursor is over. We compensate for removing `from` before splicing back.
   const dragFrom = useRef<number | null>(null);
-  const reorder = (from: number, to: number) =>
+  const reorderTo = (from: number, ins: number) =>
     setBlocks((bs) => {
-      if (from === to || from < 0 || to < 0 || from >= bs.length || to >= bs.length) return bs;
+      if (from < 0 || from >= bs.length) return bs;
+      // Dropping into the slot just before or after itself is a no-op.
+      if (ins === from || ins === from + 1) return bs;
       const copy = bs.slice();
       const [moved] = copy.splice(from, 1);
-      copy.splice(to, 0, moved);
+      const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
+      copy.splice(target, 0, moved);
       return copy;
     });
 
@@ -182,19 +185,9 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
         </span>
         <button
           type="button"
-          onClick={() => setHelpOpen(true)}
-          aria-label="How posts work"
-          title="How posts work"
-          className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          <HelpCircle size={16} />
-        </button>
-        <button
-          type="button"
           onClick={onDone}
           aria-label="Cancel"
-          className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+          className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           <X size={16} />
@@ -288,8 +281,10 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
             onDragStartBlock={() => {
               dragFrom.current = i;
             }}
-            onDropBlock={() => {
-              if (dragFrom.current !== null) reorder(dragFrom.current, i);
+            onDropBlock={(edge) => {
+              if (dragFrom.current !== null) {
+                reorderTo(dragFrom.current, edge === "top" ? i : i + 1);
+              }
               dragFrom.current = null;
             }}
           />
@@ -418,8 +413,6 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
           </button>
         </div>
       </div>
-
-      <NewsHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </>
   );
 }
@@ -444,12 +437,14 @@ function BlockEditor({
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
   onDragStartBlock: () => void;
-  onDropBlock: () => void;
+  onDropBlock: (edge: "top" | "bottom") => void;
 }) {
   // Drag is armed only while the grip is held, so dragging the block never
   // hijacks text selection inside its inputs.
   const [armed, setArmed] = useState(false);
-  const [dropTarget, setDropTarget] = useState(false);
+  // Which edge the dragged block would land on — drives a thin insertion line
+  // in the gap (above/below), so it reads as "lands here", not "drops inside".
+  const [dropEdge, setDropEdge] = useState<"top" | "bottom" | null>(null);
 
   const kindLabel: Record<NewsBlockType, string> = {
     text: "Text",
@@ -479,26 +474,48 @@ function BlockEditor({
       }}
       onDragEnd={() => {
         setArmed(false);
-        setDropTarget(false);
+        setDropEdge(null);
       }}
       onDragOver={(e) => {
         e.preventDefault();
-        setDropTarget(true);
+        // Top half → land above this block; bottom half → land below it.
+        const r = e.currentTarget.getBoundingClientRect();
+        setDropEdge(e.clientY < r.top + r.height / 2 ? "top" : "bottom");
       }}
-      onDragLeave={() => setDropTarget(false)}
+      onDragLeave={(e) => {
+        // Ignore leaves into our own children (prevents line flicker).
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropEdge(null);
+      }}
       onDrop={(e) => {
         e.preventDefault();
-        setDropTarget(false);
-        onDropBlock();
+        const edge = dropEdge ?? "top";
+        setDropEdge(null);
+        onDropBlock(edge);
       }}
       style={{
         position: "relative",
-        border: `1px solid ${dropTarget ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+        border: "1px solid var(--color-bt-border)",
         borderRadius: 11,
         background: "var(--color-bt-card-raised)",
         padding: "10px 12px 12px",
       }}
     >
+      {dropEdge && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 2,
+            right: 2,
+            [dropEdge === "top" ? "top" : "bottom"]: -6,
+            height: 2,
+            borderRadius: 2,
+            background: "var(--color-bt-accent)",
+            boxShadow: "0 0 0 2px var(--color-bt-accent-faint)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       <div className="mb-2 flex items-center gap-1.5">
         {/* Drag handle — arms HTML5 drag on press (desktop). */}
         <span

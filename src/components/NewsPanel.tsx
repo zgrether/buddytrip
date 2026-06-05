@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pin, X, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Pin, X, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
 import { NewsComposer } from "@/components/news/NewsComposer";
+import { NewsHelpModal } from "@/components/news/NewsHelpModal";
 import type { NewsPost } from "@/lib/news";
 import {
   RAIL_DEFAULT_WIDTH,
@@ -250,6 +251,27 @@ function NewsPanelInner({
     </span>
   );
 
+  // ── "How posts work" help (lives next to the News title) ──────────────────
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpBtn = (
+    <button
+      type="button"
+      onClick={() => setHelpOpen(true)}
+      aria-label="How posts work"
+      title="How posts work"
+      className="inline-flex items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)] hover:text-[var(--color-bt-accent)]"
+      style={{
+        height: 28,
+        width: 28,
+        border: "1px solid var(--color-bt-border)",
+        background: "var(--color-bt-card-raised)",
+        color: "var(--color-bt-text-dim)",
+      }}
+    >
+      <HelpCircle size={17} />
+    </button>
+  );
+
   // ── Compose state — null = viewing the feed ───────────────────────────────
   const [compose, setCompose] = useState<
     { mode: "add" } | { mode: "edit"; post: NewsPost } | null
@@ -316,6 +338,7 @@ function NewsPanelInner({
       style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
     >
       {titleRow}
+      {helpBtn}
       {newPostBtn}
       {closeBtn(variant)}
     </div>
@@ -455,6 +478,8 @@ function NewsPanelInner({
           </div>
         </div>
       </ScrollLock>
+
+      <NewsHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </>,
     document.body
   );
