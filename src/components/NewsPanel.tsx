@@ -405,7 +405,7 @@ function NewsPanelInner({
         <div
           className="absolute right-0 top-0 bottom-0 flex flex-col"
           style={{
-            background: "var(--color-bt-card)",
+            background: "var(--color-bt-card-float)",
             borderLeft: "1px solid var(--color-bt-border)",
             width: panelWidth,
           }}
@@ -449,7 +449,7 @@ function NewsPanelInner({
             ref={sheetRef}
             className="flex w-full flex-col rounded-t-[18px]"
             style={{
-              background: "var(--color-bt-card)",
+              background: "var(--color-bt-card-float)",
               height: sheetHeight != null ? sheetHeight : "85vh",
               maxHeight: "100%",
             }}
