@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { Avatar } from "@/components/Avatar";
 import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news";
 
 // ── NewsComposer ────────────────────────────────────────────────────────────
@@ -727,39 +728,23 @@ function CrewFields({
               key={i}
               className="inline-flex items-center gap-1.5"
               style={{
-                padding: "3px 6px 3px 3px",
+                padding: "2px 5px 2px 2px",
                 borderRadius: 9999,
-                background: "var(--color-bt-accent-faint)",
-                border: "1px solid var(--color-bt-accent-border)",
+                background: `color-mix(in srgb, ${p.color} 12%, var(--color-bt-card-raised))`,
+                border: `1px solid color-mix(in srgb, ${p.color} 40%, var(--color-bt-border))`,
                 fontSize: 12,
                 fontWeight: 600,
-                color: "var(--color-bt-accent)",
+                color: "var(--color-bt-text)",
               }}
             >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: "50%",
-                  background: p.color,
-                  color: "#fff",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 8,
-                  fontWeight: 700,
-                }}
-              >
-                {p.initials}
-              </span>
+              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color} sizePx={16} />
               {p.name}
               <button
                 type="button"
                 aria-label={`Remove ${p.name}`}
                 onClick={() => remove(i)}
                 className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-[var(--color-bt-hover)]"
-                style={{ color: "var(--color-bt-accent)" }}
+                style={{ color: "var(--color-bt-text-dim)" }}
               >
                 <X size={11} />
               </button>
@@ -787,24 +772,7 @@ function CrewFields({
               className="flex items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{ background: "transparent", border: "none", cursor: "pointer" }}
             >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: "50%",
-                  background: p.color,
-                  color: "#fff",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
-              >
-                {p.initials}
-              </span>
+              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color} sizePx={20} />
               <span style={{ fontSize: 13, color: "var(--color-bt-text)" }}>{p.name}</span>
             </button>
           ))}

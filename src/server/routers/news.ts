@@ -242,6 +242,7 @@ export const newsRouter = router({
           name: m.displayName,
           initials: initialsOf(m.displayName),
           color: teamColor.get(m.user_id as string) ?? paletteColor(m.user_id as string),
+          avatarIcon: m.user?.avatar_icon ?? null,
         }));
     }),
 

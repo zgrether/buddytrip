@@ -18,8 +18,12 @@ export interface NewsPerson {
   userId?: string | null;
   name: string;
   initials: string;
-  /** Team / identity color, e.g. "#3b82f6" or a "var(--color-bt-*)" token. */
+  /** Team / identity color, e.g. "#3b82f6" or a "var(--color-bt-*)" token.
+   *  Tints the chip and (when on a team) backs the avatar. */
   color: string;
+  /** The member's chosen Tabler avatar icon id, so the pill shows the same
+   *  avatar as everywhere else in the app. Null/absent → initials fallback. */
+  avatarIcon?: string | null;
 }
 
 /** A team card in the draw — synced from the Competition feature. */
@@ -132,6 +136,7 @@ const personSchema = z.object({
   name: z.string().min(1).max(80),
   initials: z.string().min(1).max(4),
   color: z.string().min(1).max(40),
+  avatarIcon: z.string().max(50).nullish(),
 });
 
 const segmentSchema = z.union([
