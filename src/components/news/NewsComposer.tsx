@@ -697,7 +697,11 @@ function CrewFields({
   const q = query.trim().toLowerCase();
   const matches = roster
     .filter((p) => !chosen.has(p.userId ?? ""))
-    .filter((p) => (q ? p.name.toLowerCase().includes(q) : true))
+    // Match on word starts, not any substring — "t" matches "Taj"/"Tyler L",
+    // not the t inside "Grether".
+    .filter((p) =>
+      q ? p.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) : true
+    )
     .slice(0, 6);
 
   const add = (p: NewsPerson) => {
