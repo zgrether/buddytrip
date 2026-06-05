@@ -326,25 +326,9 @@ function NewsPanelInner({
       className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
       data-testid="news-feed"
     >
-      {/* Dashed compose row — owner/organizer only, sits above the feed. */}
-      {canPost && (
-        <button
-          type="button"
-          onClick={() => setCompose({ mode: "add" })}
-          className="flex flex-shrink-0 items-center gap-2.5 rounded-[11px] transition-opacity hover:opacity-90"
-          style={{
-            padding: "11px 13px",
-            border: "1px dashed var(--color-bt-accent-border)",
-            background: "var(--color-bt-accent-faint)",
-            cursor: "pointer",
-          }}
-        >
-          <Pencil size={14} style={{ color: "var(--color-bt-accent)" }} />
-          <span style={{ flex: 1, textAlign: "left", fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-            Post an update to the crew…
-          </span>
-        </button>
-      )}
+      {/* Composing is launched from the pinned "New post" title-bar button,
+          which stays visible while the feed scrolls — so there's no in-feed
+          compose row to scroll away. */}
       {isLoading ? null : posts.length === 0 ? (
         <NewsEmpty canPost={canPost} />
       ) : (
