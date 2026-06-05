@@ -365,11 +365,12 @@ function NewsPanelInner({
   return createPortal(
     <>
       {/* ── Desktop: docked-right drawer over a scrim ────────────────────────
-          The scrim covers the whole app (content isn't pushed narrower) and
-          click-outside closes — like an edit modal — but the panel keeps its
-          left-edge drag-to-resize and title-bar controls. */}
+          The scrim covers the content BELOW the title bar (not the bar itself)
+          so the News/Chat buttons stay clickable above it — tap the other one
+          to swap panels. Content isn't pushed narrower, and clicking the scrim
+          closes. The panel keeps its left-edge drag-to-resize + title controls. */}
       <div
-        className="hidden lg:block fixed inset-0 z-50"
+        className="hidden lg:block fixed inset-x-0 top-14 bottom-0 z-50"
         style={{ background: "var(--color-bt-overlay)" }}
         // Close only on a press that lands directly on the scrim. Using
         // pointerdown (not click) means a resize drag — which starts on the
