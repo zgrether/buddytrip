@@ -13,6 +13,18 @@ import type {
 // the design reference (design/design_handoff_news, .post/.blk-* CSS).
 // The composer (PR2) reuses these same renderers for its live preview.
 
+// Derive a YouTube thumbnail straight from the pasted link — no storage, no
+// API. Matches watch / youtu.be / embed / shorts URLs. Other providers
+// (Vimeo, etc.) have no zero-cost URL→thumbnail, so they fall back to the
+// gradient card; a real fix there would need an oEmbed fetch.
+function youTubeThumb(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/
+  );
+  return m ? `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` : null;
+}
+
 // ── @Crew mention pill ──────────────────────────────────────────────────
 function MiniAvatar({ person, size = 17 }: { person: NewsPerson; size?: number }) {
   return (
@@ -184,6 +196,80 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
           </div>
         );
       }
+      {
+        const thumb = youTubeThumb(block.src);
+        // With a real thumbnail: the image fills the card, a scrim keeps the
+        // play button + title legible, and the title/meta sit on the image.
+        if (thumb) {
+          return (
+            <a
+              href={block.src ?? undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                position: "relative",
+                display: "block",
+                border: "1px solid var(--color-bt-border)",
+                borderRadius: 11,
+                aspectRatio: "16 / 9",
+                overflow: "hidden",
+                textDecoration: "none",
+                background: "var(--color-bt-card-raised)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumb}
+                alt={block.title || "Video thumbnail"}
+                style={{ position: "absolute", inset: 0, height: "100%", width: "100%", objectFit: "cover" }}
+              />
+              {/* Scrim — darkens for the play glyph + bottom caption legibility. */}
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background:
+                    "linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.25))",
+                }}
+              />
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: 54,
+                  height: 54,
+                  borderRadius: "50%",
+                  background: "rgba(0,0,0,0.55)",
+                  border: "1px solid rgba(255,255,255,0.55)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                }}
+              >
+                <Play size={22} fill="#fff" />
+              </span>
+              {(block.title || block.meta) && (
+                <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "10px 12px" }}>
+                  {block.title && (
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{block.title}</div>
+                  )}
+                  {block.meta && (
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 2 }}>
+                      {block.meta}
+                    </div>
+                  )}
+                </div>
+              )}
+            </a>
+          );
+        }
+      }
+      // No derivable thumbnail (non-YouTube link, or no link yet) → gradient card.
       return (
         <a
           href={block.src ?? undefined}
