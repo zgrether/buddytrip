@@ -264,7 +264,7 @@ function NewsPanelInner({
         height: 28,
         width: 28,
         border: "1px solid var(--color-bt-border)",
-        background: "var(--color-bt-card-raised)",
+        background: "transparent",
         color: "var(--color-bt-text-dim)",
       }}
     >
@@ -542,25 +542,25 @@ function NewsFeedScroll({ children }: { children: React.ReactNode }) {
       >
         {children}
       </div>
-      {/* Top / bottom scroll fades — fade from the panel surface to clear. */}
+      {/* Top / bottom scroll shadows — a soft black gradient (matching the
+          app's other shadows) so off-screen content reads as tucked under the
+          chrome, not hard-cut. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-200"
         style={{
-          height: 28,
+          height: 24,
           opacity: fadeTop ? 1 : 0,
-          background:
-            "linear-gradient(to bottom, var(--color-bt-card-float), transparent)",
+          background: "linear-gradient(to bottom, rgba(0,0,0,0.40), transparent)",
         }}
       />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 z-10 transition-opacity duration-200"
         style={{
-          height: 28,
+          height: 24,
           opacity: fadeBottom ? 1 : 0,
-          background:
-            "linear-gradient(to top, var(--color-bt-card-float), transparent)",
+          background: "linear-gradient(to top, rgba(0,0,0,0.40), transparent)",
         }}
       />
       {dir && (
