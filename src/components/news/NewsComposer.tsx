@@ -166,7 +166,7 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
       </div>
 
       {/* ── Body: block editor stack + add-a-block ─────────────────────── */}
-      <div className={`flex flex-1 flex-col gap-[10px] overflow-y-auto ${px} py-3`}>
+      <div className={`flex min-h-0 flex-1 flex-col gap-[10px] overflow-y-auto ${px} py-3`}>
         {blocks.map((b, i) => (
           <BlockEditor
             key={i}
@@ -341,6 +341,7 @@ function BlockEditor({
 
   return (
     <div
+      className="flex-shrink-0"
       style={{
         position: "relative",
         border: "1px solid var(--color-bt-border)",

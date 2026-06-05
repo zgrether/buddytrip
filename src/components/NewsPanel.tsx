@@ -323,7 +323,7 @@ function NewsPanelInner({
 
   const feedScroll = (
     <div
-      className="flex flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
+      className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
       data-testid="news-feed"
     >
       {/* Dashed compose row — owner/organizer only, sits above the feed. */}
@@ -331,7 +331,7 @@ function NewsPanelInner({
         <button
           type="button"
           onClick={() => setCompose({ mode: "add" })}
-          className="flex items-center gap-2.5 rounded-[11px] transition-opacity hover:opacity-90"
+          className="flex flex-shrink-0 items-center gap-2.5 rounded-[11px] transition-opacity hover:opacity-90"
           style={{
             padding: "11px 13px",
             border: "1px dashed var(--color-bt-accent-border)",
@@ -488,6 +488,7 @@ function NewsPostCard({
   const role = roleLine(author?.role ?? "Member");
   return (
     <div
+      className="flex-shrink-0"
       style={{
         border: "1px solid var(--color-bt-border)",
         borderRadius: 14,
