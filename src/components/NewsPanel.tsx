@@ -364,35 +364,43 @@ function NewsPanelInner({
 
   return createPortal(
     <>
-      {/* ── Desktop: docked right rail, no scrim ─────────────────────────── */}
+      {/* ── Desktop: docked-right drawer over a scrim ────────────────────────
+          The scrim covers the whole app (content isn't pushed narrower) and
+          click-outside closes — like an edit modal — but the panel keeps its
+          left-edge drag-to-resize and title-bar controls. */}
       <div
-        className="hidden lg:flex fixed right-0 top-14 z-30 flex-col"
-        style={{
-          background: "var(--color-bt-card)",
-          borderLeft: "1px solid var(--color-bt-border)",
-          borderTop: "1px solid var(--color-bt-border)",
-          width: panelWidth,
-          bottom: BOTTOM_NAV_OFFSET,
-        }}
+        className="hidden lg:block fixed inset-0 z-50"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
       >
-        {/* Resize grip — left edge */}
         <div
-          onMouseDown={handleDragStart}
-          className="group absolute left-0 top-0 bottom-0 z-10 flex w-3 cursor-ew-resize items-center justify-center"
-          aria-hidden="true"
+          className="absolute right-0 top-0 bottom-0 flex flex-col"
+          style={{
+            background: "var(--color-bt-card)",
+            borderLeft: "1px solid var(--color-bt-border)",
+            width: panelWidth,
+          }}
+          onClick={(e) => e.stopPropagation()}
         >
+          {/* Resize grip — left edge */}
           <div
-            className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-            style={{ background: "var(--color-bt-accent-faint)" }}
-          />
-          <div className="relative flex flex-col gap-[3px]">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-[3px] w-[3px] rounded-full" style={{ background: "var(--color-bt-border)" }} />
-            ))}
+            onMouseDown={handleDragStart}
+            className="group absolute left-0 top-0 bottom-0 z-10 flex w-3 cursor-ew-resize items-center justify-center"
+            aria-hidden="true"
+          >
+            <div
+              className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+              style={{ background: "var(--color-bt-accent-faint)" }}
+            />
+            <div className="relative flex flex-col gap-[3px]">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-[3px] w-[3px] rounded-full" style={{ background: "var(--color-bt-border)" }} />
+              ))}
+            </div>
           </div>
-        </div>
 
-        {inner("desktop")}
+          {inner("desktop")}
+        </div>
       </div>
 
       {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
@@ -489,7 +497,7 @@ function NewsFeedScroll({ children }: { children: React.ReactNode }) {
       <div
         ref={ref}
         onScroll={update}
-        className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-[14px]"
         data-testid="news-feed"
       >
         {children}
@@ -542,6 +550,10 @@ function NewsPostCard({
         border: "1px solid var(--color-bt-border)",
         borderRadius: 14,
         background: "var(--color-bt-card)",
+        // A soft lift so posts read as separate cards rather than running into
+        // each other (post bg matches the panel bg, so the border alone was
+        // too subtle).
+        boxShadow: "var(--shadow-card)",
         overflow: "hidden",
       }}
       data-testid="news-post"

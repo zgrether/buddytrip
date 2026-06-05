@@ -504,64 +504,67 @@ function FloatingChatPanelInner({
 
   return (
     <>
-      {/* ── Desktop: anchored side panel ───────────────────────────────── */}
+      {/* ── Desktop: docked-right drawer over a scrim ────────────────────────
+          Scrim covers the whole app (content isn't pushed narrower) and
+          click-outside closes — like an edit modal — but the panel keeps its
+          left-edge drag-to-resize and title-bar controls. */}
       <div
-        className="hidden lg:flex fixed right-0 top-14 z-30 flex-col animate-slide-in-right"
-        style={{
-          background: "var(--color-bt-card)",
-          borderLeft: "1px solid var(--color-bt-border)",
-          // Top edge butts against the app's top bar; without a border the
-          // panel bleeds into it. Mirrors the bottom edge, which reads as
-          // separated thanks to the bottom nav's own top border.
-          borderTop: "1px solid var(--color-bt-border)",
-          width: panelWidth,
-          // Sit above the trip bottom nav so the input isn't hidden behind it.
-          // Resolves to 0px when no nav is mounted (runs to the screen bottom).
-          bottom: BOTTOM_NAV_OFFSET,
-        }}
+        className="hidden lg:block fixed inset-0 z-50"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
       >
-        {/* Drag handle — visible grip on the left edge */}
         <div
-          onMouseDown={handleDragStart}
-          className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize flex items-center justify-center group z-10"
-          aria-hidden="true"
+          className="absolute right-0 top-0 bottom-0 flex flex-col"
+          style={{
+            background: "var(--color-bt-card)",
+            borderLeft: "1px solid var(--color-bt-border)",
+            width: panelWidth,
+          }}
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* Hit-area highlight on hover */}
+          {/* Drag handle — visible grip on the left edge */}
           <div
-            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-            style={{ background: "var(--color-bt-accent-faint)" }}
-          />
-          {/* Grip dots — always visible */}
-          <div className="relative flex flex-col gap-[3px]">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="h-[3px] w-[3px] rounded-full transition-colors duration-150"
-                style={{ background: "var(--color-bt-border)" }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div
-          className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
-          style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
-        >
-          {titleRow}
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
-            style={{ color: "var(--color-bt-text-dim)" }}
-            aria-label="Close chat"
-            title="Close"
+            onMouseDown={handleDragStart}
+            className="absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize flex items-center justify-center group z-10"
+            aria-hidden="true"
           >
-            <X size={16} />
-          </button>
+            {/* Hit-area highlight on hover */}
+            <div
+              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+              style={{ background: "var(--color-bt-accent-faint)" }}
+            />
+            {/* Grip dots — always visible */}
+            <div className="relative flex flex-col gap-[3px]">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="h-[3px] w-[3px] rounded-full transition-colors duration-150"
+                  style={{ background: "var(--color-bt-border)" }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="flex flex-shrink-0 items-center gap-2 px-3 py-2"
+            style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+          >
+            {titleRow}
+            <button
+              type="button"
+              onClick={onClose}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
+              style={{ color: "var(--color-bt-text-dim)" }}
+              aria-label="Close chat"
+              title="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {/* Channel tabs live BELOW the divider bar (the title's own band). */}
+          {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
+          {body}
         </div>
-        {/* Channel tabs live BELOW the divider bar (the title's own band). */}
-        {tabsRow && <div className="flex-shrink-0 px-3 py-2">{tabsRow}</div>}
-        {body}
       </div>
 
       {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
