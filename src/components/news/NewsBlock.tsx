@@ -196,6 +196,8 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
               <img
                 src={img}
                 alt={block.ph || "Image"}
+                loading="lazy"
+                decoding="async"
                 style={{ display: "block", width: "100%", height: "auto", maxHeight: 480, objectFit: "contain" }}
               />
               {block.ph && (
@@ -264,6 +266,8 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
               <img
                 src={thumb}
                 alt={block.title || "Video thumbnail"}
+                loading="lazy"
+                decoding="async"
                 style={{ position: "absolute", inset: 0, height: "100%", width: "100%", objectFit: "cover" }}
               />
               {/* Scrim — darkens for the play glyph + bottom caption legibility. */}

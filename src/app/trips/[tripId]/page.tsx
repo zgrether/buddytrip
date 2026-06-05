@@ -419,11 +419,10 @@ export default function TripDetailPage() {
         /* Planning / going / now / past / saved: single-column page.
            Crew chat lives in the FloatingChatPanel on the right (desktop)
            or as a bottom sheet (mobile), so no sidebar column is needed. */
-        <div
-          className="mx-auto max-w-[1280px] px-4 pt-4 transition-[margin-right] duration-200"
-          style={{ marginRight: chatOpen ? undefined : undefined }}
-        >
-          <div className={chatOpen || newsOpen ? "lg:mr-[400px] transition-[margin-right] duration-200" : "transition-[margin-right] duration-200"}>
+        <div className="mx-auto max-w-[1280px] px-4 pt-4">
+          {/* News/Chat now overlay the page with a scrim (they don't push the
+              content narrower), so no margin-right shift here. */}
+          <div>
             <TripHeader
               tripId={trip.id}
               tripName={trip.title}

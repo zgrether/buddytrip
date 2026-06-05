@@ -364,35 +364,49 @@ function NewsPanelInner({
 
   return createPortal(
     <>
-      {/* ── Desktop: docked right rail, no scrim ─────────────────────────── */}
+      {/* ── Desktop: docked-right drawer over a scrim ────────────────────────
+          The scrim covers the content BELOW the title bar (not the bar itself)
+          so the News/Chat buttons stay clickable above it — tap the other one
+          to swap panels. Content isn't pushed narrower, and clicking the scrim
+          closes. The panel keeps its left-edge drag-to-resize + title controls. */}
       <div
-        className="hidden lg:flex fixed right-0 top-14 z-30 flex-col"
-        style={{
-          background: "var(--color-bt-card)",
-          borderLeft: "1px solid var(--color-bt-border)",
-          borderTop: "1px solid var(--color-bt-border)",
-          width: panelWidth,
-          bottom: BOTTOM_NAV_OFFSET,
+        className="hidden lg:block fixed inset-x-0 top-14 bottom-0 z-50"
+        style={{ background: "var(--color-bt-overlay)" }}
+        // Close only on a press that lands directly on the scrim. Using
+        // pointerdown (not click) means a resize drag — which starts on the
+        // grip and may release over the scrim — never fires a close.
+        onPointerDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
         }}
       >
-        {/* Resize grip — left edge */}
         <div
-          onMouseDown={handleDragStart}
-          className="group absolute left-0 top-0 bottom-0 z-10 flex w-3 cursor-ew-resize items-center justify-center"
-          aria-hidden="true"
+          className="absolute right-0 top-0 bottom-0 flex flex-col"
+          style={{
+            background: "var(--color-bt-card)",
+            borderLeft: "1px solid var(--color-bt-border)",
+            width: panelWidth,
+          }}
+          onClick={(e) => e.stopPropagation()}
         >
+          {/* Resize grip — left edge */}
           <div
-            className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-            style={{ background: "var(--color-bt-accent-faint)" }}
-          />
-          <div className="relative flex flex-col gap-[3px]">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-[3px] w-[3px] rounded-full" style={{ background: "var(--color-bt-border)" }} />
-            ))}
+            onMouseDown={handleDragStart}
+            className="group absolute left-0 top-0 bottom-0 z-10 flex w-3 cursor-ew-resize items-center justify-center"
+            aria-hidden="true"
+          >
+            <div
+              className="absolute inset-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+              style={{ background: "var(--color-bt-accent-faint)" }}
+            />
+            <div className="relative flex flex-col gap-[3px]">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-[3px] w-[3px] rounded-full" style={{ background: "var(--color-bt-border)" }} />
+              ))}
+            </div>
           </div>
-        </div>
 
-        {inner("desktop")}
+          {inner("desktop")}
+        </div>
       </div>
 
       {/* ── Mobile: bottom sheet ─────────────────────────────────────────────
@@ -404,7 +418,9 @@ function NewsPanelInner({
         <div
           className="lg:hidden fixed inset-x-0 top-14 z-50 flex items-end"
           style={{ background: "var(--color-bt-overlay)", bottom: BOTTOM_NAV_OFFSET }}
-          onClick={onClose}
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget) onClose();
+          }}
         >
           <div
             ref={sheetRef}
@@ -489,7 +505,7 @@ function NewsFeedScroll({ children }: { children: React.ReactNode }) {
       <div
         ref={ref}
         onScroll={update}
-        className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto p-[14px]"
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-[14px]"
         data-testid="news-feed"
       >
         {children}
@@ -542,6 +558,13 @@ function NewsPostCard({
         border: "1px solid var(--color-bt-border)",
         borderRadius: 14,
         background: "var(--color-bt-card)",
+        // A soft lift so posts read as separate cards rather than running into
+        // each other (post bg matches the panel bg, so the border alone was too
+        // subtle). On dark a plain drop-shadow is invisible, so pair a light
+        // inset top-edge highlight with the drop shadow — same recipe as the
+        // trip header dock.
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 20px rgba(0,0,0,0.38)",
         overflow: "hidden",
       }}
       data-testid="news-post"
