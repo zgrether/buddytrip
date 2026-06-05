@@ -15,11 +15,13 @@ import {
   Users,
   Trophy,
   RefreshCw,
+  Heading,
   type LucideIcon,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
+import { RichTextEditor } from "@/components/news/RichTextEditor";
 import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news";
 
 // ── NewsComposer ────────────────────────────────────────────────────────────
@@ -36,6 +38,7 @@ import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news"
 
 // Block types the composer can ADD, in catalog order.
 const ADDABLE: { type: NewsBlockType; label: string; icon: LucideIcon }[] = [
+  { type: "heading", label: "Heading", icon: Heading },
   { type: "text", label: "Text", icon: Type },
   { type: "crew", label: "@Crew", icon: Users },
   { type: "teams", label: "Teams", icon: Trophy },
@@ -46,6 +49,8 @@ const ADDABLE: { type: NewsBlockType; label: string; icon: LucideIcon }[] = [
 
 function blankBlock(type: NewsBlockType): NewsBlock {
   switch (type) {
+    case "heading":
+      return { type: "heading", text: "" };
     case "text":
       return { type: "text", text: "" };
     case "crew":
@@ -68,7 +73,9 @@ function blankBlock(type: NewsBlockType): NewsBlock {
 function cleanBlocks(blocks: NewsBlock[]): NewsBlock[] {
   const out: NewsBlock[] = [];
   for (const b of blocks) {
-    if (b.type === "text") {
+    if (b.type === "heading") {
+      if (b.text.trim().length > 0) out.push({ type: "heading", text: b.text.trim() });
+    } else if (b.type === "text") {
       const hasText = (b.text ?? "").trim().length > 0;
       const hasSegments = (b.segments?.length ?? 0) > 0;
       if (hasText || hasSegments) out.push({ ...b, text: b.text?.trim() });
@@ -447,6 +454,7 @@ function BlockEditor({
   const [dropEdge, setDropEdge] = useState<"top" | "bottom" | null>(null);
 
   const kindLabel: Record<NewsBlockType, string> = {
+    heading: "Heading",
     text: "Text",
     crew: "@Crew · from the roster",
     teams: "Teams · from Competition",
@@ -455,6 +463,7 @@ function BlockEditor({
     callout: "Callout · panel (amber)",
   };
   const kindIcon: Record<NewsBlockType, LucideIcon> = {
+    heading: Heading,
     text: Type,
     crew: Users,
     teams: Trophy,
@@ -603,16 +612,18 @@ function BlockFields({
   onChange: (b: NewsBlock) => void;
 }) {
   switch (block.type) {
-    case "text":
+    case "heading":
       return (
-        <textarea
-          value={block.text ?? ""}
-          onChange={(e) => onChange({ type: "text", text: e.target.value, dim: block.dim })}
-          rows={3}
-          placeholder="Write something for the crew…"
-          style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
+        <input
+          value={block.text}
+          onChange={(e) => onChange({ type: "heading", text: e.target.value })}
+          placeholder="Section title…"
+          style={{ ...inputStyle, fontSize: 16, fontWeight: 700 }}
         />
       );
+
+    case "text":
+      return <RichTextEditor tripId={tripId} block={block} onChange={onChange} />;
 
     case "callout":
       return (

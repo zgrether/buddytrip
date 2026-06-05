@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
+  Heading,
   Type,
   Users,
   Trophy,
@@ -32,10 +33,23 @@ interface CatalogEntry {
 
 const CATALOG: CatalogEntry[] = [
   {
+    name: "Heading",
+    icon: Heading,
+    desc: "A title line to break a longer post into sections.",
+    demo: { type: "heading", text: "Saturday — Championship Day" },
+  },
+  {
     name: "Text",
     icon: Type,
-    desc: "A paragraph — the everyday update. Plain text for now (rich formatting is coming).",
-    demo: { type: "text", text: "Tee times are tight — be at the first tee 10 minutes early." },
+    desc: "A paragraph — the everyday update. Bold, italic, links and @-mentions, all from the toolbar — no markdown.",
+    demo: {
+      type: "text",
+      segments: [
+        "Tee times are tight — ",
+        { text: "be at the first tee 10 minutes early", bold: true },
+        ".",
+      ],
+    },
   },
   {
     name: "@Crew",
@@ -158,7 +172,7 @@ export function NewsHelpModal({ open, onClose }: NewsHelpModalProps) {
           style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--color-bt-text-dim)" }}
         >
           A post is a stack of blocks. Add as many as you like, in any order, then drag to
-          reorder. These are the six block types:
+          reorder. These are the seven block types:
         </p>
 
         {/* Catalog */}
