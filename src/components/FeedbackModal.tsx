@@ -223,7 +223,13 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
       <div
         className="animate-fade-in w-full max-w-[480px] max-h-[90vh] overflow-y-auto rounded-t-[18px] lg:rounded-2xl"
         style={{
-          background: "var(--color-bt-card)",
+          // card-float (#2a3654 dark / #e8edf5 light) matches InfoTileModal
+          // and other floating dialogs. The style guide docs say "card" for
+          // modals, but every implemented reference (InfoTileModal, etc.) uses
+          // card-float — it's the token that actually clears the
+          // overlay-darkened page. The style guide is wrong here; card-float
+          // is correct for floating dialogs.
+          background: "var(--color-bt-card-float)",
           border: "1px solid var(--color-bt-border)",
           boxShadow: "var(--shadow-floating)",
         }}
@@ -296,16 +302,15 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
           </button>
         </div>
 
-        {/* ── Body — padded card-raised panel so the interactive content
-             sits on a unified lighter surface rather than floating as
-             dark islands on the even-darker card bg. Same treatment
-             TripSettingsModal uses for its form body. ──────────────── */}
+        {/* ── Body — inset panel one step below card-float so there's clear
+             surface hierarchy: dialog (card-float) → body panel (card) →
+             chips/textarea (card-raised). ───────────────────────────── */}
         <div
           style={{
             margin: "0 14px 14px",
             padding: "14px",
             borderRadius: 12,
-            background: "var(--color-bt-card-raised)",
+            background: "var(--color-bt-card)",
             border: "1px solid var(--color-bt-border)",
             display: "flex",
             flexDirection: "column",
