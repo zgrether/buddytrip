@@ -493,11 +493,18 @@ function NewsPanelInner({
 function NewsFeedScroll({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [dir, setDir] = useState<"up" | "down" | null>(null);
+  // Edge fades: shown when content is scrolled off the top / bottom so the
+  // feed reads as continuing past the panel chrome rather than hard-cut.
+  const [fadeTop, setFadeTop] = useState(false);
+  const [fadeBottom, setFadeBottom] = useState(false);
 
   const update = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     const scrollable = el.scrollHeight - el.clientHeight > 40;
+    // A few px of slack so the fade clears fully at the very top/bottom.
+    setFadeTop(scrollable && el.scrollTop > 4);
+    setFadeBottom(scrollable && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
     if (!scrollable) {
       setDir(null);
       return;
@@ -535,6 +542,27 @@ function NewsFeedScroll({ children }: { children: React.ReactNode }) {
       >
         {children}
       </div>
+      {/* Top / bottom scroll fades — fade from the panel surface to clear. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-200"
+        style={{
+          height: 28,
+          opacity: fadeTop ? 1 : 0,
+          background:
+            "linear-gradient(to bottom, var(--color-bt-card-float), transparent)",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-10 transition-opacity duration-200"
+        style={{
+          height: 28,
+          opacity: fadeBottom ? 1 : 0,
+          background:
+            "linear-gradient(to top, var(--color-bt-card-float), transparent)",
+        }}
+      />
       {dir && (
         <button
           type="button"
