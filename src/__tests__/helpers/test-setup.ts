@@ -14,7 +14,7 @@
  *   await ctx.cleanup();
  */
 
-import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createCallerFactory, type TRPCContext } from "../../server/trpc";
 import { appRouter } from "../../server/router";
 import { readFileSync } from "fs";
@@ -77,7 +77,7 @@ function createAuthenticatedClient(shared: SharedUser): SupabaseClient {
 
 function createCallerForUser(shared: SharedUser) {
   const client = createAuthenticatedClient(shared);
-  const user = { id: shared.id, email: shared.email } as User;
+  const user = { id: shared.id, email: shared.email };
   const ctx: TRPCContext = { supabase: client, user, membershipCache: new Map() };
   return factory(ctx);
 }
