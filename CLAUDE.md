@@ -4,7 +4,7 @@
 
 - **BuddyTrip** — mobile-first group trip planning and competition scoring app
 - Repo: github.com/zgrether/buddytrip
-- Deployed: buddytrip-app.vercel.app
+- Deployed: bbmi.app
 
 ## Stack
 

@@ -20,7 +20,7 @@ the repo, plus a few core components — `TripHeader`, `TripCard`,
 ## Product context
 
 **BuddyTrip** is a Next.js 15 / Tailwind v4 / Supabase app, deployed at
-`buddytrip-app.vercel.app`. One product, two distinct visual surfaces:
+`bbmi.app`. One product, two distinct visual surfaces:
 
 | Surface | Files | What it is |
 |---|---|---|

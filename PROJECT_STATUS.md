@@ -36,7 +36,7 @@ leaderboard, in-app notifications.
 | Styling | `--color-bt-*` CSS token system, light/dark mode |
 
 **Repo:** github.com/zgrether/buddytrip (private)
-**Deployed:** buddytrip-app.vercel.app
+**Deployed:** bbmi.app
 **Key files:** `CLAUDE.md` (enforced patterns), `STYLE_GUIDE.md` (design
 system), `PERMISSIONS.md` (role matrix), `DEFERRED.md` (backlog)
 
