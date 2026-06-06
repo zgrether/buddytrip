@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
-import { NewsBlocks } from "@/components/news/NewsBlock";
+import { NewsBlocks, Mention } from "@/components/news/NewsBlock";
 import { RichTextEditor } from "@/components/news/RichTextEditor";
 import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news";
 
@@ -148,22 +148,40 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
   const addBlock = (type: NewsBlockType) => setBlocks((bs) => [...bs, blankBlock(type)]);
 
   // Drag-to-reorder (desktop, via the grip). Up/down arrows stay as the
-  // touch/keyboard fallback. dragFrom holds the picked-up block's index.
+  // touch/keyboard fallback.
+  //
   // `ins` is the insertion slot in the *original* array (0..length) — the gap
-  // the block should land in, derived from which edge of the hovered block the
-  // cursor is over. We compensate for removing `from` before splicing back.
-  const dragFrom = useRef<number | null>(null);
+  // the block should land in. Agenda-style: the indicator only appears once the
+  // cursor crosses the midpoint of a NEIGHBOURING block, and never on the
+  // dragged block's own two adjacent slots (which would be a no-op).
+  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
+
   const reorderTo = (from: number, ins: number) =>
     setBlocks((bs) => {
       if (from < 0 || from >= bs.length) return bs;
-      // Dropping into the slot just before or after itself is a no-op.
-      if (ins === from || ins === from + 1) return bs;
+      if (ins === from || ins === from + 1) return bs; // own slot — no-op
       const copy = bs.slice();
       const [moved] = copy.splice(from, 1);
       const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
       copy.splice(target, 0, moved);
       return copy;
     });
+
+  const onBlockDragOver = (i: number, clientY: number, rect: DOMRect) =>
+    setDragState((s) => {
+      if (!s) return s;
+      const isTop = clientY < rect.top + rect.height / 2;
+      let ins: number | null = isTop ? i : i + 1;
+      // The two slots touching the dragged block are no-ops — hide the line so
+      // it can't bounce between them while you wiggle over your own tile.
+      if (ins === s.from || ins === s.from + 1) ins = null;
+      return s.ins === ins ? s : { ...s, ins };
+    });
+
+  const onBlockDrop = () => {
+    if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
+    setDragState(null);
+  };
 
   const submit = () => {
     if (!canSubmit) return;
@@ -285,15 +303,18 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
             onChange={(next) => setBlock(i, next)}
             onRemove={() => removeBlock(i)}
             onMove={(dir) => moveBlock(i, dir)}
-            onDragStartBlock={() => {
-              dragFrom.current = i;
-            }}
-            onDropBlock={(edge) => {
-              if (dragFrom.current !== null) {
-                reorderTo(dragFrom.current, edge === "top" ? i : i + 1);
-              }
-              dragFrom.current = null;
-            }}
+            dragging={dragState?.from === i}
+            dropIndicator={
+              dragState?.ins === i
+                ? "top"
+                : i === blocks.length - 1 && dragState?.ins === blocks.length
+                  ? "bottom"
+                  : null
+            }
+            onDragStartBlock={() => setDragState({ from: i, ins: null })}
+            onDragOverBlock={(clientY, rect) => onBlockDragOver(i, clientY, rect)}
+            onDropBlock={onBlockDrop}
+            onDragEndBlock={() => setDragState(null)}
           />
         ))}
 
@@ -308,15 +329,10 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
               marginBottom: 8,
             }}
           >
-            Add a block{variant === "mobile" ? " · swipe" : ""}
+            Add a block
           </div>
-          <div
-            className={
-              variant === "mobile"
-                ? "flex gap-1.5 overflow-x-auto pb-1"
-                : "flex flex-wrap gap-1.5"
-            }
-          >
+          {/* Wrap to multiple lines on every width — no horizontal swipe. */}
+          <div className="flex flex-wrap gap-1.5">
             {ADDABLE.map(({ type, label, icon: Icon }) => (
               <button
                 key={type}
@@ -433,8 +449,12 @@ function BlockEditor({
   onChange,
   onRemove,
   onMove,
+  dragging,
+  dropIndicator,
   onDragStartBlock,
+  onDragOverBlock,
   onDropBlock,
+  onDragEndBlock,
 }: {
   tripId: string;
   block: NewsBlock;
@@ -443,15 +463,18 @@ function BlockEditor({
   onChange: (b: NewsBlock) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
+  /** This block is the one currently being dragged (dim it). */
+  dragging: boolean;
+  /** Where the insertion line sits relative to this block, if at all. */
+  dropIndicator: "top" | "bottom" | null;
   onDragStartBlock: () => void;
-  onDropBlock: (edge: "top" | "bottom") => void;
+  onDragOverBlock: (clientY: number, rect: DOMRect) => void;
+  onDropBlock: () => void;
+  onDragEndBlock: () => void;
 }) {
   // Drag is armed only while the grip is held, so dragging the block never
   // hijacks text selection inside its inputs.
   const [armed, setArmed] = useState(false);
-  // Which edge the dragged block would land on — drives a thin insertion line
-  // in the gap (above/below), so it reads as "lands here", not "drops inside".
-  const [dropEdge, setDropEdge] = useState<"top" | "bottom" | null>(null);
 
   const kindLabel: Record<NewsBlockType, string> = {
     heading: "Heading",
@@ -483,23 +506,15 @@ function BlockEditor({
       }}
       onDragEnd={() => {
         setArmed(false);
-        setDropEdge(null);
+        onDragEndBlock();
       }}
       onDragOver={(e) => {
         e.preventDefault();
-        // Top half → land above this block; bottom half → land below it.
-        const r = e.currentTarget.getBoundingClientRect();
-        setDropEdge(e.clientY < r.top + r.height / 2 ? "top" : "bottom");
-      }}
-      onDragLeave={(e) => {
-        // Ignore leaves into our own children (prevents line flicker).
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropEdge(null);
+        onDragOverBlock(e.clientY, e.currentTarget.getBoundingClientRect());
       }}
       onDrop={(e) => {
         e.preventDefault();
-        const edge = dropEdge ?? "top";
-        setDropEdge(null);
-        onDropBlock(edge);
+        onDropBlock();
       }}
       style={{
         position: "relative",
@@ -507,16 +522,17 @@ function BlockEditor({
         borderRadius: 11,
         background: "var(--color-bt-card-raised)",
         padding: "10px 12px 12px",
+        opacity: dragging ? 0.4 : 1,
       }}
     >
-      {dropEdge && (
+      {dropIndicator && (
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
             left: 2,
             right: 2,
-            [dropEdge === "top" ? "top" : "bottom"]: -6,
+            [dropIndicator === "top" ? "top" : "bottom"]: -6,
             height: 2,
             borderRadius: 2,
             background: "var(--color-bt-accent)",
@@ -840,27 +856,12 @@ function CrewFields({
       />
 
       {block.people.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {block.people.map((p, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1.5"
-              style={{
-                padding: "2px 5px 2px 2px",
-                borderRadius: 9999,
-                background: p.color
-                  ? `color-mix(in srgb, ${p.color} 12%, var(--color-bt-card-raised))`
-                  : "var(--color-bt-card-raised)",
-                border: p.color
-                  ? `1px solid color-mix(in srgb, ${p.color} 40%, var(--color-bt-border))`
-                  : "1px solid var(--color-bt-border)",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--color-bt-text)",
-              }}
-            >
-              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} muted={!!p.placeholder} sizePx={16} />
-              {p.name}
+            // The displayed chip is the exact same <Mention> the feed renders,
+            // so the edit view matches preview; the remove control sits beside it.
+            <span key={i} className="inline-flex items-center" style={{ gap: 3 }}>
+              <Mention person={p} />
               <button
                 type="button"
                 aria-label={`Remove ${p.name}`}
