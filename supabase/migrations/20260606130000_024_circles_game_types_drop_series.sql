@@ -67,14 +67,9 @@ COMMENT ON TABLE public.circles IS
   'Anchor stub (migration 024): the persistent buddy group above trips. The '
   'post-launch competition build fills this out. No app reads yet.';
 ALTER TABLE public.circles ENABLE ROW LEVEL SECURITY;
--- A user sees circles they belong to (membership table below).
-DROP POLICY IF EXISTS circles_select ON public.circles;
-CREATE POLICY circles_select ON public.circles
-  FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM public.circle_members m
-    WHERE m.circle_id = circles.id AND m.user_id = (auth.uid())::text
-  ));
+-- NB: the circles_select policy references circle_members, so it is created
+-- below, after that table exists (a policy can't reference a not-yet-created
+-- relation within the same transactional migration).
 
 -- ── circle_members — who is in a circle, and their role there ───────────────
 CREATE TABLE IF NOT EXISTS public.circle_members (
@@ -93,6 +88,16 @@ DROP POLICY IF EXISTS circle_members_select ON public.circle_members;
 CREATE POLICY circle_members_select ON public.circle_members
   FOR SELECT TO authenticated
   USING (user_id = (auth.uid())::text);
+
+-- circles_select (deferred from the circles block above — references circle_members).
+-- A user sees circles they belong to.
+DROP POLICY IF EXISTS circles_select ON public.circles;
+CREATE POLICY circles_select ON public.circles
+  FOR SELECT TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM public.circle_members m
+    WHERE m.circle_id = circles.id AND m.user_id = (auth.uid())::text
+  ));
 
 -- ── circle_courses — golf courses a circle plays (stub) ─────────────────────
 CREATE TABLE IF NOT EXISTS public.circle_courses (
