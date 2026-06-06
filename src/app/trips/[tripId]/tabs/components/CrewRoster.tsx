@@ -60,18 +60,18 @@ export type Member = {
 export type DerivedStatus = "active" | "invited" | "placeholder";
 
 export function deriveStatus(m: Member): DerivedStatus {
-  // The Owner created the trip — they're inherently on it, never "pending"
-  // (their email_count is 0 because nobody emails the host an invite).
+  // The Owner created the trip — inherently active.
   if (m.role === "Owner") return "active";
-  // Guest without an email = name-only stand-in = placeholder.
-  if (m.isGuest && !m.user?.email) return "placeholder";
-  // Never emailed yet (guest OR real account) = not officially invited.
-  // A real BuddyTrip user added to the trip hasn't been "invited" until the
-  // owner actually emails them, so they read as Pending until email_count > 0.
-  if ((m.email_count ?? 0) === 0) return "invited";
-  // Emailed at least once: a guest is still waiting to sign up (invited);
-  // a real account is fully onboarded (active).
-  return m.isGuest ? "invited" : "active";
+  // A real BuddyTrip account on the trip is a full, active member with access
+  // — regardless of whether an invite email was ever sent. (A placeholder that
+  // gets a matching email is converted to a real account, flipping is_guest to
+  // false; from that point they're active, not Pending.) last_emailed_at /
+  // email_count tracks the invite blast, NOT their access, so it must not gate
+  // Active here.
+  if (!m.isGuest) return "active";
+  // Guests have no real account yet: name-only → placeholder; with an email →
+  // invited/pending until they sign up (which converts them to a real account).
+  return m.user?.email ? "invited" : "placeholder";
 }
 
 // ── Role pill (Owner amber · Organizer teal · Member: no pill) ────────────

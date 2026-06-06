@@ -59,16 +59,16 @@ export type MemberEditorTarget = {
   } | null;
 };
 
-// Mirror of CrewTab's deriveStatus — kept inline to avoid a circular import.
+// Mirror of CrewRoster's deriveStatus — kept inline to avoid a circular import.
 function deriveStatus(m: MemberEditorTarget): "active" | "invited" | "placeholder" {
-  // Owner is inherently on the trip — always active.
+  // Owner is inherently active.
   if (m.role === "Owner") return "active";
-  // Guest with no email = name-only stand-in.
-  if (m.isGuest && !m.user?.email) return "placeholder";
-  // Never emailed (guest OR real account) = not officially invited yet.
-  if ((m.email_count ?? 0) === 0) return "invited";
-  // Emailed: guest still waiting to sign up (invited); real account = active.
-  return m.isGuest ? "invited" : "active";
+  // A real BuddyTrip account on the trip is a full, active member — regardless
+  // of whether an invite blast was ever sent (a placeholder with a matching
+  // email is converted to a real account, flipping is_guest false → active).
+  if (!m.isGuest) return "active";
+  // Guests: name-only → placeholder; with an email → invited until they sign up.
+  return m.user?.email ? "invited" : "placeholder";
 }
 
 function statusLabel(s: ReturnType<typeof deriveStatus>) {
