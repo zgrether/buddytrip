@@ -148,10 +148,19 @@ export default function LoginClient({
     setError("");
     setLoading(true);
     try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name } },
+        options: {
+          data: { name },
+          // Route the confirmation link through our auth callback so the token
+          // is exchanged for a session there (sets the cookie) and the user
+          // lands logged-in on the dashboard. Without this, redirect_to falls
+          // back to the Site URL (the marketing page), which never exchanges
+          // the token — the user appears signed out and has to log in manually.
+          emailRedirectTo: `${origin}/auth/callback?next=/dashboard`,
+        },
       });
       if (signUpError) throw signUpError;
 
