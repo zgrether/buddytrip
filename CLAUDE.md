@@ -146,6 +146,27 @@ competition/gaming engine ships and they carry real volume (none exist yet — t
 
 Already indexed plainly and fine as-is: `messages` (`user_id`).
 
+## Schema Cleanup Rule
+
+Before any `DROP COLUMN` or `DROP FUNCTION` migration, grep current `main` for
+every reference **and** verify against the live DB. **Audit-tool output is a
+starting point, not a verdict** — it produces false positives that are dangerous
+to act on. Three real examples from this codebase:
+
+- `trips.comparison_mode` and `trips.itinerary_enabled` were flagged "dead" by
+  the 2026-05-28 audit but are **load-bearing reads** — `comparison_mode` in
+  `page.tsx` + `TripCard.tsx` (and written on trip create); `itinerary_enabled`
+  in `HomeTab.tsx` → `ItineraryPanel`. Dropping either breaks the app.
+- `merge_guest_to_real_user(text, text)` was flagged "broken / removable" but is
+  the **live signup conversion path**, called by the `handle_new_user` signup
+  trigger. Dropping it breaks every invited-user signup. (Nothing replaced it —
+  it *is* the mechanism; it was fixed, not removed.)
+
+Never drop a column or function without confirming **zero live reads in code**
+AND that **nothing in the DB depends on it** (triggers, functions, views, FKs,
+RLS policies, default expressions). When in doubt, comment it out / stop and
+flag — don't drop.
+
 ## What "Done" Means for Any Task
 
 1. Feature implemented
