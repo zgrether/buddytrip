@@ -345,7 +345,9 @@ function NewsPanelInner({
 
   // Composing is launched from the pinned "New post" title-bar button, which
   // stays visible while the feed scrolls.
-  const feedContent = isLoading ? null : posts.length === 0 ? (
+  const feedContent = isLoading ? (
+    <NewsLoading />
+  ) : posts.length === 0 ? (
     <NewsEmpty canPost={canPost} />
   ) : (
     posts.map((p) => (
@@ -830,6 +832,43 @@ function MenuItem({
 }
 
 // ── Empty state ────────────────────────────────────────────────────────────
+// ── Loading skeleton ───────────────────────────────────────────────────────
+// Shown while the feed query is in flight so the panel reads as "loading"
+// rather than a blank rectangle. Two pulsing post-card shells.
+function NewsLoading() {
+  const bar = (w: string, h: number) => (
+    <div style={{ height: h, width: w, borderRadius: 4, background: "var(--color-bt-card-raised)" }} />
+  );
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading news">
+      {[0, 1].map((i) => (
+        <div
+          key={i}
+          className="flex-shrink-0 animate-pulse overflow-hidden"
+          style={{
+            border: "1px solid var(--color-bt-border)",
+            borderRadius: 14,
+            background: "var(--color-bt-card)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 20px rgba(0,0,0,0.38)",
+          }}
+        >
+          <div className="flex items-center gap-[11px]" style={{ padding: "14px 16px 0" }}>
+            <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--color-bt-card-raised)" }} />
+            <div className="flex flex-1 flex-col gap-1.5">
+              {bar("40%", 10)}
+              {bar("24%", 8)}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2" style={{ padding: "14px 16px 16px" }}>
+            {bar("92%", 9)}
+            {bar("70%", 9)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function NewsEmpty({ canPost }: { canPost: boolean }) {
   return (
     <div className="flex items-center justify-center text-center" style={{ padding: "40px 8px" }}>

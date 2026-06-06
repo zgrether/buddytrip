@@ -581,9 +581,13 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
   const FLIPPED_MIN_H = 420;
 
   return (
-    <div className="relative" style={{ perspective: 1200 }}>
+    // h-full down the flip chain so the resting front face fills the
+    // grid-stretched cell and its CTA bottom-pins level with the sibling
+    // StepCards — otherwise the shorter Set Dates content floats its button
+    // up and the row's buttons misalign as bodies wrap at different widths.
+    <div className="relative h-full" style={{ perspective: 1200 }}>
       <div
-        className="relative w-full"
+        className="relative h-full w-full"
         style={{
           transformStyle: "preserve-3d",
           transform: showBack ? "rotateY(180deg)" : "rotateY(0deg)",
@@ -592,11 +596,11 @@ export const SetDatesFlipCard: FC<SetDatesFlipCardProps> = ({
         }}
         data-testid="guide-step-dates"
       >
-        {/* Front — sizes to its own content. Not absolute so it
-            collapses cleanly when the back face's minHeight isn't
-            applied. */}
+        {/* Front — fills the cell (h-full) so its CTA bottom-pins with the
+            sibling cards. Not absolute so it still collapses cleanly when the
+            back face's minHeight isn't applied. */}
         <div
-          className="rounded-xl"
+          className="h-full rounded-xl"
           style={{
             ...cardSurface,
             backfaceVisibility: "hidden",

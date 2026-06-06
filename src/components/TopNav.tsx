@@ -77,6 +77,7 @@ export const TopNav: FC<TopNavProps> = ({
   const params = useParams<{ tripId?: string }>();
   const currentTripId = params?.tripId ?? null;
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherHovered, setSwitcherHovered] = useState(false);
   // FeedbackModal lives at the TopNav level so the same modal is reachable
   // from the title-bar megaphone AND from the AboutModal "Send feedback"
   // row (which opens via UserMenu → AboutModal → onOpenFeedback). One
@@ -176,12 +177,15 @@ export const TopNav: FC<TopNavProps> = ({
                   return !p;
                 })
               }
-              className="flex min-w-0 items-center gap-1.5 transition-colors hover:bg-[var(--color-bt-hover)]"
+              onMouseEnter={() => setSwitcherHovered(true)}
+              onMouseLeave={() => setSwitcherHovered(false)}
+              className="flex min-w-0 items-center gap-1.5 transition-colors"
               style={{
-                // Transparent fill — the border alone is enough
-                // affordance and a card-raised surface read as a heavy
-                // chip against the translucent title bar.
-                background: "transparent",
+                // Resting fill is transparent (the border is the affordance);
+                // the hover wash is driven from state so the inline background
+                // can't suppress it, matching the rest of the bar.
+                background:
+                  switcherOpen || switcherHovered ? "var(--color-bt-hover)" : "transparent",
                 border: "1px solid var(--color-bt-border)",
                 borderRadius: 9,
                 padding: "5px 9px 5px 7px",
@@ -296,6 +300,7 @@ function NewsToolButton({
   active: boolean;
 }) {
   const unread = useNewsUnreadCount(tripId);
+  const utils = trpc.useUtils();
   return (
     <ToolButton
       icon={Pin}
@@ -304,6 +309,10 @@ function NewsToolButton({
       badgeBg="var(--color-bt-accent)"
       active={active}
       onClick={onClick}
+      // Warm the feed the moment the user shows intent (hover / focus / press)
+      // so it's already in flight before the panel mounts — the open then
+      // resolves from cache instead of starting a cold round-trip.
+      onPrefetch={() => utils.news.list.prefetch({ tripId })}
       ariaLabel="News"
       testId="news-button"
     />
@@ -354,6 +363,7 @@ function ToolButton({
   restingBg,
   restingBorder,
   labelColor,
+  onPrefetch,
 }: {
   icon: LucideIcon;
   label: string;
@@ -363,6 +373,8 @@ function ToolButton({
   onClick?: () => void;
   ariaLabel: string;
   testId: string;
+  /** Fired on hover / focus / press to warm the panel's data before open. */
+  onPrefetch?: () => void;
   /** Override the icon stroke color. Defaults to the inherited text color. */
   iconColor?: string;
   /** Resting background. Defaults to none; use for buttons that need a
@@ -375,15 +387,36 @@ function ToolButton({
 }) {
   const showBadge = count > 0;
   const badgeLabel = count > 99 ? "99+" : String(count);
+  // Hover is driven from state, not a Tailwind hover: class — an inline
+  // `background` (resting fill / "none") would otherwise win over the class
+  // and the hover wash would never show (the bug this fixes). A filled button
+  // (Feedback) gets a stronger tint of its own accent; the rest get the
+  // neutral wash, matching the home button + avatar.
+  const [hovered, setHovered] = useState(false);
+  const hoverFill = restingBg
+    ? "color-mix(in srgb, var(--color-bt-accent) 18%, transparent)"
+    : "var(--color-bt-hover)";
+  const background = active
+    ? "var(--color-bt-hover)"
+    : hovered
+      ? hoverFill
+      : (restingBg ?? "transparent");
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseEnter={() => {
+        setHovered(true);
+        onPrefetch?.();
+      }}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => onPrefetch?.()}
+      onPointerDown={() => onPrefetch?.()}
       aria-label={ariaLabel}
       data-testid={testId}
-      className="relative inline-flex h-9 items-center gap-[7px] rounded-[9px] px-2.5 transition-colors hover:bg-[var(--color-bt-hover)] @max-[600px]:w-9 @max-[600px]:justify-center @max-[600px]:gap-0 @max-[600px]:px-0"
+      className="relative inline-flex h-9 items-center gap-[7px] rounded-[9px] px-2.5 transition-colors @max-[600px]:w-9 @max-[600px]:justify-center @max-[600px]:gap-0 @max-[600px]:px-0"
       style={{
-        background: active ? "var(--color-bt-hover)" : (restingBg ?? "none"),
+        background,
         border: restingBorder ?? "none",
         color: "var(--color-bt-text)",
         fontSize: 13,

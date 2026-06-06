@@ -60,18 +60,18 @@ export type Member = {
 export type DerivedStatus = "active" | "invited" | "placeholder";
 
 export function deriveStatus(m: Member): DerivedStatus {
-  // The Owner created the trip — they're inherently on it, never "pending"
-  // (their email_count is 0 because nobody emails the host an invite).
+  // The Owner created the trip — inherently active.
   if (m.role === "Owner") return "active";
-  // Guest without an email = name-only stand-in = placeholder.
-  if (m.isGuest && !m.user?.email) return "placeholder";
-  // Never emailed yet (guest OR real account) = not officially invited.
-  // A real BuddyTrip user added to the trip hasn't been "invited" until the
-  // owner actually emails them, so they read as Pending until email_count > 0.
-  if ((m.email_count ?? 0) === 0) return "invited";
-  // Emailed at least once: a guest is still waiting to sign up (invited);
-  // a real account is fully onboarded (active).
-  return m.isGuest ? "invited" : "active";
+  // A real BuddyTrip account on the trip is a full, active member with access
+  // — regardless of whether an invite email was ever sent. (A placeholder that
+  // gets a matching email is converted to a real account, flipping is_guest to
+  // false; from that point they're active, not Pending.) last_emailed_at /
+  // email_count tracks the invite blast, NOT their access, so it must not gate
+  // Active here.
+  if (!m.isGuest) return "active";
+  // Guests have no real account yet: name-only → placeholder; with an email →
+  // invited/pending until they sign up (which converts them to a real account).
+  return m.user?.email ? "invited" : "placeholder";
 }
 
 // ── Role pill (Owner amber · Organizer teal · Member: no pill) ────────────
@@ -407,28 +407,17 @@ export function YouTile({
       <div
         className="overflow-hidden rounded-xl"
         style={{
-          // Two states:
-          //  - Resting: teal-tinted fill + teal border — marks "your section".
-          //  - Editing: the teal fill floods a tall block and clashes with the
-          //    nested inputs, so it steps aside. The tile becomes a neutral
-          //    card with a single 3px accent left-edge as the only teal left.
-          //    Left padding on the inner rows drops 2px to keep content
-          //    aligned against the thicker edge.
-          background: editing ? "var(--color-bt-card)" : "var(--color-bt-accent-faint)",
-          border: editing
-            ? "1px solid var(--color-bt-border)"
-            : "1px solid var(--color-bt-accent-border)",
-          borderLeft: editing ? "3px solid var(--color-bt-accent)" : undefined,
+          // A plain card in every state — the teal "your section" cue lives in
+          // the YOU eyebrow above. (The old teal fill + 3px accent left-edge
+          // clipped oddly against the rounded corner and read as a heavy panel.
+          // The raised treatment now belongs to the travel editor that expands
+          // below, not the whole tile.)
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
         }}
       >
         {/* Identity row */}
-        <div
-          className={
-            editing
-              ? "flex items-center gap-3 py-3 pr-4 pl-[14px]"
-              : "flex items-center gap-3 px-4 py-3"
-          }
-        >
+        <div className="flex items-center gap-3 px-4 py-3">
           <Avatar
             name={m.user?.name ?? m.displayName}
             avatarIcon={m.user?.avatar_icon ?? null}
@@ -459,18 +448,16 @@ export function YouTile({
           <RolePill role={m.role} />
         </div>
 
-        {/* Divider — neutral while editing to match the stepped-aside teal. */}
+        {/* Divider — subtle gray and inset (not edge-to-edge) so the identity
+            and travel rows read as one connected card, not two split panes. */}
         <div
-          style={{
-            borderTop: editing
-              ? "1px solid var(--color-bt-border)"
-              : "1px solid var(--color-bt-accent-border)",
-          }}
+          className="mx-4"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
           aria-hidden
         />
 
         {/* Your travel block */}
-        <div className={editing ? "py-3 pr-4 pl-[14px]" : "px-4 py-3"}>
+        <div className="px-4 py-3">
           <div
             className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -492,6 +479,9 @@ export function YouTile({
                 border: "1px solid var(--color-bt-border)",
                 borderRadius: "10px",
                 padding: "13px",
+                // Raised so the editor reads as a panel that popped up inside
+                // the expanded YOUR TRAVEL section.
+                boxShadow: "var(--shadow-raised)",
               }}
             >
               <TravelEditor
@@ -537,10 +527,11 @@ export function YouTile({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-dashed px-4 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+              className="inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90"
               style={{
-                borderColor: "var(--color-bt-accent-border)",
-                color: "var(--color-bt-accent)",
+                background: "var(--color-bt-planning-faint)",
+                borderColor: "var(--color-bt-planning-border)",
+                color: "var(--color-bt-planning)",
               }}
             >
               <Plus size={14} strokeWidth={2.5} />

@@ -439,51 +439,32 @@ function CrewNudge({
 function EmptyCrewInvitation() {
   return (
     <div
-      className="flex flex-col items-center gap-2.5 rounded-xl px-6 py-7 text-center"
+      className="flex items-center gap-3 rounded-xl px-4 py-3"
       style={{
         background: "var(--color-bt-surface-invitation)",
         border: "1.5px dashed var(--color-bt-border)",
       }}
     >
       <span
-        className="flex h-11 w-11 items-center justify-center rounded-[12px]"
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
         style={{
           background: "var(--color-bt-accent-faint)",
           color: "var(--color-bt-accent)",
         }}
       >
-        <UserPlus size={22} strokeWidth={2} />
+        <UserPlus size={18} strokeWidth={2} />
       </span>
-      <div className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-        No one else yet
+      <div className="min-w-0">
+        <div className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+          No one else yet
+        </div>
+        <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          Add your first crew member from the panel —{" "}
+          <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>email</strong>{" "}
+          for app access, or a name-only{" "}
+          <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>placeholder</strong>.
+        </p>
       </div>
-      <p
-        className="m-0 max-w-[360px] text-xs leading-snug"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        {/* Location prompt swaps with the rail's three layout states
-            (Task 45 / Task 48). The rail is to the right at ≥900,
-            stacks below content at 640-899, and disappears behind the
-            mobile FAB at <640 — so the copy needs three variants. We
-            render all three spans and let media queries pick exactly
-            one; using arbitrary variants on both edges so Tailwind's
-            sort puts them in numerical order. */}
-        <span className="min-[640px]:hidden">
-          Tap the <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>+</strong> button to add your first crew member.
-        </span>
-        <span className="hidden min-[640px]:inline min-[900px]:hidden">
-          Use the panel below to add your first crew member.
-        </span>
-        <span className="hidden min-[900px]:inline">
-          Use the panel on the right to add your first crew member.
-        </span>{" "}
-        Add an email if you want them to access the trip themselves, or just
-        a name to track them as a{" "}
-        <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          placeholder
-        </strong>
-        .
-      </p>
     </div>
   );
 }
@@ -497,35 +478,31 @@ function EmptyCrewInvitation() {
 function EmptyOrganizersInvitation() {
   return (
     <div
-      className="flex flex-col items-center gap-2.5 rounded-xl px-6 py-7 text-center"
+      className="flex items-center gap-3 rounded-xl px-4 py-3"
       style={{
         background: "var(--color-bt-surface-invitation)",
         border: "1.5px dashed var(--color-bt-border)",
       }}
     >
       <span
-        className="flex h-11 w-11 items-center justify-center rounded-[12px]"
+        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
         style={{
           background: "var(--color-bt-accent-faint)",
           color: "var(--color-bt-accent)",
         }}
       >
-        <ShieldCheck size={22} strokeWidth={2} />
+        <ShieldCheck size={18} strokeWidth={2} />
       </span>
-      <div className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-        No other organizers yet
+      <div className="min-w-0">
+        <div className="text-[13px] font-semibold leading-tight" style={{ color: "var(--color-bt-text)" }}>
+          No other organizers yet
+        </div>
+        <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          Promote a crew member to{" "}
+          <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>Organizer</strong>{" "}
+          to share lodging, schedule, and budget.
+        </p>
       </div>
-      <p
-        className="m-0 max-w-[360px] text-xs leading-snug"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Promote a crew member to{" "}
-        <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Organizer
-        </strong>{" "}
-        to share the planning work — they&apos;ll be able to manage lodging, the
-        schedule, and the budget alongside you.
-      </p>
     </div>
   );
 }
@@ -784,29 +761,33 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
           {me && (
             <YouTile member={me} tripId={tripId} tripStartDate={trip.start_date ?? null} />
           )}
-          {/* ORGANIZERS section: when empty + organizer view, render the
-              invitation card so it reads identically to the empty CREW
-              state below (rich icon card, accent tone). Populated state
-              uses the standard CrewSection rendering. */}
+          {/* ORGANIZERS section. When there are no other organizers:
+              - if no crew has been added yet (just the owner), hide the whole
+                section — header included — so the empty trip isn't two stacked
+                "nobody here" prompts; the Crew invitation alone carries it.
+              - once crew exists, show the compact invitation to promote someone.
+              Populated state uses the standard CrewSection rendering. */}
           {organizers.length === 0 && isOwner ? (
-            <section>
-              <h2
-                className="mb-2 flex items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
-                style={{
-                  color: "var(--color-bt-accent)",
-                  background: "var(--color-bt-accent-faint)",
-                }}
-              >
-                <span>Organizers</span>
-                <span
-                  className="font-mono"
-                  style={{ color: "var(--color-bt-accent)", opacity: 0.75 }}
+            restCrew.length > 0 ? (
+              <section>
+                <h2
+                  className="mb-2 flex items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wider"
+                  style={{
+                    color: "var(--color-bt-accent)",
+                    background: "var(--color-bt-accent-faint)",
+                  }}
                 >
-                  0
-                </span>
-              </h2>
-              <EmptyOrganizersInvitation />
-            </section>
+                  <span>Organizers</span>
+                  <span
+                    className="font-mono"
+                    style={{ color: "var(--color-bt-accent)", opacity: 0.75 }}
+                  >
+                    0
+                  </span>
+                </h2>
+                <EmptyOrganizersInvitation />
+              </section>
+            ) : null
           ) : (
             <CrewSection
               title="Organizers"
