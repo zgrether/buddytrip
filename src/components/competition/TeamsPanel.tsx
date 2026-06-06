@@ -216,7 +216,6 @@ export function TeamsPanel({
   const totalMembers = members.length;
   const assignedCount = assignments.length;
   const teamsExist = teamsTyped.length > 0;
-  const allAssigned = teamsExist && totalMembers > 0 && assignedCount === totalMembers;
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -692,12 +691,6 @@ function CrewRoster({
    *  roster panel before the teams column on lg+. */
   order?: "lg-first";
 }) {
-  const teamById = useMemo(() => {
-    const map = new Map<string, Team>();
-    for (const t of teams) map.set(t.id, t);
-    return map;
-  }, [teams]);
-
   const assignmentByUser = useMemo(() => {
     const map = new Map<string, string>();
     for (const a of assignments) map.set(a.user_id, a.team_id);

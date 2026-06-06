@@ -11,7 +11,6 @@ import { Avatar } from "@/components/Avatar";
 import { SampleHeader, SampleCard } from "@/components/SampleSection";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
-import { SplitPanel } from "./SplitPanel";
 import { EditExpenseModal } from "./EditExpenseModal";
 import { AddExpenseModal } from "./AddExpenseModal";
 

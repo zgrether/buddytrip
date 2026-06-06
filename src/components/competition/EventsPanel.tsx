@@ -347,7 +347,6 @@ export function AddEventButton({
 function EventCard({
   event,
   canEdit,
-  tripId,
   isDragging,
   showDropIndicator,
   isFirst,

@@ -98,7 +98,9 @@ export function CatalogBrowser({ onSelect, selectedIds, title }: CatalogBrowserP
     if (width <= 0) return;
     const cols = Math.max(1, Math.floor((width + GAP) / (TILE_WIDTH + GAP)));
     setColumns((prev) => (prev === cols ? prev : cols));
-  });
+    // Mount-only initial measure (before paint); a ResizeObserver handles
+    // subsequent width changes.
+  }, []);
 
   // Subscribe to subsequent size changes (window resize, modal open,
   // sidebar toggle) so we re-snap without remount.

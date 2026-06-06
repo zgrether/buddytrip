@@ -71,7 +71,9 @@ export function ArchivedIdeasBrowser({
     if (width <= 0) return;
     const cols = Math.max(1, Math.floor((width + GAP) / (TILE_WIDTH + GAP)));
     setColumns((prev) => (prev === cols ? prev : cols));
-  });
+    // Mount-only initial measure (before paint); the ResizeObserver below
+    // handles every subsequent width change.
+  }, []);
 
   useEffect(() => {
     const el = gridRef.current;

@@ -322,45 +322,6 @@ describe("trips router — destination model", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // ── enableItinerary — panel activation flag ──────────────────────────
-  // Reuses stageTrip — planner/member were added by the changeDestination
-  // tests above, so we don't need to re-add them here.
-  it("enableItinerary — owner flips itinerary_enabled to true", async () => {
-    const caller = ctx.caller();
-    const res = await caller.trips.enableItinerary({ tripId: stageTrip });
-    expect(res.success).toBe(true);
-    const { data } = await ctx.admin
-      .from("trips")
-      .select("itinerary_enabled")
-      .eq("id", stageTrip)
-      .single();
-    expect(data?.itinerary_enabled).toBe(true);
-  });
-
-  it("enableItinerary — planner can activate", async () => {
-    const plannerCaller = ctx.callerAs("planner");
-    const res = await plannerCaller.trips.enableItinerary({ tripId: stageTrip });
-    expect(res.success).toBe(true);
-  });
-
-  it("enableItinerary — member is FORBIDDEN", async () => {
-    const memberCaller = ctx.callerAs("member");
-    await expect(
-      memberCaller.trips.enableItinerary({ tripId: stageTrip })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it("disableItinerary — owner flips itinerary_enabled back to false", async () => {
-    const caller = ctx.caller();
-    const res = await caller.trips.disableItinerary({ tripId: stageTrip });
-    expect(res.success).toBe(true);
-    const { data } = await ctx.admin
-      .from("trips")
-      .select("itinerary_enabled")
-      .eq("id", stageTrip)
-      .single();
-    expect(data?.itinerary_enabled).toBe(false);
-  });
 });
 
 // ── setPollMode — poll mode toggle ────────────────────────────────────────

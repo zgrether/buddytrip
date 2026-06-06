@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTheme } from "next-themes";
 import { Avatar } from "@/components/Avatar";
 import {
@@ -28,7 +28,7 @@ import { temporalGradient } from "@/lib/temporalGradient";
 import { CatalogBrowser } from "./CatalogBrowser";
 import { ArchivedIdeasBrowser, type ArchivedIdea } from "./ArchivedIdeasBrowser";
 import { CrewSearchInput } from "@/components/CrewSearchInput";
-import { AddPropertySheet, detectPlatform, extractDomain, isValidUrl, type PropertyFormValues } from "./AddPropertySheet";
+import { AddPropertySheet, detectPlatform, extractDomain, type PropertyFormValues } from "./AddPropertySheet";
 import { AddOrganizerComposer } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
 import { type Member, deriveStatus as deriveStatusIZ, CrewSection } from "@/app/trips/[tripId]/tabs/components/CrewRoster";
 import { MemberEditor } from "@/app/trips/[tripId]/tabs/components/MemberEditor";
@@ -1718,120 +1718,6 @@ export function CoPlannerPanel({
   );
 }
 
-// ── MobileCoPlannerSheet ──────────────────────────────────────────────────
-
-function MobileCoPlannerSheet({
-  tripId,
-  members,
-  isOwner,
-  allVoterIds,
-  onClose,
-}: {
-  tripId: string;
-  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string; user?: { avatar_icon?: string | null } | null }>;
-  isOwner: boolean;
-  allVoterIds: Set<string>;
-  onClose: () => void;
-}) {
-  const currentUser = useCurrentUser();
-  const utils = trpc.useUtils();
-
-  const planners = members.filter((m) => m.role === "Owner" || m.role === "Planner");
-
-  const demote = trpc.tripMembers.updateRole.useMutation({
-    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
-  });
-
-  useModalBackButton(onClose);
-
-  return (
-    <ScrollLock>
-    <div
-      className="fixed inset-0 z-50 flex items-end lg:hidden"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
-      <div
-        className="flex w-full max-h-[80vh] flex-col rounded-t-2xl"
-        style={{ background: "var(--color-bt-card)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-2">
-          <div className="h-1 w-8 rounded-full" style={{ background: "var(--color-bt-border)" }} />
-        </div>
-
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-4 pb-2"
-          style={{ borderBottom: "1px solid var(--color-bt-border)" }}
-        >
-          <p className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-            Organizers
-          </p>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Planner list */}
-        <div className="overflow-y-auto px-4 py-3 space-y-2">
-          {planners.map((m) => {
-            const isSelf = m.user_id === currentUser?.id;
-            const canRemove = isOwner && !isSelf && m.role !== "Owner";
-            const hasVoted = allVoterIds.has(m.user_id);
-            return (
-              <div key={m.user_id ?? m.memberId} className="flex items-center gap-3">
-                <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
-                    {m.displayName}
-                  </p>
-                </div>
-                <span className="text-xs flex-shrink-0" style={{ color: hasVoted ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
-                  {hasVoted ? "Voted \u2713" : "Not voted"}
-                </span>
-                {canRemove && (
-                  <button
-                    onClick={() => demote.mutate({ tripId, userId: m.user_id, role: "Member" })}
-                    className="flex h-6 w-6 items-center justify-center rounded-full transition-opacity hover:opacity-70"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-
-          {/* Add planner */}
-          {isOwner && (
-            <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-              <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
-                Get some help
-              </p>
-              <CrewSearchInput
-                tripId={tripId}
-                defaultRole="Planner"
-                defaultStatus="draft"
-                allowInvite
-                showSearchIcon
-                placeholder="Search by email..."
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-    </ScrollLock>
-  );
-}
-
 // ── AddIdeaCard ───────────────────────────────────────────────────────────
 
 function AddIdeaCard({ onClick }: { onClick: () => void }) {
@@ -1876,7 +1762,7 @@ export default function IdeaZonePanel({
   canEdit,
   isOwner,
   onTabChange: _onTabChange,
-  onOpenChat,
+  onOpenChat: _onOpenChat,
 }: {
   trip: TripData;
   canEdit: boolean;

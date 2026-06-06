@@ -97,7 +97,7 @@ export default function ProfilePage() {
   const authUser = useAuthUser();
   const utils = trpc.useUtils();
 
-  const { data: me, isLoading } = trpc.users.getMe.useQuery(undefined, {
+  const { data: me } = trpc.users.getMe.useQuery(undefined, {
     enabled: authLoaded && !!authUser,
   });
 

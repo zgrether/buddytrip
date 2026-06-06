@@ -96,31 +96,6 @@ export const newsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // readState — the caller's own last-read timestamp for a trip's news.
-  // null = never opened on any device.
-  // -----------------------------------------------------------------------
-  readState: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripMember)
-    .query(async ({ ctx }): Promise<{ lastReadAt: string | null }> => {
-      const { data, error } = await ctx.supabase
-        .from("news_reads")
-        .select("last_read_at")
-        .eq("trip_id", ctx.tripId!)
-        .eq("user_id", ctx.user!.id)
-        .maybeSingle();
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to load news read state",
-        });
-      }
-
-      return { lastReadAt: (data?.last_read_at as string | undefined) ?? null };
-    }),
-
-  // -----------------------------------------------------------------------
   // unreadCount — posts authored by someone else, newer than the caller's
   // last_read_at. Drives the title-bar News badge; kept separate from list()
   // so the badge never has to ship the full block payload.
