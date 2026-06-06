@@ -3,6 +3,11 @@ import { Providers } from "@/lib/providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Resolves relative/OG URLs against the canonical domain (https://bbmi.app)
+  // in prod; falls back to localhost in dev.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
+  ),
   title: "BuddyTrip",
   description: "Group trip planning and competition app",
   icons: {

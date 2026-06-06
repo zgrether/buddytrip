@@ -7,10 +7,10 @@ const FROM = "BuddyTrip <onboarding@resend.dev>";
 
 const DEV_TO_EMAIL = process.env.RESEND_DEV_TO_EMAIL;
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_VERCEL_URL
-    ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-    : "http://localhost:3000";
+// Canonical site origin (https://bbmi.app in prod). Drives invite/trip links in
+// emails — must be the real public domain, not the ephemeral per-deployment
+// VERCEL_URL (which previously left these links pointing at localhost in prod).
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 function resolveRecipient(toEmail: string): string {
   if (process.env.NODE_ENV === "development" && DEV_TO_EMAIL) {
