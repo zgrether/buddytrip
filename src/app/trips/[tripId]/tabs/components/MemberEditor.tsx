@@ -525,36 +525,40 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           </Group>
 
           {/* ── Access ──────────────────────────────────────────────────
-              The role pill only shows for Active members (Owner/Organizer are
-              always Active). A placeholder / pending person isn't a BuddyTrip
-              member yet, so a "MEMBER" badge would be misleading — hide it. */}
-          <Group icon={Shield} title="Access" action={status === "active" ? rolePill : undefined}>
-            <p
-              className="text-[12px] italic leading-snug"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              {roleDescription}
-            </p>
-            {showRoleButton &&
-              (canManageRoles ? (
-                <button
-                  type="button"
-                  onClick={onRoleButton}
-                  className="self-start rounded-lg border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-85"
-                  style={{
-                    color: "var(--color-bt-text)",
-                    borderColor: "var(--color-bt-border)",
-                    background: "transparent",
-                  }}
-                >
-                  {roleButtonLabel}
-                </button>
-              ) : (
-                <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                  Only the Owner can change crew roles.
-                </p>
-              ))}
-          </Group>
+              Hidden entirely for placeholders: a name-only person isn't a
+              BuddyTrip account and can't hold or change a role, so a permission
+              control is just noise. Active members get the role pill + a
+              promote/demote control; pending (has email, not yet a BT account)
+              gets the explanatory note about becoming eligible once they sign up. */}
+          {status !== "placeholder" && (
+            <Group icon={Shield} title="Access" action={status === "active" ? rolePill : undefined}>
+              <p
+                className="text-[12px] italic leading-snug"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                {roleDescription}
+              </p>
+              {showRoleButton &&
+                (canManageRoles ? (
+                  <button
+                    type="button"
+                    onClick={onRoleButton}
+                    className="self-start rounded-lg border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-85"
+                    style={{
+                      color: "var(--color-bt-text)",
+                      borderColor: "var(--color-bt-border)",
+                      background: "transparent",
+                    }}
+                  >
+                    {roleButtonLabel}
+                  </button>
+                ) : (
+                  <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                    Only the Owner can change crew roles.
+                  </p>
+                ))}
+            </Group>
+          )}
 
           {/* ── Travel ────────────────────────────────────────────────── */}
           {member.user_id && (
