@@ -348,7 +348,11 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
                   fontWeight: 500,
                 }}
               >
-                <Icon size={14} /> {label}
+                <Icon
+                  size={14}
+                  style={type === "callout" ? { color: "var(--color-bt-warning)" } : undefined}
+                />{" "}
+                {label}
               </button>
             ))}
           </div>
@@ -483,7 +487,7 @@ function BlockEditor({
     teams: "Teams · from Competition",
     media: "Media",
     steps: "Steps",
-    callout: "Callout · panel (amber)",
+    callout: "Callout",
   };
   const kindIcon: Record<NewsBlockType, LucideIcon> = {
     heading: Heading,
@@ -495,6 +499,10 @@ function BlockEditor({
     callout: Pin,
   };
   const Icon = kindIcon[block.type];
+  // Callout is the amber "panel" block — color its kind label amber so the
+  // block self-identifies instead of the label literally reading "(amber)".
+  const isCallout = block.type === "callout";
+  const kindColor = isCallout ? "var(--color-bt-warning)" : "var(--color-bt-accent)";
 
   return (
     <div
@@ -583,10 +591,10 @@ function BlockEditor({
             fontWeight: 700,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            color: "var(--color-bt-text-dim)",
+            color: isCallout ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
           }}
         >
-          <Icon size={11} style={{ color: "var(--color-bt-accent)" }} />
+          <Icon size={11} style={{ color: kindColor }} />
           {kindLabel[block.type]}
         </span>
         <button
