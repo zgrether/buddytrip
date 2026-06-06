@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronRight } from "lucide-react";
@@ -1011,24 +1011,23 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
   const [errorMsg, setErrorMsg] = useState("");
   const canDelete = confirmText === "DELETE" && status !== "loading";
 
-  // Deletion endpoint not built yet — we sign the user out so the danger
-  // action at least feels real, and surface a clear message about contact.
-  // When the proper deletion mutation lands, wire it here.
-  const deleteAccount = useMemo(() => async () => {
+  // Permanently delete the account: server deletes the auth user (cascading /
+  // anonymizing their rows per migrations 025+027), then we sign out locally
+  // and land on the marketing page.
+  const deleteMe = trpc.users.deleteMe.useMutation();
+  const deleteAccount = async () => {
     setStatus("loading");
     setErrorMsg("");
     try {
-      // TODO: Replace with trpc.users.deleteMe.mutate() when implemented.
-      // For now, sign out and direct the user to contact support so we
-      // don't ship a button that silently does nothing.
+      await deleteMe.mutateAsync();
       const supabase = createClient();
       await supabase.auth.signOut();
-      router.push("/?account-deleted=pending");
+      router.push("/?account-deleted=1");
     } catch (err) {
       setStatus("error");
-      setErrorMsg(err instanceof Error ? err.message : "Failed to start deletion.");
+      setErrorMsg(err instanceof Error ? err.message : "Failed to delete account.");
     }
-  }, [router]);
+  };
 
   return (
     <SheetShell title="Delete account" onClose={onClose}>

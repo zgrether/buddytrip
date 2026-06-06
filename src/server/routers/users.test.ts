@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext, createAnonCaller } from "../../__tests__/helpers/test-setup";
+import { createClient } from "@supabase/supabase-js";
+import {
+  TestContext,
+  createAnonCaller,
+  getAdminClient,
+} from "../../__tests__/helpers/test-setup";
+import { createCallerFactory, type TRPCContext } from "../trpc";
+import { appRouter } from "../router";
+
+const factory = createCallerFactory(appRouter);
 
 let ctx: TestContext;
 
@@ -131,6 +140,66 @@ describe("users router", () => {
       const memberMe = await ctx.callerAs("member").users.getMe();
       expect(ownerMe.avatar_icon).toBe("trophy");
       expect(memberMe.avatar_icon).toBe("star");
+    });
+  });
+
+  describe("deleteMe", () => {
+    it("permanently removes the caller's auth + public.users rows", async () => {
+      const admin = getAdminClient();
+      const email = `delete-test-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 6)}@example.com`;
+      const { data: created, error: createErr } =
+        await admin.auth.admin.createUser({
+          email,
+          email_confirm: true,
+          user_metadata: { name: "Delete Me" },
+        });
+      expect(createErr).toBeNull();
+      const tempId = created.user!.id;
+
+      try {
+        // handle_new_user mirrors the auth user into public.users on create.
+        const { data: before } = await admin
+          .from("users")
+          .select("id")
+          .eq("id", tempId)
+          .maybeSingle();
+        expect(before?.id).toBe(tempId);
+
+        // deleteMe uses only ctx.user.id + the service-role admin client, so a
+        // hand-built context for the temp user exercises the real path.
+        const callerCtx: TRPCContext = {
+          supabase: createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          ),
+          user: { id: tempId, email },
+          membershipCache: new Map(),
+        };
+        const res = await factory(callerCtx).users.deleteMe();
+        expect(res).toEqual({ ok: true });
+
+        // auth.users row gone
+        const { data: after } = await admin.auth.admin.getUserById(tempId);
+        expect(after?.user ?? null).toBeNull();
+        // public.users row gone via the on_auth_user_deleted trigger (025)
+        const { data: pub } = await admin
+          .from("users")
+          .select("id")
+          .eq("id", tempId)
+          .maybeSingle();
+        expect(pub).toBeNull();
+      } finally {
+        // safety net if an assertion threw before deleteMe ran
+        await admin.auth.admin.deleteUser(tempId).catch(() => {});
+      }
+    });
+
+    it("is rejected for anonymous callers", async () => {
+      await expect(createAnonCaller().users.deleteMe()).rejects.toMatchObject({
+        code: "UNAUTHORIZED",
+      });
     });
   });
 });

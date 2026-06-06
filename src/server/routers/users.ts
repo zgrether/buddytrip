@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
+import { createAdminClient } from "@/lib/supabase-admin";
 
 export const usersRouter = router({
   // -----------------------------------------------------------------------
@@ -115,5 +116,27 @@ export const usersRouter = router({
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       return data ?? [];
     }),
+
+  // -----------------------------------------------------------------------
+  // deleteMe — permanently delete the CALLER's own account.
+  //
+  // Deletes the auth.users row via the service-role admin client; the
+  // on_auth_user_deleted trigger (migration 025) removes the matching
+  // public.users row, and the FK behaviors set in migration 027 cascade /
+  // anonymize the rest (the user's expenses + transient rows go; trip content
+  // they authored survives with created_by nulled). Always self — it never
+  // accepts an id, so a caller can only ever delete their own account.
+  // -----------------------------------------------------------------------
+  deleteMe: authedProcedure.mutation(async ({ ctx }) => {
+    const admin = createAdminClient();
+    const { error } = await admin.auth.admin.deleteUser(ctx.user.id);
+    if (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Failed to delete account: ${error.message}`,
+      });
+    }
+    return { ok: true };
+  }),
 
 });
