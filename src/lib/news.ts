@@ -5,7 +5,6 @@ import { z } from "zod";
 // A News post is an ordered stack of BLOCKS. There are exactly SIX block
 // types and the set is CLOSED — do not add poll/table/quote/divider/heading/
 // free-color blocks. If a use case seems unmet it maps to one of these six.
-// (See design/design_handoff_news/SPEC-news.md.)
 //
 // Blocks are stored as a JSONB array on news_posts.blocks. This module is the
 // single source of truth for their shape; the DB treats them as opaque JSON,
