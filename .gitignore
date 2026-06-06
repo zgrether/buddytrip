@@ -15,6 +15,9 @@
 /test-results
 /playwright-report
 
+# local DB backups / snapshots (may contain test PII — never commit)
+/backups
+
 # next.js
 /.next/
 /out/
