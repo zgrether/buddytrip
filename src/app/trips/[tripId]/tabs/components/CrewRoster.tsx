@@ -407,28 +407,17 @@ export function YouTile({
       <div
         className="overflow-hidden rounded-xl"
         style={{
-          // Two states:
-          //  - Resting: teal-tinted fill + teal border — marks "your section".
-          //  - Editing: the teal fill floods a tall block and clashes with the
-          //    nested inputs, so it steps aside. The tile becomes a neutral
-          //    card with a single 3px accent left-edge as the only teal left.
-          //    Left padding on the inner rows drops 2px to keep content
-          //    aligned against the thicker edge.
-          background: editing ? "var(--color-bt-card)" : "var(--color-bt-accent-faint)",
-          border: editing
-            ? "1px solid var(--color-bt-border)"
-            : "1px solid var(--color-bt-accent-border)",
-          borderLeft: editing ? "3px solid var(--color-bt-accent)" : undefined,
+          // A plain card in every state — the teal "your section" cue lives in
+          // the YOU eyebrow above. (The old teal fill + 3px accent left-edge
+          // clipped oddly against the rounded corner and read as a heavy panel.
+          // The raised treatment now belongs to the travel editor that expands
+          // below, not the whole tile.)
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
         }}
       >
         {/* Identity row */}
-        <div
-          className={
-            editing
-              ? "flex items-center gap-3 py-3 pr-4 pl-[14px]"
-              : "flex items-center gap-3 px-4 py-3"
-          }
-        >
+        <div className="flex items-center gap-3 px-4 py-3">
           <Avatar
             name={m.user?.name ?? m.displayName}
             avatarIcon={m.user?.avatar_icon ?? null}
@@ -459,18 +448,16 @@ export function YouTile({
           <RolePill role={m.role} />
         </div>
 
-        {/* Divider — neutral while editing to match the stepped-aside teal. */}
+        {/* Divider — subtle gray and inset (not edge-to-edge) so the identity
+            and travel rows read as one connected card, not two split panes. */}
         <div
-          style={{
-            borderTop: editing
-              ? "1px solid var(--color-bt-border)"
-              : "1px solid var(--color-bt-accent-border)",
-          }}
+          className="mx-4"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
           aria-hidden
         />
 
         {/* Your travel block */}
-        <div className={editing ? "py-3 pr-4 pl-[14px]" : "px-4 py-3"}>
+        <div className="px-4 py-3">
           <div
             className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
@@ -492,6 +479,9 @@ export function YouTile({
                 border: "1px solid var(--color-bt-border)",
                 borderRadius: "10px",
                 padding: "13px",
+                // Raised so the editor reads as a panel that popped up inside
+                // the expanded YOUR TRAVEL section.
+                boxShadow: "var(--shadow-raised)",
               }}
             >
               <TravelEditor
