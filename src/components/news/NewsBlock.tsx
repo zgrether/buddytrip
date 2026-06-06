@@ -45,15 +45,18 @@ function imageUrl(url: string | null | undefined): string | null {
 // Avatar (their Tabler icon, or initials) backed by their team color, plus
 // their plain name — no "@". The chip is tinted by the same color so a team
 // captain's pill reads as their team's.
-function Mention({ person }: { person: NewsPerson }) {
+// Exported so the composer's contentEditable can render the EXACT same chip
+// (via renderToStaticMarkup) — edit and preview stay byte-identical.
+export function Mention({ person }: { person: NewsPerson }) {
   // A color only when the member is actually on a competition team — otherwise
   // the standard avatar + a neutral chip (no fake team color).
   const team = person.color || null;
   return (
     <span
-      className="inline-flex items-center gap-1.5"
+      className="inline-flex items-center"
       style={{
-        padding: "2px 9px 2px 2px",
+        gap: 5,
+        padding: "1px 8px 1px 2px",
         borderRadius: 9999,
         background: team
           ? `color-mix(in srgb, ${team} 12%, var(--color-bt-card-raised))`
@@ -61,11 +64,14 @@ function Mention({ person }: { person: NewsPerson }) {
         border: team
           ? `1px solid color-mix(in srgb, ${team} 40%, var(--color-bt-border))`
           : "1px solid var(--color-bt-border)",
-        fontSize: 12.5,
+        fontSize: 13,
         fontWeight: 600,
+        lineHeight: 1.2,
         color: "var(--color-bt-text)",
-        lineHeight: 1,
-        verticalAlign: "-5px",
+        // `middle` centers the chip on the text line so the name no longer
+        // sits below the surrounding paragraph baseline.
+        verticalAlign: "middle",
+        whiteSpace: "nowrap",
       }}
     >
       <Avatar
@@ -73,7 +79,7 @@ function Mention({ person }: { person: NewsPerson }) {
         avatarIcon={person.avatarIcon ?? null}
         teamColor={team ?? undefined}
         muted={!!person.placeholder}
-        sizePx={18}
+        sizePx={16}
       />
       {person.name}
     </span>
@@ -209,7 +215,7 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
               >
                 {t.name}
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", marginTop: 3 }}>
+              <div style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginTop: 3 }}>
                 {t.players.join(" · ")}
               </div>
             </div>
@@ -246,7 +252,7 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
                 <figcaption
                   style={{
                     padding: "8px 12px",
-                    fontSize: 11.5,
+                    fontSize: 12.5,
                     color: "var(--color-bt-text-dim)",
                   }}
                 >
@@ -348,7 +354,7 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{block.title}</div>
                   )}
                   {block.meta && (
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2 }}>
                       {block.meta}
                     </div>
                   )}
@@ -399,7 +405,7 @@ export function NewsBlockView({ block }: { block: NewsBlock }) {
               {block.title}
             </div>
             {block.meta && (
-              <div style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
                 {block.meta}
               </div>
             )}

@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { Bold, Italic, Link as LinkIcon, AtSign } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
+import { Mention } from "@/components/news/NewsBlock";
 import type { NewsBlock, NewsPerson, NewsSegment } from "@/lib/news";
 
 // ── RichTextEditor ───────────────────────────────────────────────────────────
@@ -22,9 +24,10 @@ import type { NewsBlock, NewsPerson, NewsSegment } from "@/lib/news";
 // styleWithCSS off so the DOM uses <b>/<i> tags, which the serialiser reads.
 
 // ── Mention pill (raw DOM) ──────────────────────────────────────────────────
-// Inserted directly into the contentEditable, so it's built with the DOM API,
-// not React. A lightweight chip (initials dot + name); the rendered post and
-// the live Preview use the full Avatar-backed <Mention>.
+// Inserted directly into the contentEditable (so DOM API, not React), but the
+// VISIBLE chip is the very same <Mention> the feed/preview render — serialised
+// to static markup. That keeps the editor pill byte-identical to preview
+// (same avatar, same alignment). Identity for serialisation rides on data-*.
 function buildPill(person: NewsPerson): HTMLElement {
   const span = document.createElement("span");
   span.contentEditable = "false";
@@ -35,46 +38,8 @@ function buildPill(person: NewsPerson): HTMLElement {
   if (person.color) span.dataset.color = person.color;
   if (person.avatarIcon) span.dataset.avatarIcon = person.avatarIcon;
   if (person.placeholder) span.dataset.placeholder = "1";
-
-  const color = person.color || null;
-  span.style.cssText = [
-    "display:inline-flex",
-    "align-items:center",
-    "gap:5px",
-    "padding:1px 8px 1px 5px",
-    "border-radius:9999px",
-    "font-size:12.5px",
-    "font-weight:600",
-    "line-height:1.5",
-    "white-space:nowrap",
-    "user-select:all",
-    `color:var(--color-bt-text)`,
-    color
-      ? `background:color-mix(in srgb, ${color} 12%, var(--color-bt-card-raised))`
-      : "background:var(--color-bt-card-raised)",
-    color
-      ? `border:1px solid color-mix(in srgb, ${color} 40%, var(--color-bt-border))`
-      : "border:1px solid var(--color-bt-border)",
-  ].join(";");
-
-  const dot = document.createElement("span");
-  dot.textContent = person.initials;
-  dot.setAttribute("aria-hidden", "true");
-  dot.style.cssText = [
-    "display:inline-flex",
-    "align-items:center",
-    "justify-content:center",
-    "width:16px",
-    "height:16px",
-    "border-radius:50%",
-    "font-size:8px",
-    "font-weight:700",
-    "color:#fff",
-    `background:${color || "var(--color-bt-accent)"}`,
-  ].join(";");
-
-  span.appendChild(dot);
-  span.appendChild(document.createTextNode(person.name));
+  span.style.cssText = "display:inline-block;vertical-align:middle;user-select:all;";
+  span.innerHTML = renderToStaticMarkup(<Mention person={person} />);
   return span;
 }
 
