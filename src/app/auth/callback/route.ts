@@ -1,38 +1,65 @@
 import { NextResponse } from "next/server";
+import type {
+  AuthError,
+  EmailOtpType,
+  Session,
+  User,
+} from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase-server";
 
 /**
- * OAuth + magic-link callback.
+ * Auth callback — handles every email/OAuth flow that lands a user back in the
+ * app and needs a session established: email confirmation (signup), magic link,
+ * OAuth, and recovery. It supports BOTH link formats Supabase can send:
  *
- * After successfully exchanging the auth code, decide where to send
- * the user:
+ *   • `?code=…`                 → PKCE / OAuth → exchangeCodeForSession()
+ *   • `?token_hash=…&type=…`    → email OTP (signup confirm, recovery, etc.)
+ *                                 → verifyOtp({ token_hash, type })
  *
- *   1. `?next=` query param — explicit override, used by invite flows
- *      that need to land the user on a specific trip after the
- *      guest→member merge completes.
- *   2. New user (no trip memberships, no invite token) → /trips/new.
- *      Skip the empty state — the most useful next step on a trip
- *      planning app is creating a trip.
- *   3. Returning user → "/" — the smart-redirect logic on the home
- *      page picks their most relevant trip.
+ * Either way we end up with a session whose cookies are written onto the
+ * redirect response (route handlers allow cookie mutation), so the user is
+ * fully signed in when they arrive.
  *
- * If `?next=` is supplied we honor it without doing the trip-count
- * lookup, so invite redirects stay fast.
+ * Destination, in order:
+ *   1. `?next=` — explicit override (signup confirm passes `/dashboard`;
+ *      invite flows pass a specific trip after the guest→member merge).
+ *   2. New user (no trip memberships) → /trips/new — the most useful next step.
+ *   3. Returning user → "/" — the home-page smart redirect picks their trip.
+ *
+ * If `?next=` is supplied we honor it without the trip-count lookup, so signup
+ * and invite redirects stay fast.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const tokenHash = searchParams.get("token_hash");
+  const type = searchParams.get("type") as EmailOtpType | null;
   const next = searchParams.get("next");
 
-  if (!code) {
+  const supabase = await createClient();
+
+  // Establish the session from whichever flow Supabase sent.
+  let sessionData: { user: User | null; session: Session | null } | null = null;
+  let authError: AuthError | null = null;
+  if (tokenHash && type) {
+    // Email OTP flow (signup confirmation, recovery, email change, …).
+    const { data, error } = await supabase.auth.verifyOtp({
+      type,
+      token_hash: tokenHash,
+    });
+    sessionData = data;
+    authError = error;
+  } else if (code) {
+    // PKCE / OAuth / magic-link code flow.
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    sessionData = data;
+    authError = error;
+  } else {
+    // Nothing to verify — bounce to login.
     return NextResponse.redirect(`${origin}/login`);
   }
 
-  const supabase = await createClient();
-  const { data: sessionData, error: exchangeError } =
-    await supabase.auth.exchangeCodeForSession(code);
-
-  if (exchangeError) {
+  if (authError) {
     return NextResponse.redirect(`${origin}/login`);
   }
 
