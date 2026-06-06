@@ -524,8 +524,11 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             )}
           </Group>
 
-          {/* ── Access ────────────────────────────────────────────────── */}
-          <Group icon={Shield} title="Access" action={rolePill}>
+          {/* ── Access ──────────────────────────────────────────────────
+              The role pill only shows for Active members (Owner/Organizer are
+              always Active). A placeholder / pending person isn't a BuddyTrip
+              member yet, so a "MEMBER" badge would be misleading — hide it. */}
+          <Group icon={Shield} title="Access" action={status === "active" ? rolePill : undefined}>
             <p
               className="text-[12px] italic leading-snug"
               style={{ color: "var(--color-bt-text-dim)" }}
