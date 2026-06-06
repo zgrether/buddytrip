@@ -114,7 +114,6 @@ export class TestContext {
   private _eventIds: string[] = [];
   private _groupIds: string[] = [];
   private _teamIds: string[] = [];
-  private _seriesIds: string[] = [];
 
   private constructor(admin: SupabaseClient, primaryUser: TestUser) {
     this.admin = admin;
@@ -293,11 +292,6 @@ export class TestContext {
     if (!this._groupIds.includes(groupId)) this._groupIds.push(groupId);
   }
 
-  /** Register a series ID created externally (e.g. via tRPC caller) for cleanup. */
-  trackSeries(seriesId: string) {
-    if (!this._seriesIds.includes(seriesId)) this._seriesIds.push(seriesId);
-  }
-
   /** Delete all test data created by this context. Users are persistent — never deleted. */
   async cleanup() {
     // Scoring rows (event-scoped). FK rebound in migration 062.
@@ -365,13 +359,8 @@ export class TestContext {
       await this.admin.from("expenses").delete().eq("trip_id", tripId);
       await this.admin.from("reservations").delete().eq("trip_id", tripId);
       await this.admin.from("quick_info_tiles").delete().eq("trip_id", tripId);
-      await this.admin.from("trips").update({ series_id: null }).eq("id", tripId);
       await this.admin.from("trip_members").delete().eq("trip_id", tripId);
       await this.admin.from("trips").delete().eq("id", tripId);
-    }
-    // Clean up series by tracked ID (never bulk-delete by owner_id — shared users!)
-    for (const seriesId of this._seriesIds) {
-      await this.admin.from("series").delete().eq("id", seriesId);
     }
   }
 }
