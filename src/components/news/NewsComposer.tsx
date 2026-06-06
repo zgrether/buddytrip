@@ -352,7 +352,11 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
                   fontWeight: 500,
                 }}
               >
-                <Icon size={14} /> {label}
+                <Icon
+                  size={14}
+                  style={type === "callout" ? { color: "var(--color-bt-warning)" } : undefined}
+                />{" "}
+                {label}
               </button>
             ))}
           </div>
@@ -594,7 +598,7 @@ function BlockEditor({
             color: isCallout ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
-          <Icon size={11} style={{ color: isCallout ? "var(--color-bt-text)" : "var(--color-bt-accent)" }} />
+          <Icon size={11} style={{ color: isCallout ? "var(--color-bt-warning)" : "var(--color-bt-accent)" }} />
           {kindLabel[block.type]}
         </span>
         <button
