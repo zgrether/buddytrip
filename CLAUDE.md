@@ -90,6 +90,11 @@ account signs up, the DB does the conversion — there is no app-code path:
   invites.created_by) and delete the guest row. It then marks matching
   `invites` accepted.
 - Brand-new emails (no matching guest) skip the merge entirely.
+- Deleting a user is also DB-side: `on_auth_user_deleted` (trigger on
+  `auth.users`) → `handle_user_delete()` deletes the matching `public.users`
+  row (`id = OLD.id::text`); FKs into `public.users` cascade the rest. Added in
+  migration 025 — without it, the Supabase dashboard "Delete user" left an
+  orphaned `public.users` row and the email stayed blocked by `users_email_key`.
 
 **Keep `merge_guest_to_real_user` in lockstep with the schema** — it runs inside
 the signup trigger, so a reference to a dropped table/column makes the whole
