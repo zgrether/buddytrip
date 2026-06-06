@@ -2,8 +2,11 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Swap to noreply@buddytrip.app once domain is purchased and verified
-const FROM = "BuddyTrip <onboarding@resend.dev>";
+// Sender identity. Set RESEND_FROM in prod once bbmi.app is verified in Resend
+// (e.g. "BuddyTrip <noreply@bbmi.app>"). Until then it falls back to Resend's
+// shared sandbox sender, which ONLY delivers to the Resend account owner —
+// so unset in prod = invites silently reach no one but you.
+const FROM = process.env.RESEND_FROM ?? "BuddyTrip <onboarding@resend.dev>";
 
 const DEV_TO_EMAIL = process.env.RESEND_DEV_TO_EMAIL;
 
