@@ -91,18 +91,13 @@ describe("news router", () => {
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  // ── readState + markRead ──────────────────────────────────────────────────
+  // ── markRead ────────────────────────────────────────────────────────────
 
-  it("readState — null before the member has ever opened news", async () => {
-    const state = await ctx.callerAs("member").news.readState({ tripId });
-    expect(state.lastReadAt).toBeNull();
-  });
-
-  it("markRead — stamps a timestamp the member can read back", async () => {
+  it("markRead — stamps and returns a timestamp", async () => {
     const res = await ctx.callerAs("member").news.markRead({ tripId });
     expect(res.lastReadAt).toBeTruthy();
-    const state = await ctx.callerAs("member").news.readState({ tripId });
-    expect(state.lastReadAt).toBe(res.lastReadAt);
+    // Persistence is covered by the "unreadCount — zero right after the member
+    // marks read" test below (markRead → news_reads row → unread = 0).
   });
 
   // ── unreadCount ────────────────────────────────────────────────────────────

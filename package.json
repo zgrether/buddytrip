@@ -27,10 +27,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-remove-scroll": "^2.7.2",
-    "react-simple-maps": "^3.0.0",
     "resend": "^6.10.0",
     "superjson": "^2.2.6",
-    "topojson-client": "^3.1.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -39,8 +37,6 @@
     "@types/node": "^20",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
-    "@types/topojson-client": "^3.1.5",
-    "@types/topojson-specification": "^1.0.5",
     "dotenv": "^17.3.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",

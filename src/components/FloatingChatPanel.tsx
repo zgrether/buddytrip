@@ -138,7 +138,6 @@ function FloatingChatPanelInner({
   const sheetRef = useRef<HTMLDivElement>(null);
   const isSheetDragging = useRef(false);
   const sheetDragStartY = useRef(0);
-  const sheetDragStartHeight = useRef(0);
 
   // Note: the realtime subscription lives in useChatUnreadCount (always
   // mounted on the trip page), not here. A single subscription keeps both the
@@ -193,7 +192,7 @@ function FloatingChatPanelInner({
     document.addEventListener("mouseup", onEnd);
     document.addEventListener("touchmove", onMove, { passive: true });
     document.addEventListener("touchend", onEnd);
-  }, [onClose]);
+  }, []);
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -833,10 +832,8 @@ function ChatBody({
     const last = displayed[len - 1];
     const isMine = last?.user_id === currentUserId;
     if (isMine || atBottomRef.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- DOM sync: mirrors scroll position into state
       scrollToBottom("smooth");
     } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- new-message pill flagged from external data
       setHasNew(true);
     }
   }, [displayed, activeChannel, currentUserId, scrollToBottom, scrollToDivider]);

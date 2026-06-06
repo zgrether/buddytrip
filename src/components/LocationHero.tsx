@@ -52,7 +52,6 @@ export function parseLocation(location: string): { city: string; region: string 
  */
 export function LocationHero({
   location,
-  tripName,
   tripStartDate,
   topContent,
   children,

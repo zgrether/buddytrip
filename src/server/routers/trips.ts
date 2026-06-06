@@ -226,17 +226,6 @@ export const tripsRouter = router({
     )
     .use(requireTripRole("Owner"))
     .mutation(async ({ ctx, input }) => {
-      // Read current destination before overwriting so we know if this is a change
-      const { data: current } = await ctx.supabase
-        .from("trips")
-        .select("locked_destination_title")
-        .eq("id", ctx.tripId)
-        .single();
-
-      const isChange =
-        !!current?.locked_destination_title &&
-        current.locked_destination_title !== input.title;
-
       const { data, error } = await ctx.supabase
         .from("trips")
         .update({
@@ -466,52 +455,6 @@ export const tripsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to delete trip",
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // enableItinerary — Owner or Planner activates the Itinerary panel.
-  // Idempotent: re-calling on an already-enabled trip is a no-op.
-  // -----------------------------------------------------------------------
-  enableItinerary: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({ itinerary_enabled: true })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to enable itinerary: ${error.message}`,
-        });
-      }
-
-      return { success: true };
-    }),
-
-  // -----------------------------------------------------------------------
-  // disableItinerary — inverse of enableItinerary. Used when the user
-  // backs out of an activated-but-empty panel via the X button.
-  // -----------------------------------------------------------------------
-  disableItinerary: authedProcedure
-    .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
-    .mutation(async ({ ctx }) => {
-      const { error } = await ctx.supabase
-        .from("trips")
-        .update({ itinerary_enabled: false })
-        .eq("id", ctx.tripId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to disable itinerary: ${error.message}`,
         });
       }
 

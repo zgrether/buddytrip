@@ -14,13 +14,14 @@ describe("tRPC middleware", () => {
 
   it("authedProcedure: allows authenticated users", async () => {
     const caller = ctx.caller();
-    const result = await caller.health();
-    expect(result).toEqual({ status: "ok" });
+    const me = await caller.users.getMe();
+    expect(me.id).toBe(ctx.user.id);
   });
 
-  it("authedProcedure: unauthenticated users can access public routes", async () => {
+  it("authedProcedure: rejects unauthenticated callers with UNAUTHORIZED", async () => {
     const caller = createAnonCaller();
-    const result = await caller.health();
-    expect(result).toEqual({ status: "ok" });
+    await expect(caller.users.getMe()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
   });
 });

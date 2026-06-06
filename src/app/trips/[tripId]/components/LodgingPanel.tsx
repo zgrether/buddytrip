@@ -411,11 +411,6 @@ interface LodgingPanelProps {
    */
   inline?: boolean;
   /**
-   * @deprecated — kept for back-compat. The inline-mode header is no
-   * longer rendered here regardless (LodgingTab owns the header now).
-   */
-  hideHeader?: boolean;
-  /**
    * Inline-mode only: controlled "Add property" sheet state. LodgingTab
    * lifts this so both the desktop header pill and mobile FAB can open
    * the same sheet.
@@ -430,7 +425,6 @@ export function LodgingPanel({
   isOpen,
   onToggle,
   inline = false,
-  hideHeader: _hideHeader = false,
   addOpen,
   onAddOpenChange,
 }: LodgingPanelProps) {

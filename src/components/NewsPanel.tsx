@@ -124,7 +124,6 @@ function NewsPanelInner({
   const { mutate: markReadMutate } = trpc.news.markRead.useMutation({
     onSuccess: () => {
       utils.news.unreadCount.invalidate({ tripId });
-      utils.news.readState.invalidate({ tripId });
     },
   });
   const lastMarkedRef = useRef<string | null>(null);
