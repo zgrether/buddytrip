@@ -341,18 +341,18 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
                 className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-[9px] transition-colors hover:bg-[var(--color-bt-accent-faint)]"
                 style={{
                   padding: "8px 11px",
-                  border: "1px dashed var(--color-bt-border)",
-                  background: "transparent",
+                  // Callout previews its amber surface; white icon + label on top.
+                  border:
+                    type === "callout"
+                      ? "1px solid var(--color-bt-warning-border)"
+                      : "1px dashed var(--color-bt-border)",
+                  background: type === "callout" ? "var(--color-bt-warning-faint)" : "transparent",
                   color: "var(--color-bt-text)",
                   fontSize: 12.5,
                   fontWeight: 500,
                 }}
               >
-                <Icon
-                  size={14}
-                  style={type === "callout" ? { color: "var(--color-bt-warning)" } : undefined}
-                />{" "}
-                {label}
+                <Icon size={14} /> {label}
               </button>
             ))}
           </div>
@@ -499,10 +499,10 @@ function BlockEditor({
     callout: Pin,
   };
   const Icon = kindIcon[block.type];
-  // Callout is the amber "panel" block — color its kind label amber so the
-  // block self-identifies instead of the label literally reading "(amber)".
+  // Callout is the amber "panel" block — give its editor card the amber
+  // surface (matching how it renders), with white icon + label on top, so it
+  // self-identifies instead of the label literally reading "(amber)".
   const isCallout = block.type === "callout";
-  const kindColor = isCallout ? "var(--color-bt-warning)" : "var(--color-bt-accent)";
 
   return (
     <div
@@ -526,9 +526,9 @@ function BlockEditor({
       }}
       style={{
         position: "relative",
-        border: "1px solid var(--color-bt-border)",
+        border: `1px solid ${isCallout ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
         borderRadius: 11,
-        background: "var(--color-bt-card-raised)",
+        background: isCallout ? "var(--color-bt-warning-faint)" : "var(--color-bt-card-raised)",
         padding: "10px 12px 12px",
         opacity: dragging ? 0.4 : 1,
       }}
@@ -591,10 +591,10 @@ function BlockEditor({
             fontWeight: 700,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            color: isCallout ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+            color: isCallout ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
-          <Icon size={11} style={{ color: kindColor }} />
+          <Icon size={11} style={{ color: isCallout ? "var(--color-bt-text)" : "var(--color-bt-accent)" }} />
           {kindLabel[block.type]}
         </span>
         <button
