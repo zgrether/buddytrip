@@ -415,11 +415,11 @@ export function TravelFields({
             </div>
           </div>
         </>
-      ) : (
+      ) : emptyHint ? (
         <p className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
           {emptyHint}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

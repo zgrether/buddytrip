@@ -580,11 +580,13 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
               <p className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
                 How they&rsquo;re getting in — shows on the roster and the itinerary.
               </p>
+              {/* No empty hint here — the group hint + segmented control
+                  above already say what to do. */}
               <TravelFields
                 value={travelForm}
                 onChange={handleTravelChange}
                 surface="recessed"
-                emptyHint="Pick how they're getting there to add details."
+                emptyHint=""
               />
               {travelCleared && hadSavedTravel && (
                 <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
