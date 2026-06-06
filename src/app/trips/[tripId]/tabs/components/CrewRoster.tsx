@@ -537,10 +537,11 @@ export function YouTile({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-dashed px-4 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
+              className="inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90"
               style={{
-                borderColor: "var(--color-bt-accent-border)",
-                color: "var(--color-bt-accent)",
+                background: "var(--color-bt-planning-faint)",
+                borderColor: "var(--color-bt-planning-border)",
+                color: "var(--color-bt-planning)",
               }}
             >
               <Plus size={14} strokeWidth={2.5} />
