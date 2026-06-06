@@ -43,13 +43,29 @@ export interface NewsStep {
   body: string;
 }
 
-/** A run of text: a plain string, or a mention pill inline. */
-export type NewsSegment = string | { mention: NewsPerson };
+/** A run of inline content inside a paragraph:
+ *  - `string` — a plain run (the back-compat fast path)
+ *  - `{ mention }` — an inline @Crew avatar pill
+ *  - `{ text, bold?, italic? }` — a formatted run
+ *  - `{ link, text }` — a hyperlink (`link` = href, `text` = visible label)
+ *  No color marks — formatting is bold/italic/link only (spec: no color). */
+export type NewsSegment =
+  | string
+  | { mention: NewsPerson }
+  | { text: string; bold?: boolean; italic?: boolean }
+  | { link: string; text: string };
 
-// ── The six blocks ──────────────────────────────────────────────────────
+// ── The blocks ────────────────────────────────────────────────────────────
 
-/** A paragraph. `segments` carries inline @Crew mentions; `text` is the
- *  plain-string fast path. `dim` renders it in the muted text color. */
+/** A title line above body content. Added post-handoff at the product owner's
+ *  request (see SPEC-news.md) — expands the original closed six. */
+export interface NewsHeadingBlock {
+  type: "heading";
+  text: string;
+}
+
+/** A paragraph. `segments` carries inline @Crew mentions + bold/italic/link
+ *  runs; `text` is the plain-string fast path. `dim` renders it muted. */
 export interface NewsTextBlock {
   type: "text";
   text?: string;
@@ -98,6 +114,7 @@ export interface NewsCalloutBlock {
 }
 
 export type NewsBlock =
+  | NewsHeadingBlock
   | NewsTextBlock
   | NewsCrewBlock
   | NewsTeamsBlock
@@ -118,8 +135,9 @@ export interface NewsPost {
   updatedAt: string;
 }
 
-/** The closed set, in composer/catalog order. */
+/** All block types, in composer/catalog order. */
 export const NEWS_BLOCK_TYPES: NewsBlockType[] = [
+  "heading",
   "text",
   "crew",
   "teams",
@@ -144,12 +162,27 @@ const personSchema = z.object({
   placeholder: z.boolean().optional(),
 });
 
+// `.strict()` on each object arm so the union discriminates by shape: without
+// it Zod strips unknown keys, so a `{ link, text }` segment would pass the
+// `{ text, … }` arm and silently lose its href. Strict forces the right arm.
 const segmentSchema = z.union([
   z.string(),
-  z.object({ mention: personSchema }),
+  z.object({ mention: personSchema }).strict(),
+  z.object({ link: z.string().min(1).max(2000), text: z.string().min(1).max(500) }).strict(),
+  z
+    .object({
+      text: z.string().max(5000),
+      bold: z.boolean().optional(),
+      italic: z.boolean().optional(),
+    })
+    .strict(),
 ]);
 
 export const newsBlockSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("heading"),
+    text: z.string().min(1).max(200),
+  }),
   z.object({
     type: z.literal("text"),
     text: z.string().max(5000).optional(),

@@ -15,11 +15,13 @@ import {
   Users,
   Trophy,
   RefreshCw,
+  Heading,
   type LucideIcon,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
-import { NewsBlocks } from "@/components/news/NewsBlock";
+import { NewsBlocks, Mention } from "@/components/news/NewsBlock";
+import { RichTextEditor } from "@/components/news/RichTextEditor";
 import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news";
 
 // ── NewsComposer ────────────────────────────────────────────────────────────
@@ -36,6 +38,7 @@ import type { NewsBlock, NewsBlockType, NewsPerson, NewsPost } from "@/lib/news"
 
 // Block types the composer can ADD, in catalog order.
 const ADDABLE: { type: NewsBlockType; label: string; icon: LucideIcon }[] = [
+  { type: "heading", label: "Heading", icon: Heading },
   { type: "text", label: "Text", icon: Type },
   { type: "crew", label: "@Crew", icon: Users },
   { type: "teams", label: "Teams", icon: Trophy },
@@ -46,6 +49,8 @@ const ADDABLE: { type: NewsBlockType; label: string; icon: LucideIcon }[] = [
 
 function blankBlock(type: NewsBlockType): NewsBlock {
   switch (type) {
+    case "heading":
+      return { type: "heading", text: "" };
     case "text":
       return { type: "text", text: "" };
     case "crew":
@@ -68,7 +73,9 @@ function blankBlock(type: NewsBlockType): NewsBlock {
 function cleanBlocks(blocks: NewsBlock[]): NewsBlock[] {
   const out: NewsBlock[] = [];
   for (const b of blocks) {
-    if (b.type === "text") {
+    if (b.type === "heading") {
+      if (b.text.trim().length > 0) out.push({ type: "heading", text: b.text.trim() });
+    } else if (b.type === "text") {
       const hasText = (b.text ?? "").trim().length > 0;
       const hasSegments = (b.segments?.length ?? 0) > 0;
       if (hasText || hasSegments) out.push({ ...b, text: b.text?.trim() });
@@ -141,22 +148,40 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
   const addBlock = (type: NewsBlockType) => setBlocks((bs) => [...bs, blankBlock(type)]);
 
   // Drag-to-reorder (desktop, via the grip). Up/down arrows stay as the
-  // touch/keyboard fallback. dragFrom holds the picked-up block's index.
+  // touch/keyboard fallback.
+  //
   // `ins` is the insertion slot in the *original* array (0..length) — the gap
-  // the block should land in, derived from which edge of the hovered block the
-  // cursor is over. We compensate for removing `from` before splicing back.
-  const dragFrom = useRef<number | null>(null);
+  // the block should land in. Agenda-style: the indicator only appears once the
+  // cursor crosses the midpoint of a NEIGHBOURING block, and never on the
+  // dragged block's own two adjacent slots (which would be a no-op).
+  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
+
   const reorderTo = (from: number, ins: number) =>
     setBlocks((bs) => {
       if (from < 0 || from >= bs.length) return bs;
-      // Dropping into the slot just before or after itself is a no-op.
-      if (ins === from || ins === from + 1) return bs;
+      if (ins === from || ins === from + 1) return bs; // own slot — no-op
       const copy = bs.slice();
       const [moved] = copy.splice(from, 1);
       const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
       copy.splice(target, 0, moved);
       return copy;
     });
+
+  const onBlockDragOver = (i: number, clientY: number, rect: DOMRect) =>
+    setDragState((s) => {
+      if (!s) return s;
+      const isTop = clientY < rect.top + rect.height / 2;
+      let ins: number | null = isTop ? i : i + 1;
+      // The two slots touching the dragged block are no-ops — hide the line so
+      // it can't bounce between them while you wiggle over your own tile.
+      if (ins === s.from || ins === s.from + 1) ins = null;
+      return s.ins === ins ? s : { ...s, ins };
+    });
+
+  const onBlockDrop = () => {
+    if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
+    setDragState(null);
+  };
 
   const submit = () => {
     if (!canSubmit) return;
@@ -278,15 +303,18 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
             onChange={(next) => setBlock(i, next)}
             onRemove={() => removeBlock(i)}
             onMove={(dir) => moveBlock(i, dir)}
-            onDragStartBlock={() => {
-              dragFrom.current = i;
-            }}
-            onDropBlock={(edge) => {
-              if (dragFrom.current !== null) {
-                reorderTo(dragFrom.current, edge === "top" ? i : i + 1);
-              }
-              dragFrom.current = null;
-            }}
+            dragging={dragState?.from === i}
+            dropIndicator={
+              dragState?.ins === i
+                ? "top"
+                : i === blocks.length - 1 && dragState?.ins === blocks.length
+                  ? "bottom"
+                  : null
+            }
+            onDragStartBlock={() => setDragState({ from: i, ins: null })}
+            onDragOverBlock={(clientY, rect) => onBlockDragOver(i, clientY, rect)}
+            onDropBlock={onBlockDrop}
+            onDragEndBlock={() => setDragState(null)}
           />
         ))}
 
@@ -301,15 +329,10 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
               marginBottom: 8,
             }}
           >
-            Add a block{variant === "mobile" ? " · swipe" : ""}
+            Add a block
           </div>
-          <div
-            className={
-              variant === "mobile"
-                ? "flex gap-1.5 overflow-x-auto pb-1"
-                : "flex flex-wrap gap-1.5"
-            }
-          >
+          {/* Wrap to multiple lines on every width — no horizontal swipe. */}
+          <div className="flex flex-wrap gap-1.5">
             {ADDABLE.map(({ type, label, icon: Icon }) => (
               <button
                 key={type}
@@ -318,14 +341,25 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
                 className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-[9px] transition-colors hover:bg-[var(--color-bt-accent-faint)]"
                 style={{
                   padding: "8px 11px",
-                  border: "1px dashed var(--color-bt-border)",
-                  background: "transparent",
+                  // Callout previews its amber surface; white icon + label on top.
+                  border:
+                    type === "callout"
+                      ? "1px solid var(--color-bt-warning-border)"
+                      : "1px dashed var(--color-bt-border)",
+                  background:
+                    type === "callout"
+                      ? "color-mix(in srgb, var(--color-bt-warning) 8%, var(--color-bt-card))"
+                      : "transparent",
                   color: "var(--color-bt-text)",
                   fontSize: 12.5,
                   fontWeight: 500,
                 }}
               >
-                <Icon size={14} /> {label}
+                <Icon
+                  size={14}
+                  style={type === "callout" ? { color: "var(--color-bt-warning)" } : undefined}
+                />{" "}
+                {label}
               </button>
             ))}
           </div>
@@ -426,8 +460,12 @@ function BlockEditor({
   onChange,
   onRemove,
   onMove,
+  dragging,
+  dropIndicator,
   onDragStartBlock,
+  onDragOverBlock,
   onDropBlock,
+  onDragEndBlock,
 }: {
   tripId: string;
   block: NewsBlock;
@@ -436,25 +474,30 @@ function BlockEditor({
   onChange: (b: NewsBlock) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
+  /** This block is the one currently being dragged (dim it). */
+  dragging: boolean;
+  /** Where the insertion line sits relative to this block, if at all. */
+  dropIndicator: "top" | "bottom" | null;
   onDragStartBlock: () => void;
-  onDropBlock: (edge: "top" | "bottom") => void;
+  onDragOverBlock: (clientY: number, rect: DOMRect) => void;
+  onDropBlock: () => void;
+  onDragEndBlock: () => void;
 }) {
   // Drag is armed only while the grip is held, so dragging the block never
   // hijacks text selection inside its inputs.
   const [armed, setArmed] = useState(false);
-  // Which edge the dragged block would land on — drives a thin insertion line
-  // in the gap (above/below), so it reads as "lands here", not "drops inside".
-  const [dropEdge, setDropEdge] = useState<"top" | "bottom" | null>(null);
 
   const kindLabel: Record<NewsBlockType, string> = {
+    heading: "Heading",
     text: "Text",
     crew: "@Crew · from the roster",
     teams: "Teams · from Competition",
     media: "Media",
     steps: "Steps",
-    callout: "Callout · panel (amber)",
+    callout: "Callout",
   };
   const kindIcon: Record<NewsBlockType, LucideIcon> = {
+    heading: Heading,
     text: Type,
     crew: Users,
     teams: Trophy,
@@ -463,6 +506,10 @@ function BlockEditor({
     callout: Pin,
   };
   const Icon = kindIcon[block.type];
+  // Callout is the amber "panel" block — give its editor card the amber
+  // surface (matching how it renders), with white icon + label on top, so it
+  // self-identifies instead of the label literally reading "(amber)".
+  const isCallout = block.type === "callout";
 
   return (
     <div
@@ -474,40 +521,37 @@ function BlockEditor({
       }}
       onDragEnd={() => {
         setArmed(false);
-        setDropEdge(null);
+        onDragEndBlock();
       }}
       onDragOver={(e) => {
         e.preventDefault();
-        // Top half → land above this block; bottom half → land below it.
-        const r = e.currentTarget.getBoundingClientRect();
-        setDropEdge(e.clientY < r.top + r.height / 2 ? "top" : "bottom");
-      }}
-      onDragLeave={(e) => {
-        // Ignore leaves into our own children (prevents line flicker).
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropEdge(null);
+        onDragOverBlock(e.clientY, e.currentTarget.getBoundingClientRect());
       }}
       onDrop={(e) => {
         e.preventDefault();
-        const edge = dropEdge ?? "top";
-        setDropEdge(null);
-        onDropBlock(edge);
+        onDropBlock();
       }}
       style={{
         position: "relative",
-        border: "1px solid var(--color-bt-border)",
+        border: `1px solid ${isCallout ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
         borderRadius: 11,
-        background: "var(--color-bt-card-raised)",
+        // Opaque equivalent of warning-faint (8% amber) over the post card, so
+        // it matches the rendered callout regardless of the lighter panel behind.
+        background: isCallout
+          ? "color-mix(in srgb, var(--color-bt-warning) 8%, var(--color-bt-card))"
+          : "var(--color-bt-card-raised)",
         padding: "10px 12px 12px",
+        opacity: dragging ? 0.4 : 1,
       }}
     >
-      {dropEdge && (
+      {dropIndicator && (
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
             left: 2,
             right: 2,
-            [dropEdge === "top" ? "top" : "bottom"]: -6,
+            [dropIndicator === "top" ? "top" : "bottom"]: -6,
             height: 2,
             borderRadius: 2,
             background: "var(--color-bt-accent)",
@@ -558,10 +602,10 @@ function BlockEditor({
             fontWeight: 700,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            color: "var(--color-bt-text-dim)",
+            color: isCallout ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
-          <Icon size={11} style={{ color: "var(--color-bt-accent)" }} />
+          <Icon size={11} style={{ color: isCallout ? "var(--color-bt-warning)" : "var(--color-bt-accent)" }} />
           {kindLabel[block.type]}
         </span>
         <button
@@ -603,16 +647,18 @@ function BlockFields({
   onChange: (b: NewsBlock) => void;
 }) {
   switch (block.type) {
-    case "text":
+    case "heading":
       return (
-        <textarea
-          value={block.text ?? ""}
-          onChange={(e) => onChange({ type: "text", text: e.target.value, dim: block.dim })}
-          rows={3}
-          placeholder="Write something for the crew…"
-          style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
+        <input
+          value={block.text}
+          onChange={(e) => onChange({ type: "heading", text: e.target.value })}
+          placeholder="Section title…"
+          style={{ ...inputStyle, fontSize: 16, fontWeight: 700 }}
         />
       );
+
+    case "text":
+      return <RichTextEditor tripId={tripId} block={block} onChange={onChange} />;
 
     case "callout":
       return (
@@ -829,27 +875,12 @@ function CrewFields({
       />
 
       {block.people.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {block.people.map((p, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1.5"
-              style={{
-                padding: "2px 5px 2px 2px",
-                borderRadius: 9999,
-                background: p.color
-                  ? `color-mix(in srgb, ${p.color} 12%, var(--color-bt-card-raised))`
-                  : "var(--color-bt-card-raised)",
-                border: p.color
-                  ? `1px solid color-mix(in srgb, ${p.color} 40%, var(--color-bt-border))`
-                  : "1px solid var(--color-bt-border)",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "var(--color-bt-text)",
-              }}
-            >
-              <Avatar name={p.name} avatarIcon={p.avatarIcon ?? null} teamColor={p.color ?? undefined} muted={!!p.placeholder} sizePx={16} />
-              {p.name}
+            // The displayed chip is the exact same <Mention> the feed renders,
+            // so the edit view matches preview; the remove control sits beside it.
+            <span key={i} className="inline-flex items-center" style={{ gap: 3 }}>
+              <Mention person={p} />
               <button
                 type="button"
                 aria-label={`Remove ${p.name}`}
