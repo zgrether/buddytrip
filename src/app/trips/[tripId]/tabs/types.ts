@@ -22,7 +22,6 @@ export interface TripData {
   about_message?: string | null;
   /** Panel activation flag — owner taps the invitation card to flip this on. */
   itinerary_enabled?: boolean | null;
-  travel_plans_crew_visible?: boolean | null;
   series_id?: string | null;
   created_at?: string | null;
 }

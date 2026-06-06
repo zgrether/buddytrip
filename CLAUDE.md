@@ -69,6 +69,26 @@ These patterns have been established through prior work. Follow them exactly —
 5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
 6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
 
+## Guest → real-user conversion (auth)
+
+Placeholders/invited crew are `users` rows with `is_guest = true`. When a real
+account signs up, the DB does the conversion — there is no app-code path:
+
+- `on_auth_user_created` (trigger on `auth.users`) → `handle_new_user()`.
+- If a guest row matches the new email, `handle_new_user` nulls the guest's
+  email, inserts the real `users` row, and calls
+  `merge_guest_to_real_user(ghost_id, real_id)` to reassign the guest's rows
+  (trip_members, team_assignments, idea_votes, date_poll_votes, expense_splits,
+  messages, expenses.paid_by, quick_info_tiles.created_by, series.owner_id,
+  users.created_by, invites.created_by) and delete the guest row. It then marks
+  matching `invites` accepted.
+- Brand-new emails (no matching guest) skip the merge entirely.
+
+**Keep `merge_guest_to_real_user` in lockstep with the schema** — it runs inside
+the signup trigger, so a reference to a dropped table/column makes the whole
+signup fail (this exact bug was fixed in migration 023). When you drop a table
+or a `user_id`/`created_by` column, update this function in the same migration.
+
 ## Migration Workflow
 
 Migrations are committed as files in `supabase/migrations/` and applied to the remote DB by CI's `supabase db push` step. The CLI compares the `supabase_migrations.schema_migrations` history table against local filenames and **fails when they don't match exactly**.
