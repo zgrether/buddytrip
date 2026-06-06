@@ -175,8 +175,9 @@ export function NewsHelpModal({ open, onClose }: NewsHelpModalProps) {
           reorder. These are the seven block types:
         </p>
 
-        {/* Catalog */}
-        <div className="flex flex-col gap-3 overflow-y-auto px-[18px] py-3">
+        {/* Catalog — the flex-1 min-h-0 scroll region so the list scrolls
+            inside the capped modal height instead of overflowing off-screen. */}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-3">
           {CATALOG.map(({ name, icon: Icon, desc, demo }) => (
             <div
               key={name}
