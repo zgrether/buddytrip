@@ -7,6 +7,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { Avatar } from "@/components/Avatar";
 import { SampleHeader, SampleCard } from "@/components/SampleSection";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
@@ -21,7 +22,7 @@ export interface ExpenseMember {
   role?: string | null;
   isGuest?: boolean;
   displayName?: string | null;
-  user?: { id: string; name?: string | null; email?: string | null } | null;
+  user?: { id: string; name?: string | null; email?: string | null; avatar_icon?: string | null } | null;
 }
 
 export interface ExpenseSplit {
@@ -455,13 +456,6 @@ function AddReceiptFullComposer({
       <div className="flex flex-wrap gap-1">
         {pillCrew.map((m) => {
           const name = memberName(members, m.user_id);
-          const initials =
-            name
-              .split(/\s+/)
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase() || "?";
           const out = excluded.has(m.user_id);
           return (
             <button
@@ -483,22 +477,15 @@ function AddReceiptFullComposer({
               }}
               title={out ? `Add ${name} back to the split` : `Toggle ${name} out of the split`}
             >
-              <span
-                className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[8px]"
-                style={{
-                  background: out
-                    ? "var(--color-bt-card-raised)"
-                    : "var(--color-bt-accent)",
-                  color: out
-                    ? "var(--color-bt-text-dim)"
-                    : "var(--color-bt-on-accent)",
-                  border: out
-                    ? "0.5px solid var(--color-bt-border)"
-                    : undefined,
-                }}
-              >
-                {initials}
-              </span>
+              {/* The real member avatar (Tabler icon / initials), not a
+                  hand-rolled circle — matches avatars everywhere else. */}
+              <Avatar
+                name={name}
+                avatarIcon={m.user?.avatar_icon ?? null}
+                sizePx={18}
+                accent={!out}
+                muted={out}
+              />
               {name.split(/\s+/)[0]}
             </button>
           );
