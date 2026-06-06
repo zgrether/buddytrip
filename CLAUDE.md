@@ -49,6 +49,7 @@
 | How should it look? | `STYLE_GUIDE.md` |
 | What shape is the data? | `supabase/migrations/` (migrations are authoritative) |
 | How does Realtime work? | Hooks in `src/hooks/useRealtime*.ts` (code is authoritative) |
+| How are the domain + email configured (and how to migrate domains)? | `DOMAIN_AND_EMAIL.md` |
 | What patterns must CC follow? | This file (`CLAUDE.md`) |
 
 If documents conflict with each other → stop and flag, do not silently resolve.
