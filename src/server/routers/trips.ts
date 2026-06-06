@@ -90,7 +90,6 @@ export const tripsRouter = router({
         location: z.string().max(500).nullable().optional(),
         startDate: z.string().nullable().optional(),
         endDate: z.string().nullable().optional(),
-        seriesId: z.string().nullable().optional(),
         comparisonMode: z.boolean().optional(),
         lockedDestination: z
           .object({
@@ -133,7 +132,6 @@ export const tripsRouter = router({
         location: input.lockedDestination?.location ?? input.location ?? null,
         start_date: input.startDate ?? null,
         end_date: input.endDate ?? null,
-        series_id: input.seriesId ?? null,
         comparison_mode: input.comparisonMode ?? false,
         locked_destination_title: input.lockedDestination?.title ?? null,
         locked_destination_location: input.lockedDestination?.location ?? null,

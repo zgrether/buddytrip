@@ -58,12 +58,15 @@ describe("Phase 0 Smoke Test", () => {
 
   it("should have all core tables accessible", async () => {
     const admin = getAdminClient();
-    // 27 tables remaining post-cleanup (AUDIT_FINDINGS.md). The score
+    // Core tables checked post-cleanup (AUDIT_FINDINGS.md). The score
     // entry pipeline (play_groups, player_hole_scores, group_results),
     // the legacy reservations table, idea_comments, golf_course_details,
-    // and scoreboard_shares were all dropped during pre-launch cleanup.
+    // and scoreboard_shares were all dropped during pre-launch cleanup;
+    // the dead `series` table was retired in migration 024 (the circle_*
+    // and game_type_templates anchor tables were added in the same migration
+    // but are stubs with no app reads yet, so they aren't asserted here).
     const tables = [
-      "users", "series", "trips",
+      "users", "trips",
       "competitions", "events", "event_point_distributions",
       "teams", "team_assignments",
       "golf_courses",

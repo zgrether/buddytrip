@@ -79,15 +79,17 @@ account signs up, the DB does the conversion — there is no app-code path:
   email, inserts the real `users` row, and calls
   `merge_guest_to_real_user(ghost_id, real_id)` to reassign the guest's rows
   (trip_members, team_assignments, idea_votes, date_poll_votes, expense_splits,
-  messages, expenses.paid_by, quick_info_tiles.created_by, series.owner_id,
-  users.created_by, invites.created_by) and delete the guest row. It then marks
-  matching `invites` accepted.
+  messages, expenses.paid_by, quick_info_tiles.created_by, users.created_by,
+  invites.created_by) and delete the guest row. It then marks matching
+  `invites` accepted.
 - Brand-new emails (no matching guest) skip the merge entirely.
 
 **Keep `merge_guest_to_real_user` in lockstep with the schema** — it runs inside
 the signup trigger, so a reference to a dropped table/column makes the whole
-signup fail (this exact bug was fixed in migration 023). When you drop a table
-or a `user_id`/`created_by` column, update this function in the same migration.
+signup fail (this exact bug was fixed in migration 023, and migration 024
+dropped the `series.owner_id` reassignment in lockstep with `DROP TABLE series`).
+When you drop a table or a `user_id`/`created_by` column, update this function in
+the same migration.
 
 ## Migration Workflow
 
