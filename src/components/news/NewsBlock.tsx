@@ -10,8 +10,7 @@ import type {
 
 // ── News block renderer (read-only) ────────────────────────────────────────
 //
-// Renders the six closed block types. Token-first inline styles, faithful to
-// the design reference (design/design_handoff_news, .post/.blk-* CSS).
+// Renders the six closed block types. Token-first inline styles.
 // The composer (PR2) reuses these same renderers for its live preview.
 
 // Derive a YouTube thumbnail straight from the pasted link — no storage, no
