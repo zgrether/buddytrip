@@ -31,7 +31,13 @@
 - Mock/test data lives only in `supabase/seed.sql` — never in migration files
 - Migration files are production-safe — schema, views, functions, triggers, RLS policies only
 - `seed.sql` is never run automatically — manual development use only
-- Before launch: `TRUNCATE TABLE users CASCADE` wipes all test data
+- Pre-launch reset (done 2026-06-06): truncated all user/trip-scoped data tables.
+  `TRUNCATE users CASCADE` alone is NOT enough — `trips` and its child rows have
+  no FK to `users`, so they'd orphan; truncate the full data set and keep the
+  reference tables (`catalog_ideas`/`golf_courses`/`game_type_templates`). The 6
+  real auth-backed `public.users` rows (Zach ×2 + the 4 shared CI test users) are
+  recreated after, matching their `auth.users` UUIDs, so the test suite keeps
+  working. A pre-reset JSON snapshot lives in `/backups` (gitignored).
 
 ## Document Authority
 

@@ -1,5 +1,15 @@
 -- BuddyTrip — Local dev seed
 --
+-- This file is for LOCAL development only (supabase start) — it is never run
+-- against prod. It uses \set placeholders for the two local auth UUIDs.
+--
+-- Prod was reset on 2026-06-06 (final pre-launch wipe): all user/trip-scoped
+-- data tables truncated, reference tables kept (catalog_ideas, golf_courses,
+-- game_type_templates), and the 6 real auth-backed users recreated — Zach's two
+-- accounts (zgrether@gmail.com, zgrethphoto@gmail.com) + the 4 shared CI test
+-- users (test-owner/planner/member/outsider@buddytrip.app). No BBMI trip data
+-- has been seeded yet — that's a deliberate later step.
+--
 -- Rewritten 2026-05-17 during pre-launch cleanup. The previous seed
 -- referenced 30+ CC-generated test users and was tied to the old
 -- pre-reset database. After the post-cleanup reset, the only real auth
