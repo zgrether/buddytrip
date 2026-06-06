@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpCircle, Check, Mail, Plane, X } from "lucide-react";
+import { Check, Mail, Plane, Shield, Users, X, type LucideIcon } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -125,10 +125,6 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
     setTravelForm(next);
   };
   const hadSavedTravel = !!member.travel_mode;
-  const travelFormNonEmpty =
-    travelForm.mode !== null ||
-    travelForm.detail.trim() !== "" ||
-    travelForm.arrivalDate !== "";
   const travelDirty = travelCleared
     ? hadSavedTravel
     : !travelFormsEqual(travelForm, initialTravelForm);
@@ -312,6 +308,34 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
     setRecentRoleChange(null);
   };
 
+  // ── Access (role) display — pill in the group header, description +
+  //    a single change button below. Owner is never editable here. ─────────
+  const isOrganizer = member.role === "Planner";
+  const roleBadge = isOwnerRow
+    ? { label: "Owner", color: "var(--color-bt-owner)", bg: "transparent", border: "1px solid var(--color-bt-owner)" }
+    : isOrganizer
+      ? { label: "Organizer", color: "var(--color-bt-accent)", bg: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }
+      : { label: "Member", color: "var(--color-bt-text-dim)", bg: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" };
+  const roleDescription = isOwnerRow
+    ? "Created the trip. Change ownership from Trip settings."
+    : status !== "active"
+      ? "Only Active BuddyTrip users can be promoted to Organizer — they become eligible once they sign up."
+      : isOrganizer
+        ? "Can edit destination, dates, lodging, agenda, receipts, and the crew. Can't delete the trip or transfer ownership."
+        : "Counts for rooms, teams, and receipts. Only Organizers and the Owner can edit trip details.";
+  const showRoleButton = !isOwnerRow && status === "active";
+  const roleButtonLabel = isOrganizer ? "Demote to member" : "Make organizer";
+  const onRoleButton = isOrganizer ? handleRemoveOrganizer : handleMakeOrganizer;
+
+  const rolePill = (
+    <span
+      className="inline-flex flex-shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+      style={{ color: roleBadge.color, background: roleBadge.bg, border: roleBadge.border }}
+    >
+      {roleBadge.label}
+    </span>
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <ScrollLock>
@@ -446,158 +470,96 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           </button>
         </div>
 
-        {/* Body — scrollable */}
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-          {/* Trip nickname */}
-          <Field
-            label="Trip nickname"
-            hint={
-              isOwnerRow
-                ? "The Owner controls their own display name from their account settings."
-                : "How the app refers to them on this trip. Only Organizers can change it."
-            }
-          >
-            <input
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              disabled={isOwnerRow}
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60"
-              style={{
-                background: "var(--color-bt-card)",
-                borderColor: "var(--color-bt-border)",
-                color: "var(--color-bt-text)",
-              }}
-            />
-          </Field>
-
-          {/* Account name — read-only, only for Active users */}
-          {status === "active" && member.user?.name && (
-            <Field
-              label="Account name"
-              hint="The name on their BuddyTrip account — they manage this themselves."
-            >
-              <div
-                className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-              >
-                <span>{member.user.name}</span>
-                <span
-                  className="text-[10px] font-bold uppercase tracking-[0.08em]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Read-only
-                </span>
-              </div>
-            </Field>
-          )}
-
-          {/* Email — visible for every status per round-5 item C.
-              Editable for invited / placeholder (the organizer entered
-              the email so they can fix typos); read-only for Active
-              (the email belongs to the BT account and is owned by the
-              member themselves). */}
-          {status === "active" ? (
-            <Field
-              label="Email"
-              hint="This is the email on their BuddyTrip account — they manage it from their own account settings. To replace this person, remove them from the trip and re-add with the right email."
-            >
-              <div
-                className="flex items-center justify-between rounded-lg border px-3 py-2 font-mono text-sm"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  borderColor: "var(--color-bt-border)",
-                  color: "var(--color-bt-text-dim)",
-                }}
-              >
-                <span className="truncate">{member.user?.email ?? "—"}</span>
-                <span
-                  className="ml-3 flex-shrink-0 text-[10px] font-bold uppercase tracking-[0.08em]"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                >
-                  Read-only
-                </span>
-              </div>
-            </Field>
-          ) : (
-            <Field
-              label="Email"
-              hint="Adding an email turns a Placeholder into Active (if the email matches a BuddyTrip account) or Invited."
-            >
+        {/* Body — scrollable, organized into three titled groups
+            (Identity · Access · Travel) separated by hairlines. */}
+        <div className="flex flex-1 flex-col overflow-y-auto px-4">
+          {/* ── Identity ──────────────────────────────────────────────── */}
+          <Group icon={Users} title="Identity" first>
+            <Field label="Trip nickname" hint="What the app calls them on this trip.">
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={`${member.displayName.toLowerCase().replace(/\s+/g, "")}@example.com`}
-                className="w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                disabled={isOwnerRow}
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60"
                 style={{
-                  background: "var(--color-bt-card)",
-                  borderColor: validationBorder(validation),
+                  background: "var(--color-bt-base)",
+                  borderColor: "var(--color-bt-border)",
                   color: "var(--color-bt-text)",
                 }}
               />
-              <ValidationFeedback state={validation} email={email} />
             </Field>
-          )}
 
-          {/* Permissions — rendered with a plain <div>, NOT the shared
-              <Field> wrapper. Field renders its children inside a
-              <label>, and a <label> proxies click events to the first
-              labelable form control it contains (HTML spec). Our
-              RoleControl contains a <button>, which IS labelable, so
-              under Field every click anywhere in the section — badge,
-              description text, whitespace — would fire the role-change
-              button. Rendering as <div> with a sibling <span> for the
-              eyebrow eliminates that hidden tap target. */}
-          <div className="flex flex-col gap-1.5">
-            <span
-              className="text-[11px] font-bold uppercase tracking-[0.08em]"
+            {/* Account name — read-only mirror of their BuddyTrip account. */}
+            {status === "active" && member.user?.name && (
+              <Field label="Account name">
+                <ReadOnlyInput value={member.user.name} />
+              </Field>
+            )}
+
+            {/* Email — read-only mirror for Active; editable for
+                invited/placeholder (the organizer typed it, so they can fix it). */}
+            {status === "active" ? (
+              <Field label="Email" hint="They manage name & email from their own account.">
+                <ReadOnlyInput value={member.user?.email ?? "—"} mono />
+              </Field>
+            ) : (
+              <Field
+                label="Email"
+                hint="Adding an email turns a Placeholder into Active (if it matches a BuddyTrip account) or Invited."
+              >
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={`${member.displayName.toLowerCase().replace(/\s+/g, "")}@example.com`}
+                  className="w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none"
+                  style={{
+                    background: "var(--color-bt-base)",
+                    borderColor: validationBorder(validation),
+                    color: "var(--color-bt-text)",
+                  }}
+                />
+                <ValidationFeedback state={validation} email={email} />
+              </Field>
+            )}
+          </Group>
+
+          {/* ── Access ────────────────────────────────────────────────── */}
+          <Group icon={Shield} title="Access" action={rolePill}>
+            <p
+              className="text-[12px] italic leading-snug"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
-              Permissions
-            </span>
-            <RoleControl
-              role={member.role}
-              status={status}
-              canManageRoles={canManageRoles}
-              onMakeOrganizer={handleMakeOrganizer}
-              onRemoveOrganizer={handleRemoveOrganizer}
-            />
-          </div>
+              {roleDescription}
+            </p>
+            {showRoleButton &&
+              (canManageRoles ? (
+                <button
+                  type="button"
+                  onClick={onRoleButton}
+                  className="self-start rounded-lg border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-85"
+                  style={{
+                    color: "var(--color-bt-text)",
+                    borderColor: "var(--color-bt-border)",
+                    background: "transparent",
+                  }}
+                >
+                  {roleButtonLabel}
+                </button>
+              ) : (
+                <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  Only the Owner can change crew roles.
+                </p>
+              ))}
+          </Group>
 
-          {/* Travel — owner logs/edits any member's travel here (incl.
-              placeholders, who can't log it themselves). This is an edit
-              drawer, so the fields are always present (no add/edit toggle)
-              and saved by the drawer's own footer Save — no inner buttons.
-              Rendered as a plain <div> (not <Field>) because it contains
-              inputs that a wrapping <label> would proxy clicks to. */}
+          {/* ── Travel ────────────────────────────────────────────────── */}
           {member.user_id && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-col gap-1">
-                  <span
-                    className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    <Plane size={11} strokeWidth={2.5} />
-                    Travel
-                  </span>
-                  <p
-                    className="text-[11px] leading-snug"
-                    style={{ color: "var(--color-bt-text-dim)" }}
-                  >
-                    How they&rsquo;re getting in. Shows on the crew roster and weaves
-                    into the itinerary on arrival day.
-                  </p>
-                </div>
-                {/* Clear / reset — empties the fields and flags travel for
-                    removal on Save. Only offered when there's something to
-                    reset (saved travel or in-progress input) and not already
-                    cleared. */}
-                {(hadSavedTravel || travelFormNonEmpty) && !travelCleared && (
+            <Group
+              icon={Plane}
+              title="Travel"
+              action={
+                travelForm.mode !== null ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -609,25 +571,29 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
                   >
                     Clear
                   </button>
-                )}
-              </div>
+                ) : undefined
+              }
+            >
+              <p className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+                How they&rsquo;re getting in — shows on the roster and the itinerary.
+              </p>
               <TravelFields
                 value={travelForm}
                 onChange={handleTravelChange}
                 surface="recessed"
+                emptyHint="Pick how they're getting there to add details."
               />
               {travelCleared && hadSavedTravel && (
                 <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
                   Travel will be removed when you save.
                 </p>
               )}
-            </div>
+            </Group>
           )}
 
-          {/* Remove from trip — at the end of the body, matching the
-              other edit modals (danger action above the footer). */}
+          {/* Remove from trip — danger action, set off by its own hairline. */}
           {!isOwnerRow && (
-            <div className="pt-1">
+            <div style={{ borderTop: "1px solid var(--color-bt-subtle-border)", paddingTop: 18, marginTop: 18, marginBottom: 4 }}>
               <ConfirmDeleteButton
                 label="Remove from trip"
                 confirmLabel="Remove"
@@ -791,127 +757,68 @@ function Field({
   );
 }
 
-// ── RoleControl — contextual permission control per spec ──────────────────
+// ── ReadOnlyInput — inert mirror of an account field (name / email) ───────
+// Read-only fields use the card surface (vs base for editable inputs) and
+// carry a "Read-only" tag so it's clear they mirror the member's own account.
 
-function RoleControl({
-  role,
-  status,
-  canManageRoles,
-  onMakeOrganizer,
-  onRemoveOrganizer,
-}: {
-  role: string;
-  status: "active" | "invited" | "placeholder";
-  canManageRoles: boolean;
-  onMakeOrganizer: () => void;
-  onRemoveOrganizer: () => void;
-}) {
-  // Owner — explainer only, no control. Distinct chrome (warning-tinted)
-  // because changing ownership lives in Trip settings, not here.
-  if (role === "Owner") {
-    return (
-      <div
-        className="flex items-center gap-2.5 rounded-lg px-3 py-2.5"
-        style={{
-          background: "var(--color-bt-warning-faint)",
-          border: "1px solid var(--color-bt-warning-border)",
-        }}
-      >
-        <span
-          className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-          style={{
-            color: "var(--color-bt-owner)",
-            border: "1px solid var(--color-bt-owner)",
-          }}
-        >
-          Owner
-        </span>
-        <span className="text-[12px]" style={{ color: "var(--color-bt-text)" }}>
-          Created the trip. Change ownership from Trip settings.
-        </span>
-      </div>
-    );
-  }
-
-  // Non-Active — can't be promoted yet.
-  if (status !== "active") {
-    return (
-      <div
-        className="rounded-lg px-3 py-2.5 text-[12px] leading-snug"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          border: "1px dashed var(--color-bt-border)",
-          color: "var(--color-bt-text-dim)",
-        }}
-      >
-        <strong style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
-          Member (default).
-        </strong>{" "}
-        Only Active BuddyTrip users can be promoted to Organizer — this person becomes eligible once they sign up.
-      </div>
-    );
-  }
-
-  // ── Active (Member OR Organizer) — unified shape per Task 55 ────────
-  //
-  // Both roles render the same layout: role badge, description, then a
-  // single ghost-outlined button whose only difference is its label
-  // ("Make organizer" vs "Demote to member"). No color asymmetry, no
-  // mixed primary-CTA / danger-button shapes. The post-tap confirmation
-  // toast now lives at the drawer footer (see MemberEditor), so the
-  // Permissions section itself stays steady-state.
-  const isOrganizer = role === "Planner";
-  const badge = isOrganizer
-    ? { label: "Organizer", color: "var(--color-bt-accent)", bg: "var(--color-bt-accent-faint)" }
-    : { label: "Member", color: "var(--color-bt-text-dim)", bg: "var(--color-bt-card-raised)" };
-  const description = isOrganizer
-    ? "Can edit destination, dates, lodging, agenda, receipts, and the crew. Cannot delete the trip or transfer ownership."
-    : "Counts for rooms, teams, and receipts. Tag any Organizer with planning questions; only Organizers (and the Owner) can edit trip details.";
-  const buttonLabel = isOrganizer ? "Demote to member" : "Make organizer";
-  const onButtonClick = isOrganizer ? onRemoveOrganizer : onMakeOrganizer;
-
+function ReadOnlyInput({ value, mono = false }: { value: string; mono?: boolean }) {
   return (
-    <div className="flex flex-col gap-2">
-      {/* Role badge is a non-interactive label — no border, no hover, no
-          cursor — so it doesn't compete visually with the actual action
-          button below. The Make organizer / Demote to member button is
-          the sole path to change role. */}
+    <div
+      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${mono ? "font-mono" : ""}`}
+      style={{
+        background: "var(--color-bt-card)",
+        borderColor: "var(--color-bt-border)",
+        color: "var(--color-bt-text-dim)",
+      }}
+    >
+      <span className="truncate">{value}</span>
       <span
-        className="inline-flex items-center gap-1 self-start rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-        style={{
-          color: badge.color,
-          background: badge.bg,
-        }}
-      >
-        {badge.label}
-      </span>
-      <div
-        className="text-[12px] italic leading-snug"
+        className="ml-3 flex-shrink-0 text-[10px] font-bold uppercase tracking-[0.08em]"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        {description}
-      </div>
-      {canManageRoles ? (
-        <button
-          type="button"
-          onClick={onButtonClick}
-          className="self-start rounded-lg border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-85"
-          style={{
-            color: "var(--color-bt-text)",
-            borderColor: "var(--color-bt-border)",
-            background: "transparent",
-          }}
-        >
-          {buttonLabel}
-        </button>
-      ) : (
-        <div className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-          Only the Owner can change crew roles.
-        </div>
-      )}
+        Read-only
+      </span>
     </div>
   );
 }
 
-// (Task 55 inlined the role-change confirmation row into the drawer
-// footer; the standalone RoleConfirmationRow component is gone.)
+// ── Group — a titled section (icon + uppercase title), set off from the
+//    previous group by a hairline + generous top padding. ─────────────────
+
+function Group({
+  icon: Icon,
+  title,
+  action,
+  first = false,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  /** Optional control rendered at the right of the header row (role pill, Clear). */
+  action?: React.ReactNode;
+  /** First group skips the top hairline. */
+  first?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="flex flex-col"
+      style={{
+        borderTop: first ? "none" : "1px solid var(--color-bt-subtle-border)",
+        paddingTop: first ? 16 : 18,
+      }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span
+          className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em]"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          <Icon size={13} strokeWidth={1.75} style={{ color: "var(--color-bt-accent)" }} />
+          {title}
+        </span>
+        {action}
+      </div>
+      <div className="flex flex-col gap-[13px]">{children}</div>
+    </section>
+  );
+}

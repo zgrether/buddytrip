@@ -270,6 +270,7 @@ export function TravelFields({
   onChange,
   tripStartDate,
   surface = "card",
+  emptyHint = "Pick a travel type to add details.",
 }: {
   value: TravelFormValue;
   onChange: (next: TravelFormValue) => void;
@@ -278,6 +279,8 @@ export function TravelFields({
   /** "card" = sits on a card surface (YOU tile); "recessed" = sits inside a
    *  drawer, so inputs use the recessed base background. */
   surface?: "card" | "recessed";
+  /** Quiet line shown in place of the detail fields before a mode is picked. */
+  emptyHint?: string;
 }) {
   const arrivalBeforeTrip =
     !!value.arrivalDate && !!tripStartDate && value.arrivalDate < tripStartDate;
@@ -350,67 +353,73 @@ export function TravelFields({
         })}
       </div>
 
-      {/* Details — single free-text string with a mode-adaptive tip. */}
-      <div>
-        <label
-          className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          Details
-        </label>
-        <input
-          type="text"
-          value={value.detail}
-          onChange={(e) => onChange({ ...value, detail: e.target.value })}
-          disabled={!modeSelected}
-          placeholder={
-            value.mode
-              ? TRAVEL_MODE_META[value.mode].placeholder
-              : "Pick how you're getting there above"
-          }
-          className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          style={{
-            background: inputBg,
-            borderColor: "var(--color-bt-border)",
-            color: "var(--color-bt-text)",
-          }}
-        />
-      </div>
+      {/* Progressive disclosure: the detail/arrival fields only mount once a
+          mode is chosen (travel won't persist without one). Before that, a
+          quiet line stands in for them. */}
+      {modeSelected ? (
+        <>
+          {/* Details — single free-text string with a mode-adaptive tip. */}
+          <div>
+            <label
+              className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              Details
+            </label>
+            <input
+              type="text"
+              value={value.detail}
+              onChange={(e) => onChange({ ...value, detail: e.target.value })}
+              placeholder={
+                value.mode ? TRAVEL_MODE_META[value.mode].placeholder : ""
+              }
+              className="w-full rounded-lg border px-2.5 py-1.5 text-sm outline-none"
+              style={{
+                background: inputBg,
+                borderColor: "var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            />
+          </div>
 
-      {/* Arriving date + time side by side. */}
-      <div className="flex flex-wrap items-end gap-2">
-        <div style={{ flex: "1 1 140px" }}>
-          <label
-            className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Arriving
-          </label>
-          <DatePicker
-            mode="single"
-            icon={<Plane size={15} />}
-            disabled={!modeSelected}
-            accent={DOMAIN_COLORS.travel.color}
-            accentFaint={DOMAIN_COLORS.travel.faint}
-            value={value.arrivalDate ? parseLocalDate(value.arrivalDate) : null}
-            onChange={(d) =>
-              onChange({ ...value, arrivalDate: d ? toISODate(d) : "" })
-            }
-          />
-        </div>
-        <div style={{ flex: "1 1 100px" }}>
-          <TimePicker
-            label="Time"
-            icon={<Plane size={15} />}
-            presets="daypart"
-            disabled={!modeSelected}
-            accent={DOMAIN_COLORS.travel.color}
-            accentFaint={DOMAIN_COLORS.travel.faint}
-            value={parseTime(value.arrivalTime)}
-            onChange={(t) => onChange({ ...value, arrivalTime: toTime24(t) })}
-          />
-        </div>
-      </div>
+          {/* Arriving date + time side by side. */}
+          <div className="flex flex-wrap items-end gap-2">
+            <div style={{ flex: "1 1 140px" }}>
+              <label
+                className="mb-1 block text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Arriving
+              </label>
+              <DatePicker
+                mode="single"
+                icon={<Plane size={15} />}
+                accent={DOMAIN_COLORS.travel.color}
+                accentFaint={DOMAIN_COLORS.travel.faint}
+                value={value.arrivalDate ? parseLocalDate(value.arrivalDate) : null}
+                onChange={(d) =>
+                  onChange({ ...value, arrivalDate: d ? toISODate(d) : "" })
+                }
+              />
+            </div>
+            <div style={{ flex: "1 1 100px" }}>
+              <TimePicker
+                label="Time"
+                icon={<Plane size={15} />}
+                presets="daypart"
+                accent={DOMAIN_COLORS.travel.color}
+                accentFaint={DOMAIN_COLORS.travel.faint}
+                value={parseTime(value.arrivalTime)}
+                onChange={(t) => onChange({ ...value, arrivalTime: toTime24(t) })}
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+          {emptyHint}
+        </p>
+      )}
     </div>
   );
 }
