@@ -591,9 +591,10 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
             </Group>
           )}
 
-          {/* Remove from trip — danger action, set off by its own hairline. */}
+          {/* Remove from trip — danger action, set off by its own hairline.
+              Space above comes from the Travel group's paddingBottom. */}
           {!isOwnerRow && (
-            <div style={{ borderTop: "1px solid var(--color-bt-subtle-border)", paddingTop: 18, marginTop: 18, marginBottom: 4 }}>
+            <div style={{ borderTop: "1px solid var(--color-bt-subtle-border)", paddingTop: 18, paddingBottom: 16 }}>
               <ConfirmDeleteButton
                 label="Remove from trip"
                 confirmLabel="Remove"
@@ -805,7 +806,11 @@ function Group({
       className="flex flex-col"
       style={{
         borderTop: first ? "none" : "1px solid var(--color-bt-subtle-border)",
-        paddingTop: first ? 16 : 18,
+        // Symmetric padding around the hairline: each group pads its top
+        // (below the divider) and bottom (above the next divider) so the line
+        // is never flush against content.
+        paddingTop: first ? 14 : 18,
+        paddingBottom: 18,
       }}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
