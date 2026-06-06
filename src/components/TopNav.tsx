@@ -300,6 +300,7 @@ function NewsToolButton({
   active: boolean;
 }) {
   const unread = useNewsUnreadCount(tripId);
+  const utils = trpc.useUtils();
   return (
     <ToolButton
       icon={Pin}
@@ -308,6 +309,10 @@ function NewsToolButton({
       badgeBg="var(--color-bt-accent)"
       active={active}
       onClick={onClick}
+      // Warm the feed the moment the user shows intent (hover / focus / press)
+      // so it's already in flight before the panel mounts — the open then
+      // resolves from cache instead of starting a cold round-trip.
+      onPrefetch={() => utils.news.list.prefetch({ tripId })}
       ariaLabel="News"
       testId="news-button"
     />
@@ -358,6 +363,7 @@ function ToolButton({
   restingBg,
   restingBorder,
   labelColor,
+  onPrefetch,
 }: {
   icon: LucideIcon;
   label: string;
@@ -367,6 +373,8 @@ function ToolButton({
   onClick?: () => void;
   ariaLabel: string;
   testId: string;
+  /** Fired on hover / focus / press to warm the panel's data before open. */
+  onPrefetch?: () => void;
   /** Override the icon stroke color. Defaults to the inherited text color. */
   iconColor?: string;
   /** Resting background. Defaults to none; use for buttons that need a
@@ -397,8 +405,13 @@ function ToolButton({
     <button
       type="button"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => {
+        setHovered(true);
+        onPrefetch?.();
+      }}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => onPrefetch?.()}
+      onPointerDown={() => onPrefetch?.()}
       aria-label={ariaLabel}
       data-testid={testId}
       className="relative inline-flex h-9 items-center gap-[7px] rounded-[9px] px-2.5 transition-colors @max-[600px]:w-9 @max-[600px]:justify-center @max-[600px]:gap-0 @max-[600px]:px-0"
