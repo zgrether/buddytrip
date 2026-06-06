@@ -167,6 +167,23 @@ AND that **nothing in the DB depends on it** (triggers, functions, views, FKs,
 RLS policies, default expressions). When in doubt, comment it out / stop and
 flag — don't drop.
 
+## ID Type Convention
+
+All primary keys and foreign keys use **`text`**, not `uuid`. This is app-wide —
+`users.id`, `trips.id`, `circles.id` are all `text`. Any new FK column
+referencing these tables **must be `text`**; a `uuid` FK → `text` PK errors at
+migration time (type mismatch). This `text`-id choice is also why `public.users`
+has no FK to `auth.users` (uuid) and why user-delete cleanup is a trigger, not a
+cascade — see the auth section.
+
+`circle_events` and `circle_courses` (migration 024) are intentionally **thin
+anchor stubs** — `id, circle_id, name, created_at` only. Their full columns
+(e.g. `thread_id`, `year`, `recap_text`, `video_url`; course `holes`,
+`par_values`, `tee_sets`) are deferred to the competition/history build, when
+the real shapes are known. When those land, `thread_id` and every other FK
+column must be `text` (e.g. `thread_id text REFERENCES trips(id)`), per the rule
+above — never `uuid`.
+
 ## What "Done" Means for Any Task
 
 1. Feature implemented
