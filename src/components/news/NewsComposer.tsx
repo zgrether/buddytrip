@@ -346,7 +346,10 @@ export function NewsComposer({ tripId, variant, post, onDone }: NewsComposerProp
                     type === "callout"
                       ? "1px solid var(--color-bt-warning-border)"
                       : "1px dashed var(--color-bt-border)",
-                  background: type === "callout" ? "var(--color-bt-warning-faint)" : "transparent",
+                  background:
+                    type === "callout"
+                      ? "color-mix(in srgb, var(--color-bt-warning) 8%, var(--color-bt-card))"
+                      : "transparent",
                   color: "var(--color-bt-text)",
                   fontSize: 12.5,
                   fontWeight: 500,
@@ -532,7 +535,11 @@ function BlockEditor({
         position: "relative",
         border: `1px solid ${isCallout ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
         borderRadius: 11,
-        background: isCallout ? "var(--color-bt-warning-faint)" : "var(--color-bt-card-raised)",
+        // Opaque equivalent of warning-faint (8% amber) over the post card, so
+        // it matches the rendered callout regardless of the lighter panel behind.
+        background: isCallout
+          ? "color-mix(in srgb, var(--color-bt-warning) 8%, var(--color-bt-card))"
+          : "var(--color-bt-card-raised)",
         padding: "10px 12px 12px",
         opacity: dragging ? 0.4 : 1,
       }}
