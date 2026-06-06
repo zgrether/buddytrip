@@ -50,15 +50,21 @@ Two **separate** email paths share one Resend account + one verified domain:
 ### Env vars (app path B)
 | Var | Value | Notes |
 |-----|-------|-------|
-| `RESEND_API_KEY` | (secret) | Resend key `buddytrip-dev`. "Sending access" is sufficient. |
+| `RESEND_API_KEY` | (secret) | Resend key `buddytrip-prod` (Sending access, scoped to `bbmi.app`). App only ever sends, so it must NOT be a Full-access key. |
 | `RESEND_FROM` | `BuddyTrip <noreply@bbmi.app>` | Falls back to Resend's sandbox sender (`onboarding@resend.dev`) if unset. |
 | `RESEND_DEV_TO_EMAIL` | your inbox | **Dev guardrail:** in `NODE_ENV=development`, ALL app email is rerouted here so local testing never reaches real users. Ignored in prod. |
 | `FEEDBACK_TO_EMAIL` | founder inbox | Destination for in-app beta feedback. |
 
+> **API key hygiene:** each consumer gets its own **Sending-access-only** key
+> (never Full access — a Full key can delete the domain or revoke other keys, so
+> a leak from app env vars would be account-wide). App → `buddytrip-prod`,
+> Supabase SMTP → `buddytrip-smtp`. Separate keys let you rotate/revoke one
+> without breaking the other.
+
 ### Supabase custom SMTP (auth path A)
 Supabase → Project Settings → Authentication → SMTP Settings:
 - Host `smtp.resend.com` · Port `465` (SSL) or `587`
-- Username `resend` · Password = a Resend API key (currently key `buddytrip-smtp`)
+- Username `resend` · Password = a Resend API key (Sending access — key `buddytrip-smtp`)
 - **Sender email** `noreply@bbmi.app` · **Sender name** `BuddyTrip`
 - Also bump **Auth → Rate Limits** email cap (the built-in default is ~3–4/hr).
 
