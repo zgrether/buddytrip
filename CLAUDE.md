@@ -121,6 +121,69 @@ Migrations are committed as files in `supabase/migrations/` and applied to the r
 
 **If you already applied via MCP** and CI complains about an unknown remote version, fix it by deleting the apply-timestamped row from `supabase_migrations.schema_migrations` (history table only — the schema change itself stays in place because migrations are idempotent: `ADD COLUMN IF NOT EXISTS`, `DROP POLICY IF EXISTS` + `CREATE POLICY`, etc.). CI's next push then sees the local file as new and re-applies it as a no-op.
 
+## Index Creation
+
+Plain `CREATE INDEX` is acceptable in migration files for tables that are
+**small at the time of migration** (the lock is sub-millisecond). This is what
+migration 023 did for `idx_messages_user_id`.
+
+For **large live tables** (>100k rows, or high write volume during active use),
+use `CREATE INDEX CONCURRENTLY` applied **out-of-band** via the Supabase CLI
+(against the linked DB) or the dashboard SQL editor — **NOT in a migration
+file**. Supabase wraps each migration in a transaction, and `CONCURRENTLY`
+cannot run inside a transaction, so `supabase db push` errors on it.
+
+> If you must keep the index in version control, put the `CONCURRENTLY`
+> statement in a separate `.sql` note (or a comment in the migration) and apply
+> it by hand — don't let `db push` execute it.
+
+Anticipated tables that will need out-of-band `CONCURRENTLY` indexing once the
+competition/gaming engine ships and they carry real volume (none exist yet — the
+2026-06-06 reset left the DB near-empty, and the engine tables aren't built):
+- `score_entries` (`game_id`, `user_id`)
+- `game_results` (`game_id`, `entity_id`)
+- `circle_bet_results` (`bet_id`)
+
+Already indexed plainly and fine as-is: `messages` (`user_id`).
+
+## Schema Cleanup Rule
+
+Before any `DROP COLUMN` or `DROP FUNCTION` migration, grep current `main` for
+every reference **and** verify against the live DB. **Audit-tool output is a
+starting point, not a verdict** — it produces false positives that are dangerous
+to act on. Three real examples from this codebase:
+
+- `trips.comparison_mode` and `trips.itinerary_enabled` were flagged "dead" by
+  the 2026-05-28 audit but are **load-bearing reads** — `comparison_mode` in
+  `page.tsx` + `TripCard.tsx` (and written on trip create); `itinerary_enabled`
+  in `HomeTab.tsx` → `ItineraryPanel`. Dropping either breaks the app.
+- `merge_guest_to_real_user(text, text)` was flagged "broken / removable" but is
+  the **live signup conversion path**, called by the `handle_new_user` signup
+  trigger. Dropping it breaks every invited-user signup. (Nothing replaced it —
+  it *is* the mechanism; it was fixed, not removed.)
+
+Never drop a column or function without confirming **zero live reads in code**
+AND that **nothing in the DB depends on it** (triggers, functions, views, FKs,
+RLS policies, default expressions). When in doubt, comment it out / stop and
+flag — don't drop.
+
+## ID Type Convention
+
+All primary keys and foreign keys use **`text`**, not `uuid`. This is app-wide —
+`users.id`, `trips.id`, `circles.id` are all `text`. Any new FK column
+referencing these tables **must be `text`**; a `uuid` FK → `text` PK errors at
+migration time (type mismatch). This `text`-id choice is also why `public.users`
+has no FK to `auth.users` (uuid) and why user-delete cleanup is a trigger, not a
+cascade — see the auth section.
+
+`circle_events` and `circle_courses` (migration 024) are intentionally **thin
+anchor stubs** — `id, circle_id, name, created_at` only. Their full columns
+(e.g. `thread_id`, `year`, `recap_text`, `video_url`; course `holes`,
+`par_values`, `tee_sets`) are deferred to the competition/history build, when
+the real shapes are known. When those land, `thread_id` and every other FK
+column must be `text` (e.g. `thread_id text REFERENCES trips(id)`), per the rule
+above — never `uuid`.
+
 ## What "Done" Means for Any Task
 
 1. Feature implemented
