@@ -121,6 +121,31 @@ Migrations are committed as files in `supabase/migrations/` and applied to the r
 
 **If you already applied via MCP** and CI complains about an unknown remote version, fix it by deleting the apply-timestamped row from `supabase_migrations.schema_migrations` (history table only — the schema change itself stays in place because migrations are idempotent: `ADD COLUMN IF NOT EXISTS`, `DROP POLICY IF EXISTS` + `CREATE POLICY`, etc.). CI's next push then sees the local file as new and re-applies it as a no-op.
 
+## Index Creation
+
+Plain `CREATE INDEX` is acceptable in migration files for tables that are
+**small at the time of migration** (the lock is sub-millisecond). This is what
+migration 023 did for `idx_messages_user_id`.
+
+For **large live tables** (>100k rows, or high write volume during active use),
+use `CREATE INDEX CONCURRENTLY` applied **out-of-band** via the Supabase CLI
+(against the linked DB) or the dashboard SQL editor — **NOT in a migration
+file**. Supabase wraps each migration in a transaction, and `CONCURRENTLY`
+cannot run inside a transaction, so `supabase db push` errors on it.
+
+> If you must keep the index in version control, put the `CONCURRENTLY`
+> statement in a separate `.sql` note (or a comment in the migration) and apply
+> it by hand — don't let `db push` execute it.
+
+Anticipated tables that will need out-of-band `CONCURRENTLY` indexing once the
+competition/gaming engine ships and they carry real volume (none exist yet — the
+2026-06-06 reset left the DB near-empty, and the engine tables aren't built):
+- `score_entries` (`game_id`, `user_id`)
+- `game_results` (`game_id`, `entity_id`)
+- `circle_bet_results` (`bet_id`)
+
+Already indexed plainly and fine as-is: `messages` (`user_id`).
+
 ## What "Done" Means for Any Task
 
 1. Feature implemented
