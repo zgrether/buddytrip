@@ -35,6 +35,9 @@ interface ItineraryPanelProps {
  * ItineraryPanel — home tab panel for the day-by-day timeline.
  *
  * State machine (owner):
+ *   - poll active + no dates → FreshTripGuide poll-takeover (DatePollCard
+ *     with owner controls). Wins over dismissal so a live poll is never
+ *     hidden behind the "Set dates" empty state.
  *   - dates set OR isActivated → ItineraryView (real bookends + content).
  *     When the guide isn't dismissed, FreshTripGuide also renders above it
  *     so the owner can keep adding lodging/crew/agenda from the same spot.
@@ -90,6 +93,25 @@ export function ItineraryPanel({
     // redesigned empty-state preview — no "organizer needs to set the dates"
     // dead-end, which isn't the member's concern.
     return <ItineraryView trip={trip} isOwner={false} />;
+  }
+
+  // ── Owner: active poll (before dates lock) — poll takes over ───────
+  // An in-flight poll owns the home tab REGARDLESS of guide dismissal.
+  // Without this, a dismissed setup guide drops the owner onto the generic
+  // "Set dates" empty state while a poll is live — stranding them with no way
+  // to manage windows or watch votes (the crew, meanwhile, correctly see the
+  // poll). FreshTripGuide's poll-takeover renders the DatePollCard with owner
+  // controls + the poll context header; dismissal can't hide it while
+  // poll_mode is on. Mirrors the member short-circuit above.
+  if (pollActive && !datesSet) {
+    return (
+      <FreshTripGuide
+        tripId={tripId}
+        trip={trip}
+        onTabChange={onTabChange}
+        onDismiss={() => setDismissed(true)}
+      />
+    );
   }
 
   // ── Owner: dates set OR activated — guide and itinerary toggle ────
