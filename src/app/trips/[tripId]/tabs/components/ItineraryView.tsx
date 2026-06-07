@@ -526,7 +526,12 @@ function PersonChip({ person }: { person: ArrivalEvent }) {
         border: `1px ${untimed ? "dashed" : "solid"} var(--color-bt-border)`,
       }}
     >
-      <Avatar name={person.displayName} avatarIcon={person.avatarIcon ?? null} sizePx={22} />
+      <Avatar
+        name={person.displayName}
+        avatarIcon={person.avatarIcon ?? null}
+        sizePx={22}
+        muted={person.isGuest ?? false}
+      />
       {/* Name + time share a baseline so the smaller time doesn't ride higher
           than the name; the outer chip still center-aligns the avatar. */}
       <span className="inline-flex items-baseline gap-1.5">
