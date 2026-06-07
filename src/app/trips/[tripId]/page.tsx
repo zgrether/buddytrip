@@ -85,12 +85,16 @@ export default function TripDetailPage() {
   // states so the page waits for ALL data before rendering — no 2-phase pop-in.
   const { isLoading: ideasLoading } = trpc.ideas.list.useQuery({ tripId });
   const { data: members = [], isLoading: membersLoading } = trpc.tripMembers.list.useQuery({ tripId });
-  // datePoll.get and quickInfoTiles.list fire here in parallel but are NOT
-  // gated in dataLoading — datePoll feeds one owner-only "votes in" pill and
-  // tiles aren't read in this file, so blocking first paint on the slowest of
-  // them just delayed TTFB. They populate in the background; the pill pops in.
-  trpc.datePoll.get.useQuery({ tripId });
-  trpc.quickInfoTiles.list.useQuery({ tripId });
+  // datePoll IS gated in dataLoading. The poll surface (DatePollCard /
+  // FreshTripGuide poll branch) is part of the persisted [tripId] page, so on a
+  // trip SWITCH it keeps painting the previous trip's windows for a frame while
+  // datePoll.get re-keys to the new trip. Gating the page on it makes the
+  // spinner cover that re-key window — no cross-trip poll flash. (Costs a small
+  // amount of first-paint time on initial load; worth it to kill the bleed.)
+  const { isLoading: datePollLoading } = trpc.datePoll.get.useQuery({ tripId });
+  // quickInfoTiles feeds the trip-header dock (visible on EVERY tab), so it's
+  // gated too — otherwise the dock flashes the previous trip's tiles on switch.
+  const { isLoading: tilesLoading } = trpc.quickInfoTiles.list.useQuery({ tripId });
 
   // Competition: drives the showComp gate + the bottom-nav "Live" entry.
   // The new schema (migration 062) tracks this via `competitions` rather
@@ -100,10 +104,16 @@ export default function TripDetailPage() {
   const { data: competition, isLoading: competitionLoading } =
     trpc.competitions.getByTrip.useQuery({ tripId });
 
-  // ── Background prefetch for tab badge conditions ───────────────────────
-  // Not added to dataLoading — loads in parallel, dot appears when ready.
-  const { data: prefetchedSchedule = [] } = trpc.schedule.list.useQuery({ tripId });
-  const { data: prefetchedLogistics = [] } = trpc.logistics.list.useQuery({ tripId });
+  // schedule + logistics ARE gated: they feed the home itinerary (ItineraryView
+  // / FreshTripGuide query them by tripId) which is the default surface on a
+  // trip switch. Gating them makes the spinner cover the re-key window so the
+  // itinerary can't flash the previous trip's lodging / events. They also drive
+  // the tab badge dots. (All these queries fire in parallel, so the added gate
+  // delays first paint only to the slowest one, not their sum.)
+  const { data: prefetchedSchedule = [], isLoading: scheduleLoading } =
+    trpc.schedule.list.useQuery({ tripId });
+  const { data: prefetchedLogistics = [], isLoading: logisticsLoading } =
+    trpc.logistics.list.useQuery({ tripId });
   // Background prefetch for receipts so the Expenses tab reads from cache
   // instead of flashing its loading skeleton for 1–2s on first open. Same
   // queryKey as ExpensesSection's own useQuery, so it hydrates instantly.
@@ -125,7 +135,8 @@ export default function TripDetailPage() {
   );
 
   const dataLoading = isLoading || ideasLoading || membersLoading
-    || competitionLoading;
+    || competitionLoading || datePollLoading || tilesLoading
+    || scheduleLoading || logisticsLoading;
 
   // Push competition row changes (Go Live, scoreboard style, name,
   // tagline) live to every crew member — without this they'd see
