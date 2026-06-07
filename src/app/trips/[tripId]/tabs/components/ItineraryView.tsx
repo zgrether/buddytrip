@@ -527,20 +527,24 @@ function PersonChip({ person }: { person: ArrivalEvent }) {
       }}
     >
       <Avatar name={person.displayName} avatarIcon={person.avatarIcon ?? null} sizePx={22} />
-      <span
-        className="text-[12px] font-semibold leading-none"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        {firstName(person.displayName)}
-      </span>
-      <span
-        className="text-[11px] leading-none"
-        style={{
-          color: "var(--color-bt-text-dim)",
-          fontStyle: untimed ? "italic" : undefined,
-        }}
-      >
-        {untimed ? "TBD" : fmtTime12(person.time as string)}
+      {/* Name + time share a baseline so the smaller time doesn't ride higher
+          than the name; the outer chip still center-aligns the avatar. */}
+      <span className="inline-flex items-baseline gap-1.5">
+        <span
+          className="text-[12px] font-semibold leading-none"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {firstName(person.displayName)}
+        </span>
+        <span
+          className="text-[11px] leading-none"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            fontStyle: untimed ? "italic" : undefined,
+          }}
+        >
+          {untimed ? "TBD" : fmtTime12(person.time as string)}
+        </span>
       </span>
     </span>
   );
