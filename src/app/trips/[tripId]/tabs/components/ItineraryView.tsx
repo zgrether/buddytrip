@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Calendar,
   Car,
@@ -394,76 +394,124 @@ function EmptyItineraryState({ onCancel }: { onCancel?: () => void }) {
         </p>
       </div>
 
-      {/* Skeleton preview — two-day mini stack mirroring the intro modal */}
-      <div
-        className="mt-4 space-y-2 rounded-lg p-3"
-        style={{
-          background: "var(--color-bt-card)",
-          border: "1px solid var(--color-bt-border)",
-          opacity: 0.65,
-        }}
-      >
-        <div className="flex items-center gap-1.5">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--color-bt-accent)" }}
-            aria-hidden
+      {/* Preview — mirrors the redesigned timeline (DAY # — date header +
+          left-stripe cards with rounded-square icon tiles) so the empty state
+          shows what the itinerary will look like once it fills in. Muted +
+          aria-hidden — illustrative only. */}
+      <div className="mt-4 space-y-3" style={{ opacity: 0.5 }} aria-hidden>
+        <SkeletonDay num="1" date="Fri, Jun 19">
+          <SkeletonCard
+            Icon={Home}
+            stripe="var(--color-bt-planning)"
+            iconBg="var(--color-bt-blue-bg)"
+            iconColor="var(--color-bt-planning)"
+            title="Lodging check-in"
+            time="3:00 PM"
           />
-          <span
-            className="text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            Day 1
-          </span>
-        </div>
-        <SkeletonRow Icon={Home} text="Lodging check-in" time="3:00 PM" iconColor="#60a5fa" />
-        <SkeletonRow
-          Icon={Plane}
-          text="Travel arrival"
-          time="5:30 PM"
-          iconColor="var(--color-bt-accent)"
-        />
-        <SkeletonRow Icon={MapPin} text="Welcome dinner" time="7:30 PM" iconColor="var(--color-bt-text-dim)" />
-
-        <div className="mt-3 flex items-center gap-1.5">
-          <span
-            className="text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-bt-text-dim)" }}
-          >
-            Day 2
-          </span>
-        </div>
-        <SkeletonRow Icon={MapPin} text="Tee time" time="8:00 AM" iconColor="var(--color-bt-text-dim)" />
+          <SkeletonCard
+            Icon={Plane}
+            stripe="var(--color-bt-accent)"
+            iconBg="var(--color-bt-accent-faint)"
+            iconColor="var(--color-bt-accent)"
+            title="Travel arrival"
+            time="5:30 PM"
+          />
+          <SkeletonCard
+            Icon={Clock}
+            stripe="var(--color-bt-ready)"
+            iconBg="var(--color-bt-ready-bg)"
+            iconColor="var(--color-bt-ready)"
+            title="Welcome dinner"
+            time="7:30 PM"
+          />
+        </SkeletonDay>
+        <SkeletonDay num="2" date="Sat, Jun 20">
+          <SkeletonCard
+            Icon={Clock}
+            stripe="var(--color-bt-ready)"
+            iconBg="var(--color-bt-ready-bg)"
+            iconColor="var(--color-bt-ready)"
+            title="Tee time"
+            time="8:00 AM"
+          />
+        </SkeletonDay>
       </div>
     </div>
   );
 }
 
-function SkeletonRow({
+// Mini day header + cards mirroring DaySection / EventCard, used only by the
+// empty-state preview (so it reads like the real redesigned timeline).
+function SkeletonDay({
+  num,
+  date,
+  children,
+}: {
+  num: string;
+  date: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-1.5">
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          Day {num}
+        </span>
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          — {date}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SkeletonCard({
   Icon,
-  text,
-  time,
+  stripe,
+  iconBg,
   iconColor,
+  title,
+  time,
 }: {
   Icon: LucideIcon;
-  text: string;
-  time: string;
+  stripe: string;
+  iconBg: string;
   iconColor: string;
+  title: string;
+  time: string;
 }) {
   return (
     <div
-      className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5"
-      style={{ border: "1px solid var(--color-bt-border)" }}
+      className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+      style={{ background: "var(--color-bt-card)", borderLeft: `3px solid ${stripe}` }}
     >
-      <div className="flex min-w-0 items-center gap-1.5">
-        <Icon size={11} style={{ color: iconColor }} />
-        <span className="truncate text-[11px]" style={{ color: "var(--color-bt-text)" }}>
-          {text}
-        </span>
-      </div>
-      <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        {time}
+      <span
+        className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[10px]"
+        style={{ background: iconBg, color: iconColor }}
+      >
+        <Icon size={16} />
       </span>
+      <div className="min-w-0 flex-1">
+        <p
+          className="truncate text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          {time}
+        </p>
+        <p
+          className="truncate text-sm font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {title}
+        </p>
+      </div>
     </div>
   );
 }

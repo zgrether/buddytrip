@@ -82,15 +82,14 @@ export function ItineraryPanel({
   //      not "the owner flipped a legacy switch." Owners (below) still
   //      honor the flag for the rare in-flight legacy trip.
   if (!isOwner) {
-    if (datesSet) {
-      return <ItineraryView trip={trip} isOwner={false} />;
-    }
-    if (pollActive) {
+    // Active poll (before dates are locked) → the crew votes here.
+    if (pollActive && !datesSet) {
       return <DatePollCard trip={trip} isOwner={false} />;
     }
-    return (
-      <DimPlaceholder text="Your itinerary will appear here once the organizer locks the trip dates." />
-    );
+    // Otherwise always show the itinerary. With no content yet it renders the
+    // redesigned empty-state preview — no "organizer needs to set the dates"
+    // dead-end, which isn't the member's concern.
+    return <ItineraryView trip={trip} isOwner={false} />;
   }
 
   // ── Owner: dates set OR activated — guide and itinerary toggle ────
@@ -136,28 +135,6 @@ export function ItineraryPanel({
       onTabChange={onTabChange}
       onDismiss={() => setDismissed(true)}
     />
-  );
-}
-
-// ── DimPlaceholder ───────────────────────────────────────────────────────
-
-function DimPlaceholder({ text }: { text: string }) {
-  return (
-    <div
-      className="flex items-center gap-3 rounded-xl px-4 py-3.5"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-        opacity: 0.6,
-      }}
-    >
-      <p
-        className="text-[13px] leading-snug"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        {text}
-      </p>
-    </div>
   );
 }
 
