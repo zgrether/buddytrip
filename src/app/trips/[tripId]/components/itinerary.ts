@@ -226,8 +226,10 @@ export function buildItinerary(input: {
         date: item.check_out_time.slice(0, 10),
         time: normalizeTimeOfDay(item.check_out_time_of_day),
         title: `Check out: ${item.label || name}`,
-        subtitle,
-        address: item.address ?? null,
+        // Check-out shows just the time + name — no location/address line
+        // (and no Map link; you're leaving, not navigating there).
+        subtitle: null,
+        address: null,
       });
     }
   }

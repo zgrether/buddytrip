@@ -203,8 +203,9 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
           ~1px lower than the same eyebrow on other tabs. */}
       {/* One row: ITINERARY eyebrow + (owner) Setup-guide pill on the left,
           filters on the right (chips on desktop, a "Filter ▾" dropdown on
-          mobile). The eyebrow/pill stay even on the empty-state mockup. */}
-      <div className="flex items-center justify-between gap-3">
+          mobile). The eyebrow/pill stay even on the empty-state mockup.
+          pb-2 adds breathing room before the lodging block / day list. */}
+      <div className="flex items-center justify-between gap-3 pb-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2
             className="text-[11px] font-semibold uppercase"
