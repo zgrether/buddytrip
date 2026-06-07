@@ -756,20 +756,23 @@ function shortDate(date: string): string {
   return parseLocalDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-/** "Days 4–8 · Jun 20 – Jun 24" (drops the "Days N–N" half when day numbers
- *  aren't available, e.g. no trip start date). */
-function rangeLabel(dates: string[], dayNumOf: (d: string) => number | null): string {
+/** Split a date run into a white "Days N–M" part and a gray date part.
+ *  `days` is null when day numbers aren't available (e.g. no trip start). */
+function rangeParts(
+  dates: string[],
+  dayNumOf: (d: string) => number | null
+): { days: string | null; dates: string } {
   const first = dates[0];
   const last = dates[dates.length - 1];
   const datePart =
     first === last ? shortDate(first) : `${shortDate(first)} – ${shortDate(last)}`;
   const n0 = dayNumOf(first);
   const n1 = dayNumOf(last);
+  let days: string | null = null;
   if (n0 != null && n1 != null && n0 >= 1) {
-    const daysPart = n0 === n1 ? `Day ${n0}` : `Days ${n0}–${n1}`;
-    return `${daysPart} · ${datePart}`;
+    days = n0 === n1 ? `Day ${n0}` : `Days ${n0}–${n1}`;
   }
-  return datePart;
+  return { days, dates: datePart };
 }
 
 /** Collapsed dashed band — shared by the past-days and empty-run rows. */
@@ -795,9 +798,10 @@ function RunBand({
     >
       <span className="flex-shrink-0">{icon}</span>
       <span className="flex-1 text-[12.5px]">{children}</span>
+      {/* Neutral (white), not teal — these bands are de-emphasized, not a CTA. */}
       <span
         className="flex flex-shrink-0 items-center gap-1 text-[11.5px] font-semibold"
-        style={{ color: "var(--color-bt-accent)" }}
+        style={{ color: "var(--color-bt-text)" }}
       >
         Show <ChevronDown size={13} />
       </span>
@@ -811,7 +815,7 @@ function CollapseControl({ label, onClick }: { label: string; onClick: () => voi
       type="button"
       onClick={onClick}
       className="flex items-center gap-1 px-1 pt-1 text-[11.5px] font-semibold"
-      style={{ color: "var(--color-bt-accent)" }}
+      style={{ color: "var(--color-bt-text)" }}
     >
       <ChevronUp size={13} /> {label}
     </button>
@@ -830,10 +834,13 @@ function PastRun({
 }) {
   const [open, setOpen] = useState(false);
   if (!open) {
+    const { days, dates: dlabel } = rangeParts(dates, dayNumOf);
     return (
       <RunBand icon={<Check size={15} style={{ color: "var(--color-bt-accent)" }} />} onClick={() => setOpen(true)}>
-        <b style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>Earlier</b> ·{" "}
-        {rangeLabel(dates, dayNumOf)} · done
+        <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
+          Earlier{days ? ` · ${days}` : ""}
+        </span>
+        {` · ${dlabel} · done`}
       </RunBand>
     );
   }
@@ -858,12 +865,16 @@ function EmptyRunBand({
 }) {
   const [open, setOpen] = useState(false);
   if (!open) {
+    const { days, dates: dlabel } = rangeParts(dates, dayNumOf);
     return (
       <RunBand
         icon={<Calendar size={15} style={{ color: "var(--color-bt-text-dim)" }} />}
         onClick={() => setOpen(true)}
       >
-        <b style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>{rangeLabel(dates, dayNumOf)}</b> · open
+        {days && (
+          <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>{days}</span>
+        )}
+        {days ? ` · ${dlabel} · open` : `${dlabel} · open`}
       </RunBand>
     );
   }
@@ -922,13 +933,12 @@ function DaySection({
   return (
     <section data-testid={`day-section-${date}`} data-today={isToday ? "true" : undefined}>
       <div className={`flex items-center gap-2 ${compact ? "mb-1" : "mb-2"}`}>
-        <p
-          className="text-[10px] font-bold uppercase tracking-widest"
-          style={{
-            color: isToday ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-          }}
-        >
-          {dayLabel}{dateLabel}
+        {/* Day # gray, date white; TODAY (teal badge) carries the emphasis. */}
+        <p className="text-[10px] font-bold uppercase tracking-widest">
+          {dayLabel && (
+            <span style={{ color: "var(--color-bt-text-dim)" }}>{dayLabel}</span>
+          )}
+          <span style={{ color: "var(--color-bt-text)" }}>{dateLabel}</span>
         </p>
         {isToday && (
           <span
