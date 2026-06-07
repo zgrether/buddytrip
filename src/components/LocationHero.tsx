@@ -81,14 +81,19 @@ export function LocationHero({
       style={isDark ? darkStyle : lightStyle}
       data-testid="location-hero"
     >
-      {/* Absolute top-right action slot — sits above all content, doesn't affect layout. */}
+      {/* Absolute top-right action slot — sits above all content, doesn't affect layout.
+          right-4 aligns the gear with the px-4 content padding below. */}
       {topRightAction && (
-        <div className="absolute right-3 top-3 z-20">
+        <div className="absolute right-4 top-3 z-20">
           {topRightAction}
         </div>
       )}
       <div className="relative z-10">
-        <div className="p-3">
+        {/* px-4 (16px) ≥ the card's rounded-2xl corner radius so the title /
+            location clear the corner curve instead of reading tight against it
+            (most visible on the non-owner view, no badge/gear buffer). py-3
+            keeps the hero vertically compact. */}
+        <div className="px-4 py-3">
         {/* Top block: title / location / dates. The state watermark is
             vertically centered within this block so it doesn't shift based on
             whether content (e.g. the countdown bar) is rendered below. */}
