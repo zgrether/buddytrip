@@ -6,11 +6,11 @@ import { middleware } from "./trpc";
 // Role hierarchy
 // ---------------------------------------------------------------------------
 
-export type TripRole = "Owner" | "Planner" | "Member";
+export type TripRole = "Owner" | "Organizer" | "Member";
 
 const ROLE_LEVEL: Record<TripRole, number> = {
   Owner: 3,
-  Planner: 2,
+  Organizer: 2,
   Member: 1,
 };
 
@@ -47,7 +47,7 @@ export const requireTripMember = middleware(async ({ ctx, getRawInput, next }) =
 // requireTripRole(minRole)
 //
 // Factory — returns middleware that checks the user's trip role is at least
-// `minRole` in the hierarchy: Owner > Planner > Member.
+// `minRole` in the hierarchy: Owner > Organizer > Member.
 //
 // Must be chained AFTER authedProcedure (ctx.user is non-null).
 // Reads tripId from rawInput, same as requireTripMember.

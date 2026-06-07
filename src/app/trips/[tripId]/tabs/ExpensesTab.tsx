@@ -30,7 +30,7 @@ export function ExpensesTab({ trip, canEdit, isOwner }: TabProps) {
   const openAdd = () => setAddOpen(true);
 
   // Anyone can log a receipt (expenses.create is requireTripMember, not
-  // Planner), so the header pill isn't gated by canEdit. On the empty
+  // Organizer), so the header pill isn't gated by canEdit. On the empty
   // state the boosted rail composer is the primary CTA, so the redundant
   // header pill only appears once there's at least one receipt.
   const showHeaderAction = expenses.length > 0;

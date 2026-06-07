@@ -7,7 +7,7 @@ interface RoleBadgeProps {
 }
 
 // Owner amber · Organizer teal · Member: no badge.
-// DB stores 'Planner'; displays as 'Organizer' per CLAUDE.md rule 7.
+// DB stores 'Organizer'; displays as 'Organizer' per CLAUDE.md rule 7.
 // Matches the canonical RolePill in CrewTab.tsx (plain text, no crown).
 const CONFIG: Record<Exclude<TripRole, "Member">, { label: string; bg: string; color: string; border: string }> = {
   Owner: {
@@ -16,7 +16,7 @@ const CONFIG: Record<Exclude<TripRole, "Member">, { label: string; bg: string; c
     color: "var(--color-bt-owner)",
     border: "var(--color-bt-warning-border)",
   },
-  Planner: {
+  Organizer: {
     label: "Organizer",
     bg: "var(--color-bt-accent-faint)",
     color: "var(--color-bt-accent)",

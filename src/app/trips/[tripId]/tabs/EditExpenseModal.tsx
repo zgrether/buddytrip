@@ -26,7 +26,7 @@ export function EditExpenseModal({
   tripId: string;
   /** Owner — can edit splits/fields (expenses.updateSplits is Owner-only). */
   isOwner: boolean;
-  /** Owner or Planner — can delete the receipt (expenses.remove is Planner+). */
+  /** Owner or Organizer — can delete the receipt (expenses.remove is Organizer+). */
   canDelete: boolean;
   onClose: () => void;
 }) {

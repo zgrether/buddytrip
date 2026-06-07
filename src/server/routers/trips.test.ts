@@ -36,7 +36,7 @@ describe("trips router", () => {
   });
 
   it("setup — add planner and member", async () => {
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
   });
 
@@ -146,7 +146,7 @@ describe("trips router", () => {
     const trip = await caller.trips.create({
       id,
       title: "Coplanners Trip",
-      coplanners: [{ userId: planner.id, role: "Planner" }],
+      coplanners: [{ userId: planner.id, role: "Organizer" }],
     });
     ctx.trackTrip(id);
     expect(trip.title).toBe("Coplanners Trip");
@@ -158,7 +158,7 @@ describe("trips router", () => {
       .eq("trip_id", id);
     const plannerMember = members?.find((m) => m.user_id === planner.id);
     expect(plannerMember).toBeTruthy();
-    expect(plannerMember!.role).toBe("Planner");
+    expect(plannerMember!.role).toBe("Organizer");
   });
 
   // renameTripName
@@ -170,8 +170,8 @@ describe("trips router", () => {
 
   it("renameTripName — planner can rename", async () => {
     const caller = ctx.callerAs("planner");
-    const result = await caller.trips.renameTripName({ tripId, name: "Planner Renamed" });
-    expect(result.name).toBe("Planner Renamed");
+    const result = await caller.trips.renameTripName({ tripId, name: "Organizer Renamed" });
+    expect(result.name).toBe("Organizer Renamed");
   });
 
   it("renameTripName — member cannot rename", async () => {
@@ -196,7 +196,7 @@ describe("trips router", () => {
       .in("user_id", [ctx.user.id, member.id]);
     const oldOwner = rows?.find((r) => r.user_id === ctx.user.id);
     const newOwner = rows?.find((r) => r.user_id === member.id);
-    expect(oldOwner?.role).toBe("Planner");
+    expect(oldOwner?.role).toBe("Organizer");
     expect(newOwner?.role).toBe("Owner");
 
     // Transfer back so subsequent tests work (owner is now the member user)
@@ -295,7 +295,7 @@ describe("trips router — destination model", () => {
   });
 
   it("changeDestination — planner can change once a destination is locked", async () => {
-    await ctx.addTripMember(stageTrip, "planner", "Planner");
+    await ctx.addTripMember(stageTrip, "planner", "Organizer");
     const caller = ctx.callerAs("planner");
     const result = await caller.trips.changeDestination({
       tripId: stageTrip,

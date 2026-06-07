@@ -52,7 +52,7 @@ export const teamsRouter = router({
         colorDim: z.string().min(1).max(20),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: inserted, error: insertErr } = await ctx.supabase
         .from("teams")
@@ -103,7 +103,7 @@ export const teamsRouter = router({
         colorDim: z.string().min(1).max(20).optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) patch.name = input.name;

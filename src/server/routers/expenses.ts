@@ -49,7 +49,7 @@ export const expensesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // create — Owner or Planner (canEdit)
+  // create — Owner or Organizer (canEdit)
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
@@ -235,11 +235,11 @@ export const expensesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner or Planner (canEdit)
+  // remove — Owner or Organizer (canEdit)
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), expenseId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Delete splits first
       await ctx.supabase

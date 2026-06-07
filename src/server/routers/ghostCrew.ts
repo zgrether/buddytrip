@@ -20,7 +20,7 @@ export const ghostCrewRouter = router({
         tripId: z.string(),
         name: z.string().min(1).max(100),
         email: z.string().email().optional(),
-        role: z.enum(["Planner", "Member"]).default("Member"),
+        role: z.enum(["Organizer", "Member"]).default("Member"),
       })
     )
     .use(requireTripRole("Owner"))

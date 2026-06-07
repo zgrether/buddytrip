@@ -9,7 +9,7 @@ describe("ideas router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Ideas Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
   });
 

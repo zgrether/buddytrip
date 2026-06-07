@@ -11,7 +11,7 @@ import { trpc } from "@/lib/trpc-client";
 // ── AddOrganizerComposer ──────────────────────────────────────────────────
 // Mirrors CrewTab's AddCrewComposer chrome exactly, with two differences:
 // email is REQUIRED (with the same live validation as the edit-crew drawer),
-// and anyone added here lands as an Organizer (role: "Planner") rather than a
+// and anyone added here lands as an Organizer (role: "Organizer") rather than a
 // plain Member. Owner-only — gated by the caller.
 
 export function AddOrganizerComposer({ tripId }: { tripId: string }) {
@@ -55,7 +55,7 @@ export function AddOrganizerComposer({ tripId }: { tripId: string }) {
       tripId,
       name: derivedName,
       email: trimmedEmail,
-      role: "Planner",
+      role: "Organizer",
     });
   };
 

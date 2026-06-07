@@ -276,8 +276,8 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
   // steady-state card (Organizer state-card + Demote button, or
   // Member + Make-organizer button).
   const [recentRoleChange, setRecentRoleChange] = useState<{
-    toRole: "Planner" | "Member";
-    fromRole: "Planner" | "Member";
+    toRole: "Organizer" | "Member";
+    fromRole: "Organizer" | "Member";
   } | null>(null);
 
   useEffect(() => {
@@ -288,14 +288,14 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
 
   const handleMakeOrganizer = () => {
     if (!member.user_id) return;
-    updateRole.mutate({ tripId, userId: member.user_id, role: "Planner" });
-    setRecentRoleChange({ toRole: "Planner", fromRole: "Member" });
+    updateRole.mutate({ tripId, userId: member.user_id, role: "Organizer" });
+    setRecentRoleChange({ toRole: "Organizer", fromRole: "Member" });
   };
 
   const handleRemoveOrganizer = () => {
     if (!member.user_id) return;
     updateRole.mutate({ tripId, userId: member.user_id, role: "Member" });
-    setRecentRoleChange({ toRole: "Member", fromRole: "Planner" });
+    setRecentRoleChange({ toRole: "Member", fromRole: "Organizer" });
   };
 
   const handleUndoRoleChange = () => {
@@ -310,7 +310,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
 
   // ── Access (role) display — pill in the group header, description +
   //    a single change button below. Owner is never editable here. ─────────
-  const isOrganizer = member.role === "Planner";
+  const isOrganizer = member.role === "Organizer";
   const roleBadge = isOwnerRow
     ? { label: "Owner", color: "var(--color-bt-owner)", bg: "transparent", border: "1px solid var(--color-bt-owner)" }
     : isOrganizer
@@ -452,7 +452,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
                 {nickname || member.displayName || "Untitled person"}
               </div>
               <div className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                {member.role !== "Member" && `${member.role === "Planner" ? "Organizer" : member.role} · `}
+                {member.role !== "Member" && `${member.role === "Organizer" ? "Organizer" : member.role} · `}
                 {statusLabel(status)}
               </div>
             </div>
@@ -638,7 +638,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
                 style={{ color: "var(--color-bt-accent)" }}
               >
                 <Check size={13} strokeWidth={3} />
-                {recentRoleChange.toRole === "Planner"
+                {recentRoleChange.toRole === "Organizer"
                   ? "Promoted to organizer"
                   : "Demoted to member"}
               </span>

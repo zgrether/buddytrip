@@ -536,7 +536,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
 
   // Member view sort: Owner → Organizer → Active member → Invited → Placeholder.
   const statusOrder: Record<DerivedStatus, number> = { active: 0, invited: 1, placeholder: 2 };
-  const roleOrder: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+  const roleOrder: Record<string, number> = { Owner: 0, Organizer: 1, Member: 2 };
 
   const sortedAll = [...members].sort((a, b) => {
     const aRole = roleOrder[a.role] ?? 2;
@@ -551,7 +551,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   // The current user is lifted out of the Organizers/Crew lists into the
   // dedicated YOU tile (the one place they self-serve their own travel).
   const organizers = sortedAll.filter(
-    (m) => (m.role === "Owner" || m.role === "Planner") && m.user_id !== currentUser?.id
+    (m) => (m.role === "Owner" || m.role === "Organizer") && m.user_id !== currentUser?.id
   );
   const restCrew = sortedAll.filter(
     (m) => m.role === "Member" && m.user_id !== currentUser?.id
@@ -566,7 +566,7 @@ export function CrewTab({ trip, embedded }: TabProps & { embedded?: boolean }) {
   );
 
   // ── Read-only roster view: Owner gets the management chrome below;
-  // everyone else (including Planner/Organizer) sees this read-only
+  // everyone else (including Organizer/Organizer) sees this read-only
   // list. We gate on isOwner rather than the broader canEdit because
   // crew-management privileges (add/remove/rename, role changes) are
   // intentionally Owner-only for now — Planners can edit Lodging /

@@ -15,7 +15,7 @@ describe("tripMembers router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Members Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
   }, 30_000);
 
@@ -73,9 +73,9 @@ describe("tripMembers router", () => {
     const updated = await caller.tripMembers.updateRole({
       tripId,
       userId: outsider.id,
-      role: "Planner",
+      role: "Organizer",
     });
-    expect(updated.role).toBe("Planner");
+    expect(updated.role).toBe("Organizer");
   });
 
   it("updateRole — promotion posts a system line in the Organizers chat", async () => {
@@ -90,7 +90,7 @@ describe("tripMembers router", () => {
     await owner.tripMembers.updateRole({
       tripId: freshTrip,
       userId: ctx.getUser("member").id,
-      role: "Planner",
+      role: "Organizer",
     });
 
     const planning = await owner.messages.list({
@@ -115,7 +115,7 @@ describe("tripMembers router", () => {
     const member = ctx.getUser("member");
     const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.updateRole({ tripId, userId: member.id, role: "Planner" })
+      caller.tripMembers.updateRole({ tripId, userId: member.id, role: "Organizer" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -142,7 +142,7 @@ describe("tripMembers router", () => {
   it("inviteByEmail — existing real user gets added directly", async () => {
     // Use a fresh trip so outsider isn't already a member
     const freshTripId = await ctx.createTrip("Invite Fresh Trip");
-    await ctx.addTripMember(freshTripId, "planner", "Planner");
+    await ctx.addTripMember(freshTripId, "planner", "Organizer");
     const caller = ctx.caller();
     const outsider = ctx.getUser("outsider");
     const result = await caller.tripMembers.inviteByEmail({
@@ -267,7 +267,7 @@ describe("tripMembers router — travel", () => {
     ctx = await TestContext.create();
     // Create trip and advance to going stage so travel fields are in play
     tripId = await ctx.createTrip("Travel Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
 
     // Lock a destination (moves the trip out of the idea phase) + set an
@@ -335,7 +335,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Blast Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
   }, 30_000);
 

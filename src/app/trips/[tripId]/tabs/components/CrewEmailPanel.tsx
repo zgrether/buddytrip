@@ -9,7 +9,7 @@ import { buildCannedInvitation } from "@/lib/invitationDefault";
 import { parseLocalDate } from "@/lib/dates";
 import type { TripData } from "../types";
 
-const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+const ROLE_ORDER: Record<string, number> = { Owner: 0, Organizer: 1, Member: 2 };
 
 type RecipientMember = {
   memberId: string;

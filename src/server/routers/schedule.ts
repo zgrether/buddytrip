@@ -29,7 +29,7 @@ export const scheduleRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // create — Planner+ can add schedule items
+  // create — Organizer+ can add schedule items
   // -----------------------------------------------------------------------
   create: authedProcedure
     .input(
@@ -49,7 +49,7 @@ export const scheduleRouter = router({
         teeTimes: z.array(z.string()).optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("schedule_items")
@@ -84,7 +84,7 @@ export const scheduleRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — Planner+ can edit schedule items
+  // update — Organizer+ can edit schedule items
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -103,7 +103,7 @@ export const scheduleRouter = router({
         teeTimes: z.array(z.string()).nullable().optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const update: Record<string, unknown> = {};
       if (input.title !== undefined) update.title = input.title;
@@ -154,7 +154,7 @@ export const scheduleRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // reorder — Planner+ can reorder schedule items
+  // reorder — Organizer+ can reorder schedule items
   // -----------------------------------------------------------------------
   reorder: authedProcedure
     .input(
@@ -163,7 +163,7 @@ export const scheduleRouter = router({
         itemIds: z.array(z.string()).min(1),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Update sort_order from array position. Fire all updates in parallel —
       // a drag of N items was N sequential round-trips; Promise.all collapses
@@ -190,11 +190,11 @@ export const scheduleRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Planner+ can delete schedule items
+  // remove — Organizer+ can delete schedule items
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), itemId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
         .from("schedule_items")

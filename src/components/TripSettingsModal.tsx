@@ -92,7 +92,7 @@ export function TripSettingsModal({
   useModalBackButton(onClose);
 
   const isOwner = viewerRole === "Owner";
-  const canEditPlan = viewerRole === "Owner" || viewerRole === "Planner";
+  const canEditPlan = viewerRole === "Owner" || viewerRole === "Organizer";
 
   // ── Navigation ────────────────────────────────────────────────────────
   const [view, setView] = useState<View>("menu");

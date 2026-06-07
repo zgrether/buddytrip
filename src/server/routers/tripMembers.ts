@@ -146,14 +146,14 @@ export const tripMembersRouter = router({
   //
   // Roster management is Owner-only as of Task 53. The UI gates the Crew
   // management view on `isOwner`; this middleware closes the API-level door
-  // so a Planner can't bypass the UI by calling tRPC directly.
+  // so a Organizer can't bypass the UI by calling tRPC directly.
   // -----------------------------------------------------------------------
   add: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         userId: z.string(),
-        role: z.enum(["Planner", "Member"]).default("Member"),
+        role: z.enum(["Organizer", "Member"]).default("Member"),
         status: z.enum(["draft", "in", "likely", "maybe", "out", "invited"]).default("maybe"),
       })
     )
@@ -219,7 +219,7 @@ export const tripMembersRouter = router({
       z.object({
         tripId: z.string(),
         userId: z.string(),
-        role: z.enum(["Planner", "Member"]),
+        role: z.enum(["Organizer", "Member"]),
       })
     )
     .use(requireTripRole("Owner"))
@@ -231,9 +231,9 @@ export const tripMembersRouter = router({
         });
       }
 
-      // When promoting to Planner, also mark as invited if still in draft
+      // When promoting to Organizer, also mark as invited if still in draft
       const update: Record<string, string> = { role: input.role };
-      if (input.role === "Planner") {
+      if (input.role === "Organizer") {
         const { data: current } = await ctx.supabase
           .from("trip_members")
           .select("status")
@@ -272,7 +272,7 @@ export const tripMembersRouter = router({
           tripId: ctx.tripId!,
           visibility: "planning",
           text:
-            input.role === "Planner"
+            input.role === "Organizer"
               ? `${name} is now an organizer`
               : `${name} is no longer an organizer`,
         });
@@ -303,7 +303,7 @@ export const tripMembersRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Block setting a nickname on the Owner row — Owner controls their own
       // display name through account settings. Without this guard, any
-      // Planner could rename the Owner inside the trip context.
+      // Organizer could rename the Owner inside the trip context.
       const { data: target } = await ctx.supabase
         .from("trip_members")
         .select("role")
@@ -388,7 +388,7 @@ export const tripMembersRouter = router({
       z.object({
         tripId: z.string(),
         email: z.string().email(),
-        role: z.enum(["Planner", "Member"]).default("Planner"),
+        role: z.enum(["Organizer", "Member"]).default("Organizer"),
       })
     )
     .use(requireTripRole("Owner"))

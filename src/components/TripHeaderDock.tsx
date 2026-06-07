@@ -327,7 +327,7 @@ const EmptyCta: FC<{ onClick: () => void }> = ({ onClick }) => (
 export interface TripHeaderDockProps {
   tripId: string;
   countdown: CountdownResult | null;
-  /** Owner / Planner — gates the [+] button and tile click-to-edit. */
+  /** Owner / Organizer — gates the [+] button and tile click-to-edit. */
   canEdit: boolean;
   /** Trip has start + end dates set. When false the dock is hidden entirely
    *  — tiles and the empty-CTA are suppressed until the dates bookend the

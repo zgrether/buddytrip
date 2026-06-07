@@ -1651,7 +1651,7 @@ export function CoPlannerPanel({
 }) {
   const currentUser = useCurrentUser();
   const utils = trpc.useUtils();
-  const planners = members.filter((m) => m.role === "Owner" || m.role === "Planner");
+  const planners = members.filter((m) => m.role === "Owner" || m.role === "Organizer");
 
   const demote = trpc.tripMembers.updateRole.useMutation({
     onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
@@ -1698,7 +1698,7 @@ export function CoPlannerPanel({
         })}
       </div>
 
-      {/* Add planner — reuses CrewSearchInput with Planner default */}
+      {/* Add planner — reuses CrewSearchInput with Organizer default */}
       {isOwner && (
         <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
           <p className="mb-2 text-[11px] font-medium" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -1706,7 +1706,7 @@ export function CoPlannerPanel({
           </p>
           <CrewSearchInput
             tripId={tripId}
-            defaultRole="Planner"
+            defaultRole="Organizer"
             defaultStatus="draft"
             allowInvite
             showSearchIcon
@@ -1835,7 +1835,7 @@ export default function IdeaZonePanel({
   // building blocks. `members` from tripMembers.list already matches the
   // shared Member shape, so we sort + split by role exactly like CrewTab.
   const statusOrderIZ: Record<string, number> = { active: 0, invited: 1, placeholder: 2 };
-  const roleOrderIZ: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+  const roleOrderIZ: Record<string, number> = { Owner: 0, Organizer: 1, Member: 2 };
   const membersTyped = members as Member[];
   const sortedRoster = [...membersTyped].sort((a, b) => {
     const aRole = roleOrderIZ[a.role] ?? 2;
@@ -1846,7 +1846,7 @@ export default function IdeaZonePanel({
     if (aStatus !== bStatus) return aStatus - bStatus;
     return a.displayName.localeCompare(b.displayName);
   });
-  const organizers = sortedRoster.filter((m) => m.role === "Owner" || m.role === "Planner");
+  const organizers = sortedRoster.filter((m) => m.role === "Owner" || m.role === "Organizer");
   // Crew = members who aren't an organizer or the owner. Empty by default in
   // the idea stage (everyone added here is an Organizer) — the CREW section
   // only appears once the owner demotes someone, so a demoted-but-kept member

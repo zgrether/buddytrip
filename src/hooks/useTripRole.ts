@@ -22,7 +22,7 @@ export function useTripRole(tripId: string | undefined) {
   return {
     role,
     isOwner: role === "Owner",
-    canEdit: role === "Owner" || role === "Planner",
+    canEdit: role === "Owner" || role === "Organizer",
     isMember: !!role,
     loading: isLoading,
   };

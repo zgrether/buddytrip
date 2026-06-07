@@ -10,7 +10,7 @@ describe("archivedIdeas router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Archived Ideas Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
 
     // Seed an idea on the trip to be archived.

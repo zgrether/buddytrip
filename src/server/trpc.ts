@@ -17,7 +17,7 @@ import superjson from "superjson";
  * Stays per-request — never reused across HTTP requests, never used as
  * a security shortcut beyond the lifetime of a single batch.
  */
-export type TripRoleString = "Owner" | "Planner" | "Member";
+export type TripRoleString = "Owner" | "Organizer" | "Member";
 
 /** The authenticated user the server needs, populated from locally-verified
  *  JWT claims (claims.sub / claims.email). We don't need the full Supabase

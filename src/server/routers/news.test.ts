@@ -29,7 +29,7 @@ describe("news router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("News Test");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
   });
 
@@ -142,7 +142,7 @@ describe("news router", () => {
   it("create — planner can post", async () => {
     const post = await ctx.callerAs("planner").news.create({
       tripId,
-      blocks: [{ type: "text", text: "Planner says hi" }],
+      blocks: [{ type: "text", text: "Organizer says hi" }],
     });
     expect(post.pinned).toBe(false);
   });
@@ -283,7 +283,7 @@ describe("news router", () => {
 
     beforeAll(async () => {
       drawTrip = await ctx.createTrip("Draw Test");
-      await ctx.addTripMember(drawTrip, "planner", "Planner");
+      await ctx.addTripMember(drawTrip, "planner", "Organizer");
       await ctx.addTripMember(drawTrip, "member", "Member");
       compId = await ctx.createCompetition(drawTrip);
       teamA = await ctx.createTeam(compId, "The Usual Suspects", { color: "#3b82f6" });

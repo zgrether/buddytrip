@@ -172,7 +172,7 @@ export class TestContext {
   async addTripMember(
     tripId: string,
     role: UserRole,
-    tripRole: "Owner" | "Planner" | "Member" = "Member"
+    tripRole: "Owner" | "Organizer" | "Member" = "Member"
   ) {
     const user = this.getUser(role);
     const { error } = await this.admin
@@ -185,7 +185,7 @@ export class TestContext {
   async addTripMemberById(
     tripId: string,
     userId: string,
-    tripRole: "Owner" | "Planner" | "Member" = "Member"
+    tripRole: "Owner" | "Organizer" | "Member" = "Member"
   ) {
     const { error } = await this.admin
       .from("trip_members")

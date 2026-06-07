@@ -98,9 +98,9 @@ export const tripsRouter = router({
           })
           .nullable()
           .optional(),
-        // Co-planners to add as Planner role
+        // Co-planners to add as Organizer role
         coplanners: z
-          .array(z.object({ userId: z.string(), role: z.enum(["Planner", "Member"]) }))
+          .array(z.object({ userId: z.string(), role: z.enum(["Organizer", "Member"]) }))
           .optional(),
         // Ideas to seed on the trip (user-entered + AI suggestions)
         ideas: z
@@ -248,7 +248,7 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // renameTripName — Owner or Planner can rename
+  // renameTripName — Owner or Organizer can rename
   // -----------------------------------------------------------------------
   renameTripName: authedProcedure
     .input(
@@ -257,7 +257,7 @@ export const tripsRouter = router({
         name: z.string().min(1).max(100).transform((s) => s.trim()),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("trips")
@@ -327,11 +327,11 @@ export const tripsRouter = router({
         });
       }
 
-      // Step 2: Demote current owner to Planner (self-update passes
+      // Step 2: Demote current owner to Organizer (self-update passes
       // RLS user_id = auth.uid() clause)
       const { error: demoteErr } = await ctx.supabase
         .from("trip_members")
-        .update({ role: "Planner" })
+        .update({ role: "Organizer" })
         .eq("trip_id", ctx.tripId)
         .eq("user_id", userId);
 
@@ -353,7 +353,7 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // lockDates — Owner or Planner can set dates directly (no poll)
+  // lockDates — Owner or Organizer can set dates directly (no poll)
   // -----------------------------------------------------------------------
   lockDates: authedProcedure
     .input(
@@ -366,7 +366,7 @@ export const tripsRouter = router({
         windowId: z.string().optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       if (input.startDate >= input.endDate) {
         throw new TRPCError({
@@ -460,7 +460,7 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // updateAboutMessage — Owner/Planner can update about_message once a
+  // updateAboutMessage — Owner/Organizer can update about_message once a
   // destination is locked.
   // -----------------------------------------------------------------------
   updateAboutMessage: authedProcedure
@@ -470,7 +470,7 @@ export const tripsRouter = router({
         aboutMessage: z.string().nullable(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: trip, error: fetchErr } = await ctx.supabase
         .from("trips")
@@ -506,7 +506,7 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // changeDestination — Owner/Planner can change the destination any time
+  // changeDestination — Owner/Organizer can change the destination any time
   // one is already locked (i.e. past the idea phase). Resets date poll votes
   // since dates may change with a new destination.
   // -----------------------------------------------------------------------
@@ -517,7 +517,7 @@ export const tripsRouter = router({
         destination: z.string().min(1, "Destination is required."),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // A destination must already be locked — there's nothing to "change"
       // while the trip is still an idea (use lockDestination for the first set).

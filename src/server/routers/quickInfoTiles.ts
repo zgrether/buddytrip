@@ -29,7 +29,7 @@ export const quickInfoTilesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // create — Owner / Planner (organizers can curate Quick Info per the
+  // create — Owner / Organizer (organizers can curate Quick Info per the
   // header-dock redesign; the hierarchical middleware lets Owner through too)
   // -----------------------------------------------------------------------
   create: authedProcedure
@@ -46,7 +46,7 @@ export const quickInfoTilesRouter = router({
         isAlert: z.boolean().default(false),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("quick_info_tiles")
@@ -74,7 +74,7 @@ export const quickInfoTilesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — Owner / Planner
+  // update — Owner / Organizer
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -89,7 +89,7 @@ export const quickInfoTilesRouter = router({
         isAlert: z.boolean().optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const update: Record<string, unknown> = {};
       if (input.label !== undefined) update.label = input.label;
@@ -121,11 +121,11 @@ export const quickInfoTilesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner / Planner
+  // remove — Owner / Organizer
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(z.object({ tripId: z.string(), tileId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
         .from("quick_info_tiles")
