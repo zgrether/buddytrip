@@ -50,14 +50,14 @@ function fmtDate(dateStr?: string | null): string {
 interface LodgingItemFull {
   id: string;
   type: "lodging" | "transport" | "general";
-  label: string;
-  detail?: string | null;
-  property_name?: string | null;   // sleeps count
+  title: string;
+  link?: string | null;
+  sleeps?: string | null;          // sleeps capacity, free text
   address?: string | null;
-  check_in_time?: string | null;
-  check_out_time?: string | null;
-  check_in_time_of_day?: string | null;
-  check_out_time_of_day?: string | null;
+  check_in_date?: string | null;
+  check_out_date?: string | null;
+  check_in_time?: string | null;   // clock time, HH:MM
+  check_out_time?: string | null;  // clock time, HH:MM
   transport_type?: string | null;  // platform
   total_price?: string | null;
   notes?: string | null;
@@ -84,13 +84,13 @@ function LodgingCard({
   onConfirmToggle: () => void;
 }) {
   const platform = getPlatform(item.transport_type);
-  const url = isHttpUrl(item.detail) ? item.detail! : null;
+  const url = isHttpUrl(item.link) ? item.link! : null;
   const domain = url ? extractDomainNullable(url) : null;
-  const nickname = item.label && item.label !== domain ? item.label : null;
+  const nickname = item.title && item.title !== domain ? item.title : null;
   const name = nickname ?? domain ?? "No name";
 
-  const checkIn = fmtDate(item.check_in_time);
-  const checkOut = fmtDate(item.check_out_time);
+  const checkIn = fmtDate(item.check_in_date);
+  const checkOut = fmtDate(item.check_out_date);
   const dateRange = checkIn && checkOut
     ? `${checkIn} – ${checkOut}`
     : checkIn || checkOut || null;
@@ -102,7 +102,7 @@ function LodgingCard({
   // but undated" is a dead end. Flag it so the user knows to add dates.
   // Dates needn't fall inside the trip range (pre/post-trip stays still
   // show up); they just have to exist.
-  const needsDates = confirmed && !item.check_in_time && !item.check_out_time;
+  const needsDates = confirmed && !item.check_in_date && !item.check_out_date;
 
   const price = item.total_price
     ? (/^[$€£¥]/.test(item.total_price) ? item.total_price : `$${item.total_price}`)
@@ -234,14 +234,14 @@ function LodgingCard({
             </button>
           ) : null}
         </div>
-        {(price || item.property_name) && (
+        {(price || item.sleeps) && (
           <div
             className="font-mono text-[11px]"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             {[
               price ? price : null,
-              item.property_name ? `sleeps ${item.property_name}` : null,
+              item.sleeps ? `sleeps ${item.sleeps}` : null,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -499,10 +499,10 @@ export function LodgingPanel({
   const lodgingItems = (items as LodgingItemFull[])
     .filter((i) => i.type === "lodging")
     .sort((a, b) => {
-      if (!a.check_in_time && !b.check_in_time) return 0;
-      if (!a.check_in_time) return 1;
-      if (!b.check_in_time) return -1;
-      return a.check_in_time < b.check_in_time ? -1 : 1;
+      if (!a.check_in_date && !b.check_in_date) return 0;
+      if (!a.check_in_date) return 1;
+      if (!b.check_in_date) return -1;
+      return a.check_in_date < b.check_in_date ? -1 : 1;
     });
 
   // ── Submit handlers ──────────────────────────────────────────────────
@@ -512,16 +512,16 @@ export function LodgingPanel({
     createItem.mutate({
       tripId,
       type: "lodging",
-      label: values.name.trim() || domain || "Property",
-      detail: values.url || undefined,
-      propertyName: values.sleeps.trim() || undefined,
+      title: values.name.trim() || domain || "Property",
+      link: values.url || undefined,
+      sleeps: values.sleeps.trim() || undefined,
       totalPrice: values.price.trim() || undefined,
       notes: values.notes.trim() || undefined,
       address: values.address.trim() || undefined,
-      checkInTime: values.checkIn || undefined,
-      checkOutTime: values.checkOut || undefined,
-      checkInTimeOfDay: values.checkInTimeOfDay || undefined,
-      checkOutTimeOfDay: values.checkOutTimeOfDay || undefined,
+      checkInDate: values.checkIn || undefined,
+      checkOutDate: values.checkOut || undefined,
+      checkInTime: values.checkInTimeOfDay || undefined,
+      checkOutTime: values.checkOutTimeOfDay || undefined,
       transportType: platform,
       imageUrls: values.imageUrls,
     });
@@ -534,16 +534,16 @@ export function LodgingPanel({
     updateItem.mutate({
       tripId,
       itemId: editingItem.id,
-      label: values.name.trim() || domain || "Property",
-      detail: values.url || null,
-      propertyName: values.sleeps.trim() || null,
+      title: values.name.trim() || domain || "Property",
+      link: values.url || null,
+      sleeps: values.sleeps.trim() || null,
       totalPrice: values.price.trim() || null,
       notes: values.notes.trim() || null,
       address: values.address.trim() || null,
-      checkInTime: values.checkIn || null,
-      checkOutTime: values.checkOut || null,
-      checkInTimeOfDay: values.checkInTimeOfDay || null,
-      checkOutTimeOfDay: values.checkOutTimeOfDay || null,
+      checkInDate: values.checkIn || null,
+      checkOutDate: values.checkOut || null,
+      checkInTime: values.checkInTimeOfDay || null,
+      checkOutTime: values.checkOutTimeOfDay || null,
       transportType: platform,
       imageUrls: values.imageUrls,
     });
@@ -554,7 +554,7 @@ export function LodgingPanel({
   // (the itinerary keys off dates). Confirmed-but-undated still counts as
   // an open action item, so it gates the nudge below.
   const confirmedDatedCount = lodgingItems.filter(
-    (i) => i.is_confirmed && (i.check_in_time || i.check_out_time)
+    (i) => i.is_confirmed && (i.check_in_date || i.check_out_date)
   ).length;
   const totalCount = lodgingItems.length;
 
@@ -566,8 +566,8 @@ export function LodgingPanel({
   const outOfRangeCount =
     tripStart && tripEnd
       ? lodgingItems.filter((i) => {
-          const checkIn = i.check_in_time?.slice(0, 10) ?? null;
-          const checkOut = i.check_out_time?.slice(0, 10) ?? null;
+          const checkIn = i.check_in_date?.slice(0, 10) ?? null;
+          const checkOut = i.check_out_date?.slice(0, 10) ?? null;
           if (checkIn && (checkIn < tripStart || checkIn > tripEnd)) return true;
           if (checkOut && (checkOut < tripStart || checkOut > tripEnd)) return true;
           return false;
@@ -862,19 +862,19 @@ export function LodgingPanel({
             isEditing
             showAddressAndDates
             initialValues={{
-              url: editingItem.detail?.startsWith("http") ? editingItem.detail : "",
+              url: editingItem.link?.startsWith("http") ? editingItem.link : "",
               name: (() => {
-                const domain = editingItem.detail?.startsWith("http") ? extractDomainNullable(editingItem.detail) : "";
-                return editingItem.label && editingItem.label !== domain ? editingItem.label : "";
+                const domain = editingItem.link?.startsWith("http") ? extractDomainNullable(editingItem.link) : "";
+                return editingItem.title && editingItem.title !== domain ? editingItem.title : "";
               })(),
-              sleeps: editingItem.property_name ?? "",
+              sleeps: editingItem.sleeps ?? "",
               price: editingItem.total_price ?? "",
               notes: editingItem.notes ?? "",
               address: editingItem.address ?? "",
-              checkIn: editingItem.check_in_time ?? "",
-              checkOut: editingItem.check_out_time ?? "",
-              checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
-              checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
+              checkIn: editingItem.check_in_date ?? "",
+              checkOut: editingItem.check_out_date ?? "",
+              checkInTimeOfDay: editingItem.check_in_time ?? "",
+              checkOutTimeOfDay: editingItem.check_out_time ?? "",
               imageUrls: editingItem.image_urls?.length
                 ? editingItem.image_urls
                 : editingItem.image_url
@@ -1023,19 +1023,19 @@ export function LodgingPanel({
           isEditing
           showAddressAndDates
           initialValues={{
-            url: editingItem.detail?.startsWith("http") ? editingItem.detail : "",
+            url: editingItem.link?.startsWith("http") ? editingItem.link : "",
             name: (() => {
-              const domain = editingItem.detail?.startsWith("http") ? extractDomainNullable(editingItem.detail) : "";
-              return editingItem.label && editingItem.label !== domain ? editingItem.label : "";
+              const domain = editingItem.link?.startsWith("http") ? extractDomainNullable(editingItem.link) : "";
+              return editingItem.title && editingItem.title !== domain ? editingItem.title : "";
             })(),
-            sleeps: editingItem.property_name ?? "",
+            sleeps: editingItem.sleeps ?? "",
             price: editingItem.total_price ?? "",
             notes: editingItem.notes ?? "",
             address: editingItem.address ?? "",
-            checkIn: editingItem.check_in_time ?? "",
-            checkOut: editingItem.check_out_time ?? "",
-            checkInTimeOfDay: editingItem.check_in_time_of_day ?? "",
-            checkOutTimeOfDay: editingItem.check_out_time_of_day ?? "",
+            checkIn: editingItem.check_in_date ?? "",
+            checkOut: editingItem.check_out_date ?? "",
+            checkInTimeOfDay: editingItem.check_in_time ?? "",
+            checkOutTimeOfDay: editingItem.check_out_time ?? "",
             imageUrls: editingItem.image_urls?.length
               ? editingItem.image_urls
               : editingItem.image_url

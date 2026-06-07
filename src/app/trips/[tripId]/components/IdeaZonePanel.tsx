@@ -1431,9 +1431,9 @@ function SetDestinationSheet({
               createLogistics.mutateAsync({
                 tripId,
                 type: "lodging",
-                label: opt.name,
-                propertyName: opt.sleeps != null ? String(opt.sleeps) : undefined,
-                detail: opt.url ?? undefined,
+                title: opt.name,
+                sleeps: opt.sleeps != null ? String(opt.sleeps) : undefined,
+                link: opt.url ?? undefined,
                 transportType: opt.source ?? "other",
               })
             )
