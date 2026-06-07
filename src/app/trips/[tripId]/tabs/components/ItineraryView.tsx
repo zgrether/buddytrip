@@ -803,13 +803,12 @@ function RunBand({
     >
       <span className="flex-shrink-0">{icon}</span>
       <span className="flex-1 text-[12.5px]">{children}</span>
-      {/* Gray, not teal — these bands are de-emphasized, not a CTA. */}
-      <span
-        className="flex flex-shrink-0 items-center gap-1 text-[11.5px] font-semibold"
+      {/* Just the chevron — gray, de-emphasized; it alone signals "expandable". */}
+      <ChevronDown
+        size={15}
+        className="flex-shrink-0"
         style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        Show <ChevronDown size={13} />
-      </span>
+      />
     </button>
   );
 }
