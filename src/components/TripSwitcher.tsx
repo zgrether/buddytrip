@@ -335,7 +335,6 @@ function TripSwitcherRow({
   onClick: () => void;
 }) {
   const status = getEffectiveStatus(trip);
-  const stageBadge = STAGE_BADGE_STYLES[status] ?? STAGE_BADGE_STYLES.past;
 
   // Upcoming trips show a countdown ("5 days" / "Tomorrow") instead of a static
   // "Upcoming" badge — the days-to-go is the useful glance.
@@ -426,30 +425,14 @@ function TripSwitcherRow({
         )}
       </div>
 
-      {/* Right: countdown is plain text (no badge); other stages keep a pill. */}
-      {countdownLabel ? (
-        <span
-          className="flex-shrink-0"
-          style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
-        >
-          {countdownLabel}
-        </span>
-      ) : (
-        <span
-          className="flex-shrink-0"
-          style={{
-            fontSize: 10,
-            fontWeight: 500,
-            padding: "2px 7px",
-            borderRadius: 10,
-            background: stageBadge.bg,
-            color: stageBadge.fg,
-            border: `0.5px solid ${stageBadge.border}`,
-          }}
-        >
-          {STAGE_LABELS[status]}
-        </span>
-      )}
+      {/* Right: plain text — countdown for dated trips, else the stage label
+          ("Planning" / "Idea" / etc.). No pill badge. */}
+      <span
+        className="flex-shrink-0"
+        style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
+      >
+        {countdownLabel ?? STAGE_LABELS[status]}
+      </span>
     </button>
   );
 }
@@ -520,37 +503,11 @@ function TripIcon({
   );
 }
 
-// ── Stage badge palette ───────────────────────────────────────────────────
-
-const STAGE_BADGE_STYLES: Record<
-  TripDisplayStatus,
-  { bg: string; fg: string; border: string }
-> = {
-  idea: {
-    bg: "rgba(96, 165, 250, 0.1)",
-    fg: "#60a5fa",
-    border: "rgba(96, 165, 250, 0.2)",
-  },
-  upcoming: {
-    bg: "rgba(45, 212, 191, 0.1)",
-    fg: "#2dd4bf",
-    border: "rgba(45, 212, 191, 0.2)",
-  },
-  now: {
-    bg: "rgba(45, 212, 191, 0.1)",
-    fg: "#2dd4bf",
-    border: "rgba(45, 212, 191, 0.2)",
-  },
-  past: {
-    bg: "var(--color-bt-card-raised)",
-    fg: "var(--color-bt-text-dim)",
-    border: "var(--color-bt-border)",
-  },
-};
+// ── Stage labels (plain text on the right of each row) ────────────────────
 
 const STAGE_LABELS: Record<TripDisplayStatus, string> = {
   idea: "Idea",
-  upcoming: "Upcoming",
+  upcoming: "Planning",
   now: "Now",
   past: "Past",
 };
