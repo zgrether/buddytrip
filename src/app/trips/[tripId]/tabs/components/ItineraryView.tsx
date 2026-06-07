@@ -18,11 +18,13 @@ import { addDays, differenceInDays } from "@/lib/tripStatus";
 import {
   buildItinerary,
   groupByDay,
+  summarizeLodging,
   todayLocalISO,
   type ItineraryEvent,
   type ItineraryLogisticsItem,
   type ItineraryScheduleItem,
   type ItineraryTripMember,
+  type LodgingStay,
 } from "../../components/itinerary";
 import type { TripData } from "../types";
 import { DOMAIN_COLORS, type Domain } from "@/lib/domainColors";
@@ -100,6 +102,14 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
     return map;
   }, [events]);
 
+  // Lodging renders as a block above the day list (not inline), so summarize
+  // confirmed properties by check-in date. The inline day rows below exclude
+  // lodging-kind events.
+  const lodgingStays = useMemo(
+    () => summarizeLodging(logisticsItems as unknown as ItineraryLogisticsItem[]),
+    [logisticsItems],
+  );
+
   // ── Day range: trip.start_date → trip.end_date inclusive, PLUS any
   //               event dates that fall outside that range. Dropping
   //               events that fall on the night-before-arrival or the
@@ -153,10 +163,16 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
   };
 
   // Per-category counts drive whether each filter pill is shown.
-  // Don't tease a filter the user can't actually use.
-  const hasLodging = events.some((e) => categoryOf(e) === "lodging");
+  // Don't tease a filter the user can't actually use. Lodging now comes from
+  // the summarized block (not inline events).
+  const hasLodging = lodgingStays.length > 0;
   const hasTravel = events.some((e) => categoryOf(e) === "travel");
   const hasEvents = events.some((e) => categoryOf(e) === "event");
+
+  // The lodging block shows only under All or Lodging.
+  const showLodgingBlock =
+    lodgingStays.length > 0 &&
+    (activeFilters.has("all") || activeFilters.has("lodging"));
 
   // Show pill row only if there's >1 category to filter between. Travel
   // arrivals weave in from crew members' own travel plans (Crew tab), so the
@@ -240,6 +256,8 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
         )}
       </div>
 
+      {showLodgingBlock && <LodgingBlock stays={lodgingStays} />}
+
       {isEmpty ? (
         <EmptyItineraryState onCancel={onCancel} />
       ) : (
@@ -256,7 +274,9 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
                 date={date}
                 dayNumber={dayNumber}
                 isToday={date === today}
-                events={(eventsByDate.get(date) ?? []).filter(showEvent)}
+                events={(eventsByDate.get(date) ?? [])
+                  .filter((e) => categoryOf(e) !== "lodging")
+                  .filter(showEvent)}
               />
             );
           })}
@@ -390,6 +410,85 @@ function SkeletonRow({
       <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
         {time}
       </span>
+    </div>
+  );
+}
+
+// ── LodgingBlock ──────────────────────────────────────────────────────────
+// Horizontal flex-wrap row of confirmed properties, ordered by check-in,
+// sitting under the ITINERARY/filters row (no "where we're staying" label).
+// Each tile: planning-blue home icon, name, "Jun 17 – 19 · 2 nights" meta,
+// and a Directions button (collapses to the pin icon on mobile). Matches the
+// design source's `.hy-prop` recipe (planning-tinted via color-mix on tokens).
+
+const PLANNING_TILE_BG = "color-mix(in srgb, var(--color-bt-planning) 18%, var(--color-bt-card))";
+const PLANNING_BTN_BG = "color-mix(in srgb, var(--color-bt-planning) 13%, var(--color-bt-card))";
+const PLANNING_BTN_BORDER = "color-mix(in srgb, var(--color-bt-planning) 24%, transparent)";
+
+/** "Jun 17 – 19 · 2 nights" — single month collapses to one label; nights
+ *  appended only when a check-out date is known. */
+function formatStayMeta(stay: LodgingStay): string {
+  const ci = parseLocalDate(stay.checkIn);
+  const ciMonth = ci.toLocaleDateString("en-US", { month: "short" });
+  if (!stay.checkOut) return `${ciMonth} ${ci.getDate()}`;
+  const co = parseLocalDate(stay.checkOut);
+  const coMonth = co.toLocaleDateString("en-US", { month: "short" });
+  const range =
+    ciMonth === coMonth
+      ? `${ciMonth} ${ci.getDate()} – ${co.getDate()}`
+      : `${ciMonth} ${ci.getDate()} – ${coMonth} ${co.getDate()}`;
+  const nights =
+    stay.nights != null ? ` · ${stay.nights} night${stay.nights === 1 ? "" : "s"}` : "";
+  return `${range}${nights}`;
+}
+
+function LodgingBlock({ stays }: { stays: LodgingStay[] }) {
+  return (
+    <div className="flex flex-wrap gap-2.5">
+      {stays.map((stay) => (
+        <div
+          key={stay.id}
+          className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+          style={{
+            flex: "1 1 240px",
+            minWidth: 0,
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <span
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
+            style={{ color: "var(--color-bt-planning)", background: PLANNING_TILE_BG }}
+          >
+            <Home size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {stay.name}
+            </p>
+            <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              {formatStayMeta(stay)}
+            </p>
+          </div>
+          {stay.address && (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stay.address)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-shrink-0 items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[12.5px] font-semibold"
+              style={{
+                color: "var(--color-bt-planning)",
+                background: PLANNING_BTN_BG,
+                border: `1px solid ${PLANNING_BTN_BORDER}`,
+              }}
+              aria-label={`Directions to ${stay.name}`}
+            >
+              <MapPin size={13} />
+              <span className="hidden sm:inline">Directions</span>
+            </a>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

@@ -268,6 +268,63 @@ export function buildItinerary(input: {
   return events;
 }
 
+// ── Lodging summary (top block) ────────────────────────────────────────────
+//
+// Presentation helper for the itinerary's lodging block (rendered above the
+// day list, NOT inline). One entry per confirmed lodging property with a
+// check-in date, ordered by check-in. buildItinerary still emits the inline
+// lodging check-in/out events for other consumers; the home itinerary view
+// just renders this block instead.
+
+export interface LodgingStay {
+  id: string;
+  name: string;
+  address: string | null;
+  /** YYYY-MM-DD */
+  checkIn: string;
+  /** YYYY-MM-DD, or null when no check-out date is set. */
+  checkOut: string | null;
+  /** check-out − check-in in days, or null when check-out is unknown. */
+  nights: number | null;
+}
+
+/** Whole-day difference between two YYYY-MM-DD dates (TZ-naive, noon-anchored). */
+function nightsBetween(checkIn: string, checkOut: string): number {
+  const [y1, m1, d1] = checkIn.split("-").map((n) => parseInt(n, 10));
+  const [y2, m2, d2] = checkOut.split("-").map((n) => parseInt(n, 10));
+  const a = new Date(y1, m1 - 1, d1, 12, 0, 0, 0).getTime();
+  const b = new Date(y2, m2 - 1, d2, 12, 0, 0, 0).getTime();
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+export function summarizeLodging(
+  items: ItineraryLogisticsItem[]
+): LodgingStay[] {
+  const stays: LodgingStay[] = [];
+  for (const item of items) {
+    if (item.type !== "lodging") continue;
+    if (!item.is_confirmed) continue;
+    if (!isDateString(item.check_in_time)) continue;
+
+    const checkIn = item.check_in_time.slice(0, 10);
+    const checkOut = isDateString(item.check_out_time)
+      ? item.check_out_time.slice(0, 10)
+      : null;
+
+    stays.push({
+      id: item.id,
+      // `||` (not `??`) so an empty-string name/label falls through to the next.
+      name: item.property_name || item.label || "Lodging",
+      address: item.address ?? null,
+      checkIn,
+      checkOut,
+      nights: checkOut ? nightsBetween(checkIn, checkOut) : null,
+    });
+  }
+  stays.sort((a, b) => (a.checkIn < b.checkIn ? -1 : a.checkIn > b.checkIn ? 1 : 0));
+  return stays;
+}
+
 // ── Sorting ───────────────────────────────────────────────────────────────
 
 const KIND_PRIORITY: Record<ItineraryEvent["kind"], number> = {

@@ -6,6 +6,7 @@ import {
   isHappeningNow,
   todayLocalISO,
   dayNumber,
+  summarizeLodging,
   type ItineraryScheduleItem,
   type ItineraryLogisticsItem,
   type ItineraryTripMember,
@@ -395,5 +396,67 @@ describe("dayNumber", () => {
 
   it("returns null when tripStart is missing", () => {
     expect(dayNumber("2026-06-15", null)).toBeNull();
+  });
+});
+
+// ── summarizeLodging (top block) ──────────────────────────────────────────
+
+describe("summarizeLodging", () => {
+  it("summarizes a confirmed lodging item with computed nights", () => {
+    const stays = summarizeLodging([
+      lodgingItem({
+        id: "l1",
+        property_name: "Beach House",
+        check_in_time: "2026-06-17",
+        check_out_time: "2026-06-19",
+      }),
+    ]);
+    expect(stays).toEqual([
+      {
+        id: "l1",
+        name: "Beach House",
+        address: "1 Ocean Dr",
+        checkIn: "2026-06-17",
+        checkOut: "2026-06-19",
+        nights: 2,
+      },
+    ]);
+  });
+
+  it("orders multiple properties by check-in date (handles mid-trip moves)", () => {
+    const stays = summarizeLodging([
+      lodgingItem({ id: "cabin", property_name: "Lake Cabin", check_in_time: "2026-06-19", check_out_time: "2026-06-21" }),
+      lodgingItem({ id: "beach", property_name: "Beach House", check_in_time: "2026-06-17", check_out_time: "2026-06-19" }),
+    ]);
+    expect(stays.map((s) => s.id)).toEqual(["beach", "cabin"]);
+  });
+
+  it("returns null nights when there's no check-out date", () => {
+    const stays = summarizeLodging([
+      lodgingItem({ id: "l1", property_name: "Beach House", check_out_time: null }),
+    ]);
+    expect(stays[0].checkOut).toBeNull();
+    expect(stays[0].nights).toBeNull();
+  });
+
+  it("skips non-lodging, unconfirmed, and check-in-less items", () => {
+    const stays = summarizeLodging([
+      lodgingItem({ id: "ok", property_name: "Keep" }),
+      lodgingItem({ id: "unconf", is_confirmed: false }),
+      lodgingItem({ id: "nodate", check_in_time: null }),
+      lodgingItem({ id: "transport", type: "transport" }),
+    ]);
+    expect(stays.map((s) => s.id)).toEqual(["ok"]);
+  });
+
+  it("falls back name: property_name → label → 'Lodging'", () => {
+    const [a, b, c] = summarizeLodging([
+      lodgingItem({ id: "a", property_name: "Named", label: "L" }),
+      lodgingItem({ id: "b", property_name: null, label: "LabelOnly" }),
+      lodgingItem({ id: "c", property_name: null, label: "" }),
+    ]);
+    expect(a.name).toBe("Named");
+    expect(b.name).toBe("LabelOnly");
+    expect(c.name).toBe("Lodging");
   });
 });
