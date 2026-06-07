@@ -149,6 +149,17 @@ export function TripSettingsModal({
   const renameMutation = trpc.trips.renameTripName.useMutation();
   const changeDestinationMutation = trpc.trips.changeDestination.useMutation();
   const lockDatesMutation = trpc.trips.lockDates.useMutation();
+  // Clear dates → null start/end (and drop the now-empty date_window). This is
+  // the plain "reset dates" mechanism; it doesn't reopen a poll or surface any
+  // poll UI.
+  const clearDatesMutation = trpc.datePoll.unlock.useMutation({
+    onSuccess: () => {
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      utils.datePoll.get.invalidate({ tripId });
+      setDatesRange({ start: null, end: null });
+    },
+  });
 
   const { data: members = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
@@ -406,35 +417,52 @@ export function TripSettingsModal({
                   />
                   <div className="h-3.5" />
                   <FieldLabel>Dates</FieldLabel>
-                  <button
-                    data-testid="settings-dates-chip"
-                    onClick={openDates}
-                    className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2.5"
-                    style={{
-                      background: "var(--color-bt-base)",
-                      border: "1px solid var(--color-bt-border)",
-                    }}
-                  >
-                    <CalendarIcon size={15} style={{ color: "var(--color-bt-accent)" }} />
-                    <span
-                      className="flex-1 text-left text-sm font-semibold"
-                      style={{ color: "var(--color-bt-text)" }}
+                  <div className="flex items-center gap-2">
+                    <button
+                      data-testid="settings-dates-chip"
+                      onClick={openDates}
+                      className="flex flex-1 items-center gap-2.5 rounded-[10px] px-3 py-2.5"
+                      style={{
+                        background: "var(--color-bt-base)",
+                        border: "1px solid var(--color-bt-border)",
+                      }}
                     >
-                      {dateRangeLabel || "Set dates"}
-                    </span>
-                    {tripNights != null && (
+                      <CalendarIcon size={15} style={{ color: "var(--color-bt-accent)" }} />
                       <span
-                        className="rounded-full px-2 py-0.5 font-mono text-[11px]"
+                        className="flex-1 text-left text-sm font-semibold"
+                        style={{ color: "var(--color-bt-text)" }}
+                      >
+                        {dateRangeLabel || "Set dates"}
+                      </span>
+                      {tripNights != null && (
+                        <span
+                          className="rounded-full px-2 py-0.5 font-mono text-[11px]"
+                          style={{
+                            color: "var(--color-bt-accent)",
+                            background: "var(--color-bt-accent-faint)",
+                          }}
+                        >
+                          {tripNights} {tripNights === 1 ? "night" : "nights"}
+                        </span>
+                      )}
+                      <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
+                    </button>
+                    {!!(trip?.start_date && trip?.end_date) && (
+                      <button
+                        data-testid="settings-clear-dates-btn"
+                        onClick={() => clearDatesMutation.mutate({ tripId })}
+                        disabled={clearDatesMutation.isPending}
+                        className="flex-shrink-0 rounded-[10px] px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
                         style={{
-                          color: "var(--color-bt-accent)",
-                          background: "var(--color-bt-accent-faint)",
+                          background: "transparent",
+                          border: "1px solid var(--color-bt-border)",
+                          color: "var(--color-bt-text-dim)",
                         }}
                       >
-                        {tripNights} {tripNights === 1 ? "night" : "nights"}
-                      </span>
+                        {clearDatesMutation.isPending ? "…" : "Clear"}
+                      </button>
                     )}
-                    <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
-                  </button>
+                  </div>
 
                   {destChanged && (
                     <div
