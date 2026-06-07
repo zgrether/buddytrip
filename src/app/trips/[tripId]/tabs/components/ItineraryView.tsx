@@ -34,7 +34,6 @@ import {
   type LodgingStay,
 } from "../../components/itinerary";
 import type { TripData } from "../types";
-import { DOMAIN_COLORS, type Domain } from "@/lib/domainColors";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -675,14 +674,15 @@ function LodgingBlock({ stays }: { stays: LodgingStay[] }) {
 
 type PillTone = "all" | "lodging" | "travel" | "events";
 
-// Each filter pill borrows its content area's domain color (item accents),
-// so the itinerary filters read in the same hues as their source tabs.
-// "All" uses Home teal — the itinerary lives on the Home tab.
-const PILL_DOMAIN: Record<PillTone, Domain> = {
-  all: "home",
-  lodging: "lodging",
-  travel: "travel",
-  events: "events",
+// Each filter pill uses its CATEGORY's item color (the same tokens EventCard
+// stripes use), so the filters read in the exact hues of the items they show.
+// (The global DOMAIN_COLORS map is temporarily all-teal app-wide, so we map
+// locally here instead.) "All" = teal (the itinerary's Home hue).
+const FILTER_COLORS: Record<PillTone, { color: string; faint: string }> = {
+  all: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
+  lodging: { color: "var(--color-bt-planning)", faint: "var(--color-bt-blue-bg)" },
+  travel: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
+  events: { color: "var(--color-bt-ready)", faint: "var(--color-bt-ready-bg)" },
 };
 
 function FilterPill({
@@ -696,7 +696,7 @@ function FilterPill({
   active: boolean;
   onClick: () => void;
 }) {
-  const { color, faint } = DOMAIN_COLORS[PILL_DOMAIN[tone]];
+  const { color, faint } = FILTER_COLORS[tone];
   return (
     <button
       type="button"
@@ -790,7 +790,7 @@ function FilterDropdown({
     ...(hasTravel ? [{ k: "travel" as const, label: "Travel", tone: "travel" as const }] : []),
     ...(hasEvents ? [{ k: "events" as const, label: "Events", tone: "events" as const }] : []),
   ];
-  const dotOf = (tone: PillTone) => DOMAIN_COLORS[PILL_DOMAIN[tone]].color;
+  const dotOf = (tone: PillTone) => FILTER_COLORS[tone].color;
   const cur = options.find((o) => o.k === filter) ?? options[0];
 
   return (
