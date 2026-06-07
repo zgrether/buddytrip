@@ -278,20 +278,28 @@ const KIND_PRIORITY: Record<ItineraryEvent["kind"], number> = {
 };
 
 function compareEvents(a: ItineraryEvent, b: ItineraryEvent): number {
+  // 1. Day is the only GLOBAL sort key.
   if (a.date !== b.date) return a.date < b.date ? -1 : 1;
 
-  // Null times sort *after* timed events on the same day.
+  // 2. Within a day, group by kind: lodging-checkout, arrival, lodging-checkin,
+  //    then schedule. Arrivals + check-in surface above the day's agenda body;
+  //    check-out closes the prior stay first.
+  const kindDelta = KIND_PRIORITY[a.kind] - KIND_PRIORITY[b.kind];
+  if (kindDelta !== 0) return kindDelta;
+
+  // 3a. Schedule items follow Agenda's drag order (`sort_order`). `time` is
+  //     DISPLAY-ONLY and never reorders them — a 6pm item stays below a 7pm
+  //     item if that's how the owner arranged them. Untimed-but-dated items
+  //     keep their sort_order slot too (they are NOT pushed to the end).
+  if (a.kind === "schedule" && b.kind === "schedule") {
+    return a.sortOrder - b.sortOrder;
+  }
+
+  // 3b. Arrivals / lodging within the same kind order by time (untimed last).
   if (a.time !== b.time) {
     if (a.time === null) return 1;
     if (b.time === null) return -1;
     return a.time < b.time ? -1 : 1;
-  }
-
-  const kindDelta = KIND_PRIORITY[a.kind] - KIND_PRIORITY[b.kind];
-  if (kindDelta !== 0) return kindDelta;
-
-  if (a.kind === "schedule" && b.kind === "schedule") {
-    return a.sortOrder - b.sortOrder;
   }
   return 0;
 }

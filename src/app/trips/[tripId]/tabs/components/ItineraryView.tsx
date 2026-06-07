@@ -523,18 +523,19 @@ function DaySection({
 function EventCard({ event }: { event: ItineraryEvent }) {
   const category = categoryOf(event);
 
-  // Golf: show tee times or "Walk on"; everything else falls back to
-  // the stored scheduled_time or "All day".
+  // Golf: show tee times or "Walk on"; everything else shows the stored
+  // time, or "Anytime" when untimed-but-dated (time is display-only — the
+  // item's slot is set by Agenda drag order, not the clock).
   const timeLabel =
     event.kind === "schedule" && event.itemType === "golf"
       ? event.teeTimes === null || event.teeTimes === undefined
-        ? "All day"
+        ? "Anytime"
         : event.teeTimes.length === 0
         ? "Walk on"
         : event.teeTimes.map(fmtTime12).join(" · ")
       : event.time
       ? fmtTime12(event.time)
-      : "All day";
+      : "Anytime";
 
   // Left accent stripe — neutral card with a 3px colored left border so
   // each category is scannable without the heavy full-background tint.
