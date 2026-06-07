@@ -168,9 +168,6 @@ export function TripSettingsModal({
   const transferCandidates = members.filter(
     (m) => m.role !== "Owner" && !m.isGuest && m.status === "in",
   );
-  const selectedMemberName = transferCandidates.find(
-    (m) => m.user_id === selectedNewOwner,
-  )?.displayName;
 
   const transferMutation = trpc.trips.transferOwnership.useMutation({
     onSuccess: () => {
@@ -270,6 +267,10 @@ export function TripSettingsModal({
 
   const isMenu = view === "menu";
   const slideClass = dir === "right" ? "ts-slide-right" : "ts-slide-left";
+  // Footer (right-aligned Cancel + primary, divider above) for the editable
+  // detail screens. Confirm screens keep their own centered destructive layout.
+  const showFooter =
+    view === "details" || view === "dates" || view === "transfer";
 
   return (
     <ScrollLock>
@@ -286,7 +287,7 @@ export function TripSettingsModal({
             boxShadow: "var(--shadow-floating, 0 24px 60px rgba(0,0,0,0.45))",
             minHeight: 320,
             maxHeight: "85vh",
-            overflow: "visible",
+            overflow: "hidden",
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -299,7 +300,7 @@ export function TripSettingsModal({
               <button
                 onClick={back}
                 aria-label="Back"
-                className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[9px]"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
                 style={{
                   background: "var(--color-bt-card-raised)",
                   color: "var(--color-bt-text)",
@@ -318,7 +319,7 @@ export function TripSettingsModal({
               onClick={onClose}
               aria-label="Close"
               data-testid="settings-close-btn"
-              className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[9px]"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--color-bt-hover)]"
               style={{
                 background: "var(--color-bt-card-raised)",
                 color: "var(--color-bt-text-dim)",
@@ -332,7 +333,7 @@ export function TripSettingsModal({
           {/* overflow-x-hidden clips the slide-in transform (translateX 28px)
               so it doesn't briefly widen the page / flash a horizontal
               scrollbar; overflow-y-auto still scrolls tall detail screens. */}
-          <div className="relative flex-1 overflow-x-hidden overflow-y-auto rounded-b-2xl">
+          <div className="relative flex-1 overflow-x-hidden overflow-y-auto">
             <div key={view} className={`p-4 ${slideClass}`}>
               {/* ── Menu ──────────────────────────────────────────── */}
               {view === "menu" && (
@@ -423,7 +424,7 @@ export function TripSettingsModal({
                       onClick={openDates}
                       className="flex flex-1 items-center gap-2.5 rounded-[10px] px-3 py-2.5"
                       style={{
-                        background: "var(--color-bt-base)",
+                        background: "var(--color-bt-card-raised)",
                         border: "1px solid var(--color-bt-border)",
                       }}
                     >
@@ -487,32 +488,12 @@ export function TripSettingsModal({
                     </div>
                   )}
 
-                  <div className="h-4" />
-                  <PrimaryButton
-                    testId="settings-save-details-btn"
-                    disabled={!detailsDirty || detailsPending}
-                    onClick={saveDetails}
-                  >
-                    {detailsPending ? "Saving…" : "Save changes"}
-                  </PrimaryButton>
-                  <GhostButton onClick={back}>Cancel</GhostButton>
                 </>
               )}
 
               {/* ── Trip dates ────────────────────────────────────── */}
               {view === "dates" && (
-                <>
-                  <RangeCalendar value={datesRange} onChange={setDatesRange} />
-                  <div className="h-3" />
-                  <PrimaryButton
-                    testId="settings-set-dates-btn"
-                    disabled={!datesValid || !datesChanged || lockDatesMutation.isPending}
-                    onClick={saveDates}
-                  >
-                    {lockDatesMutation.isPending ? "Saving…" : "Set dates"}
-                  </PrimaryButton>
-                  <GhostButton onClick={back}>Cancel</GhostButton>
-                </>
+                <RangeCalendar value={datesRange} onChange={setDatesRange} />
               )}
 
               {/* ── Transfer ownership ────────────────────────────── */}
@@ -574,22 +555,6 @@ export function TripSettingsModal({
                       );
                     })
                   )}
-                  <div className="h-2" />
-                  <PrimaryButton
-                    testId="settings-confirm-transfer-btn"
-                    disabled={!selectedNewOwner || transferMutation.isPending}
-                    onClick={() =>
-                      selectedNewOwner &&
-                      transferMutation.mutate({ tripId, newOwnerId: selectedNewOwner })
-                    }
-                  >
-                    {transferMutation.isPending
-                      ? "Transferring…"
-                      : selectedNewOwner
-                        ? `Transfer to ${selectedMemberName}`
-                        : "Transfer ownership"}
-                  </PrimaryButton>
-                  <GhostButton onClick={back}>Cancel</GhostButton>
                 </>
               )}
 
@@ -617,6 +582,60 @@ export function TripSettingsModal({
               )}
             </div>
           </div>
+
+          {/* ── Footer — right-aligned Cancel + primary, divider above.
+              Confirm screens keep their own centered destructive buttons. */}
+          {showFooter && (
+            <div
+              className="flex items-center gap-2 px-4 py-3"
+              style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
+            >
+              <div className="flex-1" />
+              <button
+                onClick={back}
+                className="rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-[var(--color-bt-hover)]"
+                style={{ color: "var(--color-bt-text-dim)" }}
+              >
+                Cancel
+              </button>
+              {view === "details" && (
+                <button
+                  data-testid="settings-save-details-btn"
+                  disabled={!detailsDirty || detailsPending}
+                  onClick={saveDetails}
+                  className="rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+                >
+                  {detailsPending ? "Saving…" : "Save changes"}
+                </button>
+              )}
+              {view === "dates" && (
+                <button
+                  data-testid="settings-set-dates-btn"
+                  disabled={!datesValid || !datesChanged || lockDatesMutation.isPending}
+                  onClick={saveDates}
+                  className="rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+                >
+                  {lockDatesMutation.isPending ? "Saving…" : "Set dates"}
+                </button>
+              )}
+              {view === "transfer" && (
+                <button
+                  data-testid="settings-confirm-transfer-btn"
+                  disabled={!selectedNewOwner || transferMutation.isPending}
+                  onClick={() =>
+                    selectedNewOwner &&
+                    transferMutation.mutate({ tripId, newOwnerId: selectedNewOwner })
+                  }
+                  className="rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+                >
+                  {transferMutation.isPending ? "Transferring…" : "Transfer"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </ScrollLock>
@@ -810,7 +829,7 @@ function ConfirmScreen({
 const fieldStyle: CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
-  background: "var(--color-bt-base)",
+  background: "var(--color-bt-card-raised)",
   border: "1px solid var(--color-bt-border)",
   borderRadius: 10,
   padding: "11px 13px",
@@ -910,30 +929,6 @@ function FieldLabel({ children }: { children: ReactNode }) {
     >
       {children}
     </p>
-  );
-}
-
-function PrimaryButton({
-  children,
-  onClick,
-  disabled,
-  testId,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  testId?: string;
-}) {
-  return (
-    <button
-      data-testid={testId}
-      onClick={onClick}
-      disabled={disabled}
-      className="mb-2 w-full rounded-[10px] py-2.5 text-[13.5px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
-      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
-    >
-      {children}
-    </button>
   );
 }
 
