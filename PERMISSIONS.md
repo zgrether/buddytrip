@@ -252,15 +252,17 @@ Owner split-edit; Owner idea-create / Organizer idea-edit; Organizer logistics /
 schedule / news / tiles / competition; Owner competition+team delete; member
 votes/reads).
 
-**4 spots where RLS is *looser* than the tRPC intent** — harmless today (tRPC is
-the only write path) but worth tightening for defense-in-depth:
+Spots where RLS was *looser* than the tRPC intent — harmless today (tRPC is the
+only write path) but tightened in **migration 030** so RLS is a true backstop:
 
-| Table / cmd | RLS allows | tRPC intent |
-|-------------|-----------|-------------|
-| `trip_members` INSERT/UPDATE | self **or** Owner+Organizer | roster mgmt is **Owner-only** (self-row writes OK) |
-| `trips` UPDATE | Owner+Organizer (any column) | `lockDestination` + owner fields are **Owner-only** |
-| `invites` INSERT | any trip member | `inviteByEmail` is **Owner-only** |
-| `date_poll_votes` (vote for others) | Owner+Organizer | `castVoteForMember` is **Owner-only** |
+| Table / cmd | Was | Now (migration 030) |
+|-------------|-----|---------------------|
+| `trip_members` INSERT/UPDATE | self **or** Owner+Organizer | self **or** Owner — matches Owner-only roster mgmt |
+| `invites` INSERT | any trip member | Owner — matches `inviteByEmail` |
+| `date_poll_votes` "_ghost" (vote for a guest) | Owner+Organizer | Owner — matches `castVoteForMember` |
 
-**Recommendation:** optional follow-up migration to tighten those four to
-Owner-only (so RLS is true defense-in-depth). Low urgency — flag if you want it.
+**`trips` UPDATE left as Owner+Organizer (intentional).** Organizers
+legitimately update most trip columns (rename, about, dates, change
+destination); only `lockDestination` / `transferOwnership` are Owner-only, and
+those are **column-level** distinctions row-level RLS can't express without a
+trigger. tRPC enforces them — not worth a trigger for defense-in-depth here.
