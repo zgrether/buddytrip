@@ -118,6 +118,15 @@ describe("buildItinerary — filtering", () => {
     expect(events[0].kind).toBe("arrival");
   });
 
+  it("carries the member's travel mode on the arrival event", () => {
+    const events = buildItinerary({
+      scheduleItems: [],
+      logisticsItems: [],
+      members: [member({ travel_mode: "driving" })],
+    });
+    expect(events[0]).toMatchObject({ kind: "arrival", mode: "driving" });
+  });
+
   it("excludes arrivals without a travel_mode", () => {
     const events = buildItinerary({
       scheduleItems: [],

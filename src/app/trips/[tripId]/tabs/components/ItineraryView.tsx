@@ -3,9 +3,12 @@
 import { useMemo, useState } from "react";
 import {
   Calendar,
+  Car,
+  ChevronDown,
   Clock,
   Home,
   MapPin,
+  Navigation,
   Plane,
   Trophy,
   X,
@@ -34,6 +37,8 @@ import { DOMAIN_COLORS, type Domain } from "@/lib/domainColors";
 type FilterKey = "all" | "lodging" | "travel" | "events";
 
 type EventCategory = "lodging" | "travel" | "event";
+
+type ArrivalEvent = Extract<ItineraryEvent, { kind: "arrival" }>;
 
 function categoryOf(event: ItineraryEvent): EventCategory {
   switch (event.kind) {
@@ -174,6 +179,9 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
     lodgingStays.length > 0 &&
     (activeFilters.has("all") || activeFilters.has("lodging"));
 
+  // Per-day arrivals group shows only under All or Travel.
+  const showArrivals = activeFilters.has("all") || activeFilters.has("travel");
+
   // Show pill row only if there's >1 category to filter between. Travel
   // arrivals weave in from crew members' own travel plans (Crew tab), so the
   // Travel pill shows whenever arrivals exist — no separate enable gate.
@@ -268,15 +276,25 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
             const dayNumber = trip.start_date
               ? differenceInDays(parseLocalDate(date), parseLocalDate(trip.start_date)) + 1
               : null;
+            const dayEvents = eventsByDate.get(date) ?? [];
+            const arrivals = showArrivals
+              ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
+              : [];
+            // Lodging check-in/out stay as day-timeline entries (the top block
+            // is a separate at-a-glance summary). Only arrivals are pulled out
+            // (into the per-day Arrivals group above). The filter governs both
+            // the block and these inline lodging rows via showEvent.
+            const items = dayEvents
+              .filter((e) => e.kind !== "arrival")
+              .filter(showEvent);
             return (
               <DaySection
                 key={date}
                 date={date}
                 dayNumber={dayNumber}
                 isToday={date === today}
-                events={(eventsByDate.get(date) ?? [])
-                  .filter((e) => categoryOf(e) !== "lodging")
-                  .filter(showEvent)}
+                arrivals={arrivals}
+                events={items}
               />
             );
           })}
@@ -411,6 +429,133 @@ function SkeletonRow({
         {time}
       </span>
     </div>
+  );
+}
+
+// ── ArrivalsGroup ─────────────────────────────────────────────────────────
+// Collapsible per-day arrivals summary at the top of a day: "Arrivals · N"
+// (teal travel category) expands to Flying / Driving / Other groups (only
+// modes with people; WHITE labels) of avatar + first-name + time chips.
+// Untimed arrivals render "TBD" in a dashed chip; timed people sort first
+// (the arrivals arrive pre-sorted by time, untimed last).
+
+const ARRIVAL_MODES: { key: ArrivalEvent["mode"]; label: string; Icon: LucideIcon }[] = [
+  { key: "flying", label: "Flying", Icon: Plane },
+  { key: "driving", label: "Driving", Icon: Car },
+  { key: "other", label: "Other", Icon: Navigation },
+];
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
+  const [open, setOpen] = useState(false);
+  const groups = ARRIVAL_MODES.map((m) => ({
+    ...m,
+    people: arrivals.filter((a) => a.mode === m.key),
+  })).filter((m) => m.people.length > 0);
+
+  return (
+    <div
+      className="rounded-xl px-3 py-2.5"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+        borderLeft: "3px solid var(--color-bt-accent)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3"
+        aria-expanded={open}
+      >
+        <span
+          className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full"
+          style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
+        >
+          <Plane size={13} />
+        </span>
+        <span className="flex-1 text-left text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+          Arrivals{" "}
+          <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
+            · {arrivals.length}
+          </span>
+        </span>
+        <ChevronDown
+          size={16}
+          className="flex-shrink-0 transition-transform"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            transform: open ? "rotate(180deg)" : undefined,
+          }}
+        />
+      </button>
+
+      {open && (
+        <div
+          className="mt-2.5 flex flex-col gap-2.5 pt-2.5"
+          style={{ borderTop: "1px solid var(--color-bt-border)" }}
+        >
+          {groups.map((g) => (
+            <div key={g.key} className="flex items-start gap-2.5">
+              <span
+                className="flex w-[72px] flex-shrink-0 items-center gap-1.5 pt-1 text-xs font-semibold"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                <g.Icon size={13} />
+                {g.label}
+              </span>
+              <div className="flex flex-1 flex-wrap gap-1.5">
+                {g.people.map((p) => (
+                  <PersonChip key={p.memberId} person={p} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PersonChip({ person }: { person: ArrivalEvent }) {
+  const untimed = !person.time;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full py-[3px] pl-[3px] pr-2.5"
+      style={{
+        background: "var(--color-bt-card-raised)",
+        border: `1px ${untimed ? "dashed" : "solid"} var(--color-bt-border)`,
+      }}
+    >
+      <Avatar
+        name={person.displayName}
+        avatarIcon={person.avatarIcon ?? null}
+        sizePx={22}
+        muted={person.isGuest ?? false}
+      />
+      {/* Name + time share a baseline so the smaller time doesn't ride higher
+          than the name; the outer chip still center-aligns the avatar. */}
+      <span className="inline-flex items-baseline gap-1.5">
+        <span
+          className="text-[12px] font-semibold leading-none"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {firstName(person.displayName)}
+        </span>
+        <span
+          className="text-[11px] leading-none"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            fontStyle: untimed ? "italic" : undefined,
+          }}
+        >
+          {untimed ? "TBD" : fmtTime12(person.time as string)}
+        </span>
+      </span>
+    </span>
   );
 }
 
@@ -562,11 +707,13 @@ function DaySection({
   date,
   dayNumber,
   isToday,
+  arrivals,
   events,
 }: {
   date: string;
   dayNumber: number | null;
   isToday: boolean;
+  arrivals: ArrivalEvent[];
   events: ItineraryEvent[];
 }) {
   const dateLabel = parseLocalDate(date).toLocaleDateString("en-US", {
@@ -607,17 +754,17 @@ function DaySection({
           {dayLabel}{dateLabel}
         </p>
       </div>
-      {events.length === 0 ? (
-        <p className="pl-3 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
-          Nothing scheduled
-        </p>
-      ) : (
-        <div className="space-y-1.5">
-          {events.map((event) => (
-            <EventCard key={event.id} event={event} />
-          ))}
-        </div>
-      )}
+      <div className="space-y-1.5">
+        {arrivals.length > 0 && <ArrivalsGroup arrivals={arrivals} />}
+        {events.map((event) => (
+          <EventCard key={event.id} event={event} />
+        ))}
+        {arrivals.length === 0 && events.length === 0 && (
+          <p className="pl-3 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
+            Nothing scheduled
+          </p>
+        )}
+      </div>
     </section>
   );
 }
