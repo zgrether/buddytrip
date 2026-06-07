@@ -494,8 +494,8 @@ function AddReceiptFullComposer({
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={create.isPending}
-        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
+        disabled={!canSubmit}
+        className="mt-1 rounded-lg py-2.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         style={{
           background: "var(--color-bt-accent)",
           color: "var(--color-bt-on-accent)",
