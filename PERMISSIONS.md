@@ -1,210 +1,242 @@
 # BuddyTrip — Permission Model
 
 *Authoritative reference for which roles can perform which actions.*
-*Enforced via `requireTripRole()` middleware (tRPC), RLS policies
-(migrations 003, 008, 009, 010), and frontend `canEdit`/`isOwner` guards.*
+*Enforced via `requireTripRole()` / `requireTripMember` middleware (tRPC,
+`src/server/middleware.ts`), Supabase RLS policies, and frontend
+`canEdit`/`isOwner` guards. The tRPC gates are the source of truth — this doc
+mirrors them.*
+
+*Last reconciled against the code: 2026-06-07 (see **Audit notes** at the end
+for what changed and the open questions).*
 
 ---
 
 ## Roles
 
-| Role | Variable | Description |
-|------|----------|-------------|
-| **Owner** | `viewerRole === 'owner'` | Full control. Creates the trip, manages the crew, locks decisions. |
-| **Planner** | `viewerRole === 'planner'` | Planning authority. Can edit trip details, manage dates, add ideas, add crew. Cannot lock destinations or manage roles. |
-| **Member** | `viewerRole === 'member'` | Participant. Can vote, comment, chat, and view everything. Cannot edit trip configuration. |
+The role lives on `trip_members.role`. In code the values are **capitalized**
+and the middle role is named **`Planner`**, but the **user-facing term is
+"Organizer."** This doc uses *Organizer* for readability; treat it as identical
+to the code's `Planner`.
+
+| Role (UI) | Code value (`TripRole`) | Description |
+|-----------|-------------------------|-------------|
+| **Owner** | `'Owner'` | Full control. Creates the trip, owns the crew roster, locks decisions, transfers/deletes the trip. |
+| **Organizer** | `'Planner'` | Planning authority. Edits trip details, dates, ideas, lodging, agenda, competition, news, tiles. Cannot manage the roster, lock the destination, transfer, or delete. |
+| **Member** | `'Member'` | Participant. Views everything on the trip, votes, chats (crew), logs expenses + own travel. Cannot edit trip configuration. |
 
 **Derived flags used in code:**
-- `isOwner = viewerRole === 'owner'`
-- `canEdit = viewerRole === 'owner' || viewerRole === 'planner'`
+- `isOwner = viewerRole === 'Owner'`
+- `canEdit = viewerRole === 'Owner' || viewerRole === 'Planner'` (Owner **or** Organizer)
+
+**Hierarchy & access notes:**
+- `requireTripRole(min)` is **hierarchical**: Owner (3) ≥ Organizer/Planner (2) ≥ Member (1). So an Owner satisfies any Organizer-gated action; `requireTripRole("Planner")` admits Owner **and** Organizer, not Members.
+- **Non-members are fully blocked.** There is no "outsider" / guest read role — `requireTripMember` rejects anyone without a `trip_members` row (`FORBIDDEN`). Access is all-or-nothing membership.
+- The **Organizers chat** is the one place "Organizer" is gated by message visibility (`visibility = 'planning'`) rather than the role check directly — same effect (Owner + Organizer only).
 
 ---
 
 ## Permission Matrix
 
-### Trip Management
+Each row notes the **tRPC procedure** (authoritative gate).
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| Create trip | ✓ | ✓ | ✓ | None (any logged-in user) | TripNew |
-| Edit trip description | ✓ | ✓ | — | `canEdit` | AboutCard |
-| View planning progress arc | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Access trip settings panel | ✓ | — | — | `isOwner` | TripDetail MoreTab |
-| Link/unlink series | ✓ | — | — | `isOwner` (inside settings) | TripSettingsPanel |
-| Transfer ownership | ✓ | — | — | `isOwner` (inside settings) | TripSettingsPanel |
-| Archive trip | ✓ | — | — | `isOwner` (inside settings) | TripSettingsPanel |
-| Delete trip | ✓ | — | — | `isOwner` (inside settings) | TripSettingsPanel |
+### Trip management — `trips`
 
-### Destination
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| Create trip | ✓ | ✓ | ✓ | `create` *(any authed; creator becomes Owner)* |
+| View trip | ✓ | ✓ | ✓ | `getById` *(member)* |
+| List my trips | ✓ | ✓ | ✓ | `list` *(any authed; own memberships)* |
+| Rename trip | ✓ | ✓ | — | `renameTripName` |
+| Edit "about" message | ✓ | ✓ | — | `updateAboutMessage` |
+| Change destination | ✓ | ✓ | — | `changeDestination` |
+| Lock destination | ✓ | — | — | `lockDestination` *(Owner)* |
+| Transfer ownership | ✓ | — | — | `transferOwnership` *(Owner)* |
+| Delete trip | ✓ | — | — | `delete` *(Owner)* |
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| Set up destination (initial) | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Vote on destination | ✓ | ✓ | ✓ | None | TripDetail HomeTab, IdeaComparison |
-| Lock destination | ✓ | — | — | `isOwner` | TripDetail HomeTab, IdeaComparison |
-| Unlock / edit destination | ✓ | — | — | `isOwner` | TripDetail HomeTab |
-| Reopen destination vote | ✓ | — | — | `isOwner` | IdeaComparison |
-| Override destination (manual) | ✓ | — | — | `isOwner` | IdeaComparison |
-| Navigate to full comparison view | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
+### Trip dates — `datePoll` + `trips.lockDates`
 
-### Ideas (Destination Comparison)
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| Set / change locked dates | ✓ | ✓ | — | `trips.lockDates` |
+| Toggle poll mode | ✓ | ✓ | — | `datePoll.setPollMode` |
+| Add / remove date window | ✓ | ✓ | — | `datePoll.addWindow` / `removeWindow` |
+| Lock the winning window | ✓ | ✓ | — | `datePoll.lockDateWindow` |
+| Clear dates / return to poll | ✓ | ✓ | — | `datePoll.unlock` / `returnToPoll` |
+| Vote on a window (self) | ✓ | ✓ | ✓ | `datePoll.castDateVote` |
+| Vote on behalf of a member | ✓ | — | — | `datePoll.castVoteForMember` **(Owner only)** |
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| Add idea / destination option | ✓ | — | — | `isOwner` | TripDetail HomeTab, IdeaComparison |
-| Remove idea | ✓ | — | — | `isOwner` | IdeaComparison |
-| Edit idea description | ✓ | ✓ | — | `canEdit` | IdeaComparison |
-| Edit idea pros / cons | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab, IdeaComparison |
-| Remove golf course from idea | ✓ | ✓ | — | `canEdit` | IdeaComparison |
-| Remove activity from idea | ✓ | ✓ | — | `canEdit` | IdeaComparison |
-| Comment on idea | ✓ | ✓ | ✓ | None | IdeaComparison |
-| Lock in idea as destination | ✓ | — | — | `isOwner` | IdeaComparison |
+### Destination ideas — `ideas`, `ideaLodging`, `archivedIdeas`
 
-### Dates
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| View ideas | ✓ | ✓ | ✓ | `ideas.list` |
+| Browse global idea catalog | ✓ | ✓ | ✓ | `ideas.catalogList` *(any authed)* |
+| Vote on an idea | ✓ | ✓ | ✓ | `ideas.vote` |
+| Add idea | ✓ | — | — | `ideas.create` *(Owner)* |
+| Remove idea | ✓ | — | — | `ideas.remove` *(Owner)* |
+| Edit idea details | ✓ | ✓ | — | `ideas.update` |
+| Suggest / edit lodging options on an idea | ✓ | ✓ | ✓ | `ideaLodging.create` / `update` / `remove` *(member)* |
+| Archive an idea to personal archive | ✓ | — | — | `archivedIdeas.archive` *(Owner)* |
+| View / remove **own** archived ideas | ✓ | ✓ | ✓ | `archivedIdeas.list` / `remove` *(self, via RLS)* |
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| Set dates (known dates) — `trips.lockDates` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
-| Toggle poll mode on/off — `datePoll.setPollMode` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
-| Add date window to poll — `datePoll.addWindow` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
-| Remove date window — `datePoll.removeWindow` | ✓ | ✓ | — | `canEdit` | DatesPlanningRow |
-| Vote on date windows — `datePoll.castDateVote` | ✓ | ✓ | ✓ | None | DatePollCard |
-| Vote on behalf of member — `datePoll.castVoteForMember` | ✓ | ✓ | — | `canEdit` | DatePollCard |
-| Notify crew poll opened — `datePoll.notifyCrewPollOpen` | ✓ | ✓ | — | `canEdit` (opt-in, once) | DatePollCard |
-| Reset poll votes — `datePoll.resetPoll` | ✓ | ✓ | — | `canEdit` | DatePollCard |
-| Lock date window — `datePoll.lockDateWindow` | ✓ | ✓ | — | `canEdit` | DatePollGrid popover |
-| Change locked dates | ✓ | ✓ | — | `canEdit` | TripSettingsModal |
+### Crew / roster — `tripMembers`, `ghostCrew`
 
-### Quick Info Tiles
+Roster management is **Owner-only**. Organizers plan the trip; the crew list —
+who's in, what they're called, what role they hold — is the Owner's.
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| View tiles | ✓ | ✓ | ✓ | None | TripDetail HomeTab |
-| Add tile | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Edit tile | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
-| Delete tile | ✓ | ✓ | — | `canEdit` | TripDetail HomeTab |
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| View roster | ✓ | ✓ | ✓ | `tripMembers.list`, `checkEmail` |
+| Add member | ✓ | — | — | `tripMembers.add` *(Owner)* |
+| Invite by email / blast | ✓ | — | — | `inviteByEmail`, `sendInvitationBlast` *(Owner)* |
+| Promote/demote role | ✓ | — | — | `updateRole` *(Owner; not self)* |
+| Rename (trip nickname) | ✓ | — | — | `updateNickname` *(Owner; not the Owner)* |
+| Remove member | ✓ | — | — | `remove` *(Owner; not self)* |
+| Add / edit / remove ghost (placeholder) crew | ✓ | — | — | `ghostCrew.create` / `update` / `remove` *(Owner)* |
+| Set **own** travel info | ✓ | ✓ | ✓ | `tripMembers.updateTravel` *(self)* |
+| Set **another member's** travel info | ✓ | — | — | `tripMembers.updateMemberTravel` *(Owner)* |
 
-### Crew
+### Lodging & logistics — `logistics`
 
-Roster management is **Owner-only** (Task 53). Planners can plan the trip,
-but the crew list — who's in, what they're called, what role they hold — is
-the Owner's responsibility. Both the Crew tab UI (`isOwner` gate) and the
-underlying tRPC procedures enforce this.
+(One router backs lodging + transport + general logistics.)
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| View crew roster | ✓ | ✓ | ✓ | None | TripDetail CrewTab |
-| Add crew member | ✓ | — | — | `isOwner` | TripDetail CrewTab |
-| Add guest crew (ghost) | ✓ | — | — | `isOwner` | TripDetail CrewTab |
-| Edit guest crew (name/email) | ✓ | — | — | `isOwner` | MemberEditor |
-| Rename a member (trip-scoped nickname) | ✓ | — | — | `isOwner` | MemberEditor |
-| Send invite to member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
-| Send invitation blast | ✓ | — | — | `isOwner` | InvitationCenter |
-| Change own RSVP status | ✓ | ✓ | ✓ | `isMe` | TripDetail CrewTab |
-| Promote Member → Planner | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
-| Demote Planner → Member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
-| Remove crew member | ✓ | — | — | `isOwner && !isMe` | TripDetail CrewTab |
-| Set travel info (self) | ✓ | ✓ | ✓ | `isMe` | TripDetail CrewTab |
-| Set travel info (other) | ✓ | — | — | `isOwner` | MemberEditor |
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| View | ✓ | ✓ | ✓ | `list` |
+| Add / edit / remove | ✓ | ✓ | — | `create` / `update` / `remove` |
+| Confirm / unconfirm a booking | ✓ | ✓ | — | `confirm` / `unconfirm` |
 
-### Competition
+### Schedule / agenda — `schedule`
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| View competition / leaderboard | ✓ | ✓ | ✓ | None | TripDetail CompTab, LiveLeaderboard |
-| Enable competition | ✓ | ✓ | — | `canEdit` | TripDetail CompTab |
-| Disable competition | ✓ | ✓ | — | `canEdit` | TripDetail CompTab |
-| Edit teams | ✓ | ✓ | — | `canEdit` | TripDetail CompTab, CompetitionSetup |
-| Add / remove rounds | ✓ | ✓ | — | `canEdit` | TripDetail CompTab |
-| Add / remove side events | ✓ | ✓ | — | `canEdit` | TripDetail CompTab |
-| Enter scores | ✓ | ✓ | ✓ | None (any trip member) | LiveLeaderboard |
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| View agenda | ✓ | ✓ | ✓ | `list` |
+| Add / edit / remove items | ✓ | ✓ | — | `create` / `update` / `remove` |
+| Reorder items | ✓ | ✓ | — | `reorder` |
 
-### Competition Event — Agenda Link
+### Quick-info tiles (header dock) — `quickInfoTiles`
 
-| Action | Owner | Planner | Member | Gate |
-|--------|:-----:|:-------:|:------:|------|
-| Link competition event to agenda item | ✓ | ✓ | — | `canEdit` |
-| Unlink competition event from agenda item | ✓ | ✓ | — | `canEdit` |
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| View tiles | ✓ | ✓ | ✓ | `list` |
+| Add / edit / remove tile | ✓ | ✓ | — | `create` / `update` / `remove` |
 
-### Logistics
+### Expenses & receipts — `expenses`
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| View bookings | ✓ | ✓ | ✓ | None | TripDetail ScheduleTab |
-| Add booking | ✓ | ✓ | — | `canEdit` | TripDetail ScheduleTab |
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| View expenses | ✓ | ✓ | ✓ | `list` |
+| Add an expense / receipt | ✓ | ✓ | ✓ | `create` **(any member)** |
+| Opt self in / out of a split | ✓ | ✓ | ✓ | `optOut` *(self)* |
+| Edit a receipt's splits | ✓ | — | — | `updateSplits` *(Owner)* |
+| Remove an expense | ✓ | ✓ | — | `remove` |
 
-### Expenses
+### Competition — `competitions`, `teams`, `events`, `teamAssignments`
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| View expenses | ✓ | ✓ | ✓ | None | TripDetail MoreTab |
-| Add expense | ✓ | ✓ | — | `canEdit` | TripDetail MoreTab |
-| Edit expense splits | ✓ | — | — | `isOwner` | TripDetail MoreTab |
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| View competition / teams / events / leaderboard | ✓ | ✓ | ✓ | `*.list` / `getByTrip` |
+| Create / edit competition | ✓ | ✓ | — | `competitions.create` / `update` |
+| Delete competition | ✓ | — | — | `competitions.delete` *(Owner)* |
+| Create / edit teams | ✓ | ✓ | — | `teams.create` / `update` |
+| Delete a team | ✓ | — | — | `teams.delete` *(Owner)* |
+| Create / edit / reorder / delete events | ✓ | ✓ | — | `events.*` |
+| Link event ↔ agenda item | ✓ | ✓ | — | `events.linkToAgendaItem` |
+| Set point distributions / placements (scoring) | ✓ | ✓ | — | `events.setPointDistributions` / `setPlacements` |
+| Assign member to a team | ✓ | ✓ | — | `teamAssignments.assign` |
+| Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
 
-### Messages
+> **Scoring is Organizer+ today** (`setPlacements`). There is no member-facing
+> "enter your own score" path — see open question Q2.
 
-| Action | Owner | Planner | Member | Gate | Component |
-|--------|:-----:|:-------:|:------:|------|-----------|
-| View trip chat | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
-| Send trip chat message | ✓ | ✓ | ✓ | None | TripDetail, TripMessages |
-| View own team chat | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
-| Send team chat message | ✓ | ✓ | ✓ | Team membership (`team_assignments`) | TripDetail, TripMessages |
-| View other team's chat | — | — | — | Blocked by RLS + team filtering | TripMessages |
+### News / trip board — `news`
 
----
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| Read posts / unread count / mark read | ✓ | ✓ | ✓ | `list` / `unreadCount` / `markRead` |
+| Read roster + competition draw (for composing) | ✓ | ✓ | ✓ | `roster` / `competitionDraw` |
+| Create / edit / delete / pin a post | ✓ | ✓ | — | `create` / `update` / `delete` / `setPinned` |
 
-## RLS Enforcement Summary
+### Chat / messaging — `messages`
 
-These are implemented in production via Supabase RLS policies.
+| Action | Owner | Organizer | Member | tRPC |
+|--------|:-----:|:---------:|:------:|------|
+| Read / send **Crew** chat | ✓ | ✓ | ✓ | `list` / `send` *(visibility `crew`)* |
+| Read / send **Organizers** chat | ✓ | ✓ | — | `list` / `send` *(visibility `planning`)* |
+| Read / send **Team** chat | team members only | — | — | `list` / `send` *(channel `team`; team assignment required)* |
+| Mark a channel read | ✓ | ✓ | ✓ | `markRead` *(per visibility; planning = Organizer+)* |
+| Clear a channel's messages | ✓ | — | — | `clearChannel` *(Owner)* |
 
-### Owner-only actions
-RLS checks `trip_members.role = 'owner'` for the requesting user:
+### Account / profile (not trip-scoped) — `users`, `feedback`
 
-- Destination lock / unlock / override
-- Idea creation and removal
-- All roster management — add, invite, rename, promote, demote, remove,
-  guest-crew CRUD, invitation blast
-- Trip settings (series link, ownership transfer, archive, delete)
-- Expense split modification
-
-### Owner + Planner actions
-RLS checks `trip_members.role IN ('owner', 'planner')`:
-
-- Trip description edit
-- Idea detail editing (description, pros/cons, golf, activities, lodging)
-- Date setup, poll management, and date locking
-- Quick info tile CRUD
-- Competition setup (enable, disable, teams, rounds, sides)
-- Expense creation
-- Booking creation
-
-### All-member actions
-RLS checks `EXISTS (SELECT 1 FROM trip_members WHERE trip_id = ? AND user_id = auth.uid())`:
-
-- Vote on destinations and dates
-- Comment on ideas
-- Send chat messages (trip channel)
-- Enter scores
-- Change own RSVP status
-- View all trip data
-
-### Team-scoped actions
-RLS checks team assignment in addition to trip membership:
-
-- View team chat: `team_assignments.user_id = auth.uid() AND team_assignments.team_id = message.team_id`
-- Send team chat: same check on INSERT
+| Action | Who | tRPC |
+|--------|-----|------|
+| View / edit own profile + avatar | any authed (self) | `users.getMe` / `updateMe` / `updateAvatar` |
+| Delete own account | any authed (self) | `users.deleteMe` |
+| Email-exact user lookup | any authed | `users.search` |
+| Send product feedback | any authed | `feedback.send` *(no trip gate)* |
 
 ---
 
-## Resolved Design Decisions
+## Audit notes (2026-06-07)
 
-These were open questions during development. Documented here for reference.
+This pass reconciled the doc against the tRPC routers. Highlights:
 
-| Question | Decision |
-|----------|---------|
-| Score entry gating | Any trip member can enter scores — no role restriction |
-| Expense editing scope | Owner-only for split modification |
-| Idea creation | Owner-only (simplifies idea-stage flow) |
-| Idea removal | Owner-only |
-| Self-service RSVP | Implemented — members change their own status |
-| Trip creation | Any logged-in user can create |
+### Nomenclature
+- **Planner → Organizer** throughout. The role value in code is still
+  `'Planner'`; "Organizer" is the user-facing label (RoleBadge, the system
+  message "*X is now an organizer*", the "Organizers" chat tab). The
+  organizers-only chat is message **visibility `'planning'`**, not a role
+  string. Role-variable casing corrected to capitalized (`'Owner'`, etc.) — the
+  old doc used lowercase (`'owner'`), which never matched the code.
+
+### Removed — rows deleted because the feature no longer exists
+- **Link/unlink series** — the `series` table/feature was dropped (migration
+  024). No router, no UI.
+- **Archive trip** — no `trips.archive`. (Idea archiving exists via
+  `archivedIdeas`, which is different and now documented.)
+- **Comment on idea** — the `idea_comments` table + router were removed in
+  pre-launch cleanup (`ideas.ts:28-29`).
+- **Planning progress arc** — the stepper/arc was removed (only a stale test
+  reference remains).
+- **`datePoll.notifyCrewPollOpen` / `resetPoll`** — these procedure names no
+  longer exist; the live equivalents are `unlock` / `returnToPoll`.
+- Granular idea rows (**edit pros/cons, remove golf course, remove activity,
+  reopen vote, override destination, full comparison view**) — collapsed into
+  the single `ideas.update` (Organizer+) the code actually exposes. The
+  multi-option side-by-side "comparison" flow described in the old doc isn't a
+  set of role-gated endpoints anymore.
+
+### Corrected — behavior the old doc had wrong
+- **Add expense** — old doc said Organizer+ (`canEdit`); code allows **any
+  member** (`expenses.create` is `requireTripMember`). Documented as any member.
+- **Vote on behalf of member** — old doc said Organizer+; code is **Owner only**
+  (`castVoteForMember`).
+- **Disable/delete competition** & **delete team** — Owner only (the old doc
+  lumped all competition edits under `canEdit`).
+- **Organizers chat** — the old "trip chat: any member" row missed the
+  crew-vs-organizers split; planning-visibility chat is Owner+Organizer only.
+- **`clearChannel`** (clear a chat) — Owner only; wasn't documented.
+
+### Added — features missing from the old doc
+News/trip board, schedule/agenda (was conflated with logistics), idea-lodging
+suggestions, archived ideas, team assignments, expense opt-out + remove, the
+profile/account + feedback endpoints, and the full logistics CRUD (the old doc
+only listed view + add).
+
+### Open questions (need your intent — not resolvable from code)
+- **Q1 — Self-service RSVP.** The old doc claimed members change their own
+  going/maybe/out status; there is **no such procedure**. `trip_members.status`
+  exists but is only set by the Owner on add/invite. Is self-service RSVP
+  intended (re-add an endpoint), or is attendance now Owner-managed? Doc
+  currently reflects code (no self-RSVP).
+- **Q2 — Score entry.** Old doc said "any member enters scores." There's **no
+  scores router**; scoring is `events.setPlacements` (Organizer+), and the live
+  leaderboard is mid-rebuild. Should members enter their own scores once the
+  engine ships, or stay Organizer-entered?
+- **Q3 — Member "add expense".** Confirm any member *should* be able to log a
+  receipt (current behavior) vs. Organizer+.
+- **Q4 — RLS parity.** I documented the tRPC gates (source of truth). The old
+  "RLS Enforcement Summary" referenced dropped features (series/archive) and
+  old migration numbers; it's removed pending a separate RLS-vs-tRPC parity
+  check — flag if you want that audited next.
