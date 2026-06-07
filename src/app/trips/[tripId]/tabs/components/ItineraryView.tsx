@@ -1053,7 +1053,7 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
           className="flex flex-shrink-0 items-center gap-0.5 self-center text-[11px] font-semibold"
-          style={{ color: "var(--color-bt-accent)" }}
+          style={{ color: "var(--color-bt-planning)" }}
           aria-label={`Open ${event.title} in Google Maps`}
         >
           <MapPin size={11} />
