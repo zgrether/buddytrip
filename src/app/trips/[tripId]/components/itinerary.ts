@@ -28,7 +28,10 @@ export interface ItineraryScheduleItem {
 export interface ItineraryLogisticsItem {
   id: string;
   type: "lodging" | "transport" | "general";
+  /** The property NAME (e.g. "Beach House"). */
   label: string;
+  /** Repurposed/mis-named column: actually stores the SLEEPS capacity (free
+   *  text, e.g. "8"), NOT the property name. See LodgingPanel/AddPropertySheet. */
   property_name?: string | null;
   address?: string | null;
   /** Stored as text; treated as YYYY-MM-DD by the rest of the app. */
@@ -266,6 +269,70 @@ export function buildItinerary(input: {
 
   events.sort(compareEvents);
   return events;
+}
+
+// ── Lodging summary (top block) ────────────────────────────────────────────
+//
+// Presentation helper for the itinerary's lodging block (rendered above the
+// day list, NOT inline). One entry per confirmed lodging property with a
+// check-in date, ordered by check-in. buildItinerary still emits the inline
+// lodging check-in/out events for other consumers; the home itinerary view
+// just renders this block instead.
+
+export interface LodgingStay {
+  id: string;
+  /** Property name — comes from `label` (see note on the input shape). */
+  name: string;
+  /** Sleeps capacity, free text (e.g. "8") — comes from `property_name`. null when unset. */
+  sleeps: string | null;
+  address: string | null;
+  /** YYYY-MM-DD */
+  checkIn: string;
+  /** YYYY-MM-DD, or null when no check-out date is set. */
+  checkOut: string | null;
+  /** check-out − check-in in days, or null when check-out is unknown. */
+  nights: number | null;
+}
+
+/** Whole-day difference between two YYYY-MM-DD dates (TZ-naive, noon-anchored). */
+function nightsBetween(checkIn: string, checkOut: string): number {
+  const [y1, m1, d1] = checkIn.split("-").map((n) => parseInt(n, 10));
+  const [y2, m2, d2] = checkOut.split("-").map((n) => parseInt(n, 10));
+  const a = new Date(y1, m1 - 1, d1, 12, 0, 0, 0).getTime();
+  const b = new Date(y2, m2 - 1, d2, 12, 0, 0, 0).getTime();
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+export function summarizeLodging(
+  items: ItineraryLogisticsItem[]
+): LodgingStay[] {
+  const stays: LodgingStay[] = [];
+  for (const item of items) {
+    if (item.type !== "lodging") continue;
+    if (!item.is_confirmed) continue;
+    if (!isDateString(item.check_in_time)) continue;
+
+    const checkIn = item.check_in_time.slice(0, 10);
+    const checkOut = isDateString(item.check_out_time)
+      ? item.check_out_time.slice(0, 10)
+      : null;
+
+    stays.push({
+      id: item.id,
+      // The property NAME lives in `label`. NOTE: `property_name` is a
+      // repurposed/mis-named column that actually stores the sleeps capacity
+      // (see LodgingPanel + AddPropertySheet) — it is NOT the name. `||` (not
+      // `??`) so an empty-string label falls through to "Lodging".
+      name: item.label || "Lodging",
+      sleeps: item.property_name?.trim() || null,
+      address: item.address ?? null,
+      checkIn,
+      checkOut,
+      nights: checkOut ? nightsBetween(checkIn, checkOut) : null,
+    });
+  }
+  stays.sort((a, b) => (a.checkIn < b.checkIn ? -1 : a.checkIn > b.checkIn ? 1 : 0));
+  return stays;
 }
 
 // ── Sorting ───────────────────────────────────────────────────────────────
