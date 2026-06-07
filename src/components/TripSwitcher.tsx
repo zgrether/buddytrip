@@ -368,11 +368,6 @@ function TripSwitcherRow({
     trip.start_date && trip.end_date
       ? formatDateRange(trip.start_date, trip.end_date)
       : null;
-  const sub =
-    destination && dateRange
-      ? `${destination} · ${dateRange}`
-      : destination ?? dateRange ?? "Destination TBD";
-
   return (
     <button
       type="button"
@@ -413,33 +408,57 @@ function TripSwitcherRow({
             />
           )}
         </div>
-        <div
-          className="truncate"
-          style={{
-            fontSize: 11,
-            color: "var(--color-bt-text-dim)",
-            marginTop: 1,
-          }}
-        >
-          {sub}
-        </div>
+        {/* Destination, then dates on their own line below it. */}
+        {destination && (
+          <div
+            className="truncate"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 1 }}
+          >
+            {destination}
+          </div>
+        )}
+        {dateRange && (
+          <div
+            className="truncate"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 1 }}
+          >
+            {dateRange}
+          </div>
+        )}
+        {!destination && !dateRange && (
+          <div
+            className="truncate"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 1 }}
+          >
+            Destination TBD
+          </div>
+        )}
       </div>
 
-      {/* Right: stage badge */}
-      <span
-        className="flex-shrink-0"
-        style={{
-          fontSize: 10,
-          fontWeight: 500,
-          padding: "2px 7px",
-          borderRadius: 10,
-          background: stageBadge.bg,
-          color: stageBadge.fg,
-          border: `0.5px solid ${stageBadge.border}`,
-        }}
-      >
-        {countdownLabel ?? STAGE_LABELS[status]}
-      </span>
+      {/* Right: countdown is plain text (no badge); other stages keep a pill. */}
+      {countdownLabel ? (
+        <span
+          className="flex-shrink-0"
+          style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
+        >
+          {countdownLabel}
+        </span>
+      ) : (
+        <span
+          className="flex-shrink-0"
+          style={{
+            fontSize: 10,
+            fontWeight: 500,
+            padding: "2px 7px",
+            borderRadius: 10,
+            background: stageBadge.bg,
+            color: stageBadge.fg,
+            border: `0.5px solid ${stageBadge.border}`,
+          }}
+        >
+          {STAGE_LABELS[status]}
+        </span>
+      )}
     </button>
   );
 }
