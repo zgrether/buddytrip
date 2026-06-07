@@ -497,7 +497,7 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
       className="rounded-xl px-4 py-3"
       style={{
         background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
+        // Match EventCard — left stripe only, no full outline.
         borderLeft: "3px solid var(--color-bt-accent)",
       }}
     >
@@ -644,7 +644,6 @@ function LodgingBlock({ stays }: { stays: LodgingStay[] }) {
             flex: "1 1 240px",
             minWidth: 0,
             background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
           }}
         >
           <span
@@ -727,7 +726,7 @@ function FilterPill({
           : {
               background: "var(--color-bt-card-raised)",
               color: "var(--color-bt-text-dim)",
-              border: "1px solid var(--color-bt-border)",
+              border: "1px solid var(--color-bt-subtle-border)",
             }
       }
     >
@@ -1143,7 +1142,8 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
       className={`flex items-center gap-3.5 rounded-xl px-4 ${compact ? "py-2" : "py-3"}`}
       style={{
         background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
+        // No full outline — the 3px colored left stripe alone marks the
+        // category; the card reads as a flat row on the page surface.
         borderLeft: `3px solid ${stripeColor}`,
       }}
     >
