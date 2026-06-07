@@ -25,12 +25,15 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // getSession() verifies JWT locally (no network roundtrip).
-  // Actual auth is enforced by RLS on every tRPC query.
+  // Validate the session against the auth server. getUser() re-verifies the JWT
+  // (and refreshes it, writing fresh cookies via setAll above) rather than
+  // trusting whatever the cookie decodes to. getSession() only reads the cookie
+  // locally — so an orphaned/expired auth cookie read as "logged in" and
+  // bounced users off /login into a redirect dead-end. Supabase also flags
+  // server-side getSession() as insecure for exactly this reason.
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // Redirect unauthenticated users to /login (except for public routes).
   // The root route `/` serves the marketing page for unauthenticated visitors
