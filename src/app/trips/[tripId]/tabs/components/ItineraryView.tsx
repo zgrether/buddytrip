@@ -171,7 +171,6 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
   );
   const allSelected = available.length > 0 && available.every((c) => selected.has(c));
 
-  const selectAll = () => setSelected(new Set<Category>(available));
   const toggleCategory = (c: Category) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -233,7 +232,6 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
         {!isEmpty && showFilterPills && (
           <>
             <div className="hidden flex-wrap items-center justify-end gap-2 sm:flex">
-              <FilterPill label="All" tone="all" active={allSelected} onClick={selectAll} />
               {hasLodging && (
                 <FilterPill label="Lodging" tone="lodging" active={selected.has("lodging")} onClick={() => toggleCategory("lodging")} />
               )}
@@ -249,7 +247,6 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
                 selected={selected}
                 allSelected={allSelected}
                 toggleCategory={toggleCategory}
-                selectAll={selectAll}
                 hasLodging={hasLodging}
                 hasTravel={hasTravel}
                 hasEvents={hasEvents}
@@ -793,7 +790,6 @@ function FilterDropdown({
   selected,
   allSelected,
   toggleCategory,
-  selectAll,
   hasLodging,
   hasTravel,
   hasEvents,
@@ -801,7 +797,6 @@ function FilterDropdown({
   selected: Set<Category>;
   allSelected: boolean;
   toggleCategory: (c: Category) => void;
-  selectAll: () => void;
   hasLodging: boolean;
   hasTravel: boolean;
   hasEvents: boolean;
@@ -842,17 +837,6 @@ function FilterDropdown({
           }}
           role="menu"
         >
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={allSelected}
-            onClick={selectAll}
-            className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[13px]"
-            style={{ color: "var(--color-bt-text)", fontWeight: allSelected ? 600 : 400 }}
-          >
-            All
-            {allSelected && <Check size={14} style={{ color: "var(--color-bt-accent)" }} />}
-          </button>
           {cats.map((o) => {
             const on = selected.has(o.c);
             return (
