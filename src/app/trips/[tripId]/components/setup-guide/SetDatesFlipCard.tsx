@@ -845,7 +845,11 @@ function InlineRangeCalendar({
           // (start with an end set, or end itself).
           const showFill = between || (isStart && hasEnd) || isEnd;
           return (
-            <div key={idx} className="relative" style={{ height: ROW_H }}>
+            <div
+              key={idx}
+              className="relative flex items-center justify-center"
+              style={{ height: ROW_H }}
+            >
               {showFill && (
                 <div
                   className="absolute inset-y-1"
