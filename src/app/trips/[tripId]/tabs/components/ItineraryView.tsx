@@ -775,7 +775,7 @@ function rangeParts(
   const n1 = dayNumOf(last);
   let days: string | null = null;
   if (n0 != null && n1 != null && n0 >= 1) {
-    days = n0 === n1 ? `Day ${n0}` : `Days ${n0}–${n1}`;
+    days = n0 === n1 ? `Day ${n0}` : `Days ${n0} – ${n1}`;
   }
   return { days, dates: datePart };
 }
