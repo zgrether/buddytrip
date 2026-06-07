@@ -1012,8 +1012,9 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
     Icon = Clock;
   }
 
-  // Address is set on lodging events (item.address) and golf schedule
-  // events (course_location). When present, render a tap-to-map link.
+  // Address is set on lodging events (item.address) and golf/located schedule
+  // events (course_location). Render a tap-to-map link when present — except on
+  // check-out (you don't need directions on the way out).
   const address = "address" in event ? event.address ?? null : null;
 
   // Rounded-square icon tile, vertically centered against the body — matches
@@ -1060,7 +1061,7 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
           </div>
         ))}
       </div>
-      {address && (
+      {address && event.kind !== "lodging-checkout" && (
         <a
           href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
           target="_blank"
