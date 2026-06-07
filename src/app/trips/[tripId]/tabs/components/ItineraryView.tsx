@@ -840,11 +840,13 @@ function PastRun({
   if (!open) {
     const { days, dates: dlabel } = rangeParts(dates, dayNumOf);
     return (
-      <RunBand icon={<Check size={15} style={{ color: "var(--color-bt-accent)" }} />} onClick={() => setOpen(true)}>
-        <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>
-          Earlier{days ? ` · ${days}` : ""}
-        </span>
-        {` · ${dlabel} · done`}
+      <RunBand
+        icon={<Check size={15} style={{ color: "var(--color-bt-text-dim)" }} />}
+        onClick={() => setOpen(true)}
+      >
+        {/* Heavily de-emphasized: only "Earlier" carries weight; the rest is gray. */}
+        <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>Earlier</span>
+        {`${days ? ` · ${days}` : ""} · ${dlabel} · done`}
       </RunBand>
     );
   }
