@@ -1234,7 +1234,7 @@ function InlineAddOption({
                 onClick={() => handleDayClick(day)}
                 onMouseEnter={() => setHovered(day)}
                 onMouseLeave={() => setHovered(null)}
-                className="relative mx-auto flex items-center justify-center rounded-full text-[11px] transition-colors"
+                className="relative mx-auto flex items-center justify-center rounded-full text-[11px] leading-none transition-colors"
                 style={{
                   width: 26,
                   height: 26,

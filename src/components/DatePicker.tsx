@@ -447,7 +447,7 @@ export function DatePicker(props: DatePickerProps) {
                     onClick={() => handleDayClick(day)}
                     onMouseEnter={() => setHovered(day)}
                     onMouseLeave={() => setHovered(null)}
-                    className="relative mx-auto flex h-9 w-9 items-center justify-center rounded-full text-[13px] disabled:cursor-not-allowed"
+                    className="relative mx-auto flex h-9 w-9 items-center justify-center rounded-full text-[13px] leading-none disabled:cursor-not-allowed"
                     style={{
                       background: isCap ? accent : "transparent",
                       color: isCap
