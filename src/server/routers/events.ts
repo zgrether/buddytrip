@@ -76,7 +76,7 @@ export const eventsRouter = router({
         day: z.number().int().optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // RLS INSERT RETURNING split
       const { data: inserted, error: insertErr } = await ctx.supabase
@@ -136,7 +136,7 @@ export const eventsRouter = router({
         status: EVENT_STATUS.optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.title !== undefined) patch.title = input.title;
@@ -171,7 +171,7 @@ export const eventsRouter = router({
   // -----------------------------------------------------------------------
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), eventId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
         .from("events")
@@ -200,7 +200,7 @@ export const eventsRouter = router({
         orderedIds: z.array(z.string()).min(1),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // One UPDATE per row (stays within RLS scope), but fired in parallel so
       // reordering N events costs one round-trip instead of N sequential ones.
@@ -239,7 +239,7 @@ export const eventsRouter = router({
         agendaItemId: z.string().uuid().nullable(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Multiple competition events can now link to the same agenda item.
       // We only need to update events.agenda_item_id on the specific event —
@@ -283,7 +283,7 @@ export const eventsRouter = router({
           .max(64),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error: deleteErr } = await ctx.supabase
         .from("event_point_distributions")
@@ -343,7 +343,7 @@ export const eventsRouter = router({
         placements: z.record(z.string(), z.number().int().min(0).max(99)),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Strip 0/falsy placements so the JSON stays tight — those teams
       // are simply "not placed yet" rather than "in place 0".

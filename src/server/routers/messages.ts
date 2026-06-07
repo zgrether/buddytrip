@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 /**
  * Sub-channel within `messages.channel = 'trip'`:
  *   - "crew"     visible to all trip members (the everyone chat)
- *   - "planning" visible to Owner + Planner only (Organizers chat)
+ *   - "planning" visible to Owner + Organizer only (Organizers chat)
  *
  * RLS enforces the role gate on read/write. The per-member visibility
  * floor (chat_visible_from / planning_visible_from on trip_members) is
@@ -52,7 +52,7 @@ export async function postSystemMessage(
 
 export const messagesRouter = router({
   // -----------------------------------------------------------------------
-  // list — Crew chat: any member. Organizers chat: Owner/Planner only.
+  // list — Crew chat: any member. Organizers chat: Owner/Organizer only.
   // Both honor the per-member visibility floor so members added (crew) or
   // promoted (planning) later don't see history from before they joined.
   // -----------------------------------------------------------------------
@@ -69,10 +69,10 @@ export const messagesRouter = router({
     )
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      // Organizers chat is Owner/Planner only. Throw here for a clean
+      // Organizers chat is Owner/Organizer only. Throw here for a clean
       // error rather than relying on RLS to silently return nothing.
       if (input.visibility === "planning") {
-        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Planner") {
+        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "Organizers chat is owner/organizer only.",
@@ -183,14 +183,14 @@ export const messagesRouter = router({
   // markRead — record that the caller has seen a channel up to now(). Upserts
   // one (trip, user, visibility) row. Uses now() server-side (not a client
   // timestamp) so it's monotonic and a stale device can't roll a read marker
-  // backward. Organizers chat is Owner/Planner only, mirroring list/send.
+  // backward. Organizers chat is Owner/Organizer only, mirroring list/send.
   // -----------------------------------------------------------------------
   markRead: authedProcedure
     .input(z.object({ tripId: z.string(), visibility: Visibility }))
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
       if (input.visibility === "planning") {
-        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Planner") {
+        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "Organizers chat is owner/organizer only.",
@@ -227,7 +227,7 @@ export const messagesRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // send — Crew chat: any member. Organizers chat: Owner/Planner only.
+  // send — Crew chat: any member. Organizers chat: Owner/Organizer only.
   // -----------------------------------------------------------------------
   send: authedProcedure
     .input(
@@ -249,9 +249,9 @@ export const messagesRouter = router({
         });
       }
 
-      // Organizers chat is Owner/Planner only.
+      // Organizers chat is Owner/Organizer only.
       if (input.visibility === "planning") {
-        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Planner") {
+        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "Organizers chat is owner/organizer only.",

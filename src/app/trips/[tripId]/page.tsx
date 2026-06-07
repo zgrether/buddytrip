@@ -600,7 +600,7 @@ export default function TripDetailPage() {
         tripId={tripId}
         isOpen={newsOpen}
         onClose={() => setNewsOpen(false)}
-        canPost={role === "Owner" || role === "Planner"}
+        canPost={role === "Owner" || role === "Organizer"}
         authors={Object.fromEntries(
           members.map(
             (m: {

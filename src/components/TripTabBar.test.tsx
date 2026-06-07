@@ -85,7 +85,7 @@ describe("Tab bar — tab filtering", () => {
   const ALL_TAB_IDS = ["home", "crew", "schedule", "expenses", "comp"];
 
   // Competition is an owner/organizer-only authoring surface: the tab shows
-  // iff the viewer can edit (Owner or Planner), independent of stage or
+  // iff the viewer can edit (Owner or Organizer), independent of stage or
   // whether a competition row exists. Members reach a live competition via
   // the bottom-nav "Live" entry instead.
   function getVisibleTabs(canEdit: boolean) {

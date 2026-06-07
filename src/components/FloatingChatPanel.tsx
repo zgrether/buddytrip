@@ -54,10 +54,10 @@ interface FloatingChatPanelProps {
 /**
  * FloatingChatPanel — the trip chat surface, mounted once per trip page.
  *
- * Two sub-channels live behind a tab toggle (Owner/Planner only see the
+ * Two sub-channels live behind a tab toggle (Owner/Organizer only see the
  * toggle — everyone else just gets Crew):
  *   - Crew       — every trip member (messages.visibility = 'crew')
- *   - Organizers — Owner + Planner only (messages.visibility = 'planning')
+ *   - Organizers — Owner + Organizer only (messages.visibility = 'planning')
  *
  * Desktop (lg+): anchored panel below the top nav, slides in from the right.
  * Mobile: full-width bottom sheet with a drag handle and a backdrop that
@@ -90,7 +90,7 @@ function FloatingChatPanelInner({
 }) {
   const currentUser = useCurrentUser();
   const { role } = useTripRole(tripId);
-  const canSeeOrganizers = role === "Owner" || role === "Planner";
+  const canSeeOrganizers = role === "Owner" || role === "Organizer";
   // IDEA stage collapses to a single Organizers channel: every member is an
   // Owner/Organizer, so the Crew channel would just duplicate it. The tab
   // toggle is hidden and the channel is pinned to 'planning'.
@@ -259,7 +259,7 @@ function FloatingChatPanelInner({
     { enabled: canSeeOrganizers }
   );
   const organizers = allMembers.filter(
-    (m) => (m.role === "Owner" || m.role === "Planner") && m.status === "in"
+    (m) => (m.role === "Owner" || m.role === "Organizer") && m.status === "in"
   );
 
   // Merge in any not-yet-confirmed optimistic messages for a channel.
@@ -1074,14 +1074,14 @@ function ChatBody({
 
 /**
  * useChatUnreadCount — total unread across the channels the viewer can see
- * (Crew always; Organizers when Owner/Planner). Derived from the cached
+ * (Crew always; Organizers when Owner/Organizer). Derived from the cached
  * messages lists vs the per-channel last-read timestamps in localStorage.
  * System lifecycle lines never count toward unread.
  */
 export function useChatUnreadCount(tripId: string): number {
   const currentUser = useCurrentUser();
   const { role } = useTripRole(tripId);
-  const canSeeOrganizers = role === "Owner" || role === "Planner";
+  const canSeeOrganizers = role === "Owner" || role === "Organizer";
 
   // Subscribe to realtime here (this hook is always mounted on the trip page).
   // On every new message it invalidates the cached messages lists, so both the

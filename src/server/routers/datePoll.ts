@@ -66,7 +66,7 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // addWindow — Owner or Planner (canEdit)
+  // addWindow — Owner or Organizer (canEdit)
   // -----------------------------------------------------------------------
   addWindow: authedProcedure
     .input(
@@ -77,7 +77,7 @@ export const datePollRouter = router({
         endDate: z.string(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data, error } = await ctx.supabase
         .from("date_windows")
@@ -264,11 +264,11 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // removeWindow — Owner or Planner: delete a date window (votes cascade)
+  // removeWindow — Owner or Organizer: delete a date window (votes cascade)
   // -----------------------------------------------------------------------
   removeWindow: authedProcedure
     .input(z.object({ tripId: z.string(), windowId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase
         .from("date_windows")
@@ -287,7 +287,7 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // lockDateWindow — Owner or Planner: lock the winning window as trip dates
+  // lockDateWindow — Owner or Organizer: lock the winning window as trip dates
   // -----------------------------------------------------------------------
   lockDateWindow: authedProcedure
     .input(
@@ -296,7 +296,7 @@ export const datePollRouter = router({
         windowId: z.string(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Get the window dates
       const { data: window, error: winErr } = await ctx.supabase
@@ -355,11 +355,11 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // unlock — Owner or Planner: clear locked dates
+  // unlock — Owner or Organizer: clear locked dates
   // -----------------------------------------------------------------------
   unlock: authedProcedure
     .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx }) => {
       // Fetch the locked window ID before clearing it
       const { data: pollData } = await ctx.supabase
@@ -417,7 +417,7 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // returnToPoll — Owner or Planner: clear locked dates AND reopen the
+  // returnToPoll — Owner or Organizer: clear locked dates AND reopen the
   // poll (trips.poll_mode = true) while preserving every existing window
   // and vote — including the formerly-locked window (even if it has zero
   // votes, which unlock() would have deleted). This is the reverse of
@@ -426,7 +426,7 @@ export const datePollRouter = router({
   // -----------------------------------------------------------------------
   returnToPoll: authedProcedure
     .input(z.object({ tripId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx }) => {
       // Clear the trip dates and flip poll_mode back on in a single update
       // so the UI transitions in one render.
@@ -471,7 +471,7 @@ export const datePollRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // setPollMode — Owner or Planner: flip trips.poll_mode on or off.
+  // setPollMode — Owner or Organizer: flip trips.poll_mode on or off.
   //
   // When pollMode = false (cancel poll):
   //   1. Delete all date_poll_votes for this trip's windows (child rows first)
@@ -492,7 +492,7 @@ export const datePollRouter = router({
         pollMode: z.boolean(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       if (!input.pollMode) {
         // ── Cancel poll: clear all data, children before parents ──────────

@@ -242,7 +242,7 @@ export const newsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // create — Owner / Planner posts an announcement. blocks validated against
+  // create — Owner / Organizer posts an announcement. blocks validated against
   // the closed six-type schema (the DB stores them as opaque JSON, so this is
   // the only guard on the invariant). INSERT then SELECT separately — the
   // RLS-RETURNING race pattern (CLAUDE.md #4).
@@ -255,7 +255,7 @@ export const newsRouter = router({
         pinned: z.boolean().default(false),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }): Promise<NewsPost> => {
       const id = crypto.randomUUID();
       const { error: insErr } = await ctx.supabase.from("news_posts").insert({
@@ -287,8 +287,8 @@ export const newsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit a post's blocks (and pin state). Owner/Planner may edit any
-  // post; since only Owner/Planner can author, this also covers "author edits
+  // update — edit a post's blocks (and pin state). Owner/Organizer may edit any
+  // post; since only Owner/Organizer can author, this also covers "author edits
   // own". Scoped to (id, trip_id) so a postId can't be edited cross-trip.
   // -----------------------------------------------------------------------
   update: authedProcedure
@@ -300,7 +300,7 @@ export const newsRouter = router({
         pinned: z.boolean().optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }): Promise<NewsPost> => {
       const patch: Record<string, unknown> = {
         blocks: input.blocks,
@@ -338,7 +338,7 @@ export const newsRouter = router({
   // -----------------------------------------------------------------------
   setPinned: authedProcedure
     .input(z.object({ tripId: z.string(), postId: z.string(), pinned: z.boolean() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }): Promise<{ pinned: boolean }> => {
       const { error } = await ctx.supabase
         .from("news_posts")
@@ -355,11 +355,11 @@ export const newsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // delete — remove a post. Owner/Planner only (RLS also enforces).
+  // delete — remove a post. Owner/Organizer only (RLS also enforces).
   // -----------------------------------------------------------------------
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), postId: z.string() }))
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }): Promise<{ id: string }> => {
       const { error } = await ctx.supabase
         .from("news_posts")

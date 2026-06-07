@@ -11,7 +11,7 @@ describe("datePoll router", () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Poll Test");
     await ctx.addTripMember(tripId, "member", "Member");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
   });
 
   afterAll(async () => {

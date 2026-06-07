@@ -91,8 +91,8 @@ export function RolePill({ role }: { role: string }) {
       </span>
     );
   }
-  // DB stores 'Planner'; displays as 'Organizer' per CLAUDE.md rule 7.
-  if (role === "Planner") {
+  // DB stores 'Organizer'; displays as 'Organizer' per CLAUDE.md rule 7.
+  if (role === "Organizer") {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"

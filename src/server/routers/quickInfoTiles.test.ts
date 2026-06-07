@@ -9,7 +9,7 @@ describe("quickInfoTiles router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Tiles Test");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
   });
 
@@ -18,7 +18,7 @@ describe("quickInfoTiles router", () => {
   });
 
   // Quick Info now lives in the trip-header dock and is curated by
-  // Owner+Planner ("Owner/organizer" per the redesign spec). Members are
+  // Owner+Organizer ("Owner/organizer" per the redesign spec). Members are
   // still read-only.
 
   it("create — owner can create a tile (with explicit icon)", async () => {

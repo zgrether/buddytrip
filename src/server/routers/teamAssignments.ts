@@ -51,7 +51,7 @@ export const teamAssignmentsRouter = router({
         teamId: z.string(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: inserted, error } = await ctx.supabase
         .from("team_assignments")

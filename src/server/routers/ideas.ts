@@ -108,7 +108,7 @@ export const ideasRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — Owner or Planner (canEdit)
+  // update — Owner or Organizer (canEdit)
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -131,7 +131,7 @@ export const ideasRouter = router({
           .optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { ideaId, tripId: _tripId, ...fields } = input;
       const update: Record<string, unknown> = {};

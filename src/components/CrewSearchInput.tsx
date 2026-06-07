@@ -9,7 +9,7 @@ import { Avatar } from "@/components/Avatar";
 
 export interface CrewSearchInputProps {
   tripId: string;
-  defaultRole?: "Planner" | "Member";
+  defaultRole?: "Organizer" | "Member";
   defaultStatus?: "draft" | "in" | "likely" | "maybe" | "out" | "invited";
   /** Show "Send invite" path when no account found */
   allowInvite?: boolean;

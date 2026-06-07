@@ -632,7 +632,7 @@ export function ExpensesSection({
   }
 
   const hasExpenses = expenses.length > 0;
-  const ROLE_ORDER: Record<string, number> = { Owner: 0, Planner: 1, Member: 2 };
+  const ROLE_ORDER: Record<string, number> = { Owner: 0, Organizer: 1, Member: 2 };
   // Show every current crew member — including anyone added after the
   // receipts were logged (they sit at $0.00 until a split pulls them
   // in). Previously this filtered to members with a non-zero balance,
@@ -689,7 +689,7 @@ export function ExpensesSection({
         <div className="space-y-3">
           {!hasExpenses ? (
             // Any member can log a receipt (expenses.create is
-            // requireTripMember, not Planner), so the composer empty
+            // requireTripMember, not Organizer), so the composer empty
             // state shows for everyone — no read-only EmptyState fork.
             // Empty-state grid — just the sample + composer. Balances
             // are hidden until there's an actual receipt to balance
@@ -749,7 +749,7 @@ export function ExpensesSection({
                     key={expense.id}
                     data-testid={`expense-row-${expense.id}`}
                     // Whole row is the edit affordance (canEdit = Owner or
-                    // Planner). Tap opens the editor where splits/fields are
+                    // Organizer). Tap opens the editor where splits/fields are
                     // changed and the receipt can be deleted — no inline
                     // pencil/trash clutter. A native drag never fires click,
                     // and the opt-out button stops propagation, so neither

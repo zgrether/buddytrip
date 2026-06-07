@@ -37,7 +37,7 @@ const BOTTOM_NAV_OFFSET = "var(--bt-bottomnav-height, 0px)";
  *  tripMembers.list (same as chat's memberNames), keyed by user_id. */
 export interface NewsAuthorMeta {
   name: string;
-  role: "Owner" | "Planner" | "Member";
+  role: "Owner" | "Organizer" | "Member";
   avatarIcon: string | null;
 }
 
@@ -81,7 +81,7 @@ function roleLine(role: NewsAuthorMeta["role"]): { label: string; color: string 
   switch (role) {
     case "Owner":
       return { label: "Owner", color: "var(--color-bt-owner)" };
-    case "Planner":
+    case "Organizer":
       return { label: "Organizer", color: "var(--color-bt-accent)" };
     default:
       return { label: "Member", color: "var(--color-bt-text-dim)" };

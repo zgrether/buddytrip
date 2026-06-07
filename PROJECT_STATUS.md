@@ -82,7 +82,7 @@ authoritative schema source. Key additions beyond the original spec:
 
 ### Permission Model
 
-Three roles: Owner > Planner > Member. Full matrix in `PERMISSIONS.md`.
+Three roles: Owner > Organizer > Member. Full matrix in `PERMISSIONS.md`.
 Enforced via `requireTripRole()` middleware (tRPC), RLS policies (Supabase),
 and `canEdit`/`isOwner` guards (frontend).
 

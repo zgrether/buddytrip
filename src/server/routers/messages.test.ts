@@ -8,7 +8,7 @@ describe("messages router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Messages Test");
-    await ctx.addTripMember(tripId, "planner", "Planner");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
   });
 
@@ -67,7 +67,7 @@ describe("messages router", () => {
       tripId,
       id: genId("msg"),
       visibility: "planning",
-      text: "Planner planning note",
+      text: "Organizer planning note",
     });
     expect(msg.visibility).toBe("planning");
   });
@@ -264,7 +264,7 @@ describe("messages router", () => {
       text: "Secret organizer plan",
     });
 
-    // Promote a member to Planner with a planning floor 1ms past the secret
+    // Promote a member to Organizer with a planning floor 1ms past the secret
     // message's own server timestamp — the same clock-skew-proof derivation
     // used by the crew-floor test (floor from created_at, not the local clock).
     const floor = new Date(
@@ -273,7 +273,7 @@ describe("messages router", () => {
     await ctx.admin.from("trip_members").insert({
       trip_id: floorTrip,
       user_id: ctx.getUser("outsider").id,
-      role: "Planner",
+      role: "Organizer",
       status: "in",
       chat_visible_from: floor,
       planning_visible_from: floor,

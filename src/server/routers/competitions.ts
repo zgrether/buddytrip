@@ -57,7 +57,7 @@ export const competitionsRouter = router({
         tagline: z.string().max(500).optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // MVP: only one competition per trip. The DB schema allows N for
       // future-proofing (e.g. seasonal series), but the UI is built for 1.
@@ -123,7 +123,7 @@ export const competitionsRouter = router({
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
       })
     )
-    .use(requireTripRole("Planner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.name !== undefined) patch.name = input.name;
