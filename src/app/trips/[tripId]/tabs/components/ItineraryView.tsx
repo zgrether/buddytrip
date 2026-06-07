@@ -874,15 +874,18 @@ function rangeParts(
   return { days, dates: datePart };
 }
 
-/** Collapsed dashed band — shared by the past-days and empty-run rows. */
+/** Collapsed dashed band — shared by the past-days and empty-run rows.
+ *  `muted` recesses it further (used for the past "Earlier" band). */
 function RunBand({
   icon,
   children,
   onClick,
+  muted = false,
 }: {
   icon: React.ReactNode;
   children: React.ReactNode;
   onClick: () => void;
+  muted?: boolean;
 }) {
   return (
     <button
@@ -893,6 +896,7 @@ function RunBand({
         background: "var(--color-bt-card)",
         border: "1px dashed var(--color-bt-border)",
         color: "var(--color-bt-text-dim)",
+        opacity: muted ? 0.6 : 1,
       }}
     >
       <span className="flex-shrink-0">{icon}</span>
@@ -937,6 +941,7 @@ function PastRun({
       <RunBand
         icon={<Check size={15} style={{ color: "var(--color-bt-text-dim)" }} />}
         onClick={() => setOpen(true)}
+        muted
       >
         {/* Heavily de-emphasized: only "Earlier" carries weight; the rest is gray. */}
         <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>Earlier</span>
