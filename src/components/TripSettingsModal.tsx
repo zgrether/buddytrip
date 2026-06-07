@@ -318,7 +318,10 @@ export function TripSettingsModal({
           </div>
 
           {/* ── Sliding viewport ─────────────────────────────────────── */}
-          <div className="relative flex-1 overflow-y-auto rounded-b-2xl">
+          {/* overflow-x-hidden clips the slide-in transform (translateX 28px)
+              so it doesn't briefly widen the page / flash a horizontal
+              scrollbar; overflow-y-auto still scrolls tall detail screens. */}
+          <div className="relative flex-1 overflow-x-hidden overflow-y-auto rounded-b-2xl">
             <div key={view} className={`p-4 ${slideClass}`}>
               {/* ── Menu ──────────────────────────────────────────── */}
               {view === "menu" && (
