@@ -577,7 +577,11 @@ function FullRangeCalendar({
           const isToday = isSameDay(day, today);
           const showFill = between || (isStart && hasEnd) || isEnd;
           return (
-            <div key={idx} className="relative" style={{ height: FULL_ROW_H }}>
+            <div
+              key={idx}
+              className="relative flex items-center justify-center"
+              style={{ height: FULL_ROW_H }}
+            >
               {showFill && (
                 <div
                   className="absolute inset-y-1"

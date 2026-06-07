@@ -427,7 +427,10 @@ export function DatePicker(props: DatePickerProps) {
               const showFill = between || (isStart && hasEnd) || isEnd;
 
               return (
-                <div key={day.getTime()} className="relative h-9">
+                <div
+                  key={day.getTime()}
+                  className="relative flex h-9 items-center justify-center"
+                >
                   {showFill && (
                     <div
                       className="absolute inset-y-1"
