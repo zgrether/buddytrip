@@ -1214,7 +1214,11 @@ function InlineAddOption({
           const isToday = isSameDay(day, today);
           const showFill = between || (isStart && hasEnd) || isEnd;
           return (
-            <div key={idx} className="relative" style={{ height: 30 }}>
+            <div
+              key={idx}
+              className="relative flex items-center justify-center"
+              style={{ height: 30 }}
+            >
               {showFill && (
                 <div
                   className="absolute inset-y-1"
