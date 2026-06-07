@@ -167,17 +167,17 @@ export function buildItinerary(input: {
     if (item.item_type === "golf") {
       // Title is already the course name — subtitle shows the address only.
       if (item.course_location) subtitleParts.push(item.course_location);
-    } else if (item.detail) {
-      subtitleParts.push(item.detail);
+    } else {
+      // General item: a chosen place (course_name) and/or a free-text note.
+      if (item.course_name) subtitleParts.push(item.course_name);
+      if (item.detail) subtitleParts.push(item.detail);
     }
 
-    // Map link target — golf items have a course_location to navigate to.
-    // General items have a free-form `detail` field that's usually a note,
-    // not an address, so we don't surface a map link for those.
-    const address =
-      item.item_type === "golf" && item.course_location
-        ? item.course_location
-        : null;
+    // Map link target. Both golf courses AND general items with a chosen place
+    // store the address in course_location (the columns are golf-named but
+    // reused for general locations — see AddScheduleItemSheet), so surface it
+    // for any item that has one.
+    const address = item.course_location ?? null;
 
     // For golf, use the earliest tee time (if any) as the sort/display time.
     const golfTime =
@@ -407,6 +407,44 @@ export function bucketDays(
     else upcoming.push(d);
   }
   return { past, today: todayDay, upcoming };
+}
+
+// ── Day-run grouping (past collapse + empty-day compression) ───────────────
+//
+// Turns an ordered list of days (with a post-filter `empty` flag) into render
+// blocks for the itinerary:
+//   - past   → all days before today, collapsed into one "Earlier … done" line
+//   - emptyRun → consecutive empty days on/after today (a run of 1 is rendered
+//                as a lone "Nothing scheduled" day; 2+ becomes a band)
+//   - day    → a day with content (and today, always, even if empty)
+// Today is the anchor: it is NEVER folded into an empty run.
+
+export type ItineraryBlock =
+  | { type: "past"; dates: string[] }
+  | { type: "emptyRun"; dates: string[] }
+  | { type: "day"; date: string };
+
+export function groupDayBlocks(
+  days: { date: string; empty: boolean }[],
+  today: string = todayLocalISO()
+): ItineraryBlock[] {
+  const blocks: ItineraryBlock[] = [];
+  const past: string[] = [];
+  for (const d of days) {
+    if (d.date < today) {
+      past.push(d.date);
+      continue;
+    }
+    if (d.empty && d.date !== today) {
+      const last = blocks[blocks.length - 1];
+      if (last && last.type === "emptyRun") last.dates.push(d.date);
+      else blocks.push({ type: "emptyRun", dates: [d.date] });
+    } else {
+      blocks.push({ type: "day", date: d.date });
+    }
+  }
+  if (past.length) blocks.unshift({ type: "past", dates: past });
+  return blocks;
 }
 
 // ── Happening-now detection ───────────────────────────────────────────────

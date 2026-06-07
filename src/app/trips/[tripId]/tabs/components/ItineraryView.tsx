@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import {
   Calendar,
   Car,
+  Check,
   ChevronDown,
+  ChevronUp,
   Clock,
   Home,
   MapPin,
@@ -21,6 +23,7 @@ import { addDays, differenceInDays } from "@/lib/tripStatus";
 import {
   buildItinerary,
   groupByDay,
+  groupDayBlocks,
   summarizeLodging,
   todayLocalISO,
   type ItineraryEvent,
@@ -270,34 +273,78 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
         <EmptyItineraryState onCancel={onCancel} />
       ) : (
         <div className="space-y-4">
-          {days.map((date) => {
-            // Anchor day numbering on trip.start_date so dates outside
-            // the trip range read correctly (Day 0 = night before, etc.).
-            const dayNumber = trip.start_date
-              ? differenceInDays(parseLocalDate(date), parseLocalDate(trip.start_date)) + 1
-              : null;
-            const dayEvents = eventsByDate.get(date) ?? [];
-            const arrivals = showArrivals
-              ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
-              : [];
-            // Lodging check-in/out stay as day-timeline entries (the top block
-            // is a separate at-a-glance summary). Only arrivals are pulled out
-            // (into the per-day Arrivals group above). The filter governs both
-            // the block and these inline lodging rows via showEvent.
-            const items = dayEvents
-              .filter((e) => e.kind !== "arrival")
-              .filter(showEvent);
-            return (
-              <DaySection
-                key={date}
-                date={date}
-                dayNumber={dayNumber}
-                isToday={date === today}
-                arrivals={arrivals}
-                events={items}
-              />
+          {(() => {
+            // Anchor day numbering on trip.start_date so off-range dates read
+            // correctly (Day 0 = night before, etc.).
+            const dayNumOf = (date: string) =>
+              trip.start_date
+                ? differenceInDays(parseLocalDate(date), parseLocalDate(trip.start_date)) + 1
+                : null;
+
+            // Per-day visible content under the active filter.
+            const dayData = new Map<
+              string,
+              { arrivals: ArrivalEvent[]; items: ItineraryEvent[] }
+            >();
+            for (const date of days) {
+              const dayEvents = eventsByDate.get(date) ?? [];
+              const arrivals = showArrivals
+                ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
+                : [];
+              // Lodging check-in/out stay inline; only arrivals are pulled out.
+              const items = dayEvents
+                .filter((e) => e.kind !== "arrival")
+                .filter(showEvent);
+              dayData.set(date, { arrivals, items });
+            }
+
+            const renderDay = (date: string, compact = false) => {
+              const dd = dayData.get(date)!;
+              return (
+                <DaySection
+                  key={date}
+                  date={date}
+                  dayNumber={dayNumOf(date)}
+                  isToday={date === today}
+                  arrivals={dd.arrivals}
+                  events={dd.items}
+                  compact={compact}
+                />
+              );
+            };
+
+            // Past days collapse into one "Earlier" line; runs of 2+ empty
+            // upcoming days compress into a band (lone empties stay a single
+            // "Nothing scheduled" day). Emptiness is computed AFTER the filter.
+            const blocks = groupDayBlocks(
+              days.map((date) => {
+                const dd = dayData.get(date)!;
+                return { date, empty: dd.arrivals.length === 0 && dd.items.length === 0 };
+              }),
+              today,
             );
-          })}
+
+            return blocks.map((block, i) => {
+              if (block.type === "past") {
+                return (
+                  <PastRun
+                    key="past"
+                    dates={block.dates}
+                    dayNumOf={dayNumOf}
+                    renderDay={renderDay}
+                  />
+                );
+              }
+              if (block.type === "emptyRun") {
+                return block.dates.length === 1 ? (
+                  renderDay(block.dates[0])
+                ) : (
+                  <EmptyRunBand key={`run-${i}`} dates={block.dates} dayNumOf={dayNumOf} />
+                );
+              }
+              return renderDay(block.date);
+            });
+          })()}
         </div>
       )}
     </div>
@@ -458,7 +505,7 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
 
   return (
     <div
-      className="rounded-xl px-3 py-2.5"
+      className="rounded-xl px-4 py-3"
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
@@ -468,19 +515,24 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3"
+        className="flex w-full items-center gap-3.5"
         aria-expanded={open}
       >
         <span
-          className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
           style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
         >
-          <Plane size={13} />
+          <Plane size={18} />
         </span>
-        <span className="flex-1 text-left text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Arrivals{" "}
-          <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
-            · {arrivals.length}
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Arrivals{" "}
+            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
+              · {arrivals.length}
+            </span>
+          </span>
+          <span className="block text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Who&apos;s getting in — tap for details
           </span>
         </span>
         <ChevronDown
@@ -703,18 +755,167 @@ function FilterPill({
 
 // ── DaySection ────────────────────────────────────────────────────────────
 
+// ── Collapsing run bands (past days + empty-day runs) ─────────────────────
+
+function shortDate(date: string): string {
+  return parseLocalDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** Split a date run into a white "Days N–M" part and a gray date part.
+ *  `days` is null when day numbers aren't available (e.g. no trip start). */
+function rangeParts(
+  dates: string[],
+  dayNumOf: (d: string) => number | null
+): { days: string | null; dates: string } {
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  const datePart =
+    first === last ? shortDate(first) : `${shortDate(first)} – ${shortDate(last)}`;
+  const n0 = dayNumOf(first);
+  const n1 = dayNumOf(last);
+  let days: string | null = null;
+  if (n0 != null && n1 != null && n0 >= 1) {
+    days = n0 === n1 ? `Day ${n0}` : `Days ${n0} – ${n1}`;
+  }
+  return { days, dates: datePart };
+}
+
+/** Collapsed dashed band — shared by the past-days and empty-run rows. */
+function RunBand({
+  icon,
+  children,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-xl px-4 py-3 text-left"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px dashed var(--color-bt-border)",
+        color: "var(--color-bt-text-dim)",
+      }}
+    >
+      <span className="flex-shrink-0">{icon}</span>
+      <span className="flex-1 text-[12.5px]">{children}</span>
+      {/* Just the chevron — gray, de-emphasized; it alone signals "expandable". */}
+      <ChevronDown
+        size={15}
+        className="flex-shrink-0"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      />
+    </button>
+  );
+}
+
+function CollapseControl({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1 px-1 pt-1 text-[11.5px] font-semibold"
+      style={{ color: "var(--color-bt-text-dim)" }}
+    >
+      <ChevronUp size={13} /> {label}
+    </button>
+  );
+}
+
+// Past days: collapsed "Earlier … done" line; expanded = dimmed + shrunk days.
+function PastRun({
+  dates,
+  dayNumOf,
+  renderDay,
+}: {
+  dates: string[];
+  dayNumOf: (d: string) => number | null;
+  renderDay: (date: string, compact: boolean) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    const { days, dates: dlabel } = rangeParts(dates, dayNumOf);
+    return (
+      <RunBand
+        icon={<Check size={15} style={{ color: "var(--color-bt-text-dim)" }} />}
+        onClick={() => setOpen(true)}
+      >
+        {/* Heavily de-emphasized: only "Earlier" carries weight; the rest is gray. */}
+        <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>Earlier</span>
+        {`${days ? ` · ${days}` : ""} · ${dlabel} · done`}
+      </RunBand>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <div className="space-y-4 opacity-50">
+        {dates.map((date) => renderDay(date, true))}
+      </div>
+      <CollapseControl label="Hide past days" onClick={() => setOpen(false)} />
+    </div>
+  );
+}
+
+// A run of 2+ empty upcoming days: collapsed band; expanded = individual
+// "Nothing scheduled" days.
+function EmptyRunBand({
+  dates,
+  dayNumOf,
+}: {
+  dates: string[];
+  dayNumOf: (d: string) => number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    const { days, dates: dlabel } = rangeParts(dates, dayNumOf);
+    return (
+      <RunBand
+        icon={<Calendar size={15} style={{ color: "var(--color-bt-text-dim)" }} />}
+        onClick={() => setOpen(true)}
+      >
+        {days && (
+          <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>{days}</span>
+        )}
+        {days ? ` · ${dlabel} · open` : `${dlabel} · open`}
+      </RunBand>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {dates.map((date) => (
+        <DaySection
+          key={date}
+          date={date}
+          dayNumber={dayNumOf(date)}
+          isToday={false}
+          arrivals={[]}
+          events={[]}
+        />
+      ))}
+      <CollapseControl label="Collapse open days" onClick={() => setOpen(false)} />
+    </div>
+  );
+}
+
 function DaySection({
   date,
   dayNumber,
   isToday,
   arrivals,
   events,
+  compact = false,
 }: {
   date: string;
   dayNumber: number | null;
   isToday: boolean;
   arrivals: ArrivalEvent[];
   events: ItineraryEvent[];
+  /** Tighter spacing for the dimmed past-day expansion. */
+  compact?: boolean;
 }) {
   const dateLabel = parseLocalDate(date).toLocaleDateString("en-US", {
     weekday: "short",
@@ -737,27 +938,27 @@ function DaySection({
 
   return (
     <section data-testid={`day-section-${date}`} data-today={isToday ? "true" : undefined}>
-      <div className="mb-2 flex items-center gap-2">
+      <div className={`flex items-center gap-2 ${compact ? "mb-1" : "mb-2"}`}>
+        {/* Day # gray, date white; TODAY (teal badge) carries the emphasis. */}
+        <p className="text-[10px] font-bold uppercase tracking-widest">
+          {dayLabel && (
+            <span style={{ color: "var(--color-bt-text-dim)" }}>{dayLabel}</span>
+          )}
+          <span style={{ color: "var(--color-bt-text)" }}>{dateLabel}</span>
+        </p>
         {isToday && (
           <span
-            className="inline-block h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--color-bt-accent)" }}
-            aria-hidden
-          />
+            className="rounded-full px-2 py-[2px] text-[9.5px] font-bold tracking-wide"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+          >
+            TODAY
+          </span>
         )}
-        <p
-          className="text-[10px] font-bold uppercase tracking-widest"
-          style={{
-            color: isToday ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-          }}
-        >
-          {dayLabel}{dateLabel}
-        </p>
       </div>
-      <div className="space-y-1.5">
+      <div className={compact ? "space-y-1" : "space-y-1.5"}>
         {arrivals.length > 0 && <ArrivalsGroup arrivals={arrivals} />}
         {events.map((event) => (
-          <EventCard key={event.id} event={event} />
+          <EventCard key={event.id} event={event} compact={compact} />
         ))}
         {arrivals.length === 0 && events.length === 0 && (
           <p className="pl-3 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -771,7 +972,7 @@ function DaySection({
 
 // ── EventCard ─────────────────────────────────────────────────────────────
 
-function EventCard({ event }: { event: ItineraryEvent }) {
+function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?: boolean }) {
   const category = categoryOf(event);
 
   // Golf: show tee times or "Walk on"; everything else shows the stored
@@ -813,13 +1014,18 @@ function EventCard({ event }: { event: ItineraryEvent }) {
     Icon = Clock;
   }
 
-  // Address is set on lodging events (item.address) and golf schedule
-  // events (course_location). When present, render a tap-to-map link.
+  // Address is set on lodging events (item.address) and golf/located schedule
+  // events (course_location). Render a tap-to-map link when present — except on
+  // check-out (you don't need directions on the way out).
   const address = "address" in event ? event.address ?? null : null;
+
+  // Rounded-square icon tile, vertically centered against the body — matches
+  // the design's `.re-ico` recipe (and the lodging block tile).
+  const tilePx = compact ? 30 : 36;
 
   return (
     <div
-      className="flex items-start gap-3 rounded-xl px-3 py-2.5"
+      className={`flex items-center gap-3.5 rounded-xl px-4 ${compact ? "py-2" : "py-3"}`}
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
@@ -827,51 +1033,47 @@ function EventCard({ event }: { event: ItineraryEvent }) {
       }}
     >
       {event.kind === "arrival" ? (
-        <Avatar
-          name={event.displayName}
-          avatarIcon={event.avatarIcon ?? null}
-          size="md"
-        />
+        <Avatar name={event.displayName} avatarIcon={event.avatarIcon ?? null} sizePx={tilePx} />
       ) : (
         <span
-          className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full"
-          style={{ background: iconBg, color: iconColor }}
+          className="flex flex-shrink-0 items-center justify-center rounded-[10px]"
+          style={{ width: tilePx, height: tilePx, background: iconBg, color: iconColor }}
         >
-          {Icon && <Icon size={13} />}
+          {Icon && <Icon size={compact ? 16 : 18} />}
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           {timeLabel}
         </p>
-        <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        <p className="truncate text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
           {event.title}
         </p>
         {event.subtitle && (
-          <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
             {event.subtitle}
           </p>
         )}
         {event.kind === "schedule" && event.competitionEvents?.map((ce) => (
           <div key={ce.id} className="mt-1.5 flex items-center gap-1.5">
-            <Trophy size={11} style={{ color: "var(--color-bt-accent)" }} />
-            <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+            <Trophy size={13} style={{ color: "var(--color-bt-accent)" }} />
+            <span className="text-[12.5px] font-medium" style={{ color: "var(--color-bt-text)" }}>
               {ce.title}
             </span>
           </div>
         ))}
       </div>
-      {address && (
+      {address && event.kind !== "lodging-checkout" && (
         <a
           href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="flex flex-shrink-0 items-center gap-0.5 self-center text-[11px] font-semibold"
-          style={{ color: "var(--color-bt-accent)" }}
+          className="flex flex-shrink-0 items-center gap-1 self-center text-[12px] font-semibold"
+          style={{ color: "var(--color-bt-planning)" }}
           aria-label={`Open ${event.title} in Google Maps`}
         >
-          <MapPin size={11} />
+          <MapPin size={13} />
           Map →
         </a>
       )}
