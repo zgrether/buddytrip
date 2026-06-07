@@ -346,6 +346,22 @@ function TripSwitcherRow({
   const status = getEffectiveStatus(trip);
   const stageBadge = STAGE_BADGE_STYLES[status] ?? STAGE_BADGE_STYLES.past;
 
+  // Upcoming trips show a countdown ("5 days" / "Tomorrow") instead of a static
+  // "Upcoming" badge — the days-to-go is the useful glance.
+  const countdownLabel =
+    status === "upcoming" && trip.start_date
+      ? (() => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const [y, m, d] = trip.start_date.slice(0, 10).split("-").map(Number);
+          const start = new Date(y, m - 1, d);
+          start.setHours(0, 0, 0, 0);
+          const n = Math.round((start.getTime() - today.getTime()) / 86400000);
+          if (n <= 0) return null;
+          return n === 1 ? "Tomorrow" : `${n} days`;
+        })()
+      : null;
+
   const destination =
     trip.locked_destination_location ?? trip.locked_destination_title ?? null;
   const dateRange =
@@ -422,7 +438,7 @@ function TripSwitcherRow({
           border: `0.5px solid ${stageBadge.border}`,
         }}
       >
-        {STAGE_LABELS[status]}
+        {countdownLabel ?? STAGE_LABELS[status]}
       </span>
     </button>
   );
