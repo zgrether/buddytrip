@@ -833,7 +833,8 @@ function FilterDropdown({
               }}
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px]"
               style={{
-                color: o.k === filter ? "var(--color-bt-accent)" : "var(--color-bt-text)",
+                // Selected option reads in its OWN category hue, never teal.
+                color: o.k === filter ? dotOf(o.tone) : "var(--color-bt-text)",
                 fontWeight: o.k === filter ? 600 : 400,
               }}
             >
