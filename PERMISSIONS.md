@@ -13,23 +13,25 @@ for what changed and the open questions).*
 
 ## Roles
 
-The role lives on `trip_members.role`. In code the values are **capitalized**
-and the middle role is named **`Planner`**, but the **user-facing term is
-"Organizer."** This doc uses *Organizer* for readability; treat it as identical
-to the code's `Planner`.
+The role lives on `trip_members.role`. The middle role's value is **`Organizer`**
+in both code and DB — renamed from `Planner` in migration 029 (PR #339), across
+the `TripRole` type, every `requireTripRole` gate, the CHECK constraints, and all
+30 RLS policies. The trip-state word **`planning`** and the planning/organizers
+chat visibility (`messages.visibility = 'planning'`) were intentionally left
+unchanged — those describe a phase, not the role.
 
-| Role (UI) | Code value (`TripRole`) | Description |
-|-----------|-------------------------|-------------|
+| Role | Code/DB value (`TripRole`) | Description |
+|------|----------------------------|-------------|
 | **Owner** | `'Owner'` | Full control. Creates the trip, owns the crew roster, locks decisions, transfers/deletes the trip. |
-| **Organizer** | `'Planner'` | Planning authority. Edits trip details, dates, ideas, lodging, agenda, competition, news, tiles. Cannot manage the roster, lock the destination, transfer, or delete. |
+| **Organizer** | `'Organizer'` | Planning authority. Edits trip details, dates, ideas, lodging, agenda, competition, news, tiles. Cannot manage the roster, lock the destination, transfer, or delete. |
 | **Member** | `'Member'` | Participant. Views everything on the trip, votes, chats (crew), logs expenses + own travel. Cannot edit trip configuration. |
 
 **Derived flags used in code:**
 - `isOwner = viewerRole === 'Owner'`
-- `canEdit = viewerRole === 'Owner' || viewerRole === 'Planner'` (Owner **or** Organizer)
+- `canEdit = viewerRole === 'Owner' || viewerRole === 'Organizer'`
 
 **Hierarchy & access notes:**
-- `requireTripRole(min)` is **hierarchical**: Owner (3) ≥ Organizer/Planner (2) ≥ Member (1). So an Owner satisfies any Organizer-gated action; `requireTripRole("Planner")` admits Owner **and** Organizer, not Members.
+- `requireTripRole(min)` is **hierarchical**: Owner (3) ≥ Organizer (2) ≥ Member (1). So an Owner satisfies any Organizer-gated action; `requireTripRole("Organizer")` admits Owner **and** Organizer, not Members.
 - **Non-members are fully blocked.** There is no "outsider" / guest read role — `requireTripMember` rejects anyone without a `trip_members` row (`FORBIDDEN`). Access is all-or-nothing membership.
 - The **Organizers chat** is the one place "Organizer" is gated by message visibility (`visibility = 'planning'`) rather than the role check directly — same effect (Owner + Organizer only).
 
@@ -147,7 +149,8 @@ who's in, what they're called, what role they hold — is the Owner's.
 | Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
 
 > **Scoring is Organizer+ today** (`setPlacements`). There is no member-facing
-> "enter your own score" path — see open question Q2.
+> "enter your own score" path yet — the intent (see Resolved notes) is for any
+> member to score games they're in, once the scoring engine is rebuilt.
 
 ### News / trip board — `news`
 
@@ -183,12 +186,13 @@ who's in, what they're called, what role they hold — is the Owner's.
 This pass reconciled the doc against the tRPC routers. Highlights:
 
 ### Nomenclature
-- **Planner → Organizer** throughout. The role value in code is still
-  `'Planner'`; "Organizer" is the user-facing label (RoleBadge, the system
-  message "*X is now an organizer*", the "Organizers" chat tab). The
-  organizers-only chat is message **visibility `'planning'`**, not a role
-  string. Role-variable casing corrected to capitalized (`'Owner'`, etc.) — the
-  old doc used lowercase (`'owner'`), which never matched the code.
+- **Planner → Organizer** — now a *full* rename (migration 029 / PR #339): the
+  `TripRole` type, every `requireTripRole` gate, the `trip_members.role` +
+  `invites.role` CHECK constraints, and all 30 RLS policies store/check
+  `'Organizer'`. The trip-state word **`planning`** and the organizers-chat
+  visibility (`messages.visibility = 'planning'`) were deliberately kept — they
+  name a phase, not the role. Role-variable casing also corrected to
+  capitalized (`'Owner'`, etc.) — the old doc used lowercase (`'owner'`).
 
 ### Removed — rows deleted because the feature no longer exists
 - **Link/unlink series** — the `series` table/feature was dropped (migration
@@ -224,19 +228,39 @@ suggestions, archived ideas, team assignments, expense opt-out + remove, the
 profile/account + feedback endpoints, and the full logistics CRUD (the old doc
 only listed view + add).
 
-### Open questions (need your intent — not resolvable from code)
-- **Q1 — Self-service RSVP.** The old doc claimed members change their own
-  going/maybe/out status; there is **no such procedure**. `trip_members.status`
-  exists but is only set by the Owner on add/invite. Is self-service RSVP
-  intended (re-add an endpoint), or is attendance now Owner-managed? Doc
-  currently reflects code (no self-RSVP).
-- **Q2 — Score entry.** Old doc said "any member enters scores." There's **no
-  scores router**; scoring is `events.setPlacements` (Organizer+), and the live
-  leaderboard is mid-rebuild. Should members enter their own scores once the
-  engine ships, or stay Organizer-entered?
-- **Q3 — Member "add expense".** Confirm any member *should* be able to log a
-  receipt (current behavior) vs. Organizer+.
-- **Q4 — RLS parity.** I documented the tRPC gates (source of truth). The old
-  "RLS Enforcement Summary" referenced dropped features (series/archive) and
-  old migration numbers; it's removed pending a separate RLS-vs-tRPC parity
-  check — flag if you want that audited next.
+### Resolved (product decisions, 2026-06-07)
+- **RSVP — removed, confirmed.** There is no self-service RSVP and none is
+  planned. `trip_members.status` stays purely as Owner-managed membership state
+  (in / invited / out); the only "RSVP" left in the code is comments noting its
+  removal. No action.
+- **Score entry — intent: any member.** A member should be able to enter/edit
+  the score of any game they're in. This is **not built yet** — there's no
+  scores router; today's only scoring path is `events.setPlacements`
+  (Organizer+). Captured here as the target permission for the scoring engine
+  when it ships (member-scoped to games they belong to).
+- **Add expense — any member.** Confirmed; matches `expenses.create`
+  (`requireTripMember`).
+
+### RLS parity audit (2026-06-07)
+Compared every live write-policy (post-029) to the tRPC matrix above.
+
+**Result:** RLS is **equal-or-looser** than the tRPC gates everywhere — never
+*stricter* — so no tRPC-allowed action is blocked by RLS (no broken features),
+and because **all writes go through tRPC** (correctly gated), there is no active
+access hole. Most tables match exactly (member SELECT; member expense insert +
+Owner split-edit; Owner idea-create / Organizer idea-edit; Organizer logistics /
+schedule / news / tiles / competition; Owner competition+team delete; member
+votes/reads).
+
+**4 spots where RLS is *looser* than the tRPC intent** — harmless today (tRPC is
+the only write path) but worth tightening for defense-in-depth:
+
+| Table / cmd | RLS allows | tRPC intent |
+|-------------|-----------|-------------|
+| `trip_members` INSERT/UPDATE | self **or** Owner+Organizer | roster mgmt is **Owner-only** (self-row writes OK) |
+| `trips` UPDATE | Owner+Organizer (any column) | `lockDestination` + owner fields are **Owner-only** |
+| `invites` INSERT | any trip member | `inviteByEmail` is **Owner-only** |
+| `date_poll_votes` (vote for others) | Owner+Organizer | `castVoteForMember` is **Owner-only** |
+
+**Recommendation:** optional follow-up migration to tighten those four to
+Owner-only (so RLS is true defense-in-depth). Low urgency — flag if you want it.
