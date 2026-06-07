@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Plane, Plus } from "lucide-react";
+import { Calendar, Mail, Plus } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { parseLocalDate } from "@/lib/dates";
 import {
@@ -462,7 +462,7 @@ export function YouTile({
             className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            <Plane size={11} strokeWidth={2.5} />
+            <Calendar size={11} strokeWidth={2.5} />
             Your travel
           </div>
 

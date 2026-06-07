@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Car, HelpCircle, Plane } from "lucide-react";
+import { AlertTriangle, Calendar, Car, Clock, HelpCircle, Plane } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { DatePicker } from "@/components/DatePicker";
@@ -393,7 +393,7 @@ export function TravelFields({
               </label>
               <DatePicker
                 mode="single"
-                icon={<Plane size={15} />}
+                icon={<Calendar size={15} />}
                 accent={DOMAIN_COLORS.travel.color}
                 accentFaint={DOMAIN_COLORS.travel.faint}
                 value={value.arrivalDate ? parseLocalDate(value.arrivalDate) : null}
@@ -405,7 +405,7 @@ export function TravelFields({
             <div style={{ flex: "1 1 100px" }}>
               <TimePicker
                 label="Time"
-                icon={<Plane size={15} />}
+                icon={<Clock size={15} />}
                 presets="daypart"
                 accent={DOMAIN_COLORS.travel.color}
                 accentFaint={DOMAIN_COLORS.travel.faint}

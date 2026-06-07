@@ -196,7 +196,26 @@ export function TripSettingsModal({
   const [deleteConfirming, setDeleteConfirming] = useState(false);
 
   const deleteMutation = trpc.trips.delete.useMutation({
-    onSuccess: () => router.push("/dashboard"),
+    onSuccess: () => {
+      // Drop the trip from the dashboard list cache immediately (no stale
+      // flash), then invalidate so it refetches authoritatively. Without this
+      // the deleted trip lingered until a manual refresh.
+      utils.trips.list.setData(undefined, (old) =>
+        old ? old.filter((t) => t.id !== tripId) : old
+      );
+      utils.trips.list.invalidate();
+      utils.trips.getById.invalidate({ tripId });
+      // Clear the "last trip" pointer if it aimed here, so the root route
+      // doesn't 307 back to the now-deleted trip.
+      if (
+        typeof window !== "undefined" &&
+        window.localStorage.getItem("bt-last-trip-id") === tripId
+      ) {
+        window.localStorage.removeItem("bt-last-trip-id");
+        document.cookie = "bt-last-trip-id=; Max-Age=0; Path=/; SameSite=Lax";
+      }
+      router.push("/dashboard");
+    },
   });
 
   // ── Render ───────────────────────────────────────────────────────────

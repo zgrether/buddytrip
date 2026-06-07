@@ -45,29 +45,15 @@ type SwitcherTrip = TripStatusFields & {
   created_at?: string | null;
 };
 
-// Order within the Active group: most imminent/committed first, so a trip
-// that's happening Now floats to the top and idea-stage trips sink to the
-// bottom. Mirrors the dashboard's section order.
-const ACTIVE_PRIORITY: Record<TripDisplayStatus, number> = {
-  now: 0,
-  upcoming: 1,
-  idea: 2,
-  past: 3,
-};
-
-// Tiebreak within a single phase: dated phases by their relevant date,
-// undated phases (idea) by most-recently-touched.
-function phaseTiebreak(
-  a: SwitcherTrip,
-  b: SwitcherTrip,
-  status: TripDisplayStatus
-): number {
-  if (status === "now") return (a.end_date ?? "").localeCompare(b.end_date ?? "");
-  if (status === "upcoming")
-    return (a.start_date ?? "").localeCompare(b.start_date ?? "");
-  const ak = a.updated_at ?? a.created_at ?? "";
-  const bk = b.updated_at ?? b.created_at ?? "";
-  return bk.localeCompare(ak);
+// Active-group ordering bucket:
+//   0 — trips WITH dates, ordered by countdown (soonest start first; a trip
+//       happening now has the earliest/negative countdown so it floats up)
+//   1 — committed trips with NO dates yet (between dated trips and ideas)
+//   2 — ideas (idea phase) sink to the bottom
+function activeBucket(t: SwitcherTrip): 0 | 1 | 2 {
+  if (t.start_date) return 0;
+  if (getEffectiveStatus(t) === "idea") return 2;
+  return 1;
 }
 
 export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
@@ -102,14 +88,19 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
       if (status === "past") past.push(t);
       else active.push(t);
     }
-    // Active: Now → Upcoming → Idea (then within-phase tiebreak).
+    // Active: dated (by countdown) → dateless committed → ideas.
     active.sort((a, b) => {
-      const sa = getEffectiveStatus(a);
-      const sb = getEffectiveStatus(b);
-      const pa = ACTIVE_PRIORITY[sa];
-      const pb = ACTIVE_PRIORITY[sb];
-      if (pa !== pb) return pa - pb;
-      return phaseTiebreak(a, b, sa);
+      const ba = activeBucket(a);
+      const bb = activeBucket(b);
+      if (ba !== bb) return ba - bb;
+      if (ba === 0) {
+        // Dated trips by countdown — soonest start first.
+        return (a.start_date ?? "").localeCompare(b.start_date ?? "");
+      }
+      // Dateless + ideas: most-recently-touched first.
+      const ak = a.updated_at ?? a.created_at ?? "";
+      const bk = b.updated_at ?? b.created_at ?? "";
+      return bk.localeCompare(ak);
     });
     // Past: most-recently-ended first.
     past.sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""));
@@ -344,7 +335,22 @@ function TripSwitcherRow({
   onClick: () => void;
 }) {
   const status = getEffectiveStatus(trip);
-  const stageBadge = STAGE_BADGE_STYLES[status] ?? STAGE_BADGE_STYLES.past;
+
+  // Upcoming trips show a countdown ("5 days" / "Tomorrow") instead of a static
+  // "Upcoming" badge — the days-to-go is the useful glance.
+  const countdownLabel =
+    status === "upcoming" && trip.start_date
+      ? (() => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const [y, m, d] = trip.start_date.slice(0, 10).split("-").map(Number);
+          const start = new Date(y, m - 1, d);
+          start.setHours(0, 0, 0, 0);
+          const n = Math.round((start.getTime() - today.getTime()) / 86400000);
+          if (n <= 0) return null;
+          return n === 1 ? "Tomorrow" : `${n} days`;
+        })()
+      : null;
 
   const destination =
     trip.locked_destination_location ?? trip.locked_destination_title ?? null;
@@ -352,11 +358,6 @@ function TripSwitcherRow({
     trip.start_date && trip.end_date
       ? formatDateRange(trip.start_date, trip.end_date)
       : null;
-  const sub =
-    destination && dateRange
-      ? `${destination} · ${dateRange}`
-      : destination ?? dateRange ?? "Destination TBD";
-
   return (
     <button
       type="button"
@@ -397,32 +398,40 @@ function TripSwitcherRow({
             />
           )}
         </div>
-        <div
-          className="truncate"
-          style={{
-            fontSize: 11,
-            color: "var(--color-bt-text-dim)",
-            marginTop: 1,
-          }}
-        >
-          {sub}
-        </div>
+        {/* Destination, then dates on their own line below it. */}
+        {destination && (
+          <div
+            className="truncate"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 1 }}
+          >
+            {destination}
+          </div>
+        )}
+        {dateRange && (
+          <div
+            className="truncate"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 1 }}
+          >
+            {dateRange}
+          </div>
+        )}
+        {!destination && !dateRange && (
+          <div
+            className="truncate"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 1 }}
+          >
+            Destination TBD
+          </div>
+        )}
       </div>
 
-      {/* Right: stage badge */}
+      {/* Right: plain text — countdown for dated trips, else the stage label
+          ("Planning" / "Idea" / etc.). No pill badge. */}
       <span
         className="flex-shrink-0"
-        style={{
-          fontSize: 10,
-          fontWeight: 500,
-          padding: "2px 7px",
-          borderRadius: 10,
-          background: stageBadge.bg,
-          color: stageBadge.fg,
-          border: `0.5px solid ${stageBadge.border}`,
-        }}
+        style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
       >
-        {STAGE_LABELS[status]}
+        {countdownLabel ?? STAGE_LABELS[status]}
       </span>
     </button>
   );
@@ -494,37 +503,11 @@ function TripIcon({
   );
 }
 
-// ── Stage badge palette ───────────────────────────────────────────────────
-
-const STAGE_BADGE_STYLES: Record<
-  TripDisplayStatus,
-  { bg: string; fg: string; border: string }
-> = {
-  idea: {
-    bg: "rgba(96, 165, 250, 0.1)",
-    fg: "#60a5fa",
-    border: "rgba(96, 165, 250, 0.2)",
-  },
-  upcoming: {
-    bg: "rgba(45, 212, 191, 0.1)",
-    fg: "#2dd4bf",
-    border: "rgba(45, 212, 191, 0.2)",
-  },
-  now: {
-    bg: "rgba(45, 212, 191, 0.1)",
-    fg: "#2dd4bf",
-    border: "rgba(45, 212, 191, 0.2)",
-  },
-  past: {
-    bg: "var(--color-bt-card-raised)",
-    fg: "var(--color-bt-text-dim)",
-    border: "var(--color-bt-border)",
-  },
-};
+// ── Stage labels (plain text on the right of each row) ────────────────────
 
 const STAGE_LABELS: Record<TripDisplayStatus, string> = {
   idea: "Idea",
-  upcoming: "Upcoming",
+  upcoming: "Planning",
   now: "Now",
   past: "Past",
 };
