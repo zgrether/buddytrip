@@ -45,29 +45,15 @@ type SwitcherTrip = TripStatusFields & {
   created_at?: string | null;
 };
 
-// Order within the Active group: most imminent/committed first, so a trip
-// that's happening Now floats to the top and idea-stage trips sink to the
-// bottom. Mirrors the dashboard's section order.
-const ACTIVE_PRIORITY: Record<TripDisplayStatus, number> = {
-  now: 0,
-  upcoming: 1,
-  idea: 2,
-  past: 3,
-};
-
-// Tiebreak within a single phase: dated phases by their relevant date,
-// undated phases (idea) by most-recently-touched.
-function phaseTiebreak(
-  a: SwitcherTrip,
-  b: SwitcherTrip,
-  status: TripDisplayStatus
-): number {
-  if (status === "now") return (a.end_date ?? "").localeCompare(b.end_date ?? "");
-  if (status === "upcoming")
-    return (a.start_date ?? "").localeCompare(b.start_date ?? "");
-  const ak = a.updated_at ?? a.created_at ?? "";
-  const bk = b.updated_at ?? b.created_at ?? "";
-  return bk.localeCompare(ak);
+// Active-group ordering bucket:
+//   0 — trips WITH dates, ordered by countdown (soonest start first; a trip
+//       happening now has the earliest/negative countdown so it floats up)
+//   1 — committed trips with NO dates yet (between dated trips and ideas)
+//   2 — ideas (idea phase) sink to the bottom
+function activeBucket(t: SwitcherTrip): 0 | 1 | 2 {
+  if (t.start_date) return 0;
+  if (getEffectiveStatus(t) === "idea") return 2;
+  return 1;
 }
 
 export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
@@ -102,14 +88,19 @@ export function TripSwitcher({ open, onClose }: TripSwitcherProps) {
       if (status === "past") past.push(t);
       else active.push(t);
     }
-    // Active: Now → Upcoming → Idea (then within-phase tiebreak).
+    // Active: dated (by countdown) → dateless committed → ideas.
     active.sort((a, b) => {
-      const sa = getEffectiveStatus(a);
-      const sb = getEffectiveStatus(b);
-      const pa = ACTIVE_PRIORITY[sa];
-      const pb = ACTIVE_PRIORITY[sb];
-      if (pa !== pb) return pa - pb;
-      return phaseTiebreak(a, b, sa);
+      const ba = activeBucket(a);
+      const bb = activeBucket(b);
+      if (ba !== bb) return ba - bb;
+      if (ba === 0) {
+        // Dated trips by countdown — soonest start first.
+        return (a.start_date ?? "").localeCompare(b.start_date ?? "");
+      }
+      // Dateless + ideas: most-recently-touched first.
+      const ak = a.updated_at ?? a.created_at ?? "";
+      const bk = b.updated_at ?? b.created_at ?? "";
+      return bk.localeCompare(ak);
     });
     // Past: most-recently-ended first.
     past.sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""));
