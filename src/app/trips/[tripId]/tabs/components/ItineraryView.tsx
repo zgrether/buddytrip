@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Clock,
   Home,
+  ListChecks,
   MapPin,
   Navigation,
   Plane,
@@ -33,11 +34,11 @@ import {
   type LodgingStay,
 } from "../../components/itinerary";
 import type { TripData } from "../types";
-import { DOMAIN_COLORS, type Domain } from "@/lib/domainColors";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-type FilterKey = "all" | "lodging" | "travel" | "events";
+/** The selectable filter categories (everything except the "all" shortcut). */
+type Category = "lodging" | "travel" | "events";
 
 type EventCategory = "lodging" | "travel" | "event";
 
@@ -61,10 +62,12 @@ export interface ItineraryViewProps {
   /** When provided (owner only), shows an X button on the empty-state
       mock-up that backs out of the activation. */
   onCancel?: () => void;
-  /** Optional slot rendered on the right of the ITINERARY header row.
-   *  ItineraryPanel uses this to inject the "← Setup guide" toggle when
-   *  the guide is currently dismissed. */
-  headerAction?: import("react").ReactNode;
+  /** Owner-only: reopens the setup guide. When provided, renders the
+   *  "Setup guide · N left" pill on the left, next to the ITINERARY eyebrow. */
+  onShowGuide?: () => void;
+  /** Count of incomplete setup items — shown as an amber "· N left" nudge on
+   *  the setup-guide pill while setup items remain. */
+  setupLeft?: number;
 }
 
 /**
@@ -83,7 +86,7 @@ export interface ItineraryViewProps {
  *      state mirrors the intro modal preview. Owners get an X button
  *      that backs out of the activation entirely.
  */
-export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction }: ItineraryViewProps) {
+export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, setupLeft = 0 }: ItineraryViewProps) {
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -144,53 +147,51 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
 
   const today = todayLocalISO();
 
-  // ── Filter pills ───────────────────────────────────────────────────────
-  const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(new Set(["all"]));
+  // Per-category availability — drives which filter chips render. Don't tease
+  // a filter the user can't use. Lodging comes from the summarized block.
+  const hasLodging = lodgingStays.length > 0;
+  const hasTravel = events.some((e) => categoryOf(e) === "travel");
+  const hasEvents = events.some((e) => categoryOf(e) === "event");
 
-  const toggleFilter = (key: FilterKey) => {
-    setActiveFilters((prev) => {
+  const available = useMemo<Category[]>(
+    () => [
+      ...(hasLodging ? (["lodging"] as const) : []),
+      ...(hasTravel ? (["travel"] as const) : []),
+      ...(hasEvents ? (["events"] as const) : []),
+    ],
+    [hasLodging, hasTravel, hasEvents],
+  );
+
+  // ── Filter (additive multi-select; "All" = show every category) ─────────
+  // `selected` holds the categories currently shown. Default = everything.
+  // "All" is a select-all/reset, not its own exclusive filter; toggling off
+  // the last category snaps back to everything (never an empty list).
+  const [selected, setSelected] = useState<Set<Category>>(
+    () => new Set<Category>(["lodging", "travel", "events"]),
+  );
+  const allSelected = available.length > 0 && available.every((c) => selected.has(c));
+
+  const toggleCategory = (c: Category) => {
+    setSelected((prev) => {
       const next = new Set(prev);
-      if (key === "all") {
-        return new Set<FilterKey>(["all"]);
-      }
-      next.delete("all");
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      if (next.size === 0) return new Set<FilterKey>(["all"]);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      // Never leave zero categories showing — snap back to everything.
+      if (!available.some((a) => next.has(a))) return new Set<Category>(available);
       return next;
     });
   };
 
   const showEvent = (event: ItineraryEvent): boolean => {
-    if (activeFilters.has("all")) return true;
     const cat = categoryOf(event);
-    if (cat === "lodging" && activeFilters.has("lodging")) return true;
-    if (cat === "travel" && activeFilters.has("travel")) return true;
-    if (cat === "event" && activeFilters.has("events")) return true;
-    return false;
+    return selected.has(cat === "event" ? "events" : cat);
   };
 
-  // Per-category counts drive whether each filter pill is shown.
-  // Don't tease a filter the user can't actually use. Lodging now comes from
-  // the summarized block (not inline events).
-  const hasLodging = lodgingStays.length > 0;
-  const hasTravel = events.some((e) => categoryOf(e) === "travel");
-  const hasEvents = events.some((e) => categoryOf(e) === "event");
+  const showLodgingBlock = lodgingStays.length > 0 && selected.has("lodging");
+  const showArrivals = selected.has("travel");
 
-  // The lodging block shows only under All or Lodging.
-  const showLodgingBlock =
-    lodgingStays.length > 0 &&
-    (activeFilters.has("all") || activeFilters.has("lodging"));
-
-  // Per-day arrivals group shows only under All or Travel.
-  const showArrivals = activeFilters.has("all") || activeFilters.has("travel");
-
-  // Show pill row only if there's >1 category to filter between. Travel
-  // arrivals weave in from crew members' own travel plans (Crew tab), so the
-  // Travel pill shows whenever arrivals exist — no separate enable gate.
-  const visibleCategoryCount =
-    (hasLodging ? 1 : 0) + (hasTravel ? 1 : 0) + (hasEvents ? 1 : 0);
-  const showFilterPills = visibleCategoryCount > 1;
+  // Show the filter control only if there's >1 category to filter between.
+  const showFilterPills = available.length > 1;
 
   const isEmpty = days.length === 0 || events.length === 0;
 
@@ -213,57 +214,45 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
           baseline instead of being centered against the slightly
           taller action button — otherwise items-center pushes the h2
           ~1px lower than the same eyebrow on other tabs. */}
-      <div className="space-y-4">
-        <div className="flex items-baseline justify-between gap-3">
+      {/* One row: ITINERARY eyebrow + (owner) Setup-guide pill on the left,
+          filters on the right (chips on desktop, a "Filter ▾" dropdown on
+          mobile). The eyebrow/pill stay even on the empty-state mockup.
+          pb-2 adds breathing room before the lodging block / day list. */}
+      <div className="flex items-center justify-between gap-3 pb-2">
+        <div className="flex min-w-0 items-center gap-2">
           <h2
             className="text-[11px] font-semibold uppercase"
-            style={{
-              color: "var(--color-bt-accent)",
-              letterSpacing: "0.1em",
-            }}
+            style={{ color: "var(--color-bt-accent)", letterSpacing: "0.1em" }}
           >
             Itinerary
           </h2>
-          {headerAction && (
-            <div className="flex flex-shrink-0 items-center">
-              {headerAction}
-            </div>
-          )}
+          {onShowGuide && <SetupGuidePill onClick={onShowGuide} left={setupLeft} />}
         </div>
 
         {!isEmpty && showFilterPills && (
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterPill
-              label="All"
-              tone="all"
-              active={activeFilters.has("all")}
-              onClick={() => toggleFilter("all")}
-            />
-            {hasLodging && (
-              <FilterPill
-                label="Lodging"
-                tone="lodging"
-                active={activeFilters.has("lodging")}
-                onClick={() => toggleFilter("lodging")}
+          <>
+            <div className="hidden flex-wrap items-center justify-end gap-2 sm:flex">
+              {hasLodging && (
+                <FilterPill label="Lodging" tone="lodging" active={selected.has("lodging")} onClick={() => toggleCategory("lodging")} />
+              )}
+              {hasTravel && (
+                <FilterPill label="Travel" tone="travel" active={selected.has("travel")} onClick={() => toggleCategory("travel")} />
+              )}
+              {hasEvents && (
+                <FilterPill label="Events" tone="events" active={selected.has("events")} onClick={() => toggleCategory("events")} />
+              )}
+            </div>
+            <div className="flex-shrink-0 sm:hidden">
+              <FilterDropdown
+                selected={selected}
+                allSelected={allSelected}
+                toggleCategory={toggleCategory}
+                hasLodging={hasLodging}
+                hasTravel={hasTravel}
+                hasEvents={hasEvents}
               />
-            )}
-            {hasTravel && (
-              <FilterPill
-                label="Travel"
-                tone="travel"
-                active={activeFilters.has("travel")}
-                onClick={() => toggleFilter("travel")}
-              />
-            )}
-            {hasEvents && (
-              <FilterPill
-                label="Events"
-                tone="events"
-                active={activeFilters.has("events")}
-                onClick={() => toggleFilter("events")}
-              />
-            )}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -699,14 +688,15 @@ function LodgingBlock({ stays }: { stays: LodgingStay[] }) {
 
 type PillTone = "all" | "lodging" | "travel" | "events";
 
-// Each filter pill borrows its content area's domain color (item accents),
-// so the itinerary filters read in the same hues as their source tabs.
-// "All" uses Home teal — the itinerary lives on the Home tab.
-const PILL_DOMAIN: Record<PillTone, Domain> = {
-  all: "home",
-  lodging: "lodging",
-  travel: "travel",
-  events: "events",
+// Each filter pill uses its CATEGORY's item color (the same tokens EventCard
+// stripes use), so the filters read in the exact hues of the items they show.
+// (The global DOMAIN_COLORS map is temporarily all-teal app-wide, so we map
+// locally here instead.) "All" = teal (the itinerary's Home hue).
+const FILTER_COLORS: Record<PillTone, { color: string; faint: string }> = {
+  all: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
+  lodging: { color: "var(--color-bt-planning)", faint: "var(--color-bt-blue-bg)" },
+  travel: { color: "var(--color-bt-accent)", faint: "var(--color-bt-accent-faint)" },
+  events: { color: "var(--color-bt-ready)", faint: "var(--color-bt-ready-bg)" },
 };
 
 function FilterPill({
@@ -720,7 +710,7 @@ function FilterPill({
   active: boolean;
   onClick: () => void;
 }) {
-  const { color, faint } = DOMAIN_COLORS[PILL_DOMAIN[tone]];
+  const { color, faint } = FILTER_COLORS[tone];
   return (
     <button
       type="button"
@@ -753,6 +743,126 @@ function FilterPill({
   );
 }
 
+// ── SetupGuidePill ────────────────────────────────────────────────────────
+// Owner-only link pulled left next to the ITINERARY eyebrow once the itinerary
+// is the committed Home. An outlined NEUTRAL pill (visually distinct from the
+// teal eyebrow) with an amber "· N left" nudge while setup items remain. On
+// mobile the "Setup guide" label is hidden (icon-only), keeping the nudge.
+
+function SetupGuidePill({ onClick, left }: { onClick: () => void; left: number }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid="itinerary-setup-guide"
+      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+      style={{
+        color: "var(--color-bt-text-dim)",
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+      aria-label="Show setup guide"
+      title="Show setup guide"
+    >
+      <ListChecks size={13} />
+      <span className="hidden sm:inline">Setup guide</span>
+      {left > 0 && (
+        <>
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: "var(--color-bt-warning)" }}
+            aria-hidden
+          />
+          <span style={{ color: "var(--color-bt-warning)" }}>{left} left</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+// ── FilterDropdown (mobile) ───────────────────────────────────────────────
+// "Filter ▾" control that replaces the chip row on mobile. Multi-select: each
+// category toggles (checkmark when shown); "All" selects everything. The
+// button shows "All" or the active count. Toggling keeps the menu open so you
+// can pick several; the trigger closes it.
+
+function FilterDropdown({
+  selected,
+  allSelected,
+  toggleCategory,
+  hasLodging,
+  hasTravel,
+  hasEvents,
+}: {
+  selected: Set<Category>;
+  allSelected: boolean;
+  toggleCategory: (c: Category) => void;
+  hasLodging: boolean;
+  hasTravel: boolean;
+  hasEvents: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const cats: { c: Category; label: string; tone: PillTone }[] = [
+    ...(hasLodging ? [{ c: "lodging" as const, label: "Lodging", tone: "lodging" as const }] : []),
+    ...(hasTravel ? [{ c: "travel" as const, label: "Travel", tone: "travel" as const }] : []),
+    ...(hasEvents ? [{ c: "events" as const, label: "Events", tone: "events" as const }] : []),
+  ];
+  const dotOf = (tone: PillTone) => FILTER_COLORS[tone].color;
+  const count = cats.filter((o) => selected.has(o.c)).length;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-semibold"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          color: "var(--color-bt-text)",
+        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {allSelected ? "All" : `Filtered · ${count}`}
+        <ChevronDown size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-[calc(100%+6px)] z-10 flex min-w-[170px] flex-col gap-0.5 rounded-xl p-1.5"
+          style={{
+            background: "var(--color-bt-card-float)",
+            border: "1px solid var(--color-bt-border)",
+            boxShadow: "var(--shadow-floating)",
+          }}
+          role="menu"
+        >
+          {cats.map((o) => {
+            const on = selected.has(o.c);
+            return (
+              <button
+                key={o.c}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={on}
+                onClick={() => toggleCategory(o.c)}
+                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[13px]"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                <span className="flex items-center gap-2.5">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ background: dotOf(o.tone) }} aria-hidden />
+                  {o.label}
+                </span>
+                {on && <Check size={14} style={{ color: dotOf(o.tone) }} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── DaySection ────────────────────────────────────────────────────────────
 
 // ── Collapsing run bands (past days + empty-day runs) ─────────────────────
@@ -780,15 +890,18 @@ function rangeParts(
   return { days, dates: datePart };
 }
 
-/** Collapsed dashed band — shared by the past-days and empty-run rows. */
+/** Collapsed dashed band — shared by the past-days and empty-run rows.
+ *  `muted` recesses it further (used for the past "Earlier" band). */
 function RunBand({
   icon,
   children,
   onClick,
+  muted = false,
 }: {
   icon: React.ReactNode;
   children: React.ReactNode;
   onClick: () => void;
+  muted?: boolean;
 }) {
   return (
     <button
@@ -799,6 +912,7 @@ function RunBand({
         background: "var(--color-bt-card)",
         border: "1px dashed var(--color-bt-border)",
         color: "var(--color-bt-text-dim)",
+        opacity: muted ? 0.6 : 1,
       }}
     >
       <span className="flex-shrink-0">{icon}</span>
@@ -843,6 +957,7 @@ function PastRun({
       <RunBand
         icon={<Check size={15} style={{ color: "var(--color-bt-text-dim)" }} />}
         onClick={() => setOpen(true)}
+        muted
       >
         {/* Heavily de-emphasized: only "Earlier" carries weight; the rest is gray. */}
         <span style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>Earlier</span>

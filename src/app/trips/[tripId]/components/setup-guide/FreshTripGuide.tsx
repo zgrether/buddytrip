@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Building2, Flag, UserPlus } from "lucide-react";
+import { Building2, Check, Flag, UserPlus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { StepCard } from "./StepCard";
 import { SetDatesFlipCard } from "./SetDatesFlipCard";
@@ -76,6 +76,7 @@ export function FreshTripGuide({
   //          since that's the trip's opening lodging.
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   const { data: logistics = [] } = trpc.logistics.list.useQuery({ tripId });
+  const { data: schedule = [] } = trpc.schedule.list.useQuery({ tripId });
 
   const crewAdded = useMemo(() => {
     return (members as Array<{ role?: string | null }>).filter(
@@ -110,6 +111,11 @@ export function FreshTripGuide({
   // right field for "the property's title."
   const lodgingDoneCta =
     firstLodging?.label ?? firstLodging?.property_name ?? "Lodging added";
+
+  // Commit gate: dates + at least one of lodging/agenda is "enough to go" —
+  // surface a commit bar that makes the itinerary the default Home.
+  const agendaDone = (schedule as unknown[]).length > 0;
+  const enough = datesSet && (lodgingDone || agendaDone);
 
   return (
     <section data-testid="fresh-trip-guide">
@@ -251,6 +257,37 @@ export function FreshTripGuide({
             onCta={() => onTabChange?.("schedule")}
             testId="guide-step-agenda"
           />
+        </div>
+      )}
+
+      {/* Commit bar — appears once there's enough to go; switches Home to the
+          itinerary (the guide stays reopenable via the left pill). */}
+      {!pollMode && enough && (
+        <div
+          className="mt-[18px] flex items-center gap-3.5 rounded-2xl px-[17px] py-[15px]"
+          style={{
+            background: "var(--color-bt-accent-faint)",
+            border: "1px solid var(--color-bt-accent-border)",
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              You&apos;ve got enough to go
+            </p>
+            <p className="mt-0.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
+              Make the itinerary your Home. You can reopen Setup guide anytime —
+              even just to track travel or lodging.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onDismiss}
+            data-testid="fresh-trip-guide-commit"
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-[10px] px-[15px] py-2.5 text-[13px] font-bold"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+          >
+            <Check size={14} /> Switch to itinerary
+          </button>
         </div>
       )}
     </section>
