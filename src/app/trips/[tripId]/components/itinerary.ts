@@ -94,6 +94,8 @@ export type ItineraryEvent =
       time: string | null;
       title: string;
       subtitle?: string | null;
+      /** Travel mode — drives the Flying / Driving / Other grouping. */
+      mode: "driving" | "flying" | "other";
       memberId: string;
       displayName: string;
       avatarIcon?: string | null;
@@ -260,6 +262,7 @@ export function buildItinerary(input: {
       time,
       title: `${m.displayName} arrives`,
       subtitle,
+      mode: m.travel_mode,
       memberId: m.memberId,
       displayName: m.displayName,
       avatarIcon: m.user?.avatar_icon ?? null,
