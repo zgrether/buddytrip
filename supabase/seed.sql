@@ -124,16 +124,16 @@ ON CONFLICT (id) DO NOTHING;
 -- ═══════════════════════════════════════════════════════════════
 
 INSERT INTO logistics_items (
-  id, trip_id, type, label, detail, property_name, address,
-  check_in_time, check_out_time, sort_order, is_confirmed,
-  created_by, created_at
+  id, trip_id, type, title, link, sleeps, address,
+  check_in_date, check_out_date, check_in_time, check_out_time,
+  sort_order, is_confirmed, created_by, created_at
 ) VALUES
-  (gen_random_uuid(), 'seed-trip-bbmi-2027', 'lodging', 'Lily Pond Cottage', 'Cozy 4-bedroom on-property',
-    'Bandon Dunes Resort — Lily Pond', '57744 Round Lake Dr, Bandon, OR 97411',
-    '15:00', '11:00', 0, true,  :owner_id, now()),
-  (gen_random_uuid(), 'seed-trip-bbmi-2027', 'lodging', 'Inn at Bandon Dunes', 'Backup if Lily Pond falls through',
-    'Bandon Dunes Inn',               '57744 Round Lake Dr, Bandon, OR 97411',
-    '15:00', '11:00', 1, false, :owner_id, now())
+  (gen_random_uuid(), 'seed-trip-bbmi-2027', 'lodging', 'Lily Pond Cottage',
+    'https://www.bandondunesgolf.com/stay', '8', '57744 Round Lake Dr, Bandon, OR 97411',
+    '2027-09-15', '2027-09-19', '15:00', '11:00', 0, true,  :owner_id, now()),
+  (gen_random_uuid(), 'seed-trip-bbmi-2027', 'lodging', 'Inn at Bandon Dunes',
+    'https://www.bandondunesgolf.com/stay', '6', '57744 Round Lake Dr, Bandon, OR 97411',
+    '2027-09-15', '2027-09-19', '15:00', '11:00', 1, false, :owner_id, now())
 ON CONFLICT (id) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════

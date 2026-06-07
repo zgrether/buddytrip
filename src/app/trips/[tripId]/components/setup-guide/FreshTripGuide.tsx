@@ -71,7 +71,7 @@ export function FreshTripGuide({
   //
   // Crew:    counts non-owner members. "3 added" type label.
   // Lodging: first lodging entry sorted by check-in date; CTA shows
-  //          its property_name. Trips can have multiple properties
+  //          its title. Trips can have multiple properties
   //          (lake house → resort), so we surface the earliest one
   //          since that's the trip's opening lodging.
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
@@ -89,13 +89,12 @@ export function FreshTripGuide({
   const firstLodging = useMemo(() => {
     const lodgings = (logistics as Array<{
       type?: string | null;
-      label?: string | null;
-      property_name?: string | null;
-      check_in_time?: string | null;
+      title?: string | null;
+      check_in_date?: string | null;
     }>).filter((l) => l.type === "lodging");
     lodgings.sort((a, b) => {
-      const ax = a.check_in_time ?? "";
-      const bx = b.check_in_time ?? "";
+      const ax = a.check_in_date ?? "";
+      const bx = b.check_in_date ?? "";
       if (!ax && !bx) return 0;
       if (!ax) return 1;
       if (!bx) return -1;
@@ -104,13 +103,8 @@ export function FreshTripGuide({
     return lodgings[0];
   }, [logistics]);
   const lodgingDone = !!firstLodging;
-  // Read from `label` — AddPropertySheet stores the user-typed title in
-  // the `label` column. `property_name` is misnamed: LodgingPanel writes
-  // the "sleeps" capacity number into it (see LodgingPanel.handleCreate).
-  // Worth a follow-up rename in the schema, but for now `label` is the
-  // right field for "the property's title."
-  const lodgingDoneCta =
-    firstLodging?.label ?? firstLodging?.property_name ?? "Lodging added";
+  // The property title lives in the `title` column.
+  const lodgingDoneCta = firstLodging?.title ?? "Lodging added";
 
   // Commit gate: dates + at least one of lodging/agenda is "enough to go" —
   // surface a commit bar that makes the itinerary the default Home.

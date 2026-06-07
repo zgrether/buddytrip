@@ -29,17 +29,16 @@ export interface ItineraryLogisticsItem {
   id: string;
   type: "lodging" | "transport" | "general";
   /** The property NAME (e.g. "Beach House"). */
-  label: string;
-  /** Repurposed/mis-named column: actually stores the SLEEPS capacity (free
-   *  text, e.g. "8"), NOT the property name. See LodgingPanel/AddPropertySheet. */
-  property_name?: string | null;
+  title: string;
+  /** Sleeps capacity, free text (e.g. "8"). */
+  sleeps?: string | null;
   address?: string | null;
-  /** Stored as text; treated as YYYY-MM-DD by the rest of the app. */
+  /** Check-in / check-out dates, stored as text, treated as YYYY-MM-DD. */
+  check_in_date?: string | null;
+  check_out_date?: string | null;
+  /** Optional clock time in HH:MM (24h) — surfaced on the itinerary. */
   check_in_time?: string | null;
   check_out_time?: string | null;
-  /** Optional clock time in HH:MM (24h) — surfaced on the itinerary. */
-  check_in_time_of_day?: string | null;
-  check_out_time_of_day?: string | null;
   is_confirmed?: boolean | null;
 }
 
@@ -205,27 +204,27 @@ export function buildItinerary(input: {
     if (item.type !== "lodging") continue;
     if (!item.is_confirmed) continue;
 
-    const name = item.property_name ?? item.label ?? "Lodging";
+    const name = item.title || "Lodging";
     const subtitle = item.address ?? null;
 
-    if (isDateString(item.check_in_time)) {
+    if (isDateString(item.check_in_date)) {
       events.push({
         kind: "lodging-checkin",
         id: `${item.id}-checkin`,
-        date: item.check_in_time.slice(0, 10),
-        time: normalizeTimeOfDay(item.check_in_time_of_day),
-        title: `Check in: ${item.label || name}`,
+        date: item.check_in_date.slice(0, 10),
+        time: normalizeTimeOfDay(item.check_in_time),
+        title: `Check in: ${name}`,
         subtitle,
         address: item.address ?? null,
       });
     }
-    if (isDateString(item.check_out_time)) {
+    if (isDateString(item.check_out_date)) {
       events.push({
         kind: "lodging-checkout",
         id: `${item.id}-checkout`,
-        date: item.check_out_time.slice(0, 10),
-        time: normalizeTimeOfDay(item.check_out_time_of_day),
-        title: `Check out: ${item.label || name}`,
+        date: item.check_out_date.slice(0, 10),
+        time: normalizeTimeOfDay(item.check_out_time),
+        title: `Check out: ${name}`,
         // Check-out shows just the time + name — no location/address line
         // (and no Map link; you're leaving, not navigating there).
         subtitle: null,
@@ -286,9 +285,9 @@ export function buildItinerary(input: {
 
 export interface LodgingStay {
   id: string;
-  /** Property name — comes from `label` (see note on the input shape). */
+  /** Property name — comes from `title`. */
   name: string;
-  /** Sleeps capacity, free text (e.g. "8") — comes from `property_name`. null when unset. */
+  /** Sleeps capacity, free text (e.g. "8") — comes from `sleeps`. null when unset. */
   sleeps: string | null;
   address: string | null;
   /** YYYY-MM-DD */
@@ -315,21 +314,18 @@ export function summarizeLodging(
   for (const item of items) {
     if (item.type !== "lodging") continue;
     if (!item.is_confirmed) continue;
-    if (!isDateString(item.check_in_time)) continue;
+    if (!isDateString(item.check_in_date)) continue;
 
-    const checkIn = item.check_in_time.slice(0, 10);
-    const checkOut = isDateString(item.check_out_time)
-      ? item.check_out_time.slice(0, 10)
+    const checkIn = item.check_in_date.slice(0, 10);
+    const checkOut = isDateString(item.check_out_date)
+      ? item.check_out_date.slice(0, 10)
       : null;
 
     stays.push({
       id: item.id,
-      // The property NAME lives in `label`. NOTE: `property_name` is a
-      // repurposed/mis-named column that actually stores the sleeps capacity
-      // (see LodgingPanel + AddPropertySheet) — it is NOT the name. `||` (not
-      // `??`) so an empty-string label falls through to "Lodging".
-      name: item.label || "Lodging",
-      sleeps: item.property_name?.trim() || null,
+      // `||` (not `??`) so an empty-string title falls through to "Lodging".
+      name: item.title || "Lodging",
+      sleeps: item.sleeps?.trim() || null,
       address: item.address ?? null,
       checkIn,
       checkOut,

@@ -26,15 +26,21 @@ describe("logistics router", () => {
     const item = await caller.logistics.create({
       tripId,
       type: "lodging",
-      label: "Beach House",
-      propertyName: "Oceanfront Villa",
+      title: "Beach House",
+      sleeps: "8",
       address: "123 Beach Rd",
-      checkInTime: "3:00 PM",
-      checkOutTime: "11:00 AM",
+      checkInDate: "2026-09-09",
+      checkOutDate: "2026-09-13",
+      checkInTime: "15:00",
+      checkOutTime: "11:00",
     });
     lodgingId = item.id;
     expect(item.type).toBe("lodging");
-    expect(item.property_name).toBe("Oceanfront Villa");
+    expect(item.title).toBe("Beach House");
+    expect(item.sleeps).toBe("8");
+    // The date/time split: dates land in *_date, clock time in *_time.
+    expect(item.check_in_date).toBe("2026-09-09");
+    expect(item.check_in_time).toBe("15:00");
   });
 
   it("create — planner can create a transport item", async () => {
@@ -42,7 +48,7 @@ describe("logistics router", () => {
     const item = await caller.logistics.create({
       tripId,
       type: "transport",
-      label: "Airport Shuttle",
+      title: "Airport Shuttle",
       transportType: "shuttle",
       pickupLocation: "Terminal B",
       pickupTime: "2:30 PM",
@@ -57,12 +63,12 @@ describe("logistics router", () => {
     const item = await caller.logistics.create({
       tripId,
       type: "general",
-      label: "Grocery Run",
-      detail: "Costco on Friday afternoon",
+      title: "Grocery Run",
+      link: "Costco on Friday afternoon",
     });
     generalId = item.id;
     expect(item.type).toBe("general");
-    expect(item.detail).toBe("Costco on Friday afternoon");
+    expect(item.link).toBe("Costco on Friday afternoon");
   });
 
   it("create — member cannot create", async () => {
@@ -71,7 +77,7 @@ describe("logistics router", () => {
       caller.logistics.create({
         tripId,
           type: "general",
-        label: "Sneaky item",
+        title: "Sneaky item",
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
@@ -104,7 +110,7 @@ describe("logistics router", () => {
       caller.logistics.update({
         tripId,
         itemId: lodgingId,
-        label: "Hacked",
+        title: "Hacked",
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });

@@ -285,8 +285,8 @@ export default function TripDetailPage() {
   const lodgingItems = (prefetchedLogistics as Array<{
     type?: string | null;
     is_confirmed?: boolean | null;
-    check_in_time?: string | null;
-    check_out_time?: string | null;
+    check_in_date?: string | null;
+    check_out_date?: string | null;
   }>).filter((i) => i.type === "lodging");
   const tripStart = (trip as { start_date?: string | null }).start_date ?? null;
   const tripEnd   = (trip as { end_date?: string | null }).end_date ?? null;
@@ -294,8 +294,8 @@ export default function TripDetailPage() {
     effectiveCanEdit &&
     tripStart && tripEnd &&
     lodgingItems.some((i) => {
-      const ci = i.check_in_time?.slice(0, 10) ?? null;
-      const co = i.check_out_time?.slice(0, 10) ?? null;
+      const ci = i.check_in_date?.slice(0, 10) ?? null;
+      const co = i.check_out_date?.slice(0, 10) ?? null;
       return (ci && (ci < tripStart || ci > tripEnd)) ||
              (co && (co < tripStart || co > tripEnd));
     });
@@ -309,7 +309,7 @@ export default function TripDetailPage() {
   const lodgingUnconfirmed =
     effectiveCanEdit &&
     lodgingItems.length > 0 &&
-    !lodgingItems.some((i) => i.is_confirmed && (i.check_in_time || i.check_out_time));
+    !lodgingItems.some((i) => i.is_confirmed && (i.check_in_date || i.check_out_date));
   const scheduleOutOfRange =
     effectiveCanEdit &&
     tripStart && tripEnd &&

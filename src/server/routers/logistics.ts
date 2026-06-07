@@ -15,7 +15,7 @@ export const logisticsRouter = router({
     .query(async ({ ctx }) => {
       // `select("*")` is intentional here: logistics_items is a narrow table
       // (~22 columns) and the lodging/transport UI consumes essentially all of
-      // them — label, detail, property_name, address, check_in/out_time(_of_day),
+      // them — title, link, sleeps, address, check_in/out_date, check_in/out_time,
       // transport_type, pickup_location/time, is_confirmed, total_price, notes,
       // and the image_url/image_urls cover photos. An explicit column list would
       // enumerate nearly the whole table for no payload saving while risking a
@@ -45,15 +45,15 @@ export const logisticsRouter = router({
       z.object({
         tripId: z.string(),
         type: logisticsType,
-        label: z.string().min(1).max(200),
-        detail: z.string().max(1000).optional(),
+        title: z.string().min(1).max(200),
+        link: z.string().max(1000).optional(),
         // Lodging fields
-        propertyName: z.string().max(200).optional(),
+        sleeps: z.string().max(200).optional(),
         address: z.string().max(500).optional(),
-        checkInTime: z.string().max(50).optional(),
-        checkOutTime: z.string().max(50).optional(),
-        checkInTimeOfDay: z.string().max(20).optional(),
-        checkOutTimeOfDay: z.string().max(20).optional(),
+        checkInDate: z.string().max(50).optional(),
+        checkOutDate: z.string().max(50).optional(),
+        checkInTime: z.string().max(20).optional(),
+        checkOutTime: z.string().max(20).optional(),
         totalPrice: z.string().max(100).optional(),
         notes: z.string().max(1000).optional(),
         // Transport fields
@@ -77,14 +77,14 @@ export const logisticsRouter = router({
         .insert({
           trip_id: ctx.tripId,
           type: input.type,
-          label: input.label,
-          detail: input.detail ?? null,
-          property_name: input.propertyName ?? null,
+          title: input.title,
+          link: input.link ?? null,
+          sleeps: input.sleeps ?? null,
           address: input.address ?? null,
+          check_in_date: input.checkInDate ?? null,
+          check_out_date: input.checkOutDate ?? null,
           check_in_time: input.checkInTime ?? null,
           check_out_time: input.checkOutTime ?? null,
-          check_in_time_of_day: input.checkInTimeOfDay ?? null,
-          check_out_time_of_day: input.checkOutTimeOfDay ?? null,
           total_price: input.totalPrice ?? null,
           notes: input.notes ?? null,
           transport_type: input.transportType ?? null,
@@ -120,14 +120,14 @@ export const logisticsRouter = router({
         tripId: z.string(),
         itemId: z.string(),
         type: logisticsType.optional(),
-        label: z.string().min(1).max(200).optional(),
-        detail: z.string().max(1000).nullable().optional(),
-        propertyName: z.string().max(200).nullable().optional(),
+        title: z.string().min(1).max(200).optional(),
+        link: z.string().max(1000).nullable().optional(),
+        sleeps: z.string().max(200).nullable().optional(),
         address: z.string().max(500).nullable().optional(),
-        checkInTime: z.string().max(50).nullable().optional(),
-        checkOutTime: z.string().max(50).nullable().optional(),
-        checkInTimeOfDay: z.string().max(20).nullable().optional(),
-        checkOutTimeOfDay: z.string().max(20).nullable().optional(),
+        checkInDate: z.string().max(50).nullable().optional(),
+        checkOutDate: z.string().max(50).nullable().optional(),
+        checkInTime: z.string().max(20).nullable().optional(),
+        checkOutTime: z.string().max(20).nullable().optional(),
         totalPrice: z.string().max(100).nullable().optional(),
         notes: z.string().max(1000).nullable().optional(),
         transportType: z.string().max(100).nullable().optional(),
@@ -142,14 +142,14 @@ export const logisticsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const update: Record<string, unknown> = {};
       if (input.type !== undefined) update.type = input.type;
-      if (input.label !== undefined) update.label = input.label;
-      if (input.detail !== undefined) update.detail = input.detail;
-      if (input.propertyName !== undefined) update.property_name = input.propertyName;
+      if (input.title !== undefined) update.title = input.title;
+      if (input.link !== undefined) update.link = input.link;
+      if (input.sleeps !== undefined) update.sleeps = input.sleeps;
       if (input.address !== undefined) update.address = input.address;
+      if (input.checkInDate !== undefined) update.check_in_date = input.checkInDate;
+      if (input.checkOutDate !== undefined) update.check_out_date = input.checkOutDate;
       if (input.checkInTime !== undefined) update.check_in_time = input.checkInTime;
       if (input.checkOutTime !== undefined) update.check_out_time = input.checkOutTime;
-      if (input.checkInTimeOfDay !== undefined) update.check_in_time_of_day = input.checkInTimeOfDay;
-      if (input.checkOutTimeOfDay !== undefined) update.check_out_time_of_day = input.checkOutTimeOfDay;
       if (input.totalPrice !== undefined) update.total_price = input.totalPrice;
       if (input.notes !== undefined) update.notes = input.notes;
       if (input.transportType !== undefined) update.transport_type = input.transportType;

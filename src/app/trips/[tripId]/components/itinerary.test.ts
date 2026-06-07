@@ -39,11 +39,11 @@ function lodgingItem(
   return {
     id: "l1",
     type: "lodging",
-    label: "Beach House",
-    property_name: "Sleeps 8",
+    title: "Beach House",
+    sleeps: "Sleeps 8",
     address: "1 Ocean Dr",
-    check_in_time: "2026-06-15",
-    check_out_time: "2026-06-18",
+    check_in_date: "2026-06-15",
+    check_out_date: "2026-06-18",
     is_confirmed: true,
     ...overrides,
   };
@@ -263,7 +263,7 @@ describe("buildItinerary — lodging", () => {
   it("skips check-in event when check_in_time is missing without throwing", () => {
     const events = buildItinerary({
       scheduleItems: [],
-      logisticsItems: [lodgingItem({ check_in_time: null })],
+      logisticsItems: [lodgingItem({ check_in_date: null })],
       members: [],
     });
     expect(events).toHaveLength(1);
@@ -273,7 +273,7 @@ describe("buildItinerary — lodging", () => {
   it("skips check-out event when check_out_time is missing", () => {
     const events = buildItinerary({
       scheduleItems: [],
-      logisticsItems: [lodgingItem({ check_out_time: null })],
+      logisticsItems: [lodgingItem({ check_out_date: null })],
       members: [],
     });
     expect(events).toHaveLength(1);
@@ -305,8 +305,8 @@ describe("buildItinerary — sorting", () => {
       logisticsItems: [
         lodgingItem({
           id: "l1",
-          check_in_time: "2026-06-15",
-          check_out_time: "2026-06-15",
+          check_in_date: "2026-06-15",
+          check_out_date: "2026-06-15",
         }),
       ],
       members: [
@@ -440,16 +440,16 @@ describe("dayNumber", () => {
 
 describe("summarizeLodging", () => {
   // Column semantics (see LodgingPanel): `label` = property NAME,
-  // `property_name` = SLEEPS capacity (repurposed column).
-  it("maps name from label and sleeps from property_name, with computed nights", () => {
+  // name comes from `title`, capacity from `sleeps`.
+  it("maps name from title and sleeps from the sleeps column, with computed nights", () => {
     const stays = summarizeLodging([
       lodgingItem({
         id: "l1",
-        label: "Beach House",
-        property_name: "8", // sleeps count, NOT the name
+        title: "Beach House",
+        sleeps: "8", // sleeps count, NOT the name
         address: "1 Ocean Dr",
-        check_in_time: "2026-06-17",
-        check_out_time: "2026-06-19",
+        check_in_date: "2026-06-17",
+        check_out_date: "2026-06-19",
       }),
     ]);
     expect(stays).toEqual([
@@ -467,41 +467,41 @@ describe("summarizeLodging", () => {
 
   it("orders multiple properties by check-in date (handles mid-trip moves)", () => {
     const stays = summarizeLodging([
-      lodgingItem({ id: "cabin", label: "Lake Cabin", check_in_time: "2026-06-19", check_out_time: "2026-06-21" }),
-      lodgingItem({ id: "beach", label: "Beach House", check_in_time: "2026-06-17", check_out_time: "2026-06-19" }),
+      lodgingItem({ id: "cabin", title: "Lake Cabin", check_in_date: "2026-06-19", check_out_date: "2026-06-21" }),
+      lodgingItem({ id: "beach", title: "Beach House", check_in_date: "2026-06-17", check_out_date: "2026-06-19" }),
     ]);
     expect(stays.map((s) => s.id)).toEqual(["beach", "cabin"]);
   });
 
   it("returns null nights when there's no check-out date", () => {
     const stays = summarizeLodging([
-      lodgingItem({ id: "l1", label: "Beach House", check_out_time: null }),
+      lodgingItem({ id: "l1", title: "Beach House", check_out_date: null }),
     ]);
     expect(stays[0].checkOut).toBeNull();
     expect(stays[0].nights).toBeNull();
   });
 
-  it("sleeps is null when property_name is empty/unset", () => {
+  it("sleeps is null when the sleeps column is empty/unset", () => {
     const stays = summarizeLodging([
-      lodgingItem({ id: "l1", label: "Beach House", property_name: null }),
+      lodgingItem({ id: "l1", title: "Beach House", sleeps: null }),
     ]);
     expect(stays[0].sleeps).toBeNull();
   });
 
   it("skips non-lodging, unconfirmed, and check-in-less items", () => {
     const stays = summarizeLodging([
-      lodgingItem({ id: "ok", label: "Keep" }),
+      lodgingItem({ id: "ok", title: "Keep" }),
       lodgingItem({ id: "unconf", is_confirmed: false }),
-      lodgingItem({ id: "nodate", check_in_time: null }),
+      lodgingItem({ id: "nodate", check_in_date: null }),
       lodgingItem({ id: "transport", type: "transport" }),
     ]);
     expect(stays.map((s) => s.id)).toEqual(["ok"]);
   });
 
-  it("falls back name to 'Lodging' when label is empty (never uses property_name as the name)", () => {
+  it("falls back name to 'Lodging' when title is empty (never uses sleeps as the name)", () => {
     const [a, b] = summarizeLodging([
-      lodgingItem({ id: "a", label: "Named", property_name: "6" }),
-      lodgingItem({ id: "b", label: "", property_name: "6" }),
+      lodgingItem({ id: "a", title: "Named", sleeps: "6" }),
+      lodgingItem({ id: "b", title: "", sleeps: "6" }),
     ]);
     expect(a.name).toBe("Named");
     expect(b.name).toBe("Lodging"); // NOT "6"
