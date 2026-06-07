@@ -1,27 +1,68 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/Avatar";
 import {
   X,
-  UserCheck,
-  Trash2,
+  ArrowLeft,
+  ChevronLeft,
   ChevronRight,
-  Lock,
   MapPin,
-  Calendar,
+  Calendar as CalendarIcon,
+  UserPlus,
   MessageCircle,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { RoleBadge } from "@/components/RoleBadge";
-import { formatDateRangeCompact, parseLocalDate, toISODate } from "@/lib/dates";
-import { DatePicker } from "@/components/DatePicker";
-import { DOMAIN_COLORS } from "@/lib/domainColors";
+import { formatDateRangeCompact, parseLocalDate } from "@/lib/dates";
+import {
+  addMonths,
+  applyRangeClick,
+  atNoon,
+  isSameDay,
+  isWithinRange,
+  monthMatrix,
+  nightsBetween,
+  startOfMonth,
+  type DateRange,
+} from "@/lib/calendar";
 import type { TripRole } from "@/server/middleware";
 import type { TripData } from "@/app/trips/[tripId]/tabs/types";
+
+// ── Trip settings (drill-in / master→detail) ──────────────────────────────
+//
+// Replaces the old inline-accordion modal. A fixed-width card with a stable
+// height; the master menu lists setting rows, and tapping one slides to a
+// focused detail screen (forward from the right, back from the left — skipped
+// under prefers-reduced-motion via the .ts-slide-* classes in globals.css).
+//
+// Date polling is intentionally NOT here — it lives only in the setup guide.
+// Trip dates is a plain date-setter (the same calendar recipe as the guide,
+// with more room).
+
+type View =
+  | "menu"
+  | "details"
+  | "dates"
+  | "transfer"
+  | "clear-crew"
+  | "clear-org"
+  | "delete";
+
+const TITLES: Record<View, string> = {
+  menu: "Trip settings",
+  details: "Trip details",
+  dates: "Trip dates",
+  transfer: "Transfer ownership",
+  "clear-crew": "Clear crew chat",
+  "clear-org": "Clear organizer chat",
+  delete: "Delete trip",
+};
 
 interface TripSettingsModalProps {
   tripId: string;
@@ -29,6 +70,14 @@ interface TripSettingsModalProps {
   trip?: TripData;
   onClose: () => void;
   viewerRole: TripRole;
+}
+
+// YYYY-MM-DD from local parts (a UTC-shifted toISOString could slip a day).
+function localYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function TripSettingsModal({
@@ -43,121 +92,74 @@ export function TripSettingsModal({
   useModalBackButton(onClose);
 
   const isOwner = viewerRole === "Owner";
-  const canEditName = viewerRole === "Owner" || viewerRole === "Planner";
-
-  // ── Trip name state ──────────────────────────────────────────────────
-  const [newName, setNewName] = useState(tripName);
-  const [renameSuccess, setRenameSuccess] = useState(false);
-
-  const renameMutation = trpc.trips.renameTripName.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-      setRenameSuccess(true);
-    },
-  });
-
-  useEffect(() => {
-    if (!renameSuccess) return;
-    const timer = setTimeout(() => setRenameSuccess(false), 2000);
-    return () => clearTimeout(timer);
-  }, [renameSuccess]);
-
-  const nameChanged = newName.trim() !== tripName && newName.trim().length > 0;
-
-  // ── Destination / Dates edit state ────────────────────────────────────
-  // Show the "Trip plan" section for any role-eligible user. Destination edits
-  // live here in settings; dates are managed primarily from the header
-  // DatesSheet but can also be cleared from this surface.
   const canEditPlan = viewerRole === "Owner" || viewerRole === "Planner";
-  const destinationLocked = !!trip?.locked_destination_title;
-  const datesLocked = !!(trip?.start_date && trip?.end_date);
 
-  const [destExpanded, setDestExpanded] = useState(false);
-  const [destDraft, setDestDraft] = useState(
-    trip?.locked_destination_location ?? trip?.locked_destination_title ?? "",
-  );
-  const [datesExpanded, setDatesExpanded] = useState(false);
-  const [startDraft, setStartDraft] = useState(trip?.start_date ?? "");
-  const [endDraft, setEndDraft] = useState(trip?.end_date ?? "");
-
-  // Lazy-fetch poll data when the dates section is open so we know whether
-  // there are existing windows to return to.
-  const { data: pollData } = trpc.datePoll.get.useQuery(
-    { tripId },
-    { enabled: datesExpanded && isOwner && datesLocked }
-  );
-  const hasPollWindows = (pollData?.windows.length ?? 0) > 0;
-
-  const changeDestinationMutation = trpc.trips.changeDestination.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
-      utils.trips.list.invalidate();
-      utils.datePoll.get.invalidate({ tripId });
-      setDestExpanded(false);
-    },
-  });
-
-  const lockDatesMutation = trpc.trips.lockDates.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-      setDatesExpanded(false);
-    },
-  });
-
-  const unlockDatesMutation = trpc.datePoll.unlock.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-      setDatesExpanded(false);
-    },
-  });
-
-  // Return-to-poll: clears trip dates, flips poll_mode back on, and
-  // reopens the poll row — all in one server call that preserves every
-  // existing window (including the formerly-locked one) and every vote.
-  const returnToPollMutation = trpc.datePoll.returnToPoll.useMutation({
-    onSuccess: () => {
-      utils.trips.getById.invalidate({ tripId });
-      utils.datePoll.get.invalidate({ tripId });
-      setDatesExpanded(false);
-      onClose();
-    },
-  });
-
-  const returnToPollPending = returnToPollMutation.isPending;
-
-  const handleReturnToPoll = () => {
-    returnToPollMutation.mutate({ tripId });
+  // ── Navigation ────────────────────────────────────────────────────────
+  const [view, setView] = useState<View>("menu");
+  const [dir, setDir] = useState<"right" | "left">("right");
+  const go = (v: View) => {
+    setDir("right");
+    setView(v);
+  };
+  const back = () => {
+    setDir("left");
+    setView("menu");
   };
 
-  const canSaveDest =
-    destDraft.trim().length > 0 &&
-    destDraft.trim() !==
-      (trip?.locked_destination_location ?? trip?.locked_destination_title ?? "") &&
-    !changeDestinationMutation.isPending;
+  // ── Current values ──────────────────────────────────────────────────────
+  const currentDestination =
+    trip?.locked_destination_location ?? trip?.locked_destination_title ?? "";
+  const dateRangeLabel = formatDateRangeCompact(
+    trip?.start_date ?? null,
+    trip?.end_date ?? null,
+  );
+  const tripNights =
+    trip?.start_date && trip?.end_date
+      ? nightsBetween(parseLocalDate(trip.start_date), parseLocalDate(trip.end_date))
+      : null;
 
-  const canSaveDates =
-    !!startDraft &&
-    !!endDraft &&
-    startDraft < endDraft &&
-    (startDraft !== (trip?.start_date ?? "") || endDraft !== (trip?.end_date ?? "")) &&
-    !lockDatesMutation.isPending;
-
-  // ── Transfer ownership state ─────────────────────────────────────────
-  const [transferExpanded, setTransferExpanded] = useState(false);
+  // ── Detail-screen drafts ──────────────────────────────────────────────
+  const [nameDraft, setNameDraft] = useState(tripName);
+  const [destDraft, setDestDraft] = useState(currentDestination);
+  const [datesRange, setDatesRange] = useState<DateRange>({
+    start: trip?.start_date ? parseLocalDate(trip.start_date) : null,
+    end: trip?.end_date ? parseLocalDate(trip.end_date) : null,
+  });
   const [selectedNewOwner, setSelectedNewOwner] = useState<string | null>(null);
+
+  const openDetails = () => {
+    setNameDraft(tripName);
+    setDestDraft(currentDestination);
+    go("details");
+  };
+  const openDates = () => {
+    setDatesRange({
+      start: trip?.start_date ? parseLocalDate(trip.start_date) : null,
+      end: trip?.end_date ? parseLocalDate(trip.end_date) : null,
+    });
+    setDir("right");
+    setView("dates");
+  };
+  const openTransfer = () => {
+    setSelectedNewOwner(null);
+    go("transfer");
+  };
+
+  // ── Mutations ─────────────────────────────────────────────────────────
+  const renameMutation = trpc.trips.renameTripName.useMutation();
+  const changeDestinationMutation = trpc.trips.changeDestination.useMutation();
+  const lockDatesMutation = trpc.trips.lockDates.useMutation();
 
   const { data: members = [] } = trpc.tripMembers.list.useQuery(
     { tripId },
-    { enabled: transferExpanded }
+    { enabled: view === "transfer" },
   );
-
-  // Filter to active non-owner, non-guest members for transfer
   const transferCandidates = members.filter(
-    (m) => m.role !== "Owner" && !m.isGuest && m.status === "in"
+    (m) => m.role !== "Owner" && !m.isGuest && m.status === "in",
   );
+  const selectedMemberName = transferCandidates.find(
+    (m) => m.user_id === selectedNewOwner,
+  )?.displayName;
 
   const transferMutation = trpc.trips.transferOwnership.useMutation({
     onSuccess: () => {
@@ -167,14 +169,6 @@ export function TripSettingsModal({
     },
   });
 
-  const selectedMemberName = transferCandidates.find(
-    (m) => m.user_id === selectedNewOwner
-  )?.displayName;
-
-  // ── Clear chat state (owner only) ─────────────────────────────────────
-  const [clearCrewConfirming, setClearCrewConfirming] = useState(false);
-  const [clearOrgConfirming, setClearOrgConfirming] = useState(false);
-
   const clearChatMutation = trpc.messages.clearChannel.useMutation({
     onSuccess: (_, variables) => {
       utils.messages.list.invalidate({
@@ -182,31 +176,20 @@ export function TripSettingsModal({
         channel: "trip",
         visibility: variables.visibility,
       });
-      setClearCrewConfirming(false);
-      setClearOrgConfirming(false);
+      back();
     },
   });
-  // Which channel (if any) is mid-clear — drives per-button "Clearing…" labels
-  // while a single shared mutation handles both.
-  const clearingVisibility = clearChatMutation.isPending
-    ? clearChatMutation.variables?.visibility
-    : undefined;
-
-  // ── Delete trip state ────────────────────────────────────────────────
-  const [deleteConfirming, setDeleteConfirming] = useState(false);
 
   const deleteMutation = trpc.trips.delete.useMutation({
     onSuccess: () => {
       // Drop the trip from the dashboard list cache immediately (no stale
-      // flash), then invalidate so it refetches authoritatively. Without this
-      // the deleted trip lingered until a manual refresh.
+      // flash), then invalidate. Clear the "last trip" pointer so the root
+      // route won't 307 back to the now-deleted trip.
       utils.trips.list.setData(undefined, (old) =>
-        old ? old.filter((t) => t.id !== tripId) : old
+        old ? old.filter((t) => t.id !== tripId) : old,
       );
       utils.trips.list.invalidate();
       utils.trips.getById.invalidate({ tripId });
-      // Clear the "last trip" pointer if it aimed here, so the root route
-      // doesn't 307 back to the now-deleted trip.
       if (
         typeof window !== "undefined" &&
         window.localStorage.getItem("bt-last-trip-id") === tripId
@@ -218,736 +201,729 @@ export function TripSettingsModal({
     },
   });
 
-  // ── Render ───────────────────────────────────────────────────────────
+  // ── Derived: dirty / validity ─────────────────────────────────────────
+  const nameChanged = nameDraft.trim().length > 0 && nameDraft.trim() !== tripName;
+  const destChanged =
+    destDraft.trim().length > 0 && destDraft.trim() !== currentDestination;
+  const detailsDirty = nameChanged || destChanged;
+  const detailsPending =
+    renameMutation.isPending || changeDestinationMutation.isPending;
+
+  const datesValid = !!(datesRange.start && datesRange.end);
+  const datesChanged =
+    datesValid &&
+    (localYMD(datesRange.start!) !== (trip?.start_date ?? "") ||
+      localYMD(datesRange.end!) !== (trip?.end_date ?? ""));
+
+  const saveDetails = async () => {
+    if (!detailsDirty || detailsPending) return;
+    try {
+      const tasks: Promise<unknown>[] = [];
+      if (nameChanged)
+        tasks.push(renameMutation.mutateAsync({ tripId, name: nameDraft.trim() }));
+      if (destChanged)
+        tasks.push(
+          changeDestinationMutation.mutateAsync({
+            tripId,
+            destination: destDraft.trim(),
+          }),
+        );
+      await Promise.all(tasks);
+      utils.trips.getById.invalidate({ tripId });
+      utils.trips.list.invalidate();
+      utils.datePoll.get.invalidate({ tripId });
+      back();
+    } catch {
+      // mutation errors surface via isError; leave the screen open to retry.
+    }
+  };
+
+  const saveDates = () => {
+    if (!datesValid || lockDatesMutation.isPending) return;
+    lockDatesMutation.mutate(
+      {
+        tripId,
+        startDate: localYMD(datesRange.start!),
+        endDate: localYMD(datesRange.end!),
+      },
+      {
+        onSuccess: () => {
+          utils.trips.getById.invalidate({ tripId });
+          utils.trips.list.invalidate();
+          utils.datePoll.get.invalidate({ tripId });
+          back();
+        },
+      },
+    );
+  };
+
+  const isMenu = view === "menu";
+  const slideClass = dir === "right" ? "ts-slide-right" : "ts-slide-left";
+
   return (
     <ScrollLock>
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      style={{ background: "var(--color-bt-overlay)" }}
-      onClick={onClose}
-    >
       <div
-        className="w-full max-w-[480px] max-h-[85vh] overflow-y-auto rounded-t-2xl p-5 lg:rounded-2xl"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        onClick={(e) => e.stopPropagation()}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: "var(--color-bt-overlay)" }}
+        onClick={onClose}
       >
-        {/* ── Header ────────────────────────────────────────────────── */}
-        <div className="mb-4 flex items-center justify-between">
-          <h2
-            className="text-base font-medium"
-            style={{ color: "var(--color-bt-text)" }}
+        <div
+          className="flex w-full max-w-[400px] flex-col rounded-2xl"
+          style={{
+            background: "var(--color-bt-card-float)",
+            border: "1px solid var(--color-bt-border)",
+            boxShadow: "var(--shadow-floating, 0 24px 60px rgba(0,0,0,0.45))",
+            minHeight: 320,
+            maxHeight: "85vh",
+            overflow: "visible",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* ── Header ───────────────────────────────────────────────── */}
+          <div
+            className="flex items-center gap-2.5 px-4 pb-3 pt-4"
+            style={{ borderBottom: "1px solid var(--color-bt-subtle-border)" }}
           >
-            Trip settings
-          </h2>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full"
-            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)" }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* ── Section 1: Trip name (owner + planner) ────────────────── */}
-        {canEditName && (
-          <>
-            <div className="space-y-2">
-              <label
-                className="text-xs font-medium"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                Trip name
-              </label>
-              <input
-                data-testid="settings-trip-name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+            {!isMenu && (
+              <button
+                onClick={back}
+                aria-label="Back"
+                className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[9px]"
                 style={{
                   background: "var(--color-bt-card-raised)",
-                  borderColor: "var(--color-bt-border)",
                   color: "var(--color-bt-text)",
                 }}
-              />
-              <button
-                data-testid="settings-rename-btn"
-                disabled={!nameChanged || renameMutation.isPending}
-                onClick={() =>
-                  renameMutation.mutate({ tripId, name: newName.trim() })
-                }
-                className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-                style={{
-                  background: "var(--color-bt-accent)",
-                  color: "var(--color-bt-on-accent)",
-                }}
               >
-                {renameMutation.isPending ? "Saving…" : "Rename"}
+                <ArrowLeft size={16} />
               </button>
-              {renameSuccess && (
-                <p className="text-center text-xs" style={{ color: "var(--color-bt-accent)" }}>
-                  Renamed!
-                </p>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div
-              className="my-4"
-              style={{ height: 1, background: "var(--color-bt-border)" }}
-            />
-          </>
-        )}
-
-        {/* ── Section: Trip plan ──────────────────────────────────────── */}
-        {/* Surfaces here once dates or destination are locked — the header
-            DatesSheet is the primary entry point for dates, this is the
-            back-stop "clear / return to poll" surface. */}
-        {canEditPlan && (destinationLocked || datesLocked) && (
-          <>
-            <p
-              className="mb-3 text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.08em" }}
+            )}
+            <span
+              className="min-w-0 flex-1 truncate text-base font-bold"
+              style={{ color: "var(--color-bt-text)" }}
             >
-              Trip plan
-            </p>
+              {TITLES[view]}
+            </span>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              data-testid="settings-close-btn"
+              className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[9px]"
+              style={{
+                background: "var(--color-bt-card-raised)",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              <X size={15} />
+            </button>
+          </div>
 
-            <div className="mb-4 space-y-2">
-              {/* Change destination */}
-              {destinationLocked && (
-                <div>
-                  <button
-                    data-testid="settings-change-destination-btn"
-                    onClick={() => {
-                      setDestExpanded(!destExpanded);
-                      setDatesExpanded(false);
-                      setTransferExpanded(false);
-                      setDestDraft(trip?.locked_destination_location ?? trip?.locked_destination_title ?? "");
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
-                    style={{
-                      background: "var(--color-bt-card-raised)",
-                      borderColor: "var(--color-bt-border)",
-                    }}
-                  >
-                    <div
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                      style={{ background: "rgba(45,212,191,0.12)" }}
-                    >
-                      <MapPin size={16} style={{ color: "var(--color-bt-accent)" }} />
-                    </div>
-                    <div className="min-w-0 flex-1 text-left">
-                      <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                        Change destination
-                      </p>
-                      <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {trip?.locked_destination_location ?? trip?.locked_destination_title}
-                      </p>
-                    </div>
-                    <ChevronRight
-                      size={16}
-                      style={{
-                        color: "var(--color-bt-text-dim)",
-                        transform: destExpanded ? "rotate(90deg)" : undefined,
-                        transition: "transform 150ms",
-                      }}
-                    />
-                  </button>
-
-                  {destExpanded && (
-                    <div
-                      className="mt-2 space-y-2 rounded-xl border p-3"
-                      style={{ borderColor: "var(--color-bt-border)" }}
-                    >
-                      <div
-                        className="flex items-start gap-2 rounded-lg px-3 py-2"
-                        style={{ background: "var(--color-bt-warning-faint)" }}
-                      >
-                        <span style={{ color: "var(--color-bt-warning)" }}>⚠</span>
-                        <p className="text-xs" style={{ color: "var(--color-bt-warning)" }}>
-                          Changing the destination will reset any date poll responses.
-                        </p>
-                      </div>
-                      <input
-                        data-testid="settings-destination-input"
-                        value={destDraft}
-                        onChange={(e) => setDestDraft(e.target.value)}
-                        placeholder="New destination"
-                        className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-                        style={{
-                          background: "var(--color-bt-card-raised)",
-                          borderColor: "var(--color-bt-border)",
-                          color: "var(--color-bt-text)",
-                        }}
+          {/* ── Sliding viewport ─────────────────────────────────────── */}
+          <div className="relative flex-1 overflow-y-auto rounded-b-2xl">
+            <div key={view} className={`p-4 ${slideClass}`}>
+              {/* ── Menu ──────────────────────────────────────────── */}
+              {view === "menu" && (
+                <>
+                  {canEditPlan && (
+                    <Section label="Trip plan">
+                      <Row
+                        testId="settings-details-row"
+                        icon={<MapPin size={17} />}
+                        title="Trip details"
+                        subtitle={[tripName, currentDestination, dateRangeLabel]
+                          .filter(Boolean)
+                          .join(" · ")}
+                        onClick={openDetails}
                       />
-                      <button
-                        data-testid="settings-save-destination-btn"
-                        disabled={!canSaveDest}
-                        onClick={() =>
-                          changeDestinationMutation.mutate({
-                            tripId,
-                            destination: destDraft.trim(),
-                          })
-                        }
-                        className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-                        style={{
-                          background: "var(--color-bt-accent)",
-                          color: "var(--color-bt-on-accent)",
-                        }}
-                      >
-                        {changeDestinationMutation.isPending ? "Updating…" : "Update destination"}
-                      </button>
-                      <button
-                        onClick={() => setDestExpanded(false)}
-                        className="w-full rounded-xl border py-2 text-sm"
-                        style={{
-                          borderColor: "var(--color-bt-border)",
-                          color: "var(--color-bt-text-dim)",
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    </Section>
                   )}
-                </div>
+
+                  {isOwner && (
+                    <Section label="Trip management">
+                      <Row
+                        testId="settings-transfer-row"
+                        icon={<UserPlus size={17} />}
+                        title="Transfer ownership"
+                        subtitle="Pass owner role to a crew member"
+                        onClick={openTransfer}
+                      />
+                    </Section>
+                  )}
+
+                  {isOwner && (
+                    <Section label="Danger zone" danger>
+                      <Row
+                        danger
+                        testId="settings-clear-crew-row"
+                        icon={<MessageCircle size={16} />}
+                        title="Clear crew chat"
+                        subtitle="Deletes all Crew messages"
+                        onClick={() => go("clear-crew")}
+                      />
+                      <Row
+                        danger
+                        testId="settings-clear-org-row"
+                        icon={<MessageCircle size={16} />}
+                        title="Clear organizer chat"
+                        subtitle="Deletes all Organizer messages"
+                        onClick={() => go("clear-org")}
+                      />
+                      <Row
+                        danger
+                        testId="settings-delete-row"
+                        icon={<Trash2 size={16} />}
+                        title="Delete trip"
+                        subtitle="Removes all data for everyone"
+                        onClick={() => go("delete")}
+                      />
+                    </Section>
+                  )}
+                </>
               )}
 
-              {/* Change dates */}
-              {datesLocked && (
-                <div>
+              {/* ── Trip details ──────────────────────────────────── */}
+              {view === "details" && (
+                <>
+                  <FieldLabel>Trip name</FieldLabel>
+                  <input
+                    data-testid="settings-trip-name"
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    className="ts-field"
+                    style={fieldStyle}
+                  />
+                  <div className="h-3.5" />
+                  <FieldLabel>Destination</FieldLabel>
+                  <input
+                    data-testid="settings-destination-input"
+                    value={destDraft}
+                    onChange={(e) => setDestDraft(e.target.value)}
+                    placeholder="Where to?"
+                    className="ts-field"
+                    style={fieldStyle}
+                  />
+                  <div className="h-3.5" />
+                  <FieldLabel>Dates</FieldLabel>
                   <button
-                    data-testid="settings-change-dates-btn"
-                    onClick={() => {
-                      setDatesExpanded(!datesExpanded);
-                      setDestExpanded(false);
-                      setTransferExpanded(false);
-                      setStartDraft(trip?.start_date ?? "");
-                      setEndDraft(trip?.end_date ?? "");
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
+                    data-testid="settings-dates-chip"
+                    onClick={openDates}
+                    className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2.5"
                     style={{
-                      background: "var(--color-bt-card-raised)",
-                      borderColor: "var(--color-bt-border)",
+                      background: "var(--color-bt-base)",
+                      border: "1px solid var(--color-bt-border)",
                     }}
                   >
-                    <div
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                      style={{ background: "rgba(96,165,250,0.12)" }}
+                    <CalendarIcon size={15} style={{ color: "var(--color-bt-accent)" }} />
+                    <span
+                      className="flex-1 text-left text-sm font-semibold"
+                      style={{ color: "var(--color-bt-text)" }}
                     >
-                      <Calendar size={16} style={{ color: "#60a5fa" }} />
-                    </div>
-                    <div className="min-w-0 flex-1 text-left">
-                      <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                        Change dates
-                      </p>
-                      <p className="truncate text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {formatDateRangeCompact(trip?.start_date ?? null, trip?.end_date ?? null)}
-                      </p>
-                    </div>
-                    <ChevronRight
-                      size={16}
-                      style={{
-                        color: "var(--color-bt-text-dim)",
-                        transform: datesExpanded ? "rotate(90deg)" : undefined,
-                        transition: "transform 150ms",
-                      }}
-                    />
-                  </button>
-
-                  {datesExpanded && (
-                    <div
-                      className="mt-2 space-y-2 rounded-xl border p-3"
-                      style={{ borderColor: "var(--color-bt-border)" }}
-                    >
-                      <>
-                          <DatePicker
-                            mode="range"
-                            label="Trip dates"
-                            testId="settings-dates-picker"
-                            accent={DOMAIN_COLORS.home.color}
-                            accentFaint={DOMAIN_COLORS.home.faint}
-                            value={{
-                              start: startDraft ? parseLocalDate(startDraft) : null,
-                              end: endDraft ? parseLocalDate(endDraft) : null,
-                            }}
-                            onChange={(r) => {
-                              setStartDraft(r.start ? toISODate(r.start) : "");
-                              setEndDraft(r.end ? toISODate(r.end) : "");
-                            }}
-                          />
-                          <button
-                            data-testid="settings-save-dates-btn"
-                            disabled={!canSaveDates}
-                            onClick={() =>
-                              lockDatesMutation.mutate({
-                                tripId,
-                                startDate: startDraft,
-                                endDate: endDraft,
-                              })
-                            }
-                            className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-                            style={{
-                              background: "var(--color-bt-accent)",
-                              color: "var(--color-bt-on-accent)",
-                            }}
-                          >
-                            {lockDatesMutation.isPending ? "Updating…" : "Update dates"}
-                          </button>
-                          {hasPollWindows && (
-                            <button
-                              data-testid="settings-reopen-poll-btn"
-                              disabled={returnToPollPending || lockDatesMutation.isPending}
-                              onClick={handleReturnToPoll}
-                              className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
-                              style={{
-                                borderColor: "var(--color-bt-accent-border)",
-                                color: "var(--color-bt-accent)",
-                              }}
-                            >
-                              {returnToPollPending ? "Reopening…" : "Reopen poll"}
-                            </button>
-                          )}
-                          <button
-                            data-testid="settings-clear-dates-btn"
-                            disabled={unlockDatesMutation.isPending || lockDatesMutation.isPending || returnToPollMutation.isPending}
-                            onClick={() => unlockDatesMutation.mutate({ tripId })}
-                            className="w-full rounded-xl border py-2 text-sm font-medium transition-opacity disabled:opacity-40"
-                            style={{
-                              borderColor: "var(--color-bt-danger-border)",
-                              color: "var(--color-bt-danger)",
-                            }}
-                          >
-                            {unlockDatesMutation.isPending ? "Clearing…" : "Clear dates"}
-                          </button>
-                      </>
-                      <button
-                        onClick={() => setDatesExpanded(false)}
-                        className="w-full rounded-xl border py-2 text-sm"
+                      {dateRangeLabel || "Set dates"}
+                    </span>
+                    {tripNights != null && (
+                      <span
+                        className="rounded-full px-2 py-0.5 font-mono text-[11px]"
                         style={{
-                          borderColor: "var(--color-bt-border)",
-                          color: "var(--color-bt-text-dim)",
+                          color: "var(--color-bt-accent)",
+                          background: "var(--color-bt-accent-faint)",
                         }}
                       >
-                        Cancel
-                      </button>
+                        {tripNights} {tripNights === 1 ? "night" : "nights"}
+                      </span>
+                    )}
+                    <ChevronRight size={15} style={{ color: "var(--color-bt-text-dim)" }} />
+                  </button>
+
+                  {destChanged && (
+                    <div
+                      className="mt-3.5 flex items-start gap-2.5 rounded-[10px] px-3 py-2.5"
+                      style={{
+                        background: "var(--color-bt-warning-faint)",
+                        border: "1px solid var(--color-bt-warning-border)",
+                      }}
+                    >
+                      <AlertTriangle
+                        size={16}
+                        className="flex-shrink-0"
+                        style={{ color: "var(--color-bt-owner)" }}
+                      />
+                      <span
+                        className="text-xs leading-snug"
+                        style={{ color: "var(--color-bt-text)" }}
+                      >
+                        Changing the destination or dates will reset any date-poll
+                        responses.
+                      </span>
                     </div>
                   )}
-                </div>
+
+                  <div className="h-4" />
+                  <PrimaryButton
+                    testId="settings-save-details-btn"
+                    disabled={!detailsDirty || detailsPending}
+                    onClick={saveDetails}
+                  >
+                    {detailsPending ? "Saving…" : "Save changes"}
+                  </PrimaryButton>
+                  <GhostButton onClick={back}>Cancel</GhostButton>
+                </>
               )}
-            </div>
 
-            {/* Divider */}
-            <div
-              className="mb-4"
-              style={{ height: 1, background: "var(--color-bt-border)" }}
-            />
-          </>
-        )}
+              {/* ── Trip dates ────────────────────────────────────── */}
+              {view === "dates" && (
+                <>
+                  <RangeCalendar value={datesRange} onChange={setDatesRange} />
+                  <div className="h-3" />
+                  <PrimaryButton
+                    testId="settings-set-dates-btn"
+                    disabled={!datesValid || !datesChanged || lockDatesMutation.isPending}
+                    onClick={saveDates}
+                  >
+                    {lockDatesMutation.isPending ? "Saving…" : "Set dates"}
+                  </PrimaryButton>
+                  <GhostButton onClick={back}>Cancel</GhostButton>
+                </>
+              )}
 
-        {/* ── Section 2: Trip management ─────────────────────────────── */}
-        <p
-          className="mb-3 text-[11px] font-medium uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)", letterSpacing: "0.08em" }}
-        >
-          Trip management
-        </p>
-
-        <div className="space-y-2">
-          {/* ── Transfer ownership ──────────────────────────────────── */}
-          {isOwner ? (
-            <div>
-              <button
-                data-testid="settings-transfer-btn"
-                onClick={() => {
-                  setTransferExpanded(!transferExpanded);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  borderColor: "var(--color-bt-border)",
-                }}
-              >
-                <div
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: "rgba(45,212,191,0.12)" }}
-                >
-                  <UserCheck size={16} style={{ color: "var(--color-bt-accent)" }} />
-                </div>
-                <div className="min-w-0 flex-1 text-left">
-                  <p className="text-sm" style={{ color: "var(--color-bt-text)" }}>
-                    Transfer ownership
-                  </p>
-                  <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    Pass owner role to a crew member
-                  </p>
-                </div>
-                <ChevronRight
-                  size={16}
-                  style={{
-                    color: "var(--color-bt-text-dim)",
-                    transform: transferExpanded ? "rotate(90deg)" : undefined,
-                    transition: "transform 150ms",
-                  }}
-                />
-              </button>
-
-              {/* Transfer expansion */}
-              {transferExpanded && (
-                <div className="mt-2 space-y-2 rounded-xl border p-3" style={{ borderColor: "var(--color-bt-border)" }}>
+              {/* ── Transfer ownership ────────────────────────────── */}
+              {view === "transfer" && (
+                <>
+                  <FieldLabel>Choose the new owner</FieldLabel>
                   {transferCandidates.length === 0 ? (
-                    <p className="text-center text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      No eligible crew members
+                    <p
+                      className="px-1 py-3 text-sm"
+                      style={{ color: "var(--color-bt-text-dim)" }}
+                    >
+                      No eligible crew members yet.
                     </p>
                   ) : (
-                    transferCandidates.map((m) => (
-                      <button
-                        key={m.user_id}
-                        onClick={() => setSelectedNewOwner(m.user_id)}
-                        className="flex w-full items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-[var(--color-bt-hover)]"
-                      >
-                        <Avatar name={m.displayName ?? "?"} avatarIcon={m.user?.avatar_icon ?? null} size="md" />
-                        <span className="min-w-0 flex-1 text-left text-sm" style={{ color: "var(--color-bt-text)" }}>
-                          {m.displayName}
-                        </span>
-                        <RoleBadge role={m.role as TripRole} />
-                        <div
-                          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2"
+                    transferCandidates.map((m) => {
+                      const sel = selectedNewOwner === m.user_id;
+                      return (
+                        <button
+                          key={m.user_id}
+                          onClick={() => setSelectedNewOwner(m.user_id)}
+                          className="mb-2 flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5"
                           style={{
-                            borderColor:
-                              selectedNewOwner === m.user_id
-                                ? "var(--color-bt-accent)"
-                                : "var(--color-bt-border)",
+                            background: sel
+                              ? "var(--color-bt-accent-faint)"
+                              : "var(--color-bt-card)",
+                            border: `1px solid ${
+                              sel ? "var(--color-bt-accent)" : "var(--color-bt-border)"
+                            }`,
                           }}
                         >
-                          {selectedNewOwner === m.user_id && (
-                            <div
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ background: "var(--color-bt-accent)" }}
-                            />
-                          )}
-                        </div>
-                      </button>
-                    ))
+                          <Avatar
+                            name={m.displayName ?? "?"}
+                            avatarIcon={m.user?.avatar_icon ?? null}
+                            size="md"
+                          />
+                          <span
+                            className="min-w-0 flex-1 text-left text-sm font-semibold"
+                            style={{ color: "var(--color-bt-text)" }}
+                          >
+                            {m.displayName}
+                          </span>
+                          <RoleBadge role={m.role as TripRole} />
+                          <span
+                            className="flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full border-2"
+                            style={{
+                              borderColor: sel
+                                ? "var(--color-bt-accent)"
+                                : "var(--color-bt-border)",
+                            }}
+                          >
+                            {sel && (
+                              <span
+                                className="h-2.5 w-2.5 rounded-full"
+                                style={{ background: "var(--color-bt-accent)" }}
+                              />
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })
                   )}
-
-                  <button
-                    data-testid="settings-confirm-transfer-btn"
+                  <div className="h-2" />
+                  <PrimaryButton
+                    testId="settings-confirm-transfer-btn"
                     disabled={!selectedNewOwner || transferMutation.isPending}
                     onClick={() =>
                       selectedNewOwner &&
                       transferMutation.mutate({ tripId, newOwnerId: selectedNewOwner })
                     }
-                    className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{
-                      background: "var(--color-bt-accent)",
-                      color: "var(--color-bt-on-accent)",
-                    }}
                   >
-                    {selectedNewOwner
-                      ? `Transfer to ${selectedMemberName}`
-                      : "Select a crew member"}
-                  </button>
+                    {transferMutation.isPending
+                      ? "Transferring…"
+                      : selectedNewOwner
+                        ? `Transfer to ${selectedMemberName}`
+                        : "Transfer ownership"}
+                  </PrimaryButton>
+                  <GhostButton onClick={back}>Cancel</GhostButton>
+                </>
+              )}
 
-                  <button
-                    onClick={() => {
-                      setTransferExpanded(false);
-                      setSelectedNewOwner(null);
-                    }}
-                    className="w-full rounded-xl border py-2 text-sm"
-                    style={{
-                      borderColor: "var(--color-bt-border)",
-                      color: "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
+              {/* ── Destructive confirm screens ───────────────────── */}
+              {(view === "clear-crew" ||
+                view === "clear-org" ||
+                view === "delete") && (
+                <ConfirmScreen
+                  view={view}
+                  pending={
+                    view === "delete"
+                      ? deleteMutation.isPending
+                      : clearChatMutation.isPending
+                  }
+                  onConfirm={() => {
+                    if (view === "delete") deleteMutation.mutate({ tripId });
+                    else
+                      clearChatMutation.mutate({
+                        tripId,
+                        visibility: view === "clear-crew" ? "crew" : "planning",
+                      });
+                  }}
+                  onCancel={back}
+                />
               )}
             </div>
-          ) : (
-            /* Locked transfer row (planner) */
-            <div
-              className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                borderColor: "var(--color-bt-border)",
-                opacity: 0.5,
-              }}
-            >
-              <div
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "var(--color-bt-border)" }}
-              >
-                <Lock size={16} style={{ color: "var(--color-bt-text-dim)" }} />
-              </div>
-              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)", opacity: 0.45 }}>
-                Transfer ownership
-              </p>
-            </div>
-          )}
-
-          {/* ── Locked delete row (planner only) ───────────────────── */}
-          {!isOwner && (
-            <div
-              className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
-              style={{
-                background: "var(--color-bt-card-raised)",
-                borderColor: "var(--color-bt-border)",
-                opacity: 0.5,
-              }}
-            >
-              <div
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "var(--color-bt-border)" }}
-              >
-                <Lock size={16} style={{ color: "var(--color-bt-text-dim)" }} />
-              </div>
-              <p className="text-sm" style={{ color: "var(--color-bt-text-dim)", opacity: 0.45 }}>
-                Delete trip
-              </p>
-            </div>
-          )}
-
-          {/* Planner caption */}
-          {!isOwner && (
-            <p
-              className="pt-1 text-center text-xs"
-              style={{ color: "var(--color-bt-text-dim)" }}
-            >
-              These actions require owner access
-            </p>
-          )}
+          </div>
         </div>
+      </div>
+    </ScrollLock>
+  );
+}
 
-        {/* ── Section 3: Danger zone (owner only) ────────────────────── */}
-        {isOwner && (
-          <>
-            {/* Divider */}
+// ── Inline range calendar ─────────────────────────────────────────────────
+// Same round-cap / continuous-fill recipe as DatesSheet / the setup guide,
+// at full (36px) size with day numbers optically centered (leading-none).
+
+const ROW_H = 36;
+const CAP_PX = 30;
+const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+
+function RangeCalendar({
+  value,
+  onChange,
+}: {
+  value: DateRange;
+  onChange: (r: DateRange) => void;
+}) {
+  const today = useMemo(() => atNoon(new Date()), []);
+  const [viewMonth, setViewMonth] = useState<Date>(() =>
+    startOfMonth(value.start ?? value.end ?? today),
+  );
+  const matrix = useMemo(() => monthMatrix(viewMonth), [viewMonth]);
+  const accent = "var(--color-bt-accent)";
+  const accentFaint = "var(--color-bt-accent-faint)";
+
+  const monthLabel = viewMonth.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <div>
+      {/* Month header + nav */}
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          aria-label="Previous month"
+          onClick={() => setViewMonth((m) => addMonths(m, -1))}
+          className="flex h-7 w-7 items-center justify-center rounded-lg"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span
+          className="text-sm font-semibold"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {monthLabel}
+        </span>
+        <button
+          aria-label="Next month"
+          onClick={() => setViewMonth((m) => addMonths(m, 1))}
+          className="flex h-7 w-7 items-center justify-center rounded-lg"
+          style={{ color: "var(--color-bt-text-dim)" }}
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      {/* Weekday row */}
+      <div className="grid grid-cols-7">
+        {WEEKDAYS.map((w, i) => (
+          <div
+            key={i}
+            className="flex h-6 items-center justify-center text-[10px] font-semibold uppercase"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {w}
+          </div>
+        ))}
+      </div>
+
+      {/* Day grid */}
+      <div className="grid grid-cols-7">
+        {matrix.flat().map((day, idx) => {
+          const inMonth = day.getMonth() === viewMonth.getMonth();
+          const isStart = isSameDay(day, value.start);
+          const isEnd = isSameDay(day, value.end);
+          const isCap = isStart || isEnd;
+          const between = isWithinRange(day, value);
+          const hasEnd = !!value.end;
+          const showFill = between || (isStart && hasEnd) || isEnd;
+          return (
             <div
-              className="my-4"
-              style={{ height: 1, background: "var(--color-bt-border)" }}
-            />
-
-            <p
-              className="mb-3 text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "var(--color-bt-danger)", opacity: 0.7, letterSpacing: "0.08em" }}
+              key={idx}
+              className="relative flex items-center justify-center"
+              style={{ height: ROW_H }}
             >
-              Danger zone
-            </p>
-
-            <div className="space-y-2">
-              {/* Clear crew chat */}
-              <div>
-                <button
-                  data-testid="settings-clear-crew-btn"
-                  onClick={() => {
-                    setClearCrewConfirming(!clearCrewConfirming);
-                    setClearOrgConfirming(false);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    borderColor: "rgba(248,113,113,0.2)",
-                  }}
-                >
-                  <div
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                    style={{ background: "rgba(248,113,113,0.12)" }}
-                  >
-                    <MessageCircle size={16} style={{ color: "var(--color-bt-danger)" }} />
-                  </div>
-                  <div className="min-w-0 flex-1 text-left">
-                    <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
-                      Clear crew chat
-                    </p>
-                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Permanent — deletes all Crew messages.
-                    </p>
-                  </div>
-                </button>
-
-                {clearCrewConfirming && (
-                  <div
-                    className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2"
-                    style={{
-                      background: "var(--color-bt-danger-faint)",
-                      border: "1px solid var(--color-bt-danger-border)",
-                    }}
-                  >
-                    <span
-                      className="min-w-0 flex-1 truncate text-sm font-medium"
-                      style={{ color: "var(--color-bt-danger)" }}
-                    >
-                      Clear all crew chat? Can&apos;t be undone.
-                    </span>
-                    <button
-                      onClick={() => setClearCrewConfirming(false)}
-                      disabled={clearChatMutation.isPending}
-                      className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-                      style={{
-                        background: "transparent",
-                        color: "var(--color-bt-text-dim)",
-                        border: "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      data-testid="settings-confirm-clear-crew-btn"
-                      disabled={clearChatMutation.isPending}
-                      onClick={() =>
-                        clearChatMutation.mutate({ tripId, visibility: "crew" })
-                      }
-                      className="rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
-                      style={{ background: "var(--color-bt-danger)", color: "white" }}
-                    >
-                      {clearingVisibility === "crew" ? "Clearing…" : "Clear"}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Clear organizer chat */}
-              <div>
-                <button
-                  data-testid="settings-clear-org-btn"
-                  onClick={() => {
-                    setClearOrgConfirming(!clearOrgConfirming);
-                    setClearCrewConfirming(false);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
-                  style={{
-                    background: "var(--color-bt-card-raised)",
-                    borderColor: "rgba(248,113,113,0.2)",
-                  }}
-                >
-                  <div
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                    style={{ background: "rgba(248,113,113,0.12)" }}
-                  >
-                    <MessageCircle size={16} style={{ color: "var(--color-bt-danger)" }} />
-                  </div>
-                  <div className="min-w-0 flex-1 text-left">
-                    <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
-                      Clear organizer chat
-                    </p>
-                    <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Permanent — deletes all Organizer messages.
-                    </p>
-                  </div>
-                </button>
-
-                {clearOrgConfirming && (
-                  <div
-                    className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2"
-                    style={{
-                      background: "var(--color-bt-danger-faint)",
-                      border: "1px solid var(--color-bt-danger-border)",
-                    }}
-                  >
-                    <span
-                      className="min-w-0 flex-1 truncate text-sm font-medium"
-                      style={{ color: "var(--color-bt-danger)" }}
-                    >
-                      Clear all organizer chat? Can&apos;t be undone.
-                    </span>
-                    <button
-                      onClick={() => setClearOrgConfirming(false)}
-                      disabled={clearChatMutation.isPending}
-                      className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-                      style={{
-                        background: "transparent",
-                        color: "var(--color-bt-text-dim)",
-                        border: "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      data-testid="settings-confirm-clear-org-btn"
-                      disabled={clearChatMutation.isPending}
-                      onClick={() =>
-                        clearChatMutation.mutate({ tripId, visibility: "planning" })
-                      }
-                      className="rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
-                      style={{ background: "var(--color-bt-danger)", color: "white" }}
-                    >
-                      {clearingVisibility === "planning" ? "Clearing…" : "Clear"}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Delete trip */}
-              <div>
-              <button
-                data-testid="settings-delete-btn"
-                onClick={() => setDeleteConfirming(!deleteConfirming)}
-                className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5"
-                style={{
-                  background: "var(--color-bt-card-raised)",
-                  borderColor: "rgba(248,113,113,0.2)",
-                }}
-              >
+              {showFill && (
                 <div
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: "rgba(248,113,113,0.12)" }}
-                >
-                  <Trash2 size={16} style={{ color: "var(--color-bt-danger)" }} />
-                </div>
-                <div className="min-w-0 flex-1 text-left">
-                  <p className="text-sm" style={{ color: "var(--color-bt-danger)" }}>
-                    Delete trip
-                  </p>
-                  <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                    Permanent — removes all data for everyone
-                  </p>
-                </div>
-              </button>
-
-              {deleteConfirming && (
-                <div
-                  className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2"
+                  className="absolute inset-y-1"
                   style={{
-                    background: "var(--color-bt-danger-faint)",
-                    border: "1px solid var(--color-bt-danger-border)",
+                    left: isStart ? "50%" : 0,
+                    right: isEnd ? "50%" : 0,
+                    background: accentFaint,
                   }}
-                >
-                  <span
-                    className="min-w-0 flex-1 truncate text-sm font-medium"
-                    style={{ color: "var(--color-bt-danger)" }}
-                  >
-                    Delete {tripName}? Can&apos;t be undone.
-                  </span>
-                  <button
-                    onClick={() => setDeleteConfirming(false)}
-                    disabled={deleteMutation.isPending}
-                    className="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-                    style={{
-                      background: "transparent",
-                      color: "var(--color-bt-text-dim)",
-                      border: "1px solid var(--color-bt-border)",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    data-testid="settings-confirm-delete-btn"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => deleteMutation.mutate({ tripId })}
-                    className="rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
-                    style={{ background: "var(--color-bt-danger)", color: "white" }}
-                  >
-                    {deleteMutation.isPending ? "Deleting…" : "Delete"}
-                  </button>
-                </div>
+                />
               )}
-              </div>
+              <button
+                type="button"
+                onClick={() => onChange(applyRangeClick(value, day))}
+                className="relative mx-auto flex items-center justify-center rounded-full text-[13px] leading-none transition-colors"
+                style={{
+                  width: CAP_PX,
+                  height: CAP_PX,
+                  background: isCap ? accent : "transparent",
+                  color: isCap
+                    ? "var(--color-bt-on-accent)"
+                    : inMonth
+                      ? "var(--color-bt-text)"
+                      : "var(--color-bt-text-dim)",
+                  fontWeight: isCap ? 700 : 400,
+                  opacity: inMonth ? 1 : 0.45,
+                }}
+                data-testid={`settings-day-${day.toISOString().slice(0, 10)}`}
+              >
+                {day.getDate()}
+              </button>
             </div>
-          </>
-        )}
-
+          );
+        })}
       </div>
     </div>
-    </ScrollLock>
+  );
+}
+
+// ── Confirm screen (clear crew / clear org / delete) ──────────────────────
+function ConfirmScreen({
+  view,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  view: "clear-crew" | "clear-org" | "delete";
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const isDelete = view === "delete";
+  const title = isDelete
+    ? "Delete this trip?"
+    : view === "clear-crew"
+      ? "Clear crew chat?"
+      : "Clear organizer chat?";
+  const body = isDelete
+    ? "This removes all data for everyone — itinerary, lodging, receipts, chat. This can't be undone."
+    : `This permanently deletes all ${
+        view === "clear-crew" ? "Crew" : "Organizer"
+      } messages for everyone. This can't be undone.`;
+  const confirmLabel = isDelete ? "Delete trip" : "Clear chat";
+
+  return (
+    <>
+      <div
+        className="mx-auto mb-3.5 mt-1 flex h-12 w-12 items-center justify-center rounded-[13px]"
+        style={{ background: "var(--color-bt-danger-faint)", color: "var(--color-bt-danger)" }}
+      >
+        {isDelete ? <Trash2 size={22} /> : <MessageCircle size={22} />}
+      </div>
+      <p
+        className="text-center text-base font-bold"
+        style={{ color: "var(--color-bt-text)" }}
+      >
+        {title}
+      </p>
+      <p
+        className="mb-[18px] mt-[7px] text-center text-[13px] leading-relaxed"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        {body}
+      </p>
+      <button
+        data-testid={`settings-confirm-${view}-btn`}
+        disabled={pending}
+        onClick={onConfirm}
+        className="mb-2 w-full rounded-[10px] py-2.5 text-[13.5px] font-bold disabled:opacity-50"
+        style={{ background: "var(--color-bt-danger)", color: "#fff" }}
+      >
+        {pending ? "Working…" : confirmLabel}
+      </button>
+      <GhostButton onClick={onCancel}>Cancel</GhostButton>
+    </>
+  );
+}
+
+// ── Small presentational helpers ──────────────────────────────────────────
+
+const fieldStyle: CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  background: "var(--color-bt-base)",
+  border: "1px solid var(--color-bt-border)",
+  borderRadius: 10,
+  padding: "11px 13px",
+  fontSize: 14,
+  color: "var(--color-bt-text)",
+  outline: "none",
+};
+
+function Section({
+  label,
+  danger,
+  children,
+}: {
+  label: string;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mb-4 last:mb-0">
+      <p
+        className="mb-2 px-0.5 text-[10px] font-bold uppercase"
+        style={{
+          letterSpacing: "0.09em",
+          color: danger ? "var(--color-bt-danger)" : "var(--color-bt-text-dim)",
+        }}
+      >
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function Row({
+  icon,
+  title,
+  subtitle,
+  onClick,
+  danger,
+  testId,
+}: {
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+  danger?: boolean;
+  testId?: string;
+}) {
+  return (
+    <button
+      data-testid={testId}
+      onClick={onClick}
+      className="mb-2 flex w-full items-center gap-3 rounded-[11px] px-3 py-3 text-left transition-colors last:mb-0 hover:bg-[var(--color-bt-hover)]"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <span
+        className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-[9px]"
+        style={{
+          background: danger
+            ? "var(--color-bt-danger-faint)"
+            : "var(--color-bt-accent-faint)",
+          color: danger ? "var(--color-bt-danger)" : "var(--color-bt-accent)",
+        }}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span
+          className="block text-sm font-semibold"
+          style={{ color: danger ? "var(--color-bt-danger)" : "var(--color-bt-text)" }}
+        >
+          {title}
+        </span>
+        {subtitle && (
+          <span
+            className="mt-0.5 block truncate text-xs"
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
+            {subtitle}
+          </span>
+        )}
+      </span>
+      <ChevronRight
+        size={17}
+        className="flex-shrink-0"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      />
+    </button>
+  );
+}
+
+function FieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <p
+      className="mb-1.5 text-[10px] font-bold uppercase"
+      style={{ letterSpacing: "0.08em", color: "var(--color-bt-text-dim)" }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+  testId,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  testId?: string;
+}) {
+  return (
+    <button
+      data-testid={testId}
+      onClick={onClick}
+      disabled={disabled}
+      className="mb-2 w-full rounded-[10px] py-2.5 text-[13.5px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
+      style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function GhostButton({
+  children,
+  onClick,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full rounded-[10px] py-2.5 text-[13.5px] font-semibold"
+      style={{
+        background: "transparent",
+        border: "1px solid var(--color-bt-border)",
+        color: "var(--color-bt-text)",
+      }}
+    >
+      {children}
+    </button>
   );
 }

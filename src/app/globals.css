@@ -245,3 +245,19 @@ summary,
 .no-scrollbar::-webkit-scrollbar {
   display: none; /* WebKit */
 }
+
+/* Trip-settings drill-in slide: forward drills from the right, back from the
+   left. Disabled under reduced-motion. */
+@keyframes ts-slide-right {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes ts-slide-left {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.ts-slide-right { animation: ts-slide-right 0.26s cubic-bezier(0.4, 0.1, 0.2, 1); }
+.ts-slide-left  { animation: ts-slide-left 0.26s cubic-bezier(0.4, 0.1, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .ts-slide-right, .ts-slide-left { animation: none; }
+}

@@ -148,93 +148,95 @@ function setupMocks(
 }
 
 test.describe("TripSettings — owner flows", () => {
-  test("owner opens settings and renames trip", async ({ page }) => {
+  test("owner drills into Trip details and edits the name", async ({ page }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
 
-    // Open settings
+    // Open settings → master menu
     const settingsBtn = page.getByTestId("trip-settings-btn");
     await expect(settingsBtn).toBeVisible();
     await settingsBtn.click();
 
-    // Trip name input should be visible with current name
+    // Drill into Trip details
+    await page.getByTestId("settings-details-row").click();
+
+    // Name input pre-filled; Save disabled until dirty
     const nameInput = page.getByTestId("settings-trip-name");
     await expect(nameInput).toBeVisible();
     await expect(nameInput).toHaveValue("BBMI 2026");
+    const saveBtn = page.getByTestId("settings-save-details-btn");
+    await expect(saveBtn).toBeDisabled();
 
-    // Rename button should be disabled (no change yet)
-    const renameBtn = page.getByTestId("settings-rename-btn");
-    await expect(renameBtn).toBeDisabled();
-
-    // Change the name
+    // Editing the name enables Save
     await nameInput.fill("BBMI 2027");
-    await expect(renameBtn).toBeEnabled();
+    await expect(saveBtn).toBeEnabled();
   });
 
-  test("owner sees all management sections", async ({ page }) => {
+  test("owner sees all menu sections", async ({ page }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
 
     await page.getByTestId("trip-settings-btn").click();
 
-    // Should see trip management section
+    // Grouped master menu
+    await expect(page.getByText("Trip plan")).toBeVisible();
     await expect(page.getByText("Trip management")).toBeVisible();
-
-    // Transfer, Save, Delete buttons should be visible
-    await expect(page.getByTestId("settings-transfer-btn")).toBeVisible();
-    await expect(page.getByTestId("settings-save-trip-btn")).toBeVisible();
-    await expect(page.getByTestId("settings-delete-btn")).toBeVisible();
-
-    // Danger zone label should be visible
     await expect(page.getByText("Danger zone")).toBeVisible();
+
+    // Rows
+    await expect(page.getByTestId("settings-details-row")).toBeVisible();
+    await expect(page.getByTestId("settings-transfer-row")).toBeVisible();
+    await expect(page.getByTestId("settings-delete-row")).toBeVisible();
   });
 
-  test("owner picks a trip-date range with the DatePicker", async ({ page }) => {
+  test("owner drills into Trip dates and sees the calendar", async ({ page }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
 
     await page.getByTestId("trip-settings-btn").click();
+    await page.getByTestId("settings-details-row").click();
 
-    // Expand the "Change dates" section, which now hosts the shared DatePicker.
-    await page.getByTestId("settings-change-dates-btn").click();
+    // The dates chip drills into a separate Trip dates screen with the calendar.
+    await page.getByTestId("settings-dates-chip").click();
+    await expect(page.getByText("Trip dates")).toBeVisible();
+    await expect(page.getByTestId("settings-set-dates-btn")).toBeVisible();
+    // Inline range calendar renders day cells.
+    await expect(page.locator('[data-testid^="settings-day-"]').first()).toBeVisible();
 
-    // Open the popover calendar.
-    const trigger = page.getByTestId("settings-dates-picker");
-    await expect(trigger).toBeVisible();
-    await trigger.click();
-
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
-
-    // Use a quick preset to fill a valid range, then commit with Apply.
-    await dialog.getByText("This weekend").click();
-    await dialog.getByRole("button", { name: "Apply" }).click();
-
-    // The trigger now reflects the chosen range with a nights tag.
-    await expect(trigger).toContainText("night");
+    // Set dates is disabled until the range actually changes.
+    await expect(page.getByTestId("settings-set-dates-btn")).toBeDisabled();
   });
 
-  test("owner can expand transfer ownership and see crew members", async ({ page }) => {
+  test("owner drills into Transfer ownership and sees crew", async ({ page }) => {
     await setupMocks(page);
     await page.goto(`/trips/${TRIP_ID}`);
 
     await page.getByTestId("trip-settings-btn").click();
-    await page.getByTestId("settings-transfer-btn").click();
+    await page.getByTestId("settings-transfer-row").click();
 
-    // Should see crew members (excluding current owner)
+    // Crew (excluding the current owner)
     await expect(page.getByText("Bill Smith")).toBeVisible();
     await expect(page.getByText("Buddy Jones")).toBeVisible();
 
-    // Current owner should NOT be in the list
-    await expect(page.getByText("Zach")).not.toBeVisible();
-
-    // Confirm button should be disabled until selection
+    // Confirm disabled until a selection is made
     await expect(page.getByTestId("settings-confirm-transfer-btn")).toBeDisabled();
+  });
+
+  test("owner reaches the delete confirm screen", async ({ page }) => {
+    await setupMocks(page);
+    await page.goto(`/trips/${TRIP_ID}`);
+
+    await page.getByTestId("trip-settings-btn").click();
+    await page.getByTestId("settings-delete-row").click();
+
+    // Destructive confirm step — never fires directly from the menu row.
+    await expect(page.getByText("Delete this trip?")).toBeVisible();
+    await expect(page.getByTestId("settings-confirm-delete-btn")).toBeVisible();
   });
 });
 
 test.describe("TripSettings — planner view", () => {
-  test("planner sees name input but dimmed management rows", async ({ page }) => {
+  test("planner sees Trip details only (no management or danger zone)", async ({ page }) => {
     // Planner is user-002
     await setupMocks(page, "user-002");
     await page.goto(`/trips/${TRIP_ID}`);
@@ -243,14 +245,11 @@ test.describe("TripSettings — planner view", () => {
     await expect(settingsBtn).toBeVisible();
     await settingsBtn.click();
 
-    // Name input should be visible (planners can rename)
-    await expect(page.getByTestId("settings-trip-name")).toBeVisible();
-    await expect(page.getByTestId("settings-rename-btn")).toBeVisible();
+    // Planners can edit the plan → Trip details row is present
+    await expect(page.getByTestId("settings-details-row")).toBeVisible();
 
-    // Management rows should show "These actions require owner access"
-    await expect(page.getByText("These actions require owner access")).toBeVisible();
-
-    // Danger zone should NOT be visible for planner
-    await expect(page.getByText("Danger zone")).not.toBeVisible();
+    // Owner-only sections are hidden for planners
+    await expect(page.getByTestId("settings-transfer-row")).toHaveCount(0);
+    await expect(page.getByText("Danger zone")).toHaveCount(0);
   });
 });
