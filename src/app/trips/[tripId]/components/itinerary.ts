@@ -28,7 +28,10 @@ export interface ItineraryScheduleItem {
 export interface ItineraryLogisticsItem {
   id: string;
   type: "lodging" | "transport" | "general";
+  /** The property NAME (e.g. "Beach House"). */
   label: string;
+  /** Repurposed/mis-named column: actually stores the SLEEPS capacity (free
+   *  text, e.g. "8"), NOT the property name. See LodgingPanel/AddPropertySheet. */
   property_name?: string | null;
   address?: string | null;
   /** Stored as text; treated as YYYY-MM-DD by the rest of the app. */
@@ -278,7 +281,10 @@ export function buildItinerary(input: {
 
 export interface LodgingStay {
   id: string;
+  /** Property name — comes from `label` (see note on the input shape). */
   name: string;
+  /** Sleeps capacity, free text (e.g. "8") — comes from `property_name`. null when unset. */
+  sleeps: string | null;
   address: string | null;
   /** YYYY-MM-DD */
   checkIn: string;
@@ -313,8 +319,12 @@ export function summarizeLodging(
 
     stays.push({
       id: item.id,
-      // `||` (not `??`) so an empty-string name/label falls through to the next.
-      name: item.property_name || item.label || "Lodging",
+      // The property NAME lives in `label`. NOTE: `property_name` is a
+      // repurposed/mis-named column that actually stores the sleeps capacity
+      // (see LodgingPanel + AddPropertySheet) — it is NOT the name. `||` (not
+      // `??`) so an empty-string label falls through to "Lodging".
+      name: item.label || "Lodging",
+      sleeps: item.property_name?.trim() || null,
       address: item.address ?? null,
       checkIn,
       checkOut,

@@ -425,21 +425,26 @@ const PLANNING_TILE_BG = "color-mix(in srgb, var(--color-bt-planning) 18%, var(-
 const PLANNING_BTN_BG = "color-mix(in srgb, var(--color-bt-planning) 13%, var(--color-bt-card))";
 const PLANNING_BTN_BORDER = "color-mix(in srgb, var(--color-bt-planning) 24%, transparent)";
 
-/** "Jun 17 – 19 · 2 nights" — single month collapses to one label; nights
- *  appended only when a check-out date is known. */
+/** "Jun 17 – 19 · 2 nights · Sleeps 8" — single month collapses to one label;
+ *  nights appended when check-out is known; "· Sleeps N" appended when known. */
 function formatStayMeta(stay: LodgingStay): string {
   const ci = parseLocalDate(stay.checkIn);
   const ciMonth = ci.toLocaleDateString("en-US", { month: "short" });
-  if (!stay.checkOut) return `${ciMonth} ${ci.getDate()}`;
-  const co = parseLocalDate(stay.checkOut);
-  const coMonth = co.toLocaleDateString("en-US", { month: "short" });
-  const range =
-    ciMonth === coMonth
-      ? `${ciMonth} ${ci.getDate()} – ${co.getDate()}`
-      : `${ciMonth} ${ci.getDate()} – ${coMonth} ${co.getDate()}`;
+  let range: string;
+  if (!stay.checkOut) {
+    range = `${ciMonth} ${ci.getDate()}`;
+  } else {
+    const co = parseLocalDate(stay.checkOut);
+    const coMonth = co.toLocaleDateString("en-US", { month: "short" });
+    range =
+      ciMonth === coMonth
+        ? `${ciMonth} ${ci.getDate()} – ${co.getDate()}`
+        : `${ciMonth} ${ci.getDate()} – ${coMonth} ${co.getDate()}`;
+  }
   const nights =
     stay.nights != null ? ` · ${stay.nights} night${stay.nights === 1 ? "" : "s"}` : "";
-  return `${range}${nights}`;
+  const sleeps = stay.sleeps ? ` · Sleeps ${stay.sleeps}` : "";
+  return `${range}${nights}${sleeps}`;
 }
 
 function LodgingBlock({ stays }: { stays: LodgingStay[] }) {
