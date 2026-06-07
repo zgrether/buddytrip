@@ -803,10 +803,10 @@ function RunBand({
     >
       <span className="flex-shrink-0">{icon}</span>
       <span className="flex-1 text-[12.5px]">{children}</span>
-      {/* Neutral (white), not teal — these bands are de-emphasized, not a CTA. */}
+      {/* Gray, not teal — these bands are de-emphasized, not a CTA. */}
       <span
         className="flex flex-shrink-0 items-center gap-1 text-[11.5px] font-semibold"
-        style={{ color: "var(--color-bt-text)" }}
+        style={{ color: "var(--color-bt-text-dim)" }}
       >
         Show <ChevronDown size={13} />
       </span>
@@ -820,7 +820,7 @@ function CollapseControl({ label, onClick }: { label: string; onClick: () => voi
       type="button"
       onClick={onClick}
       className="flex items-center gap-1 px-1 pt-1 text-[11.5px] font-semibold"
-      style={{ color: "var(--color-bt-text)" }}
+      style={{ color: "var(--color-bt-text-dim)" }}
     >
       <ChevronUp size={13} /> {label}
     </button>
