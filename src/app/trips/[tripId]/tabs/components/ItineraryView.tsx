@@ -37,7 +37,8 @@ import type { TripData } from "../types";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-type FilterKey = "all" | "lodging" | "travel" | "events";
+/** The selectable filter categories (everything except the "all" shortcut). */
+type Category = "lodging" | "travel" | "events";
 
 type EventCategory = "lodging" | "travel" | "event";
 
@@ -146,39 +147,52 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
 
   const today = todayLocalISO();
 
-  // ── Filter (single-select: All / Lodging / Travel / Events) ─────────────
-  const [filter, setFilter] = useState<FilterKey>("all");
-
-  const showEvent = (event: ItineraryEvent): boolean => {
-    if (filter === "all") return true;
-    const cat = categoryOf(event);
-    return (
-      (cat === "lodging" && filter === "lodging") ||
-      (cat === "travel" && filter === "travel") ||
-      (cat === "event" && filter === "events")
-    );
-  };
-
-  // Per-category counts drive whether each filter pill is shown.
-  // Don't tease a filter the user can't actually use. Lodging now comes from
-  // the summarized block (not inline events).
+  // Per-category availability — drives which filter chips render. Don't tease
+  // a filter the user can't use. Lodging comes from the summarized block.
   const hasLodging = lodgingStays.length > 0;
   const hasTravel = events.some((e) => categoryOf(e) === "travel");
   const hasEvents = events.some((e) => categoryOf(e) === "event");
 
-  // The lodging block shows only under All or Lodging.
-  const showLodgingBlock =
-    lodgingStays.length > 0 && (filter === "all" || filter === "lodging");
+  const available = useMemo<Category[]>(
+    () => [
+      ...(hasLodging ? (["lodging"] as const) : []),
+      ...(hasTravel ? (["travel"] as const) : []),
+      ...(hasEvents ? (["events"] as const) : []),
+    ],
+    [hasLodging, hasTravel, hasEvents],
+  );
 
-  // Per-day arrivals group shows only under All or Travel.
-  const showArrivals = filter === "all" || filter === "travel";
+  // ── Filter (additive multi-select; "All" = show every category) ─────────
+  // `selected` holds the categories currently shown. Default = everything.
+  // "All" is a select-all/reset, not its own exclusive filter; toggling off
+  // the last category snaps back to everything (never an empty list).
+  const [selected, setSelected] = useState<Set<Category>>(
+    () => new Set<Category>(["lodging", "travel", "events"]),
+  );
+  const allSelected = available.length > 0 && available.every((c) => selected.has(c));
 
-  // Show pill row only if there's >1 category to filter between. Travel
-  // arrivals weave in from crew members' own travel plans (Crew tab), so the
-  // Travel pill shows whenever arrivals exist — no separate enable gate.
-  const visibleCategoryCount =
-    (hasLodging ? 1 : 0) + (hasTravel ? 1 : 0) + (hasEvents ? 1 : 0);
-  const showFilterPills = visibleCategoryCount > 1;
+  const selectAll = () => setSelected(new Set<Category>(available));
+  const toggleCategory = (c: Category) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      // Never leave zero categories showing — snap back to everything.
+      if (!available.some((a) => next.has(a))) return new Set<Category>(available);
+      return next;
+    });
+  };
+
+  const showEvent = (event: ItineraryEvent): boolean => {
+    const cat = categoryOf(event);
+    return selected.has(cat === "event" ? "events" : cat);
+  };
+
+  const showLodgingBlock = lodgingStays.length > 0 && selected.has("lodging");
+  const showArrivals = selected.has("travel");
+
+  // Show the filter control only if there's >1 category to filter between.
+  const showFilterPills = available.length > 1;
 
   const isEmpty = days.length === 0 || events.length === 0;
 
@@ -219,21 +233,23 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, 
         {!isEmpty && showFilterPills && (
           <>
             <div className="hidden flex-wrap items-center justify-end gap-2 sm:flex">
-              <FilterPill label="All" tone="all" active={filter === "all"} onClick={() => setFilter("all")} />
+              <FilterPill label="All" tone="all" active={allSelected} onClick={selectAll} />
               {hasLodging && (
-                <FilterPill label="Lodging" tone="lodging" active={filter === "lodging"} onClick={() => setFilter("lodging")} />
+                <FilterPill label="Lodging" tone="lodging" active={selected.has("lodging")} onClick={() => toggleCategory("lodging")} />
               )}
               {hasTravel && (
-                <FilterPill label="Travel" tone="travel" active={filter === "travel"} onClick={() => setFilter("travel")} />
+                <FilterPill label="Travel" tone="travel" active={selected.has("travel")} onClick={() => toggleCategory("travel")} />
               )}
               {hasEvents && (
-                <FilterPill label="Events" tone="events" active={filter === "events"} onClick={() => setFilter("events")} />
+                <FilterPill label="Events" tone="events" active={selected.has("events")} onClick={() => toggleCategory("events")} />
               )}
             </div>
             <div className="flex-shrink-0 sm:hidden">
               <FilterDropdown
-                filter={filter}
-                setFilter={setFilter}
+                selected={selected}
+                allSelected={allSelected}
+                toggleCategory={toggleCategory}
+                selectAll={selectAll}
                 hasLodging={hasLodging}
                 hasTravel={hasTravel}
                 hasEvents={hasEvents}
@@ -768,31 +784,36 @@ function SetupGuidePill({ onClick, left }: { onClick: () => void; left: number }
 }
 
 // ── FilterDropdown (mobile) ───────────────────────────────────────────────
-// Single "Filter ▾" control that replaces the chip row on mobile, where the
-// header is too tight for chips. Single-select, mirrors the chip options.
+// "Filter ▾" control that replaces the chip row on mobile. Multi-select: each
+// category toggles (checkmark when shown); "All" selects everything. The
+// button shows "All" or the active count. Toggling keeps the menu open so you
+// can pick several; the trigger closes it.
 
 function FilterDropdown({
-  filter,
-  setFilter,
+  selected,
+  allSelected,
+  toggleCategory,
+  selectAll,
   hasLodging,
   hasTravel,
   hasEvents,
 }: {
-  filter: FilterKey;
-  setFilter: (k: FilterKey) => void;
+  selected: Set<Category>;
+  allSelected: boolean;
+  toggleCategory: (c: Category) => void;
+  selectAll: () => void;
   hasLodging: boolean;
   hasTravel: boolean;
   hasEvents: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const options: { k: FilterKey; label: string; tone: PillTone }[] = [
-    { k: "all", label: "All", tone: "all" },
-    ...(hasLodging ? [{ k: "lodging" as const, label: "Lodging", tone: "lodging" as const }] : []),
-    ...(hasTravel ? [{ k: "travel" as const, label: "Travel", tone: "travel" as const }] : []),
-    ...(hasEvents ? [{ k: "events" as const, label: "Events", tone: "events" as const }] : []),
+  const cats: { c: Category; label: string; tone: PillTone }[] = [
+    ...(hasLodging ? [{ c: "lodging" as const, label: "Lodging", tone: "lodging" as const }] : []),
+    ...(hasTravel ? [{ c: "travel" as const, label: "Travel", tone: "travel" as const }] : []),
+    ...(hasEvents ? [{ c: "events" as const, label: "Events", tone: "events" as const }] : []),
   ];
   const dotOf = (tone: PillTone) => FILTER_COLORS[tone].color;
-  const cur = options.find((o) => o.k === filter) ?? options[0];
+  const count = cats.filter((o) => selected.has(o.c)).length;
 
   return (
     <div className="relative">
@@ -805,44 +826,53 @@ function FilterDropdown({
           border: "1px solid var(--color-bt-border)",
           color: "var(--color-bt-text)",
         }}
-        aria-haspopup="listbox"
+        aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: dotOf(cur.tone) }} aria-hidden />
-        {cur.label}
+        {allSelected ? "All" : `Filtered · ${count}`}
         <ChevronDown size={14} style={{ color: "var(--color-bt-text-dim)" }} />
       </button>
       {open && (
         <div
-          className="absolute right-0 top-[calc(100%+6px)] z-10 flex min-w-[148px] flex-col gap-0.5 rounded-xl p-1.5"
+          className="absolute right-0 top-[calc(100%+6px)] z-10 flex min-w-[170px] flex-col gap-0.5 rounded-xl p-1.5"
           style={{
             background: "var(--color-bt-card-float)",
             border: "1px solid var(--color-bt-border)",
             boxShadow: "var(--shadow-floating)",
           }}
-          role="listbox"
+          role="menu"
         >
-          {options.map((o) => (
-            <button
-              key={o.k}
-              type="button"
-              role="option"
-              aria-selected={o.k === filter}
-              onClick={() => {
-                setFilter(o.k);
-                setOpen(false);
-              }}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px]"
-              style={{
-                // Selected option reads in its OWN category hue, never teal.
-                color: o.k === filter ? dotOf(o.tone) : "var(--color-bt-text)",
-                fontWeight: o.k === filter ? 600 : 400,
-              }}
-            >
-              <span className="inline-block h-2 w-2 rounded-full" style={{ background: dotOf(o.tone) }} aria-hidden />
-              {o.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={allSelected}
+            onClick={selectAll}
+            className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[13px]"
+            style={{ color: "var(--color-bt-text)", fontWeight: allSelected ? 600 : 400 }}
+          >
+            All
+            {allSelected && <Check size={14} style={{ color: "var(--color-bt-accent)" }} />}
+          </button>
+          {cats.map((o) => {
+            const on = selected.has(o.c);
+            return (
+              <button
+                key={o.c}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={on}
+                onClick={() => toggleCategory(o.c)}
+                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-[13px]"
+                style={{ color: "var(--color-bt-text)" }}
+              >
+                <span className="flex items-center gap-2.5">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ background: dotOf(o.tone) }} aria-hidden />
+                  {o.label}
+                </span>
+                {on && <Check size={14} style={{ color: dotOf(o.tone) }} />}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
