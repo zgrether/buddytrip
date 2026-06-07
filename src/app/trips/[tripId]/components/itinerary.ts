@@ -167,17 +167,17 @@ export function buildItinerary(input: {
     if (item.item_type === "golf") {
       // Title is already the course name — subtitle shows the address only.
       if (item.course_location) subtitleParts.push(item.course_location);
-    } else if (item.detail) {
-      subtitleParts.push(item.detail);
+    } else {
+      // General item: a chosen place (course_name) and/or a free-text note.
+      if (item.course_name) subtitleParts.push(item.course_name);
+      if (item.detail) subtitleParts.push(item.detail);
     }
 
-    // Map link target — golf items have a course_location to navigate to.
-    // General items have a free-form `detail` field that's usually a note,
-    // not an address, so we don't surface a map link for those.
-    const address =
-      item.item_type === "golf" && item.course_location
-        ? item.course_location
-        : null;
+    // Map link target. Both golf courses AND general items with a chosen place
+    // store the address in course_location (the columns are golf-named but
+    // reused for general locations — see AddScheduleItemSheet), so surface it
+    // for any item that has one.
+    const address = item.course_location ?? null;
 
     // For golf, use the earliest tee time (if any) as the sort/display time.
     const golfTime =

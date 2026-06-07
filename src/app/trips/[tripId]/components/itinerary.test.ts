@@ -69,6 +69,33 @@ function member(
 
 // ── buildItinerary: filtering ─────────────────────────────────────────────
 
+describe("buildItinerary — schedule item location/map", () => {
+  it("surfaces course_location as the map address for a general item with a place", () => {
+    const [event] = buildItinerary({
+      scheduleItems: [
+        scheduleItem({
+          item_type: "general",
+          title: "Dinner",
+          course_name: "The Ordinary",
+          course_location: "544 King St, Charleston, SC",
+        }),
+      ],
+      logisticsItems: [],
+      members: [],
+    });
+    expect(event).toMatchObject({ kind: "schedule", address: "544 King St, Charleston, SC" });
+  });
+
+  it("leaves address null for a general item with no place", () => {
+    const [event] = buildItinerary({
+      scheduleItems: [scheduleItem({ item_type: "general", course_location: null })],
+      logisticsItems: [],
+      members: [],
+    });
+    expect(event).toMatchObject({ kind: "schedule", address: null });
+  });
+});
+
 describe("buildItinerary — filtering", () => {
   it("excludes unconfirmed schedule items", () => {
     const events = buildItinerary({
