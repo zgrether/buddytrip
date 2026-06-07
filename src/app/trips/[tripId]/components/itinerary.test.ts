@@ -7,6 +7,7 @@ import {
   todayLocalISO,
   dayNumber,
   summarizeLodging,
+  groupDayBlocks,
   type ItineraryScheduleItem,
   type ItineraryLogisticsItem,
   type ItineraryTripMember,
@@ -478,5 +479,65 @@ describe("summarizeLodging", () => {
     expect(a.name).toBe("Named");
     expect(b.name).toBe("Lodging"); // NOT "6"
     expect(b.sleeps).toBe("6");
+  });
+});
+
+// ── groupDayBlocks (past collapse + empty-run compression) ────────────────
+
+describe("groupDayBlocks", () => {
+  const T = "2026-06-17"; // today
+
+  it("collapses all days before today into one past block at the front", () => {
+    const blocks = groupDayBlocks(
+      [
+        { date: "2026-06-15", empty: false },
+        { date: "2026-06-16", empty: true },
+        { date: "2026-06-17", empty: false },
+      ],
+      T
+    );
+    expect(blocks[0]).toEqual({ type: "past", dates: ["2026-06-15", "2026-06-16"] });
+    expect(blocks[1]).toEqual({ type: "day", date: "2026-06-17" });
+  });
+
+  it("compresses 2+ consecutive empty days into one run", () => {
+    const blocks = groupDayBlocks(
+      [
+        { date: "2026-06-17", empty: false },
+        { date: "2026-06-18", empty: true },
+        { date: "2026-06-19", empty: true },
+        { date: "2026-06-20", empty: false },
+      ],
+      T
+    );
+    expect(blocks).toEqual([
+      { type: "day", date: "2026-06-17" },
+      { type: "emptyRun", dates: ["2026-06-18", "2026-06-19"] },
+      { type: "day", date: "2026-06-20" },
+    ]);
+  });
+
+  it("keeps a lone empty day as its own (length-1) run", () => {
+    const blocks = groupDayBlocks(
+      [
+        { date: "2026-06-17", empty: false },
+        { date: "2026-06-18", empty: true },
+        { date: "2026-06-19", empty: false },
+      ],
+      T
+    );
+    expect(blocks[1]).toEqual({ type: "emptyRun", dates: ["2026-06-18"] });
+  });
+
+  it("never folds today into an empty run, even when today is empty", () => {
+    const blocks = groupDayBlocks(
+      [
+        { date: "2026-06-17", empty: true }, // today, empty
+        { date: "2026-06-18", empty: true },
+      ],
+      T
+    );
+    expect(blocks[0]).toEqual({ type: "day", date: "2026-06-17" });
+    expect(blocks[1]).toEqual({ type: "emptyRun", dates: ["2026-06-18"] });
   });
 });

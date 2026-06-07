@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import {
   Calendar,
   Car,
+  Check,
   ChevronDown,
+  ChevronUp,
   Clock,
   Home,
   MapPin,
@@ -21,6 +23,7 @@ import { addDays, differenceInDays } from "@/lib/tripStatus";
 import {
   buildItinerary,
   groupByDay,
+  groupDayBlocks,
   summarizeLodging,
   todayLocalISO,
   type ItineraryEvent,
@@ -270,34 +273,78 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
         <EmptyItineraryState onCancel={onCancel} />
       ) : (
         <div className="space-y-4">
-          {days.map((date) => {
-            // Anchor day numbering on trip.start_date so dates outside
-            // the trip range read correctly (Day 0 = night before, etc.).
-            const dayNumber = trip.start_date
-              ? differenceInDays(parseLocalDate(date), parseLocalDate(trip.start_date)) + 1
-              : null;
-            const dayEvents = eventsByDate.get(date) ?? [];
-            const arrivals = showArrivals
-              ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
-              : [];
-            // Lodging check-in/out stay as day-timeline entries (the top block
-            // is a separate at-a-glance summary). Only arrivals are pulled out
-            // (into the per-day Arrivals group above). The filter governs both
-            // the block and these inline lodging rows via showEvent.
-            const items = dayEvents
-              .filter((e) => e.kind !== "arrival")
-              .filter(showEvent);
-            return (
-              <DaySection
-                key={date}
-                date={date}
-                dayNumber={dayNumber}
-                isToday={date === today}
-                arrivals={arrivals}
-                events={items}
-              />
+          {(() => {
+            // Anchor day numbering on trip.start_date so off-range dates read
+            // correctly (Day 0 = night before, etc.).
+            const dayNumOf = (date: string) =>
+              trip.start_date
+                ? differenceInDays(parseLocalDate(date), parseLocalDate(trip.start_date)) + 1
+                : null;
+
+            // Per-day visible content under the active filter.
+            const dayData = new Map<
+              string,
+              { arrivals: ArrivalEvent[]; items: ItineraryEvent[] }
+            >();
+            for (const date of days) {
+              const dayEvents = eventsByDate.get(date) ?? [];
+              const arrivals = showArrivals
+                ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
+                : [];
+              // Lodging check-in/out stay inline; only arrivals are pulled out.
+              const items = dayEvents
+                .filter((e) => e.kind !== "arrival")
+                .filter(showEvent);
+              dayData.set(date, { arrivals, items });
+            }
+
+            const renderDay = (date: string, compact = false) => {
+              const dd = dayData.get(date)!;
+              return (
+                <DaySection
+                  key={date}
+                  date={date}
+                  dayNumber={dayNumOf(date)}
+                  isToday={date === today}
+                  arrivals={dd.arrivals}
+                  events={dd.items}
+                  compact={compact}
+                />
+              );
+            };
+
+            // Past days collapse into one "Earlier" line; runs of 2+ empty
+            // upcoming days compress into a band (lone empties stay a single
+            // "Nothing scheduled" day). Emptiness is computed AFTER the filter.
+            const blocks = groupDayBlocks(
+              days.map((date) => {
+                const dd = dayData.get(date)!;
+                return { date, empty: dd.arrivals.length === 0 && dd.items.length === 0 };
+              }),
+              today,
             );
-          })}
+
+            return blocks.map((block, i) => {
+              if (block.type === "past") {
+                return (
+                  <PastRun
+                    key="past"
+                    dates={block.dates}
+                    dayNumOf={dayNumOf}
+                    renderDay={renderDay}
+                  />
+                );
+              }
+              if (block.type === "emptyRun") {
+                return block.dates.length === 1 ? (
+                  renderDay(block.dates[0])
+                ) : (
+                  <EmptyRunBand key={`run-${i}`} dates={block.dates} dayNumOf={dayNumOf} />
+                );
+              }
+              return renderDay(block.date);
+            });
+          })()}
         </div>
       )}
     </div>
@@ -703,18 +750,155 @@ function FilterPill({
 
 // ── DaySection ────────────────────────────────────────────────────────────
 
+// ── Collapsing run bands (past days + empty-day runs) ─────────────────────
+
+function shortDate(date: string): string {
+  return parseLocalDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** "Days 4–8 · Jun 20 – Jun 24" (drops the "Days N–N" half when day numbers
+ *  aren't available, e.g. no trip start date). */
+function rangeLabel(dates: string[], dayNumOf: (d: string) => number | null): string {
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  const datePart =
+    first === last ? shortDate(first) : `${shortDate(first)} – ${shortDate(last)}`;
+  const n0 = dayNumOf(first);
+  const n1 = dayNumOf(last);
+  if (n0 != null && n1 != null && n0 >= 1) {
+    const daysPart = n0 === n1 ? `Day ${n0}` : `Days ${n0}–${n1}`;
+    return `${daysPart} · ${datePart}`;
+  }
+  return datePart;
+}
+
+/** Collapsed dashed band — shared by the past-days and empty-run rows. */
+function RunBand({
+  icon,
+  children,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-xl px-4 py-3 text-left"
+      style={{
+        background: "var(--color-bt-card)",
+        border: "1px dashed var(--color-bt-border)",
+        color: "var(--color-bt-text-dim)",
+      }}
+    >
+      <span className="flex-shrink-0">{icon}</span>
+      <span className="flex-1 text-[12.5px]">{children}</span>
+      <span
+        className="flex flex-shrink-0 items-center gap-1 text-[11.5px] font-semibold"
+        style={{ color: "var(--color-bt-accent)" }}
+      >
+        Show <ChevronDown size={13} />
+      </span>
+    </button>
+  );
+}
+
+function CollapseControl({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1 px-1 pt-1 text-[11.5px] font-semibold"
+      style={{ color: "var(--color-bt-accent)" }}
+    >
+      <ChevronUp size={13} /> {label}
+    </button>
+  );
+}
+
+// Past days: collapsed "Earlier … done" line; expanded = dimmed + shrunk days.
+function PastRun({
+  dates,
+  dayNumOf,
+  renderDay,
+}: {
+  dates: string[];
+  dayNumOf: (d: string) => number | null;
+  renderDay: (date: string, compact: boolean) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <RunBand icon={<Check size={15} style={{ color: "var(--color-bt-accent)" }} />} onClick={() => setOpen(true)}>
+        <b style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>Earlier</b> ·{" "}
+        {rangeLabel(dates, dayNumOf)} · done
+      </RunBand>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <div className="space-y-4 opacity-50">
+        {dates.map((date) => renderDay(date, true))}
+      </div>
+      <CollapseControl label="Hide past days" onClick={() => setOpen(false)} />
+    </div>
+  );
+}
+
+// A run of 2+ empty upcoming days: collapsed band; expanded = individual
+// "Nothing scheduled" days.
+function EmptyRunBand({
+  dates,
+  dayNumOf,
+}: {
+  dates: string[];
+  dayNumOf: (d: string) => number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <RunBand
+        icon={<Calendar size={15} style={{ color: "var(--color-bt-text-dim)" }} />}
+        onClick={() => setOpen(true)}
+      >
+        <b style={{ color: "var(--color-bt-text)", fontWeight: 600 }}>{rangeLabel(dates, dayNumOf)}</b> · open
+      </RunBand>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {dates.map((date) => (
+        <DaySection
+          key={date}
+          date={date}
+          dayNumber={dayNumOf(date)}
+          isToday={false}
+          arrivals={[]}
+          events={[]}
+        />
+      ))}
+      <CollapseControl label="Collapse open days" onClick={() => setOpen(false)} />
+    </div>
+  );
+}
+
 function DaySection({
   date,
   dayNumber,
   isToday,
   arrivals,
   events,
+  compact = false,
 }: {
   date: string;
   dayNumber: number | null;
   isToday: boolean;
   arrivals: ArrivalEvent[];
   events: ItineraryEvent[];
+  /** Tighter spacing for the dimmed past-day expansion. */
+  compact?: boolean;
 }) {
   const dateLabel = parseLocalDate(date).toLocaleDateString("en-US", {
     weekday: "short",
@@ -737,14 +921,7 @@ function DaySection({
 
   return (
     <section data-testid={`day-section-${date}`} data-today={isToday ? "true" : undefined}>
-      <div className="mb-2 flex items-center gap-2">
-        {isToday && (
-          <span
-            className="inline-block h-1.5 w-1.5 rounded-full"
-            style={{ background: "var(--color-bt-accent)" }}
-            aria-hidden
-          />
-        )}
+      <div className={`flex items-center gap-2 ${compact ? "mb-1" : "mb-2"}`}>
         <p
           className="text-[10px] font-bold uppercase tracking-widest"
           style={{
@@ -753,11 +930,19 @@ function DaySection({
         >
           {dayLabel}{dateLabel}
         </p>
+        {isToday && (
+          <span
+            className="rounded-full px-2 py-[2px] text-[9.5px] font-bold tracking-wide"
+            style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+          >
+            TODAY
+          </span>
+        )}
       </div>
-      <div className="space-y-1.5">
+      <div className={compact ? "space-y-1" : "space-y-1.5"}>
         {arrivals.length > 0 && <ArrivalsGroup arrivals={arrivals} />}
         {events.map((event) => (
-          <EventCard key={event.id} event={event} />
+          <EventCard key={event.id} event={event} compact={compact} />
         ))}
         {arrivals.length === 0 && events.length === 0 && (
           <p className="pl-3 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
@@ -771,7 +956,7 @@ function DaySection({
 
 // ── EventCard ─────────────────────────────────────────────────────────────
 
-function EventCard({ event }: { event: ItineraryEvent }) {
+function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?: boolean }) {
   const category = categoryOf(event);
 
   // Golf: show tee times or "Walk on"; everything else shows the stored
@@ -819,7 +1004,7 @@ function EventCard({ event }: { event: ItineraryEvent }) {
 
   return (
     <div
-      className="flex items-start gap-3 rounded-xl px-3 py-2.5"
+      className={`flex items-start gap-3 rounded-xl px-3 ${compact ? "py-1.5" : "py-2.5"}`}
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
