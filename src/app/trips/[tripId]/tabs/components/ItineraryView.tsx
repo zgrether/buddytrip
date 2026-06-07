@@ -505,7 +505,7 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
 
   return (
     <div
-      className="rounded-xl px-3 py-2.5"
+      className="rounded-xl px-4 py-3"
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
@@ -515,19 +515,24 @@ function ArrivalsGroup({ arrivals }: { arrivals: ArrivalEvent[] }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3"
+        className="flex w-full items-center gap-3.5"
         aria-expanded={open}
       >
         <span
-          className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
           style={{ background: "var(--color-bt-accent-faint)", color: "var(--color-bt-accent)" }}
         >
-          <Plane size={13} />
+          <Plane size={18} />
         </span>
-        <span className="flex-1 text-left text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Arrivals{" "}
-          <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
-            · {arrivals.length}
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            Arrivals{" "}
+            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>
+              · {arrivals.length}
+            </span>
+          </span>
+          <span className="block text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Who&apos;s getting in — tap for details
           </span>
         </span>
         <ChevronDown
@@ -1012,9 +1017,13 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
   // events (course_location). When present, render a tap-to-map link.
   const address = "address" in event ? event.address ?? null : null;
 
+  // Rounded-square icon tile, vertically centered against the body — matches
+  // the design's `.re-ico` recipe (and the lodging block tile).
+  const tilePx = compact ? 30 : 36;
+
   return (
     <div
-      className={`flex items-start gap-3 rounded-xl px-3 ${compact ? "py-1.5" : "py-2.5"}`}
+      className={`flex items-center gap-3.5 rounded-xl px-4 ${compact ? "py-2" : "py-3"}`}
       style={{
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
@@ -1022,35 +1031,31 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
       }}
     >
       {event.kind === "arrival" ? (
-        <Avatar
-          name={event.displayName}
-          avatarIcon={event.avatarIcon ?? null}
-          size="md"
-        />
+        <Avatar name={event.displayName} avatarIcon={event.avatarIcon ?? null} sizePx={tilePx} />
       ) : (
         <span
-          className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full"
-          style={{ background: iconBg, color: iconColor }}
+          className="flex flex-shrink-0 items-center justify-center rounded-[10px]"
+          style={{ width: tilePx, height: tilePx, background: iconBg, color: iconColor }}
         >
-          {Icon && <Icon size={13} />}
+          {Icon && <Icon size={compact ? 16 : 18} />}
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <p className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           {timeLabel}
         </p>
-        <p className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        <p className="truncate text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
           {event.title}
         </p>
         {event.subtitle && (
-          <p className="truncate text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p className="truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
             {event.subtitle}
           </p>
         )}
         {event.kind === "schedule" && event.competitionEvents?.map((ce) => (
           <div key={ce.id} className="mt-1.5 flex items-center gap-1.5">
-            <Trophy size={11} style={{ color: "var(--color-bt-accent)" }} />
-            <span className="text-[11px] font-medium" style={{ color: "var(--color-bt-text)" }}>
+            <Trophy size={13} style={{ color: "var(--color-bt-accent)" }} />
+            <span className="text-[12.5px] font-medium" style={{ color: "var(--color-bt-text)" }}>
               {ce.title}
             </span>
           </div>
@@ -1062,11 +1067,11 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="flex flex-shrink-0 items-center gap-0.5 self-center text-[11px] font-semibold"
+          className="flex flex-shrink-0 items-center gap-1 self-center text-[12px] font-semibold"
           style={{ color: "var(--color-bt-planning)" }}
           aria-label={`Open ${event.title} in Google Maps`}
         >
-          <MapPin size={11} />
+          <MapPin size={13} />
           Map →
         </a>
       )}
