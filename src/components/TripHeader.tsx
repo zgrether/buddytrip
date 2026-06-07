@@ -299,7 +299,11 @@ const PlainHeader: FC<Omit<TripHeaderProps, "isLocked"> & { countdown: LabelledC
           fill all the way up to the meta strip without a hardcoded
           right-padding reservation. Title shrinks (truncate) first
           when the row is tight; meta+gear stays its natural size. */}
-      <div className="p-3">
+      {/* px-4 (16px) ≥ the card's rounded-2xl corner radius so the title /
+          location clear the corner curve instead of reading tight against it
+          (most visible on the non-owner view, which has no badge/gear buffer).
+          py-3 keeps the header vertically compact. */}
+      <div className="px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {myRole && <RoleBadge role={myRole} />}
