@@ -597,7 +597,7 @@ function FullRangeCalendar({
                 onClick={() => handleDayClick(day)}
                 onMouseEnter={() => setHovered(day)}
                 onMouseLeave={() => setHovered(null)}
-                className="relative mx-auto flex items-center justify-center rounded-full text-[13px] transition-colors"
+                className="relative mx-auto flex items-center justify-center rounded-full text-[13px] leading-none transition-colors"
                 style={{
                   width: FULL_CAP_PX,
                   height: FULL_CAP_PX,
