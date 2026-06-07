@@ -280,8 +280,12 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
             const arrivals = showArrivals
               ? (dayEvents.filter((e) => e.kind === "arrival") as ArrivalEvent[])
               : [];
+            // Lodging check-in/out stay as day-timeline entries (the top block
+            // is a separate at-a-glance summary). Only arrivals are pulled out
+            // (into the per-day Arrivals group above). The filter governs both
+            // the block and these inline lodging rows via showEvent.
             const items = dayEvents
-              .filter((e) => e.kind !== "arrival" && categoryOf(e) !== "lodging")
+              .filter((e) => e.kind !== "arrival")
               .filter(showEvent);
             return (
               <DaySection
