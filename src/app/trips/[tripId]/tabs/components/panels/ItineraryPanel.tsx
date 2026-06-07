@@ -1,12 +1,12 @@
 "use client";
 
-import { ListChecks } from "lucide-react";
 import { ItineraryView } from "../ItineraryView";
 import { DatePollCard } from "../DatePollCard";
 import {
   FreshTripGuide,
   DismissedEmptyState,
   useGuideDismissed,
+  useSetupProgress,
 } from "../../../components/setup-guide";
 import type { TripData } from "../../types";
 
@@ -57,6 +57,10 @@ export function ItineraryPanel({
   onTabChange,
 }: ItineraryPanelProps) {
   const [dismissed, setDismissed] = useGuideDismissed(tripId);
+  // Setup progress drives the "· N left" nudge on the committed itinerary's
+  // Setup-guide pill (owner only). Called unconditionally before any early
+  // return; its queries are shared with the rest of the Home tab.
+  const setup = useSetupProgress(tripId, trip);
 
   const datesSet = !!(trip.start_date && trip.end_date);
   const pollActive = !!trip.poll_mode;
@@ -109,20 +113,8 @@ export function ItineraryPanel({
       <ItineraryView
         trip={trip}
         isOwner={isOwner}
-        headerAction={
-          <button
-            type="button"
-            onClick={() => setDismissed(false)}
-            className="inline-flex items-center gap-1 text-[12px] font-semibold transition-opacity hover:opacity-80"
-            style={{ color: "var(--color-bt-accent)" }}
-            data-testid="guide-restore-link"
-            aria-label="Show setup guide"
-            title="Show setup guide"
-          >
-            <ListChecks size={14} strokeWidth={2} />
-            Setup guide
-          </button>
-        }
+        onShowGuide={() => setDismissed(false)}
+        setupLeft={setup.leftCount}
       />
     );
   }

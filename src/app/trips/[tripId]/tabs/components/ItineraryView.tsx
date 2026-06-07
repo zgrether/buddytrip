@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Clock,
   Home,
+  ListChecks,
   MapPin,
   Navigation,
   Plane,
@@ -61,10 +62,12 @@ export interface ItineraryViewProps {
   /** When provided (owner only), shows an X button on the empty-state
       mock-up that backs out of the activation. */
   onCancel?: () => void;
-  /** Optional slot rendered on the right of the ITINERARY header row.
-   *  ItineraryPanel uses this to inject the "← Setup guide" toggle when
-   *  the guide is currently dismissed. */
-  headerAction?: import("react").ReactNode;
+  /** Owner-only: reopens the setup guide. When provided, renders the
+   *  "Setup guide · N left" pill on the left, next to the ITINERARY eyebrow. */
+  onShowGuide?: () => void;
+  /** Count of incomplete setup items — shown as an amber "· N left" nudge on
+   *  the setup-guide pill while setup items remain. */
+  setupLeft?: number;
 }
 
 /**
@@ -83,7 +86,7 @@ export interface ItineraryViewProps {
  *      state mirrors the intro modal preview. Owners get an X button
  *      that backs out of the activation entirely.
  */
-export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction }: ItineraryViewProps) {
+export function ItineraryView({ trip, isOwner: _isOwner, onCancel, onShowGuide, setupLeft = 0 }: ItineraryViewProps) {
   const tripId = trip.id;
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -144,30 +147,17 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
 
   const today = todayLocalISO();
 
-  // ── Filter pills ───────────────────────────────────────────────────────
-  const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(new Set(["all"]));
-
-  const toggleFilter = (key: FilterKey) => {
-    setActiveFilters((prev) => {
-      const next = new Set(prev);
-      if (key === "all") {
-        return new Set<FilterKey>(["all"]);
-      }
-      next.delete("all");
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      if (next.size === 0) return new Set<FilterKey>(["all"]);
-      return next;
-    });
-  };
+  // ── Filter (single-select: All / Lodging / Travel / Events) ─────────────
+  const [filter, setFilter] = useState<FilterKey>("all");
 
   const showEvent = (event: ItineraryEvent): boolean => {
-    if (activeFilters.has("all")) return true;
+    if (filter === "all") return true;
     const cat = categoryOf(event);
-    if (cat === "lodging" && activeFilters.has("lodging")) return true;
-    if (cat === "travel" && activeFilters.has("travel")) return true;
-    if (cat === "event" && activeFilters.has("events")) return true;
-    return false;
+    return (
+      (cat === "lodging" && filter === "lodging") ||
+      (cat === "travel" && filter === "travel") ||
+      (cat === "event" && filter === "events")
+    );
   };
 
   // Per-category counts drive whether each filter pill is shown.
@@ -179,11 +169,10 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
 
   // The lodging block shows only under All or Lodging.
   const showLodgingBlock =
-    lodgingStays.length > 0 &&
-    (activeFilters.has("all") || activeFilters.has("lodging"));
+    lodgingStays.length > 0 && (filter === "all" || filter === "lodging");
 
   // Per-day arrivals group shows only under All or Travel.
-  const showArrivals = activeFilters.has("all") || activeFilters.has("travel");
+  const showArrivals = filter === "all" || filter === "travel";
 
   // Show pill row only if there's >1 category to filter between. Travel
   // arrivals weave in from crew members' own travel plans (Crew tab), so the
@@ -213,57 +202,44 @@ export function ItineraryView({ trip, isOwner: _isOwner, onCancel, headerAction 
           baseline instead of being centered against the slightly
           taller action button — otherwise items-center pushes the h2
           ~1px lower than the same eyebrow on other tabs. */}
-      <div className="space-y-4">
-        <div className="flex items-baseline justify-between gap-3">
+      {/* One row: ITINERARY eyebrow + (owner) Setup-guide pill on the left,
+          filters on the right (chips on desktop, a "Filter ▾" dropdown on
+          mobile). The eyebrow/pill stay even on the empty-state mockup. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <h2
             className="text-[11px] font-semibold uppercase"
-            style={{
-              color: "var(--color-bt-accent)",
-              letterSpacing: "0.1em",
-            }}
+            style={{ color: "var(--color-bt-accent)", letterSpacing: "0.1em" }}
           >
             Itinerary
           </h2>
-          {headerAction && (
-            <div className="flex flex-shrink-0 items-center">
-              {headerAction}
-            </div>
-          )}
+          {onShowGuide && <SetupGuidePill onClick={onShowGuide} left={setupLeft} />}
         </div>
 
         {!isEmpty && showFilterPills && (
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterPill
-              label="All"
-              tone="all"
-              active={activeFilters.has("all")}
-              onClick={() => toggleFilter("all")}
-            />
-            {hasLodging && (
-              <FilterPill
-                label="Lodging"
-                tone="lodging"
-                active={activeFilters.has("lodging")}
-                onClick={() => toggleFilter("lodging")}
+          <>
+            <div className="hidden flex-wrap items-center justify-end gap-2 sm:flex">
+              <FilterPill label="All" tone="all" active={filter === "all"} onClick={() => setFilter("all")} />
+              {hasLodging && (
+                <FilterPill label="Lodging" tone="lodging" active={filter === "lodging"} onClick={() => setFilter("lodging")} />
+              )}
+              {hasTravel && (
+                <FilterPill label="Travel" tone="travel" active={filter === "travel"} onClick={() => setFilter("travel")} />
+              )}
+              {hasEvents && (
+                <FilterPill label="Events" tone="events" active={filter === "events"} onClick={() => setFilter("events")} />
+              )}
+            </div>
+            <div className="flex-shrink-0 sm:hidden">
+              <FilterDropdown
+                filter={filter}
+                setFilter={setFilter}
+                hasLodging={hasLodging}
+                hasTravel={hasTravel}
+                hasEvents={hasEvents}
               />
-            )}
-            {hasTravel && (
-              <FilterPill
-                label="Travel"
-                tone="travel"
-                active={activeFilters.has("travel")}
-                onClick={() => toggleFilter("travel")}
-              />
-            )}
-            {hasEvents && (
-              <FilterPill
-                label="Events"
-                tone="events"
-                active={activeFilters.has("events")}
-                onClick={() => toggleFilter("events")}
-              />
-            )}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -750,6 +726,124 @@ function FilterPill({
       />
       {label}
     </button>
+  );
+}
+
+// ── SetupGuidePill ────────────────────────────────────────────────────────
+// Owner-only link pulled left next to the ITINERARY eyebrow once the itinerary
+// is the committed Home. An outlined NEUTRAL pill (visually distinct from the
+// teal eyebrow) with an amber "· N left" nudge while setup items remain. On
+// mobile the "Setup guide" label is hidden (icon-only), keeping the nudge.
+
+function SetupGuidePill({ onClick, left }: { onClick: () => void; left: number }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid="itinerary-setup-guide"
+      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+      style={{
+        color: "var(--color-bt-text-dim)",
+        background: "var(--color-bt-card)",
+        border: "1px solid var(--color-bt-border)",
+      }}
+      aria-label="Show setup guide"
+      title="Show setup guide"
+    >
+      <ListChecks size={13} />
+      <span className="hidden sm:inline">Setup guide</span>
+      {left > 0 && (
+        <>
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: "var(--color-bt-warning)" }}
+            aria-hidden
+          />
+          <span style={{ color: "var(--color-bt-warning)" }}>{left} left</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+// ── FilterDropdown (mobile) ───────────────────────────────────────────────
+// Single "Filter ▾" control that replaces the chip row on mobile, where the
+// header is too tight for chips. Single-select, mirrors the chip options.
+
+function FilterDropdown({
+  filter,
+  setFilter,
+  hasLodging,
+  hasTravel,
+  hasEvents,
+}: {
+  filter: FilterKey;
+  setFilter: (k: FilterKey) => void;
+  hasLodging: boolean;
+  hasTravel: boolean;
+  hasEvents: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const options: { k: FilterKey; label: string; tone: PillTone }[] = [
+    { k: "all", label: "All", tone: "all" },
+    ...(hasLodging ? [{ k: "lodging" as const, label: "Lodging", tone: "lodging" as const }] : []),
+    ...(hasTravel ? [{ k: "travel" as const, label: "Travel", tone: "travel" as const }] : []),
+    ...(hasEvents ? [{ k: "events" as const, label: "Events", tone: "events" as const }] : []),
+  ];
+  const dotOf = (tone: PillTone) => DOMAIN_COLORS[PILL_DOMAIN[tone]].color;
+  const cur = options.find((o) => o.k === filter) ?? options[0];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-semibold"
+        style={{
+          background: "var(--color-bt-card)",
+          border: "1px solid var(--color-bt-border)",
+          color: "var(--color-bt-text)",
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: dotOf(cur.tone) }} aria-hidden />
+        {cur.label}
+        <ChevronDown size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-[calc(100%+6px)] z-10 flex min-w-[148px] flex-col gap-0.5 rounded-xl p-1.5"
+          style={{
+            background: "var(--color-bt-card-float)",
+            border: "1px solid var(--color-bt-border)",
+            boxShadow: "var(--shadow-floating)",
+          }}
+          role="listbox"
+        >
+          {options.map((o) => (
+            <button
+              key={o.k}
+              type="button"
+              role="option"
+              aria-selected={o.k === filter}
+              onClick={() => {
+                setFilter(o.k);
+                setOpen(false);
+              }}
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px]"
+              style={{
+                color: o.k === filter ? "var(--color-bt-accent)" : "var(--color-bt-text)",
+                fontWeight: o.k === filter ? 600 : 400,
+              }}
+            >
+              <span className="inline-block h-2 w-2 rounded-full" style={{ background: dotOf(o.tone) }} aria-hidden />
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
