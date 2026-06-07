@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Mail, Plane, Shield, Users, X, type LucideIcon } from "lucide-react";
+import { Calendar, Check, Mail, Shield, Users, X, type LucideIcon } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -563,7 +563,7 @@ export function MemberEditor({ tripId, member, canManageRoles, onClose }: Member
           {/* ── Travel ────────────────────────────────────────────────── */}
           {member.user_id && (
             <Group
-              icon={Plane}
+              icon={Calendar}
               title="Travel"
               action={
                 travelForm.mode !== null ? (

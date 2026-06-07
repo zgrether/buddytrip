@@ -157,6 +157,19 @@ export default function TripDetailPage() {
     }
   }, [tripId]);
 
+  // Stale-pointer recovery: if the trip 404s — deleted (or membership revoked)
+  // while bt-last-trip-id still pointed here, which the root route blindly
+  // 307s to — clear the pointer and bounce to the dashboard instead of
+  // stranding the user on a dead-end "Trip not found" screen.
+  useEffect(() => {
+    if (!error) return;
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("bt-last-trip-id");
+      document.cookie = "bt-last-trip-id=; Max-Age=0; Path=/; SameSite=Lax";
+    }
+    router.replace("/dashboard");
+  }, [error, router]);
+
   // All hooks must be called before any early returns
   const utils = trpc.useUtils();
 
@@ -188,21 +201,15 @@ export default function TripDetailPage() {
     );
   }
 
+  // On error/not-found we redirect to the dashboard (effect above); render the
+  // spinner in the meantime rather than flashing a dead-end message.
   if (error || !trip) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-lg font-semibold" style={{ color: "var(--color-bt-text)" }}>
-            Trip not found
-          </p>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="mt-4 text-sm"
-            style={{ color: "var(--color-bt-accent)" }}
-          >
-            Back to Dashboard
-          </button>
-        </div>
+      <div className="flex min-h-screen items-center justify-center">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2"
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
+        />
       </div>
     );
   }
