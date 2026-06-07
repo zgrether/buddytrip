@@ -1,4 +1,4 @@
-import { Home, Wifi, MapPin } from "lucide-react";
+import { Home, Wifi, Plane, Car, Flag, Clock, Navigation } from "lucide-react";
 import { DatePollGrid } from "./HeroSection";
 
 /**
@@ -165,51 +165,93 @@ function IdeaRow({
   );
 }
 
-// ── Feature 2 — Split it fairly ───────────────────────────────────────────
+// ── Feature 2 — Split it fairly (receipts + balances) ─────────────────────
 
 function FeatureVisualSplitFairly() {
-  const expenses: Array<{ title: string; paidBy: string; amount: string; split: string }> = [
-    { title: "VRBO — 3 nights",            paidBy: "Paid by Buddy", amount: "$980", split: "÷ 5 = $196" },
-    { title: "Pinehurst No. 2 — Round 1",  paidBy: "Paid by Zach",  amount: "$725", split: "÷ 5 = $145" },
-    { title: "Steak dinner + open bar",    paidBy: "Paid by Ryan",  amount: "$480", split: "÷ 5 = $96"  },
-    { title: "Hammerschlagen entry fees",  paidBy: "Paid by Mike",  amount: "$155", split: "÷ 5 = $31"  },
+  const receipts: Array<{ title: string; paidBy: string; ways: number; share: string; amount: string }> = [
+    { title: "VRBO — 3 nights",           paidBy: "Buddy", ways: 5, share: "$196", amount: "$980" },
+    { title: "Pinehurst No. 2 — Round 1", paidBy: "Zach",  ways: 5, share: "$145", amount: "$725" },
+    { title: "Steak dinner + open bar",   paidBy: "Ryan",  ways: 5, share: "$96",  amount: "$480" },
+  ];
+  // Signed balances net to zero (+434 +72 −96 −196 −214).
+  const balances: Array<{ name: string; amt: string; pos: boolean }> = [
+    { name: "Zach",  amt: "+$434", pos: true },
+    { name: "Ryan",  amt: "+$72",  pos: true },
+    { name: "Buddy", amt: "-$96",  pos: false },
+    { name: "Brad",  amt: "-$196", pos: false },
+    { name: "Mike",  amt: "-$214", pos: false },
   ];
   return (
     <div className="bt-mkt-card">
-      <div style={{ textAlign: "center", marginBottom: 14 }}>
-        <div style={{ fontSize: 28, fontWeight: 500, color: "#f1f5f9" }}>$2,340</div>
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-          total trip expenses · 5 crew
-        </div>
+      <div className="bt-mkt-inner-label" style={{ marginBottom: 8 }}>
+        Receipts · who paid for what
       </div>
 
-      {expenses.map((e) => (
-        <div key={e.title} className="bt-mkt-expense-row">
-          <div>
-            <div style={{ fontSize: 12, color: "#f1f5f9" }}>{e.title}</div>
-            <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>{e.paidBy}</div>
+      {receipts.map((r) => (
+        <div key={r.title} style={{ display: "flex", alignItems: "center", gap: 11, padding: "7px 0" }}>
+          <span
+            style={{
+              width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "rgba(45,212,191,0.14)", color: "#2dd4bf",
+              fontFamily: "var(--font-mono)", fontSize: 15, fontWeight: 700,
+            }}
+          >
+            $
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: "#f1f5f9", fontWeight: 600 }}>{r.title}</div>
+            <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
+              Paid by <strong style={{ color: "#cbd5e1", fontWeight: 600 }}>{r.paidBy}</strong>
+              {" · "}split {r.ways} ways
+            </div>
+            <div style={{ fontSize: 10, color: "#2dd4bf", marginTop: 1 }}>
+              Your share: <strong style={{ fontWeight: 600 }}>{r.share}</strong>
+            </div>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#f1f5f9" }}>{e.amount}</div>
-            <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>{e.split}</div>
-          </div>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 600,
+              color: "#f1f5f9", flexShrink: 0,
+            }}
+          >
+            {r.amount}
+          </span>
         </div>
       ))}
 
-      <div className="bt-mkt-balance-row">
-        <div className="bt-mkt-balance-chip">
-          <div className="bt-mkt-balance-label">You are owed</div>
-          <div className="bt-mkt-balance-amount" style={{ color: "#2dd4bf" }}>+$312</div>
-        </div>
-        <div className="bt-mkt-balance-chip">
-          <div className="bt-mkt-balance-label">Tom owes</div>
-          <div className="bt-mkt-balance-amount" style={{ color: "#f87171" }}>-$468</div>
-        </div>
-        <div className="bt-mkt-balance-chip">
-          <div className="bt-mkt-balance-label">Mike owes</div>
-          <div className="bt-mkt-balance-amount" style={{ color: "#f87171" }}>-$156</div>
-        </div>
+      <div className="bt-mkt-divider" />
+
+      <div className="bt-mkt-inner-label" style={{ marginBottom: 8 }}>
+        Where everyone lands
       </div>
+      {balances.map((b) => (
+        <div
+          key={b.name}
+          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span
+              style={{
+                width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "#243049", color: "#cbd5e1", fontSize: 10, fontWeight: 600,
+              }}
+            >
+              {b.name[0]}
+            </span>
+            <span style={{ fontSize: 12, color: "#f1f5f9" }}>{b.name}</span>
+          </span>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600,
+              color: b.pos ? "#2dd4bf" : "#f87171",
+            }}
+          >
+            {b.amt}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -327,40 +369,92 @@ function FeatureVisualCompete() {
 const mapHref = (q: string) =>
   `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
-function FeatureVisualStayOnTrack() {
-  const days: Array<{
-    label: string;
-    items: Array<{
-      time: string;
-      dot: string;
-      name: string;
-      map?: string; // query string for map link
-    }>;
-  }> = [
-    {
-      label: "Thursday · Sep 12",
-      items: [
-        { time: "2:00p", dot: "#64748b", name: "Arrive / check in · VRBO" },
-        { time: "7:00p", dot: "#64748b", name: "Dinner — The Pit BBQ", map: "The Pit BBQ Pinehurst NC" },
-        { time: "9:00p", dot: "#f97316", name: "Hammerschlagen + poker" },
-      ],
-    },
-    {
-      label: "Friday · Sep 13",
-      items: [
-        { time: "7:30a", dot: "#2dd4bf", name: "Round 1 — Scramble", map: "Pinehurst No. 2 Golf Course" },
-        { time: "7:00p", dot: "#64748b", name: "Steak dinner + open bar", map: "Pinehurst Resort Steakhouse" },
-      ],
-    },
-    {
-      label: "Saturday · Sep 14",
-      items: [
-        { time: "8:00a", dot: "#2dd4bf", name: "Round 2 — Stroke Play", map: "Pinehurst No. 2 Golf Course" },
-        { time: "2:00p", dot: "#60a5fa", name: "Corn hole + pop-a-shot" },
-      ],
-    },
-  ];
+// Category palette for the itinerary cards (dark marketing surface).
+const ITIN_CATS = {
+  travel:  { color: "#2dd4bf", fill: "rgba(45,212,191,0.10)", badge: "rgba(45,212,191,0.18)" },
+  lodging: { color: "#60a5fa", fill: "rgba(96,165,250,0.10)", badge: "rgba(96,165,250,0.18)" },
+  events:  { color: "#f59e0b", fill: "rgba(245,158,11,0.10)", badge: "rgba(245,158,11,0.18)" },
+  golf:    { color: "#22c55e", fill: "rgba(34,197,94,0.10)",  badge: "rgba(34,197,94,0.18)" },
+} as const;
 
+function AvatarStack({ initials }: { initials: string[] }) {
+  return (
+    <span style={{ display: "inline-flex" }}>
+      {initials.map((n, i) => (
+        <span
+          key={i}
+          style={{
+            width: 20, height: 20, borderRadius: "50%",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "#243049", border: "1.5px solid #161e2f", color: "#cbd5e1",
+            fontSize: 9, fontWeight: 600, marginLeft: i ? -7 : 0,
+          }}
+        >
+          {n}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function ItinCard({
+  cat,
+  Icon,
+  title,
+  sub,
+  map,
+  children,
+}: {
+  cat: keyof typeof ITIN_CATS;
+  Icon: typeof Home;
+  title: string;
+  sub?: string;
+  map?: string;
+  children?: React.ReactNode;
+}) {
+  const c = ITIN_CATS[cat];
+  return (
+    <div
+      style={{
+        display: "flex", gap: 10, alignItems: children ? "flex-start" : "center",
+        background: c.fill, borderRadius: 10, padding: "9px 11px", marginBottom: 6,
+      }}
+    >
+      <span
+        style={{
+          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: c.badge, color: c.color,
+        }}
+      >
+        <Icon size={15} strokeWidth={1.9} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: "#f1f5f9", fontWeight: 600 }}>{title}</div>
+        {sub && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{sub}</div>}
+        {children}
+      </div>
+      {map && (
+        <a
+          href={mapHref(map)}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0,
+            background: c.badge, color: c.color, borderRadius: 9999,
+            padding: "4px 9px", fontSize: 10, fontWeight: 600,
+            textDecoration: "none", whiteSpace: "nowrap",
+          }}
+        >
+          <Navigation size={10} strokeWidth={2} />
+          Directions
+        </a>
+      )}
+    </div>
+  );
+}
+
+function FeatureVisualStayOnTrack() {
   return (
     <div className="bt-mkt-card">
       {/* Quick Info tiles */}
@@ -383,30 +477,67 @@ function FeatureVisualStayOnTrack() {
 
       <div className="bt-mkt-divider" />
 
-      {/* Schedule */}
-      {days.map((d) => (
-        <div key={d.label} style={{ marginBottom: 10 }}>
-          <div className="bt-mkt-day-label">{d.label}</div>
-          {d.items.map((item) => (
-            <div key={item.time + item.name} className="bt-mkt-schedule-item">
-              <span style={{ fontSize: 10, color: "#64748b", width: 38, flexShrink: 0 }}>{item.time}</span>
-              <span className="bt-mkt-schedule-dot" style={{ background: item.dot }} />
-              <span style={{ fontSize: 12, color: "#f1f5f9", flex: 1 }}>{item.name}</span>
-              {item.map && (
-                <a
-                  href={mapHref(item.map)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bt-mkt-map-link"
-                >
-                  <MapPin size={11} strokeWidth={1.75} />
-                  Map
-                </a>
-              )}
-            </div>
+      <div className="bt-mkt-day-label">Friday · Sep 13</div>
+
+      {/* Arrivals — grouped card: flying / driving with avatar stacks + windows */}
+      <ItinCard cat="travel" Icon={Plane} title="Arrivals">
+        <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Plane size={11} strokeWidth={1.9} style={{ color: "#2dd4bf", flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: "#cbd5e1", width: 46, flexShrink: 0 }}>Flying</span>
+            <AvatarStack initials={["Z", "B", "R"]} />
+            <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto", fontFamily: "var(--font-mono)" }}>
+              2:10p – 4:30p
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Car size={11} strokeWidth={1.9} style={{ color: "#2dd4bf", flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: "#cbd5e1", width: 46, flexShrink: 0 }}>Driving</span>
+            <AvatarStack initials={["M", "J"]} />
+            <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto", fontFamily: "var(--font-mono)" }}>
+              by 3:00p
+            </span>
+          </div>
+        </div>
+      </ItinCard>
+
+      <ItinCard
+        cat="lodging"
+        Icon={Home}
+        title="Check in — Pinehurst Resort"
+        sub="57744 Round Lake Dr"
+        map="Pinehurst Resort"
+      />
+
+      <ItinCard
+        cat="golf"
+        Icon={Flag}
+        title="Round 1 — Scramble"
+        sub="Pinehurst No. 2"
+        map="Pinehurst No. 2 Golf Course"
+      >
+        <div style={{ marginTop: 6, display: "flex", gap: 5, flexWrap: "wrap" }}>
+          {["8:00a", "8:10a", "8:20a"].map((t) => (
+            <span
+              key={t}
+              style={{
+                fontFamily: "var(--font-mono)", fontSize: 10, color: "#4ade80",
+                background: "rgba(34,197,94,0.14)", borderRadius: 6, padding: "2px 6px",
+              }}
+            >
+              {t}
+            </span>
           ))}
         </div>
-      ))}
+      </ItinCard>
+
+      <ItinCard
+        cat="events"
+        Icon={Clock}
+        title="Steak dinner + open bar"
+        sub="Pinehurst Steakhouse"
+        map="Pinehurst Resort Steakhouse"
+      />
     </div>
   );
 }
