@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { HelperCards } from "@/components/HelperCards";
+import { FeaturesSection } from "@/components/marketing/FeaturesSection";
+import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 import { trpc } from "@/lib/trpc-client";
 import { TopNav } from "@/components/TopNav";
 import { TripCard } from "@/components/TripCard";
@@ -79,6 +83,8 @@ export default function DashboardClient() {
   }
 
   const hasAnyTrips = trips.length > 0;
+  const showHelperCards =
+    trips.length <= 3 && !(trips as TripRow[]).some((t) => t.myRole === "Owner");
 
   return (
     <div
@@ -180,6 +186,40 @@ export default function DashboardClient() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Helper panel — always rendered in a min-viewport-height wrapper
+            so the FeaturesSection below always starts off-screen. The link
+            smooth-scrolls down to it, matching the empty-state behaviour. */}
+        {hasAnyTrips && (
+          <div
+            className="mt-10"
+            style={{ minHeight: "calc(100vh - 56px)" }}
+          >
+            {showHelperCards && <HelperCards />}
+            <div className={`text-center ${showHelperCards ? "mt-6" : "mt-2"}`}>
+              <Link
+                href="#how-it-works"
+                className="text-[13px]"
+                style={{ color: "var(--color-bt-accent)" }}
+              >
+                See how BuddyTrip works →
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* How-it-works section — always in the DOM so the anchor resolves.
+            Starts off-screen due to the min-height wrapper above. */}
+        {hasAnyTrips && (
+          <>
+            <style>{MARKETING_CSS}</style>
+            <div className="bt-mkt-root" style={{ minHeight: 0 }}>
+              <div className="bt-mkt-main">
+                <FeaturesSection />
+              </div>
+            </div>
+          </>
         )}
       </main>
 

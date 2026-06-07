@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Plane } from "lucide-react";
+import { HelperCards } from "@/components/HelperCards";
 import { FeaturesSection } from "@/components/marketing/FeaturesSection";
 import { MARKETING_CSS } from "@/components/marketing/MarketingPage";
 
@@ -69,16 +70,19 @@ export function AuthenticatedEmptyState() {
           >
             New trip
           </Link>
+        </div>
 
-          {/* Ghost link — smooth-scrolls down to the FeaturesSection
-              rendered below (matches the in-page anchor). */}
-          <div className="mt-4">
+        {/* Helper cards — always shown on the empty state (0 trips
+            counts as ≤3 with no ownership). */}
+        <div className="mt-10 w-full max-w-[642px]">
+          <HelperCards />
+          <div className="mt-6 text-center">
             <Link
               href="#how-it-works"
               className="text-[13px]"
               style={{ color: "var(--color-bt-accent)" }}
             >
-              Not sure where to start? See how BuddyTrip works →
+              See how BuddyTrip works →
             </Link>
           </div>
         </div>
