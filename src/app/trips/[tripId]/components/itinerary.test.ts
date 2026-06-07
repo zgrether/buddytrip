@@ -283,28 +283,32 @@ describe("buildItinerary — sorting", () => {
     ]);
   });
 
-  it("breaks schedule ties by sort_order", () => {
+  it("orders schedule items by sort_order, never by time (time is display-only)", () => {
     const events = buildItinerary({
       scheduleItems: [
-        scheduleItem({ id: "s1", scheduled_time: "10:00", sort_order: 5 }),
-        scheduleItem({ id: "s2", scheduled_time: "10:00", sort_order: 1 }),
+        // s_early has the EARLIER time but a LATER sort_order — it must still
+        // render after s_late, because Agenda's drag order (sort_order) wins.
+        scheduleItem({ id: "s_early", scheduled_time: "09:00", sort_order: 5 }),
+        scheduleItem({ id: "s_late", scheduled_time: "18:00", sort_order: 1 }),
       ],
       logisticsItems: [],
       members: [],
     });
-    expect(events.map((e) => e.id)).toEqual(["s2", "s1"]);
+    expect(events.map((e) => e.id)).toEqual(["s_late", "s_early"]);
   });
 
-  it("places null-time events after timed events on the same day", () => {
+  it("keeps an untimed schedule item in its sort_order slot (not pushed to the end)", () => {
     const events = buildItinerary({
       scheduleItems: [
-        scheduleItem({ id: "s_null", scheduled_time: null }),
-        scheduleItem({ id: "s_timed", scheduled_time: "09:00" }),
+        scheduleItem({ id: "s_timed", scheduled_time: "09:00", sort_order: 1 }),
+        scheduleItem({ id: "s_anytime", scheduled_time: null, sort_order: 0 }),
       ],
       logisticsItems: [],
       members: [],
     });
-    expect(events.map((e) => e.id)).toEqual(["s_timed", "s_null"]);
+    // s_anytime has the lower sort_order, so it renders FIRST even though it
+    // has no time — untimed agenda items sit in their drag slot, not the end.
+    expect(events.map((e) => e.id)).toEqual(["s_anytime", "s_timed"]);
   });
 });
 
