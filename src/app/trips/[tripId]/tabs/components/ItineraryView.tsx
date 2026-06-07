@@ -527,11 +527,14 @@ function PersonChip({ person }: { person: ArrivalEvent }) {
       }}
     >
       <Avatar name={person.displayName} avatarIcon={person.avatarIcon ?? null} sizePx={22} />
-      <span className="text-[12px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+      <span
+        className="text-[12px] font-semibold leading-none"
+        style={{ color: "var(--color-bt-text)" }}
+      >
         {firstName(person.displayName)}
       </span>
       <span
-        className="text-[11px]"
+        className="text-[11px] leading-none"
         style={{
           color: "var(--color-bt-text-dim)",
           fontStyle: untimed ? "italic" : undefined,
