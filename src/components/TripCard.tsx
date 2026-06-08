@@ -18,6 +18,7 @@ import { CountdownBar } from "@/components/TripHeader";
 
 interface Trip {
   id: string;
+  slug?: string;
   title: string;
   location?: string | null;
   start_date?: string | null;
@@ -83,7 +84,8 @@ export const TripCard: FC<TripCardProps> = ({ trip }) => {
     };
     utils.trips.getById.setData({ tripId: trip.id }, tripData);
     startNavigation(() => {
-      router.push(`/trips/${trip.id}`);
+      // Pretty URL; falls back to the id (which the route also resolves).
+      router.push(`/trips/${trip.slug ?? trip.id}`);
     });
   };
 

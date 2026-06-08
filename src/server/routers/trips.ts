@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { buildTripSlug } from "@/lib/slug";
 
 export const tripsRouter = router({
   // -----------------------------------------------------------------------
@@ -79,6 +80,35 @@ export const tripsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
+  // resolveSlug — map a URL param (slug OR uuid) to the canonical trip id.
+  // Used once at page entry so the rest of the app keeps using the UUID
+  // (tRPC / realtime / cache) while the URL shows the slug. RLS on `trips`
+  // gates this to member-visible trips, so a non-member (or unknown slug)
+  // gets NOT_FOUND — same as no access. No requireTripMember here: this is
+  // the lookup that produces the id those checks need.
+  // -----------------------------------------------------------------------
+  resolveSlug: authedProcedure
+    // Restrict to slug/uuid charset — both are [a-z0-9-]. This also keeps the
+    // value safe to interpolate into the PostgREST .or() filter below (no '.'
+    // or ',' delimiters can sneak in).
+    .input(
+      z.object({ slugOrId: z.string().min(1).max(80).regex(/^[a-z0-9-]+$/i) })
+    )
+    .query(async ({ ctx, input }) => {
+      const { data, error } = await ctx.supabase
+        .from("trips")
+        .select("id, slug")
+        .or(`id.eq.${input.slugOrId},slug.eq.${input.slugOrId}`)
+        .maybeSingle();
+
+      if (error || !data) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      }
+
+      return { id: data.id as string, slug: data.slug as string };
+    }),
+
+  // -----------------------------------------------------------------------
   // create — any logged-in user can create a trip (becomes Owner)
   // -----------------------------------------------------------------------
   create: authedProcedure
@@ -119,6 +149,7 @@ export const tripsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const now = new Date().toISOString();
+      const slug = buildTripSlug(input.title, input.id);
 
       // Step 1: Insert the trip WITHOUT .select() — PostgREST's
       // INSERT ... RETURNING requires the SELECT policy to pass on the
@@ -127,6 +158,7 @@ export const tripsRouter = router({
       const hasLockedDest = !!input.lockedDestination;
       const { error } = await ctx.supabase.from("trips").insert({
         id: input.id,
+        slug,
         title: input.title,
         description: input.description ?? "",
         location: input.lockedDestination?.location ?? input.location ?? null,

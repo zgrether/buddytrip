@@ -4,6 +4,12 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Lock } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+
+// Old `/trips/<uuid>` links skip slug resolution and use the id directly.
+// Inlined (not imported from @/lib/slug, which pulls in node crypto and would
+// break the client bundle).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { useTripRole } from "@/hooks/useTripRole";
 import { type TabId, TripBottomNav } from "@/components/BottomNav";
 import { TripTabBar } from "@/components/TripTabBar";
@@ -28,8 +34,7 @@ import { DatesSheet } from "./components/DatesSheet";
 
 // ── TripDetailPage ────────────────────────────────────────────────────────
 
-export default function TripDetailPage() {
-  const { tripId } = useParams<{ tripId: string }>();
+function TripDetailBody({ tripId }: { tripId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Initial tab respects `?tab=<id>` so sub-pages (e.g. the event
@@ -641,5 +646,41 @@ export default function TripDetailPage() {
       )}
     </div>
   );
+}
+
+// ── Resolver ──────────────────────────────────────────────────────────────
+// The URL param can be a human-friendly slug (`bbmi-2027-a3f9c1`) or a raw
+// trip UUID (old links). The whole app keys off the canonical UUID — tRPC,
+// realtime channels, cache — so we resolve the param to the id ONCE here and
+// hand the UUID to the body; the slug stays a display-only URL layer. A
+// UUID-shaped param skips the lookup and is used directly.
+export default function TripDetailPage() {
+  const { tripId: param } = useParams<{ tripId: string }>();
+  const router = useRouter();
+  const isId = UUID_RE.test(param);
+  const resolved = trpc.trips.resolveSlug.useQuery(
+    { slugOrId: param },
+    { enabled: !isId, retry: false }
+  );
+  const tripId = isId ? param : resolved.data?.id;
+
+  // Unknown slug (or not a member) → bounce to the dashboard, same as the
+  // body's not-found handling.
+  useEffect(() => {
+    if (!isId && resolved.isError) router.replace("/dashboard");
+  }, [isId, resolved.isError, router]);
+
+  if (!tripId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-2"
+          style={{ borderColor: "var(--color-bt-accent)", borderTopColor: "transparent" }}
+        />
+      </div>
+    );
+  }
+
+  return <TripDetailBody tripId={tripId} />;
 }
 

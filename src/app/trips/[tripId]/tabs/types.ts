@@ -2,6 +2,8 @@ import type { TripRole } from "@/server/middleware";
 
 export interface TripData {
   id: string;
+  /** Human-friendly URL slug, e.g. `bbmi-2027-a3f9c1`. Set at creation. */
+  slug?: string;
   title: string;
   description?: string | null;
   location?: string | null;

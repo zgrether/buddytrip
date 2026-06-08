@@ -39,13 +39,13 @@ export default function TripNewPage() {
     const tripId = crypto.randomUUID();
 
     try {
-      await createTrip.mutateAsync({
+      const created = await createTrip.mutateAsync({
         id: tripId,
         title: tripName.trim(),
         lockedDestination: { title: destination, location: destination },
       });
 
-      router.replace(`/trips/${tripId}`);
+      router.replace(`/trips/${created.slug ?? tripId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
       setIsSubmitting(false);
@@ -63,7 +63,7 @@ export default function TripNewPage() {
     setError("");
     const tripId = crypto.randomUUID();
     try {
-      await createTrip.mutateAsync({
+      const created = await createTrip.mutateAsync({
         id: tripId,
         title: tripName.trim(),
         comparisonMode: true,
@@ -86,7 +86,7 @@ export default function TripNewPage() {
           })
         )
       );
-      router.replace(`/trips/${tripId}`);
+      router.replace(`/trips/${created.slug ?? tripId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
       throw err;
