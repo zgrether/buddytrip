@@ -19,6 +19,8 @@ import { ideaLodgingRouter } from "./routers/ideaLodging";
 import { archivedIdeasRouter } from "./routers/archivedIdeas";
 import { feedbackRouter } from "./routers/feedback";
 import { newsRouter } from "./routers/news";
+import { gamesRouter } from "./routers/games";
+import { scoresRouter } from "./routers/scores";
 
 export const appRouter = router({
   users: usersRouter,
@@ -41,6 +43,8 @@ export const appRouter = router({
   archivedIdeas: archivedIdeasRouter,
   feedback: feedbackRouter,
   news: newsRouter,
+  games: gamesRouter,
+  scores: scoresRouter,
 });
 
 export type AppRouter = typeof appRouter;
