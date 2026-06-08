@@ -40,6 +40,24 @@ describe("trips router", () => {
     await ctx.addTripMember(tripId, "member", "Member");
   });
 
+  // resolveSlug
+  it("resolveSlug — maps slug AND id to the canonical id; unknown → NOT_FOUND", async () => {
+    const caller = ctx.caller();
+    const { data: row } = await ctx.admin
+      .from("trips")
+      .select("slug")
+      .eq("id", tripId)
+      .single();
+    const slug = (row as { slug: string }).slug;
+    expect(slug).toMatch(/-[0-9a-f]{6}$/);
+
+    expect((await caller.trips.resolveSlug({ slugOrId: slug })).id).toBe(tripId);
+    expect((await caller.trips.resolveSlug({ slugOrId: tripId })).id).toBe(tripId);
+    await expect(
+      caller.trips.resolveSlug({ slugOrId: "no-such-trip-000000" })
+    ).rejects.toThrow();
+  });
+
   // list
   it("list — returns trips for the current user", async () => {
     const caller = ctx.caller();
