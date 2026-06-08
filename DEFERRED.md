@@ -1,470 +1,207 @@
-# BuddyTrip — Deferred Work
+# BBMI — Deferred Work
 
-*Only genuinely open items. Organized by when they need to happen.*
-*Last updated: 2026-04-05*
+*Only genuinely open items. Ordered by when they need to happen.*
+*Competition/gaming design detail lives in `COMPETITION_ENGINE.md` — this file
+is the build backlog that points to it.*
+*Last updated: 2026-06-08*
 
----
-
-## Before Launch
-
-Items that must be resolved before onboarding real (non-test) users.
-
-### Apple OAuth
-
-Needs Apple Developer account and domain verification. Low effort
-once credentials are available — Supabase supports it natively.
-
-**When:** after domain purchase.
+> Beta is effectively launched (bbmi.app live, wired up, not yet announced).
+> Real users for the next ~3 months are the golf crew + occasional testers
+> (e.g. Julie). "Before Launch" is closed. URL slugs + polling-data bugs are
+> in-flight, not tracked here.
 
 ---
 
-### About panel email blast
+## Active — Competition & Gaming Engine
 
-When owner taps "Notify crew of update" on the About panel, currently
-only fires in-app notifications. Should also send an email via Resend
-to all crew members with the current about_message content.
-Depends on: domain purchase + Resend custom sender setup.
+**The current focus.** Design doc: `COMPETITION_ENGINE.md`. Built **vertically**
+— one format fully working end-to-end, then widen — not horizontally. Each
+slice is demoable on its own.
 
----
+**September critical path = A → B → C → D.** E and F are quality, not blockers.
 
-### Swap Resend sender domain
+### Slice 0 — Decisions (no code) ✅ mostly resolved
 
-Currently using `onboarding@resend.dev` (Resend's default shared
-sender). Swap to `noreply@buddytrip.app` (or similar) once a custom
-domain is purchased and verified with Resend.
+Resolved in `COMPETITION_ENGINE.md` (decisions log): sides→`play_groups`,
+entry-vs-result separation, `game_matches`, universal `game_results`, no
+conversion, drop `starting_score`, moving-tees-as-modifier, Quick Game local
+storage, BBMI 2026 = two-team match play.
 
-**File:** `src/lib/email.ts` — change `FROM` constant.
+### Slice A — Stroke-entry spine ⭐ critical path
 
----
+The simplest case, hardened before sides/teams/modifiers complicate it. **Has
+standalone value for testers in the lead-up** — a real, usable individual
+stroke-play game.
 
-### Admin email template management UI
+- `games`, `game_participants`, `score_entries`, `game_results` tables
+- **StandardGrid** renderer (Tier 3): editable cells, front/back-9 subtotals,
+  low-wins direction
+- `stroke_total` result computation → `game_results`
+- Game completion flow
+- **Quick Game ⚡** title-bar button as a context-free entry into this spine
+  (local-storage state, "play again / discard" on finish) — not a placeholder
 
-Email templates are currently plain HTML strings in `src/lib/email.ts`.
-Build an admin UI at `/admin/emails` for editing templates without
-code changes.
+### Slice B — Match play ⭐ critical path
 
-**When:** after admin interface is built.
+The heart of the event.
 
----
+- `game_matches` table + `match_play` result strategy (W/H/L → match state →
+  points)
+- Match-play layer over the grid: per-hole result, running "2 UP" / "3&2" strip
+- **One card can carry multiple match strips** (a singles foursome = 2 matches);
+  `game_matches` is decoupled from `play_groups`
+- **Singles first** (entity = user, 1v1) before pair formats
 
-### Human-friendly trip URL slugs
+### Slice C — September's remaining formats ⭐ critical path
 
-Current: `/trips/2377695c-bcdc-44f1-a1fd-584dd2d001a4`
-Target: `/trips/bbmi-2027`
+- **Foursomes / alt-shot** — `group_holes` entry (one ball per `play_group`),
+  `match_play`
+- **Four-ball** — `group_holes` entry, `match_play` (BBMI records one score per
+  side, same shape as alt-shot); auto-best-ball compute deferred as optional
+- **Rack-n-stack** — `user_holes` entry, `positional` result (sort each team's
+  totals, compare by index; opponents shift live)
+- **GolfCard** renderer (extends StandardGrid): par/handicap/±, color coding,
+  course + date header
+- **Golf course picker** → `circle_courses` lookup, add-new inline, optional
+  tee-time link
 
-**Approach:** add `slug text UNIQUE` to `trips`, generate from title at
-creation, backfill existing trips, accept both slug and UUID in route
-(UUID fallback for old links).
+### Slice D — Competition bolt-on ⭐ critical path (Ryder Cup needs it)
 
-**When:** before first public user onboarding.
+- Strip the current Competition tab; rebuild bottom-up
+- Two-team setup → `competition_teams` + time-stamped `competition_team_members`
+- `competition_games` + point distributions (`sides_are_teams=true`)
+- **Tier 1 competition leaderboard** — reads `game_results` ⨝ `competition_games`
+- Competition close → `circle_events` entry
 
----
+### Slice E — Games tab + scheduling (not blocking September)
 
-### Preserve polling data on Nevermind → Set dates
+- Games tab on the trip tab bar (no schedule required to add a game)
+- Add-game wizard, **data-driven off `game_type_templates` flags**
+  (`requires_sides`, `compatible_modifiers`, etc.) — the per-format branching
+  lives in template config, not UI code
+- Rename Agenda's "Competition Events" panel → "Games" (same drag-drop)
+- Optional schedule/date + itinerary surfacing; Agenda ↔ game link
 
-When the owner clicks "Nevermind, Set Dates Manually" and then locks
-dates directly, the poll windows and votes silently linger in the DB.
-Add a confirmation step asking whether to preserve the polling data
-(so the owner can return to it later) or discard it (delete all
-windows and votes). Currently the windows are always preserved, which
-is safe but may confuse owners who expect a clean slate after
-Neverminding.
+### Slice F — Modifiers (not blocking September)
 
----
+- Glorious finishing holes — **point-valued formats only (skins, match play)**;
+  multiplies hole value, not raw strokes
+- Buddy Rules (highlight + auto-apply modes)
+- `rules_for_today` → auto-post to Notes on game start
+- Per-game config (`games.config`) — custom Stableford rubric and other
+  within-format standards; template `config_schema` declares tunable keys
+- Moving tee boxes — available to any stroke-input scorecard; pop-up +
+  per-cell visual cue; `tee_box_change` `game_live_events` (no September format requires it)
 
----
+### Post-BBMI engine work
 
-### Date polling scope selection
-
-The dates panel currently polls all crew members indiscriminately.
-Owners should be able to select a subset of crew for date polling
-(e.g. only the key people whose schedules constrain the decision)
-rather than sending to everyone. Requires a crew selector UI on
-the date poll setup flow and a filtered query for poll responses.
-
----
-
-## Before BBMI 2026 (September Target)
-
-Scoring features needed for the actual event.
-
-### Carry-over scoring (halved holes)
-
-When enabled on a round, halved holes accumulate a pot that carries to
-the next hole. The scorecard must show each hole's current pot value.
-
-**What to build:**
-- `rounds.modifiers` JSONB column with `{ carryOver?: boolean }`
-- `computeCarryPots()` function: pot starts at 1, increments on halve,
-  resets to 1 after a winner
-- Pot badge on hole column headers (×2, ×3, etc.)
-- Carry indicator in ScoreEntry showing current pot
-- Amber `carry` chip on round row in leaderboard
-
-**Schema:** add `modifiers jsonb nullable` to `rounds`. Add `hole_results`
-table (`round_id`, `group_id`, `hole_number`, `carry_value`, `winner_team_id`).
-
-**Full spec:** was in SCORING_PLAYBOOK.md Task B.
-
----
-
-### Moving tee boxes
-
-Each player starts on the same tee box. After each hole, tee box shifts
-based on score vs par: eagle → back 2, birdie → back 1, bogey+ → forward 1.
-Configurable per round.
-
-**What to build:**
-- `movingTees` config in `rounds.modifiers`
-- `computeTeeBoxes()` function: track per-player tee box state across
-  18 holes with clamping at Black/Red ends
-- 8px colored dot in scorecard cells showing current tee box
-- Tee box config UI in round builder (start box selector, shift steppers)
-
-**Schema:** add `player_hole_scores` table (`round_id`, `group_id`,
-`hole_number`, `player_id`, `strokes`, `tee_box`).
-
-**Full spec:** was in SCORING_PLAYBOOK.md Task C. This is the most
-UI-intensive scoring feature — use Opus.
+- `multi_team` competitions (3+ teams, placement points roll-up)
+- Bracket tournaments + **BracketRenderer** (single-elim; StandardGrid covers v1)
+- Nassau / press / hammer game types; `game_live_events` press/hammer/dots
+- `turn_append` entry (darts etc., unknown turn count)
+- Chicago format (re-adds `game_participants.starting_score`)
+- Full top-20 golf format matrix fill-out (validated against the taxonomy in
+  `COMPETITION_ENGINE.md`, built on demand)
 
 ---
 
-### Read-only scorecards (polish)
+## v2 / Circle Era
 
-Closed rounds prevent score entry server-side, but there's no dedicated
-read-only scorecard view. Group rows in the round summary should be
-tappable to open a hole-by-hole view with non-editable cells.
+The architectural expansion: a Circle is a persistent group of users that owns
+threads — trip planners with competition, trip planners without, competitions
+only, and standalone games. **Today's hierarchy (trip-with-embedded-competition)
+becomes one thread type among several.** Every decision today is made *toward*
+this so the migration is painless; nothing here is built pre-launch.
 
-**What to build:**
-- `readOnly` prop on HoleByHoleEntry (display-only cells, no submit)
-- Tappable group rows in round summary when hole data exists
-- Seed hole-by-hole data for at least one past round for demo
-
----
-
-## v2 / Post-Launch
-
-Lower priority items. Build after core planning flows are stable and
-the app has real users.
-
-### Individual notification mark-as-read
-
-Currently notifications can only be bulk marked as read via
-"Mark all as read". Add per-notification mark-as-read so users
-can dismiss individual items without clearing everything.
-Requires: `trpc.notifications.markRead({ notificationId })` mutation
-and UI dismiss button on each notification row.
+- Circle Home dashboard
+- Circle switcher (avatar clusters, long-press)
+- Standalone thread types (Competition thread, Game thread) — `circle_id` on
+  threads; v2 Quick Game becomes an invisible game-thread under a Circle
+- Golf course as a Circle asset; destination ideas at Circle level
+- **Circle Library** — courses, destinations, lodging as institutional memory
+- **Circle History** — immutable event record; History tab migrates to Circle level
+- Circle Stats / Hall of Fame
+- Tiered membership UI; thread visibility model
+- **Betting layer** — `circle_bets` / `circle_bet_results` / `circle_settlements`;
+  social-first, public-by-default, Circle-scoped (per-hole, Nassau, longest-drive,
+  sports, custom, skins-money)
+- **Apple OAuth** (deprioritized from launch; Supabase-native, low effort)
+- **Admin email-template UI** (`/admin/emails`; deprioritized from launch)
 
 ---
 
-### Schedule — day-by-day calendar view
+## Other Post-Launch (non-engine)
 
-Current schedule is a flat drag-and-drop list with optional date fields.
-A proper calendar/day view would group items by trip day and show a
-timeline. Requires locked start/end dates and day derivation logic.
+### Unify receipt opt-in / opt-out
 
----
+Today opt-in/out only covers members already *in* a split. A member left off
+entirely has no self-service path, and the row renders at full opacity (looks
+like you're in it). Combine into one model: in-split → normal + "Opt out";
+opted-out → dimmed + "Rejoin"; never-included → dimmed + "Add me" (creates a
+split row). Backend: extend `expenses.optOut` (or add `optIn`) to *create* a
+split when none exists. **Files:** `ExpensesSection.tsx`, `SplitPanel.tsx`,
+`server/routers/expenses.ts`.
 
-### Personal travel — flight lookup
+### Unified `<Overlay>` primitive
 
-Allow users to enter a flight number and have airline/arrival details
-auto-populated via a flight status API. Nice-to-have, not essential.
-
----
-
-### Notification auto-cleanup
-
-Notifications older than 90 days accumulate indefinitely.
-Add a Supabase scheduled function or trigger to delete
-`notification_events` older than 90 days per user.
-
----
-
-### Score submitted notifications
-
-When a round score is submitted, notify trip owner and crew.
-Deferred until competition/scoring spec is complete.
-`type: 'score_submitted'`
-`payload: { scorer_name, round_name, trip_name, trip_id }`
-
----
-
-### Push notifications for action-driving events
-
-`destination_locked` and `dates_locked` warrant push notifications
-(not just in-app) since they signal crew members need to take
-action (book travel, confirm attendance).
-Depends on: PWA service worker or Capacitor native wrapper.
-
----
-
-### D-Day countdown nudges
-
-Automated check-ins at key milestones before the trip:
-- D-30: RSVP check — notify owner if anyone hasn't responded
-- D-14: Reservations check — prompt for booking confirmations
-- D-7: Competition check — remind to set up teams/rounds
-
-**When:** after push notifications or scheduled email system.
-
----
-
-### NOW stage live behavior
-
-What changes when the trip is actively happening:
-- Messaging, scorecard, and schedule promoted front and center
-- Real-time crew location sharing (optional)
-- Trip dashboard optimized for in-the-moment use
-
-**When:** after first real trip uses the app during travel.
-
----
-
-### Save idea for future trip
-
-Allow users to save/bookmark individual destination ideas for reuse in
-future trips. Currently ideas are tied to a single trip and can only be
-deleted — no save/archive mechanism exists.
-
-**When:** after core idea zone is stable and has real usage.
-
----
-
-### Quick Score (no-auth scorecard)
-
-Standalone scorecard for any game, no account required. Homepage CTA:
-"or just keep score right now."
-
-**Schema impact:** `events.trip_id NOT NULL` constraint stays for v1.
-Quick Score requires making `trip_id` nullable — schema change.
-
----
-
-### Competition without a trip
-
-Same constraint as Quick Score. Use case: golf tournament organizer wants
-scoring without trip planning scaffolding.
-
-**Effort:** medium — `trip_id` nullable on `events`, new entry point,
-new permission model.
-
----
-
-### Push notifications
-
-In-app notification center exists. Push (mobile web / PWA) not built.
-
-**Approach:** Web Push API + service worker for PWA, or native push
-via Capacitor if going native mobile.
-
----
+~30 overlays hand-roll the same four concerns (`useScrollLock` /
+react-remove-scroll, `useModalBackButton`, backdrop scrim, `createPortal`). A
+shared `<Overlay>` that always portals to `document.body` would absorb all four
+and immunize every overlay against the `transform`/`filter`/`backdrop-filter`
+containing-block bug that already forces AboutModal, FeedbackModal, UserMenu,
+and TripSwitcher to portal out of `TopNav`. Keep the hooks as composable
+primitives for anchored popovers. Migrate incrementally. Not blocking — every
+overlay is correct today.
 
 ### Admin interface
 
-No admin tooling. Platform actions require direct Supabase dashboard.
-
-**Minimum scope:** user lookup by email, trip lookup by ID/slug, catalog
-idea management (add/edit/archive), basic audit log.
-
-**Approach:** admin-only route `/admin` gated by `users.is_admin`.
-
----
+No admin tooling; platform actions need the Supabase dashboard. Minimum:
+user lookup by email, trip lookup by ID/slug, catalog idea management, basic
+audit log. Admin-only `/admin` gated by `users.is_admin`.
 
 ### Catalog idea management UI
 
-The 20 curated golf ideas were seeded via SQL. Adding non-golf ideas
-requires SQL INSERT. Build an admin form at `/admin/catalog`.
-
-**Note:** `catalog_ideas` table already has `categories`, `group_types`,
-`region`, `trip_length` filter columns ready for non-golf content.
-
----
+20 curated golf ideas were seeded via SQL; non-golf ideas need a SQL INSERT.
+Build a form at `/admin/catalog`. `catalog_ideas` already has the filter columns
+(`categories`, `group_types`, `region`, `trip_length`).
 
 ### "Frequently trips with" crew shortcut
 
-Query `trip_members` for users who appear most frequently across the
-current user's trips. Show as avatar chips on the Crew tab for quick-add.
-
-**Spec:** was in TRIP_PLANNING_SPECS.md Spec 3. Hook design and UI
-layout are fully specified there.
-
-**Status:** the previous implementation (`useFrequentTripmates` hook
-and `users.frequentTripmates` tRPC procedure) was deleted in the
-pre-launch cleanup pass — neither was wired to any UI. If this feature
-is revived, both will need to be rebuilt from scratch.
-
----
+Avatar chips on the Crew tab for users who recur across the current user's trips.
+**Note:** the prior `useFrequentTripmates` hook + tRPC procedure were deleted in
+pre-launch cleanup (never wired to UI). Rebuild from scratch if revived.
 
 ### Claude API destination suggestions
 
-TripNew's "Let's put it to a vote" path was designed to call Claude for
-3 AI-suggested destinations based on a crew description. Currently manual
-entry only.
+TripNew's "put it to a vote" path was designed to call Claude for 3 suggested
+destinations. **Note:** the stub route + `lib/ai/suggestDestinations.ts` were
+deleted in cleanup. Rebuild from spec. Low effort, nice-to-have.
 
-**Effort:** low — API call spec was fully written. Nice-to-have.
+### Human-friendly trip URL slugs
 
-**Status:** the stub route (`/api/ai/suggest-destinations`) and
-`lib/ai/suggestDestinations.ts` (which called the Anthropic SDK) were
-deleted in the pre-launch cleanup pass — they had no UI caller. Rebuild
-from the spec when ready.
+`/trips/<uuid>` → `/trips/bbmi-2027`. Add `slug text UNIQUE` to `trips`, generate
+from title, backfill, accept slug or ID in route. *(In flight.)*
 
 ---
 
-### RSVP status indicator on dashboard TripCard
+## UX Polish (logged, not urgent)
 
-In GOING/NOW stage, show the current user's RSVP status on the TripCard
-on the dashboard — a small chip showing "In", "Maybe", "Out", or "Pending"
-next to the stage badge. Gives at-a-glance visibility without opening the trip.
-Requires joining trip_members.rsvp_status in the dashboard trips query.
-
----
-
-### Unread message count persistence
-
-The floating chat button unread count currently resets on page reload
-(tracked in component state/sessionStorage only). A proper unread count
-requires a last_read_at timestamp per user per trip in the database.
-Schema: add last_read_at to trip_members or a separate message_reads table.
-
----
-
-### Unify receipt opt-in / opt-out (let anyone join a receipt they were left off)
-
-Today the opt-in/opt-out flow only covers members who were *included*
-in a receipt's split: they can opt out (drop themselves) and opt back
-in. A member who was **never** part of the split has no self-service
-path — only the Owner can add them via Edit splits.
-
-Two problems:
-- **Styling is misleading.** A receipt you're not part of still renders
-  at full opacity (not dimmed), so it looks like you're in the split
-  when you aren't. There's no visual signal that it doesn't involve you.
-- **No self opt-in.** You can't add yourself to a receipt you were left
-  off of — it's an owner-only capability via the edit-splits modal.
-
-Combine the two states into one consistent model:
-- Receipt where you have an active split → normal styling, "Opt out".
-- Receipt where you've opted out → dimmed, "Rejoin" (existing).
-- Receipt where you were never included → dimmed (so it reads as
-  "not yours"), with an "Opt in" / "Add me" action that creates a split
-  row for you. Same teal/gray legend grammar.
-
-Backend: `expenses.optOut` already lets any member toggle their own
-split via `requireTripMember`; extend it (or add `optIn`) to *create* a
-split row when one doesn't exist yet, not just flip `opted_out`.
-
-**Files:** `ExpensesSection.tsx` (row styling + the third state),
-`SplitPanel.tsx`, `src/server/routers/expenses.ts` (optOut/optIn).
-
----
-
-### Unified `<Overlay>` primitive (portal + scroll lock + back button + backdrop)
-
-Overlay concerns are currently spread across separate cross-cutting
-hooks and hand-rolled markup in ~30 components: `useScrollLock`
-(react-remove-scroll), `useModalBackButton`, the backdrop/scrim div,
-and `createPortal`. Each overlay re-implements the same scaffolding by
-hand, and the four concerns are wired independently per component.
-
-A shared `<Overlay>` (or `<Modal>` / `<Sheet>`) primitive would absorb
-all four into one place: render children into a `document.body` portal,
-engage scroll lock while mounted, register the back-button intercept,
-and provide the standard scrim with click-to-dismiss.
-
-**Why it's worth doing (not just cosmetic):** today the non-portaled
-overlays (TripSettingsModal, InfoTileModal, expense modals, sheets,
-competition modals, etc.) are correct *only because* nothing above them
-in the tree sets `transform` / `filter` / `backdrop-filter`. Any of
-those properties on an ancestor becomes the containing block for
-`position: fixed` descendants — which is exactly why AboutModal,
-FeedbackModal, UserMenu, and TripSwitcher already have to portal out of
-`TopNav`'s `backdrop-filter` (`TopNav.tsx:99`). A primitive that always
-portals to `document.body` immunizes every overlay against this
-class of future breakage and makes the portal/no-portal split a
-non-decision.
-
-**What to build:**
-- `<Overlay>` component: `createPortal` to `document.body`, wrap content
-  in `ScrollLock`, call `useModalBackButton`, render scrim + centered/
-  bottom-sheet container variants.
-- Keep `useScrollLock` and `useModalBackButton` as the underlying
-  primitives (the Overlay composes them); they stay usable standalone
-  for the anchored popovers (DatePicker/TimePicker) that need bespoke
-  coordinate positioning rather than a scrim.
-- Migrate the ~30 overlays incrementally — no big-bang rewrite. The
-  scroll-lock + back-button wiring already exists, so migration is
-  mostly deleting per-component scaffolding.
-
-**When:** post-launch, as a consolidation pass. Not blocking — every
-overlay is functionally correct today. Revisit if/when page content
-gains a transformed or filtered ancestor, which would force the issue.
-
----
-
-## UX Polish (Logged, Not Urgent)
-
-### Field Mode (outdoor scoring)
-Larger tap targets and bumped font sizes for outdoor scoring in bright
-sunlight.
-
-### Custom date picker
-Replace `<input type="date">` with a custom component for better mobile UX.
-
-### Tab scrollbar
-Tab container shows scrollbar on some viewports. `overflow: hidden` fix.
-
-### Messageboard mobile fit
-Long messages overflow on narrow viewports in chat panels.
+- **Field Mode (outdoor scoring)** — larger tap targets + bumped fonts for
+  bright sunlight. Relevant once scorecards exist; pairs naturally with Slice C.
 
 ---
 
 ## Token Migration Debt
 
-Tracked in `STYLE_GUIDE.md` Section 7. Summary:
+Tracked in `STYLE_GUIDE.md` Section 7. Re-audit against current code (several
+already fixed). Summary:
 
-- 5 hardcoded `#00d4aa` instances → `var(--color-bt-accent)`
-- 5 hardcoded `#f59e0b` instances → `var(--color-bt-warning)`
-- 3 light-only warning banner colors → semantic tokens
+- 5 hardcoded `#00d4aa` → `var(--color-bt-accent)`
+- 5 hardcoded `#f59e0b` → `var(--color-bt-warning)`
+- 3 light-only warning-banner colors → semantic tokens
 - 1 `#d1d5db` drag handle → `var(--color-bt-border)`
 - 3 `rgba(0,0,0,0.4)` overlays → `var(--color-bt-overlay)`
-- 6 `#fff`/`white` on colored buttons → consider `--color-bt-on-accent`
+- 6 `#fff`/white on colored buttons → consider `--color-bt-on-accent`
 - 2 conditional title colors → `var(--color-bt-text)`
 
-Fix incrementally in follow-up PRs. Full line-by-line locations in
-STYLE_GUIDE.md Section 7.
-
-
----
-
-### RSVP Message — recipient selection
-
-Currently the RSVP message is sent to all crew members automatically
-when the owner advances to GOING. The panel shows green as soon as
-there is content.
-
-The intended flow adds an intermediate step: the owner explicitly
-selects which crew members to include in the blast. Until both the
-message is written AND recipients have been acknowledged, the panel
-should show amber (inProgress). Only when both are confirmed should
-it show teal/green (done).
-
-**What to build:**
-- Recipient selector UI inside RsvpDraftPanel (checklist or chip
-  multi-select, defaulting to all crew members)
-- `rsvp_recipients` persisted state (could be a JSONB array on the
-  trip or a separate table)
-- Panel state logic: amber when message exists but recipients not yet
-  confirmed, green when both message + recipients are set
-- Pass selected recipients through to the email blast in AdvanceToGoingSheet
-
-**Current behavior:** green as soon as message has content; all crew
-members receive the blast automatically.
-
----
-
-### Write Invitation panel move to Crew tab
-
-The invitation message draft panel was planned to move to the Crew tab
-so owners can see the full roster before sending. Currently still on
-Home tab. Requires updating NextStepsPanel condition check to look for
-invitation message on crew tab instead of home tab.
+Fix incrementally; line-by-line locations in STYLE_GUIDE.md Section 7.

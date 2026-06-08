@@ -118,16 +118,16 @@ round lifecycle.
 | 4.1 | User profile edit screen | ✅ |
 | 4.2 | Medium bugs (share feedback, ISO dates, copy, layout, 404, signup) | ✅ |
 | 4.2.1 | Competition tab chicken-and-egg fix | ✅ |
-| 4.3 | Light/dark theme toggle (WCAG-AA palette) | 🔄 In progress |
-| 4.4 | Visual match to prototype | — |
-| 4.5 | Empty states audit | — |
-| 4.6 | Navigation audit (breadcrumbs, back buttons, deep links) | — |
-| 4.7 | Mobile responsive pass | — |
-| 4.8 | Error handling (loading states, error boundaries) | — |
+| 4.3 | Light/dark theme toggle (WCAG-AA palette) | 🔄 In progress | - removed
+| 4.4 | Visual match to prototype | — | - done
+| 4.5 | Empty states audit | — | - done
+| 4.6 | Navigation audit (breadcrumbs, back buttons, deep links) | — | - done
+| 4.7 | Mobile responsive pass | — | - done
+| 4.8 | Error handling (loading states, error boundaries) | — | - done
 | 4.9 | Playwright E2E (fix middleware auth, add to CI) | — |
-| 4.10 | Seed data cleanup script | — |
+| 4.10 | Seed data cleanup script | — | - done
 | 4.11 | Performance pass | — |
-| 4.12 | Deploy to Vercel production, smoke test | — |
+| 4.12 | Deploy to Vercel production, smoke test | — | - done
 
 ### Phase 5 — Post-Launch (v2 Backlog)
 
@@ -142,9 +142,9 @@ Not started. Items tracked in `DEFERRED.md`.
    crew → vote destination → lock → set dates → create competition →
    assign teams → enter scores → view leaderboard → chat
 3. Three-tier permission model enforced per `PERMISSIONS.md`
-4. Notifications fire for 5 core events
-5. Chat works with team privacy
-6. Light/dark theme with WCAG-AA contrast
+4. Notifications fire for 5 core events - removed notifications
+5. Chat works with team privacy - removed team chat from scope
+6. Light/dark theme with WCAG-AA contrast - removed
 7. Mobile-first layout on real devices
 8. All Vitest + Playwright tests pass
 9. CI green on every push
@@ -188,7 +188,7 @@ These markdown files were in the repo and have been fully superseded:
 
 | File | Why delete |
 |------|-----------|
-| `TODO.md` | Prototype-era TODO. All items resolved. |
+| `TODO.md` | Prototype-era TODO. All items resolved. | 
 | `TODO2.md` | Prototype walkthrough issues. All resolved. |
 | `MIGRATION_PLAN.md` | Prototype→production migration. Fully complete. |
 | `PLAYBOOK.md` | Pre-migration playbook. All 27 tasks done. |
