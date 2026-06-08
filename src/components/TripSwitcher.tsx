@@ -239,7 +239,7 @@ function TripSwitcherBody({
         <TripSwitcherRow
           key={trip.id}
           trip={trip}
-          isCurrent={trip.id === currentTripId}
+          isCurrent={trip.id === currentTripId || trip.slug === currentTripId}
           isLast={!showDividers && idx === activeTrips.length - 1 && pastTrips.length === 0}
           onClick={() => onSelectTrip(trip.slug ?? trip.id)}
         />
@@ -250,7 +250,7 @@ function TripSwitcherBody({
         <TripSwitcherRow
           key={trip.id}
           trip={trip}
-          isCurrent={trip.id === currentTripId}
+          isCurrent={trip.id === currentTripId || trip.slug === currentTripId}
           isLast={idx === pastTrips.length - 1}
           onClick={() => onSelectTrip(trip.slug ?? trip.id)}
         />

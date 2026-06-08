@@ -134,8 +134,8 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
 
   const tripLabel = useMemo(() => {
     if (!currentTripId || !trips) return null;
-    const t = (trips as Array<{ id: string; title: string }>).find(
-      (x) => x.id === currentTripId,
+    const t = (trips as Array<{ id: string; slug?: string; title: string }>).find(
+      (x) => x.id === currentTripId || x.slug === currentTripId,
     );
     return t?.title ?? null;
   }, [currentTripId, trips]);
