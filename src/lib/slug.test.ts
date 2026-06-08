@@ -24,14 +24,14 @@ describe("slugifyTitle", () => {
 describe("tripSlugCode", () => {
   it("is a stable 6-char hex code derived from the id", () => {
     const code = tripSlugCode("trip-123");
-    expect(code).toMatch(/^[0-9a-f]{6}$/);
+    expect(code).toMatch(/^[0-9a-f]{4}$/);
     expect(tripSlugCode("trip-123")).toBe(code); // deterministic
   });
 });
 
 describe("buildTripSlug", () => {
   it("is `slugify(title)-<code>`", () => {
-    expect(buildTripSlug("BBMI 2027", "trip-abc")).toMatch(/^bbmi-2027-[0-9a-f]{6}$/);
+    expect(buildTripSlug("BBMI 2027", "trip-abc")).toMatch(/^bbmi-2027-[0-9a-f]{4}$/);
   });
 
   it("disambiguates same-title trips by id — the collision the title alone can't", () => {

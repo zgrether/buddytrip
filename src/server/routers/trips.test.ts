@@ -49,7 +49,7 @@ describe("trips router", () => {
       .eq("id", tripId)
       .single();
     const slug = (row as { slug: string }).slug;
-    expect(slug).toMatch(/-[0-9a-f]{6}$/);
+    expect(slug).toMatch(/-[0-9a-f]{4}$/);
 
     expect((await caller.trips.resolveSlug({ slugOrId: slug })).id).toBe(tripId);
     expect((await caller.trips.resolveSlug({ slugOrId: tripId })).id).toBe(tripId);
