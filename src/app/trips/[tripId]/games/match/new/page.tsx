@@ -77,6 +77,13 @@ export default function NewMatchGamePage() {
     return m;
   }, [crew.data]);
 
+  // Max singles matches = floor(players ÷ 2): the standalone pool is
+  // undifferentiated, so any two of the crew pair up (Slice B). In a 2-team
+  // competition the cap becomes min(teamA, teamB) since matches cross the team
+  // line — generally min team size across teams — which is Slice D's concern.
+  const crewCount = crew.data?.length ?? 0;
+  const maxMatches = Math.max(1, Math.floor(crewCount / 2));
+
   const status = gameQ.data?.status as string | undefined;
   const published = matchesQ.data?.published ?? false;
   const serverMatches = useMemo(() => matchesQ.data?.matches ?? [], [matchesQ.data]);
@@ -142,7 +149,8 @@ export default function NewMatchGamePage() {
     if (!tripId) return;
     const g = await createGame.mutateAsync({ tripId, gameTypeId: MATCH_PLAY, name: "Singles Match Play" });
     setGameId(g.id);
-    setDraft(Array.from({ length: matchCount }, (_, i) => ({ matchNumber: i + 1, a: null, b: null, handicap: 0 })));
+    const count = Math.min(Math.max(1, matchCount), maxMatches);
+    setDraft(Array.from({ length: count }, (_, i) => ({ matchNumber: i + 1, a: null, b: null, handicap: 0 })));
     go("setup");
   }
 
@@ -310,6 +318,8 @@ export default function NewMatchGamePage() {
         <NewGame
           matchCount={matchCount}
           setMatchCount={setMatchCount}
+          maxMatches={maxMatches}
+          crewCount={crewCount}
           onCreate={handleCreate}
           pending={createGame.isPending}
           canEdit={canEdit}
@@ -405,17 +415,24 @@ function assignInDraft(prev: DraftMatch[], matchIdx: number, slot: "a" | "b", us
 function NewGame({
   matchCount,
   setMatchCount,
+  maxMatches,
+  crewCount,
   onCreate,
   pending,
   canEdit,
 }: {
   matchCount: number;
   setMatchCount: (n: number) => void;
+  maxMatches: number;
+  crewCount: number;
   onCreate: () => void;
   pending: boolean;
   canEdit: boolean;
 }) {
   if (!canEdit) return <MemberWait />;
+  // Clamp the displayed value to the crew-derived cap (state may still hold an
+  // old value while the crew query resolves).
+  const value = Math.min(Math.max(1, matchCount), maxMatches);
   return (
     <div>
       <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Singles match play</h1>
@@ -427,11 +444,14 @@ function NewGame({
         <div className="flex items-center justify-between" style={rowStyle}>
           <span style={{ fontSize: 15, color: "var(--color-bt-text)" }}>Matches</span>
           <div className="flex items-center gap-3">
-            <Stepper dir="dec" disabled={matchCount <= 1} onClick={() => setMatchCount(Math.max(1, matchCount - 1))} />
-            <span style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)", minWidth: 18, textAlign: "center" }}>{matchCount}</span>
-            <Stepper dir="inc" disabled={matchCount >= 4} onClick={() => setMatchCount(Math.min(4, matchCount + 1))} />
+            <Stepper dir="dec" disabled={value <= 1} onClick={() => setMatchCount(Math.max(1, value - 1))} />
+            <span style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)", minWidth: 18, textAlign: "center" }}>{value}</span>
+            <Stepper dir="inc" disabled={value >= maxMatches} onClick={() => setMatchCount(Math.min(maxMatches, value + 1))} />
           </div>
         </div>
+        <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", padding: "0 2px" }}>
+          {crewCount} in the crew · up to {maxMatches} singles match{maxMatches === 1 ? "" : "es"}
+        </p>
       </div>
 
       <PrimaryButton label="Create game" onClick={onCreate} disabled={pending} />
