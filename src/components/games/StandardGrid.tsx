@@ -55,7 +55,10 @@ export function StandardGrid({ units, participants, values, onCellTap }: Standar
       if (v != null) entries.push({ participant_id: p.id, value: v });
     }
   const standings = computeStrokePlayStandings(scoredIds, entries);
-  const leaderId = scoredIds.length ? (standings.find((s) => s.position === 1)?.entityId ?? null) : null;
+  // ALL position-1 entities, so tied co-leaders each get the leader treatment.
+  const leaderIds = new Set(
+    scoredIds.length ? standings.filter((s) => s.position === 1).map((s) => s.entityId) : []
+  );
 
   const cellBase: React.CSSProperties = {
     width: HOLE_W,
@@ -113,7 +116,7 @@ export function StandardGrid({ units, participants, values, onCellTap }: Standar
 
           {/* Rows */}
           {participants.map((p) => {
-            const isLeader = p.id === leaderId;
+            const isLeader = leaderIds.has(p.id);
             return (
               <div key={p.id} className="flex" style={{ height: 44, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
                 <div className="flex items-center gap-1.5" style={{ ...nameCell, padding: "0 10px" }}>
