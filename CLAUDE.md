@@ -75,6 +75,18 @@ These patterns have been established through prior work. Follow them exactly —
 4. **RLS INSERT RETURNING split** — separate INSERT and SELECT to avoid RLS race condition
 5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
 6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
+7. **Persistence-agnostic game UI** — scorecard components in `src/components/games/`
+   (`ScoreEntryView`, `StrokeKeypad`, `StandardGrid`, `FinalStandings`) take all
+   data via props and emit changes via callbacks (`onChange`/`onClear`/`onFinish`/
+   `onCellTap`). **No tRPC / DB / auth inside.** The parent owns persistence — a
+   trip wrapper backs them with tRPC; Quick Game (Slice A2) backs the *same*
+   components with local storage. Unit count / labels / sections come from
+   `scorecard_schema` props, never a literal (no hardcoded `18` / "hole").
+8. **Shared result computation** — the pure scoring/ranking lives in a
+   **client-safe** module (`src/lib/strokePlay.ts`, no server/DB deps) so the
+   live standings strip (client) and the persisted final record use the SAME
+   function and can't diverge. The DB-write wrapper (`src/server/lib/strokePlay.ts`)
+   imports the pure fn. Mirror this split for every new `result_strategy`.
 
 ## Guest → real-user conversion (auth)
 
