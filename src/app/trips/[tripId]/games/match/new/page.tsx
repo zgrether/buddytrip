@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Flag, Lock, Check, GripVertical, Plus, Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Lock, Check, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -723,10 +723,11 @@ function ActivatedMember({
   if (!published) return <MemberWait />;
   return (
     <div>
-      <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 16 }}>
+      <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 8 }}>
         <Check size={16} style={{ color: "var(--color-bt-place-1-text)" }} />
         <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>Matchups are set</span>
       </div>
+      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "0 0 14px 2px" }}>Tap a match to keep score.</p>
 
       <div className="flex flex-col gap-2.5">
         {groups.map((g) => {
@@ -734,8 +735,10 @@ function ActivatedMember({
           const recipient = g.strokesA > 0 ? g.a : g.strokesB > 0 ? g.b : null;
           const n = g.strokesA > 0 ? g.strokesA : g.strokesB;
           return (
-            <div
+            <button
               key={g.matchId}
+              onClick={onEnter}
+              className="flex w-full items-center justify-between gap-3 text-left transition-transform active:scale-[0.99]"
               style={{
                 padding: "12px 14px",
                 borderRadius: 12,
@@ -743,19 +746,20 @@ function ActivatedMember({
                 border: `1px solid ${mine ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
               }}
             >
-              {mine && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-bt-accent)", marginBottom: 4 }}>YOUR MATCH</div>}
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>
-                {g.a.name} <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>vs</span> {g.b.name}
+              <div className="min-w-0">
+                {mine && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-bt-accent)", marginBottom: 4 }}>YOUR MATCH</div>}
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>
+                  {g.a.name} <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>vs</span> {g.b.name}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 3 }}>
+                  {recipient ? `${recipient.name} gets ${n}` : "Even match"}
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 3 }}>
-                {recipient ? `${recipient.name} gets ${n}` : "Even match"}
-              </div>
-            </div>
+              <ChevronRight size={18} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+            </button>
           );
         })}
       </div>
-
-      <PrimaryButton label="Enter scores" onClick={onEnter} />
     </div>
   );
 }
