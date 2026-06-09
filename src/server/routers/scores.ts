@@ -67,4 +67,41 @@ export const scoresRouter = router({
         .single();
       return data;
     }),
+
+  // deleteEntry — remove one cell's score (any trip member, same as entry).
+  deleteEntry: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        participantId: z.string().min(1),
+        unitLabel: z.string().min(1).max(16),
+      })
+    )
+    .use(requireTripMember)
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+
+      const { error } = await ctx.supabase
+        .from("score_entries")
+        .delete()
+        .eq("game_id", input.gameId)
+        .eq("participant_id", input.participantId)
+        .eq("unit_label", input.unitLabel);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to delete score: ${error.message}`,
+        });
+      }
+      return { ok: true };
+    }),
 });

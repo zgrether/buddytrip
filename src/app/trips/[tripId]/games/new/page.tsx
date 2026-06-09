@@ -51,6 +51,7 @@ export default function NewGamePage() {
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
   const upsertEntry = trpc.scores.upsertEntry.useMutation();
+  const deleteEntry = trpc.scores.deleteEntry.useMutation();
 
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
@@ -95,6 +96,20 @@ export default function NewGamePage() {
     );
   }
 
+  function handleClear(participantId: string, unitLabel: string) {
+    if (!tripId || !game) return;
+    const prev = values;
+    setValues((v) => {
+      const row = { ...(v[participantId] ?? {}) };
+      delete row[unitLabel];
+      return { ...v, [participantId]: row };
+    });
+    deleteEntry.mutate(
+      { tripId, gameId: game.id, participantId, unitLabel },
+      { onError: () => setValues(prev) }
+    );
+  }
+
   if (!tripId) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--color-bt-base)" }}>
@@ -114,6 +129,7 @@ export default function NewGamePage() {
           values={values}
           direction="low_wins"
           onChange={handleChange}
+          onClear={handleClear}
           onBack={() => router.push(`/trips/${param}`)}
           onFinish={() => router.push(`/trips/${param}`)} // Final screen = Task 7
         />

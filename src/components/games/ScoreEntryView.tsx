@@ -25,6 +25,7 @@ interface ScoreEntryViewProps {
   values: ScoreValues;
   direction: ScoreDirection;
   onChange: (participantId: string, unitLabel: string, value: number) => void;
+  onClear?: (participantId: string, unitLabel: string) => void;
   currentHole?: number; // 1-based index into units; defaults to 1
   onHoleChange?: (hole: number) => void;
   onFinish?: () => void;
@@ -38,6 +39,7 @@ export function ScoreEntryView({
   participants,
   values,
   onChange,
+  onClear,
   currentHole,
   onHoleChange,
   onFinish,
@@ -98,8 +100,9 @@ export function ScoreEntryView({
     setActivePid(next?.id ?? null);
   };
   const clear = () => {
-    /* clearing a committed score isn't a Slice A path; keypad just closes */
-    setActivePid(null);
+    // Delete the active cell's score; keypad stays open on this participant so
+    // they can re-enter. The cell reverts to empty once the value is gone.
+    if (activePid) onClear?.(activePid, label);
   };
   const goHole = (h: number) => {
     if (h >= 1 && h <= units.length) setHole(h);

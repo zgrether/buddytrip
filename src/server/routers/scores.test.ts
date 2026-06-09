@@ -55,6 +55,22 @@ describe("scores router (Slice A — per-hole entry)", () => {
     expect(data).toHaveLength(1);
   });
 
+  it("deleteEntry removes the cell's score", async () => {
+    await ctx
+      .callerAs("member")
+      .scores.upsertEntry({ tripId, gameId, participantId: memberId, unitLabel: "9", value: 3 });
+    await ctx
+      .callerAs("member")
+      .scores.deleteEntry({ tripId, gameId, participantId: memberId, unitLabel: "9" });
+    const { data } = await ctx.admin
+      .from("score_entries")
+      .select("id")
+      .eq("game_id", gameId)
+      .eq("participant_id", memberId)
+      .eq("unit_label", "9");
+    expect(data).toHaveLength(0);
+  });
+
   it("an outsider cannot enter scores", async () => {
     await expect(
       ctx
