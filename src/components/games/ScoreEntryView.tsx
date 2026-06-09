@@ -100,7 +100,12 @@ export function ScoreEntryView({
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const commit = (v: number) => {
-    if (activePid) onChange(activePid, label, v);
+    if (!activePid) return;
+    onChange(activePid, label, v);
+    // Pin this player as active so a committed score does NOT auto-advance.
+    // Advancing waits for ✓ (confirmAdvance) — lets the user validate/edit the
+    // number first. Applies equally to a new entry and an edit.
+    setOverride({ hole, pid: activePid });
   };
   const confirmAdvance = () => {
     const next = participants.find(
