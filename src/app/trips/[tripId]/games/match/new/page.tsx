@@ -479,17 +479,33 @@ function MatchSetup({
   onSave: () => void;
   saving: boolean;
 }) {
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  // Drag-to-reorder (mirrors the news composer): `ins` is the insertion slot in
+  // the original array (0..length). The accent line shows only once the cursor
+  // crosses a neighbour's midpoint, and never on the dragged card's own two
+  // adjacent slots (a no-op). Drag is armed only while the grip is held so the
+  // slots/stepper inside the card stay tappable.
+  const [dragState, setDragState] = useState<{ from: number; ins: number | null } | null>(null);
+  const [armedIdx, setArmedIdx] = useState<number | null>(null);
 
-  function moveDraft(from: number, to: number) {
-    if (from === to) return;
+  const reorderTo = (from: number, ins: number) =>
     setDraft((prev) => {
-      const next = [...prev];
-      const [m] = next.splice(from, 1);
-      next.splice(to, 0, m);
-      return next;
+      if (from < 0 || from >= prev.length) return prev;
+      if (ins === from || ins === from + 1) return prev; // own slot — no-op
+      const copy = prev.slice();
+      const [moved] = copy.splice(from, 1);
+      const target = Math.max(0, Math.min(copy.length, ins > from ? ins - 1 : ins));
+      copy.splice(target, 0, moved);
+      return copy;
     });
-  }
+
+  const onCardDragOver = (i: number, clientY: number, rect: DOMRect) =>
+    setDragState((s) => {
+      if (!s) return s;
+      const isTop = clientY < rect.top + rect.height / 2;
+      let ins: number | null = isTop ? i : i + 1;
+      if (ins === s.from || ins === s.from + 1) ins = null; // adjacent = no-op, hide line
+      return s.ins === ins ? s : { ...s, ins };
+    });
 
   function partFor(ref: SideRef): Participant | null {
     if (!ref?.id) return null;
@@ -507,21 +523,65 @@ function MatchSetup({
           const a = partFor(d.a);
           const b = partFor(d.b);
           const both = a && b;
+          const dragging = dragState?.from === i;
+          const dropIndicator: "top" | "bottom" | null =
+            dragState?.ins === i
+              ? "top"
+              : i === draft.length - 1 && dragState?.ins === draft.length
+                ? "bottom"
+                : null;
           return (
             <div
               key={i}
-              draggable
-              onDragStart={() => setDragIdx(i)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
-                if (dragIdx != null) moveDraft(dragIdx, i);
-                setDragIdx(null);
+              draggable={armedIdx === i}
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "move";
+                setDragState({ from: i, ins: null });
               }}
-              style={{ padding: "12px 12px 14px", borderRadius: 14, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dragIdx === i ? 0.5 : 1 }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                onCardDragOver(i, e.clientY, e.currentTarget.getBoundingClientRect());
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragState && dragState.ins != null) reorderTo(dragState.from, dragState.ins);
+                setDragState(null);
+                setArmedIdx(null);
+              }}
+              onDragEnd={() => {
+                setDragState(null);
+                setArmedIdx(null);
+              }}
+              style={{ position: "relative", padding: "12px 12px 14px", borderRadius: 14, background: "var(--color-bt-card)", border: `1px solid ${dragging ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`, opacity: dragging ? 0.4 : 1 }}
             >
+              {dropIndicator && (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    left: 2,
+                    right: 2,
+                    [dropIndicator === "top" ? "top" : "bottom"]: -8,
+                    height: 2,
+                    borderRadius: 2,
+                    background: "var(--color-bt-accent)",
+                    boxShadow: "0 0 0 2px var(--color-bt-accent-faint)",
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
               <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>Match {i + 1}</span>
-                <span style={{ cursor: "grab", color: "var(--color-bt-text-dim)" }} aria-label="Drag to reorder"><GripVertical size={16} /></span>
+                <span
+                  onMouseDown={() => setArmedIdx(i)}
+                  onMouseUp={() => setArmedIdx(null)}
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder"
+                  className="flex cursor-grab items-center justify-center active:cursor-grabbing"
+                  style={{ width: 24, height: 24, color: "var(--color-bt-text-dim)", touchAction: "none" }}
+                >
+                  <GripVertical size={16} />
+                </span>
               </div>
               <div className="flex items-center justify-between" style={{ gap: 8 }}>
                 <Slot player={a} onTap={() => openSelector(i, "a")} />
