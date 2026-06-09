@@ -26,6 +26,11 @@ interface StandardGridProps {
   direction: ScoreDirection;
   onCellTap?: (unitLabel: string) => void;
   orientation?: "participants-rows" | "participants-cols";
+  /**
+   * Slice B stroke pips: `{ [participantId]: Set<unitLabel> }` — a player gets a
+   * pip on each cell they receive a handicap stroke on. Omit for Slice A.
+   */
+  pips?: Record<string, Set<string>>;
 }
 
 const NAME_W = 124;
@@ -33,7 +38,7 @@ const HOLE_W = 30;
 const SUB_W = 44;
 const TOTAL_W = 50;
 
-export function StandardGrid({ units, participants, values, onCellTap }: StandardGridProps) {
+export function StandardGrid({ units, participants, values, onCellTap, pips }: StandardGridProps) {
   const front = units.filter((u) => u.section === "front");
   const back = units.filter((u) => u.section === "back");
   const hasSections = front.length > 0 && back.length > 0;
@@ -135,14 +140,16 @@ export function StandardGrid({ units, participants, values, onCellTap }: Standar
                 </div>
                 {units.map((u) => {
                   const v = valOf(p.id, u.label);
+                  const hasPip = pips?.[p.id]?.has(u.label);
                   return (
                     <button
                       key={u.label}
                       onClick={() => onCellTap?.(u.label)}
-                      className="flex items-center justify-center"
+                      className="relative flex items-center justify-center"
                       style={{ ...cellBase, height: 44, ...divider(u.label), fontSize: 13, fontWeight: 500, color: v != null ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
                     >
                       {v ?? "—"}
+                      {hasPip && <StrokePip />}
                     </button>
                   );
                 })}
@@ -160,6 +167,24 @@ export function StandardGrid({ units, participants, values, onCellTap }: Standar
         style={{ width: 24, background: "linear-gradient(to right, transparent, var(--color-bt-base))" }}
       />
     </div>
+  );
+}
+
+/** Stroke pip — a player receives a handicap stroke on this cell (§3). */
+function StrokePip() {
+  return (
+    <span
+      style={{
+        position: "absolute",
+        top: 6,
+        right: 5,
+        width: 6,
+        height: 6,
+        borderRadius: "50%",
+        background: "var(--color-bt-warning)",
+        boxShadow: "0 0 0 1.5px var(--color-bt-base)",
+      }}
+    />
   );
 }
 
