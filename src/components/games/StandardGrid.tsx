@@ -66,9 +66,12 @@ export function StandardGrid({ units, participants, values, onCellTap }: Standar
     textAlign: "center",
     flexShrink: 0,
   };
+  // Front/back-9 separator on the first back-9 hole — a neutral divider line,
+  // NOT a teal tint (teal reads as 'current/leader' elsewhere; a tint here looks
+  // like the hole is highlighted).
   const divider = (l?: string): React.CSSProperties =>
     hasSections && l === firstBackLabel
-      ? { borderLeft: "2px solid rgba(45,212,191,0.25)", background: "rgba(45,212,191,0.05)" }
+      ? { borderLeft: "1px solid var(--color-bt-border)" }
       : {};
 
   const nameCell: React.CSSProperties = {
