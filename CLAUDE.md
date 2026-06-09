@@ -76,7 +76,7 @@ These patterns have been established through prior work. Follow them exactly —
 5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
 6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
 7. **Persistence-agnostic game UI** — scorecard components in `src/components/games/`
-   (`ScoreEntryView`, `MatchEntryView`, `MatchStrip`, `RelHandicapSlider`,
+   (`ScoreEntryView`, `MatchEntryView`, `MatchStrip`, `RelHandicapControl`,
    `StrokeKeypad`, `StandardGrid`, `FinalStandings`) take all data via props and
    emit changes via callbacks (`onChange`/`onClear`/`onFinish`/`onCellTap`).
    **No tRPC / DB / auth inside.** The parent owns persistence — a trip wrapper

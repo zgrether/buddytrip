@@ -8,7 +8,7 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
-import { RelHandicapSlider } from "@/components/games/RelHandicapSlider";
+import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { strokeHoles } from "@/lib/matchPlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
 import type { Participant, ScoreValues } from "@/components/games/types";
@@ -530,7 +530,7 @@ function MatchSetup({
               </div>
               {both ? (
                 <div style={{ marginTop: 12 }}>
-                  <RelHandicapSlider
+                  <RelHandicapControl
                     a={a}
                     b={b}
                     value={d.handicap}
