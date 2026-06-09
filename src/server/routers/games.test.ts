@@ -79,4 +79,27 @@ describe("games router (Slice A — stroke play)", () => {
     const games = await ctx.callerAs("member").games.listByTrip({ tripId });
     expect(games.some((g: { id: string }) => g.id === gameId)).toBe(true);
   });
+
+  it("finish — computes results, ranks by total, marks complete", async () => {
+    const caller = ctx.caller();
+    const memberId = ctx.getUser("member").id;
+    // owner 4+4 = 8, member 5+6 = 11
+    await caller.scores.upsertEntry({ tripId, gameId, participantId: ctx.user.id, unitLabel: "1", value: 4 });
+    await caller.scores.upsertEntry({ tripId, gameId, participantId: ctx.user.id, unitLabel: "2", value: 4 });
+    await caller.scores.upsertEntry({ tripId, gameId, participantId: memberId, unitLabel: "1", value: 5 });
+    await caller.scores.upsertEntry({ tripId, gameId, participantId: memberId, unitLabel: "2", value: 6 });
+
+    const { standings } = await caller.games.finish({ tripId, gameId });
+    expect(standings.find((s) => s.entityId === ctx.user.id)).toMatchObject({ rawScore: 8, position: 1 });
+    expect(standings.find((s) => s.entityId === memberId)).toMatchObject({ rawScore: 11, position: 2 });
+
+    const { data: game } = await ctx.admin.from("games").select("status").eq("id", gameId).single();
+    expect((game as { status: string }).status).toBe("complete");
+    const { data: results } = await ctx.admin.from("game_results").select("entity_id").eq("game_id", gameId);
+    expect(results).toHaveLength(2);
+  });
+
+  it("finish — a Member cannot", async () => {
+    await expect(ctx.callerAs("member").games.finish({ tripId, gameId })).rejects.toThrow();
+  });
 });

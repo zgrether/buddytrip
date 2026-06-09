@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { computeStrokePlayResults } from "../lib/strokePlay";
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -151,5 +152,36 @@ export const gamesRouter = router({
         .eq("game_id", input.gameId)
         .order("created_at", { ascending: true });
       return data ?? [];
+    }),
+
+  // finish — Owner/Organizer. Compute + persist results, mark complete.
+  // Idempotent: computeStrokePlayResults replaces prior game_results, and
+  // setting status='complete' again is a no-op (safe on a double-tap).
+  finish: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+
+      const standings = await computeStrokePlayResults(ctx.supabase, input.gameId);
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ status: "complete" })
+        .eq("id", input.gameId);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to finish game: ${error.message}`,
+        });
+      }
+      return { standings };
     }),
 });

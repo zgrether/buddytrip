@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
+import { StandardGrid } from "@/components/games/StandardGrid";
+import { FinalStandings } from "@/components/games/FinalStandings";
+import type { StrokeStanding } from "@/lib/strokePlay";
 import type { Participant, ScoreUnit, ScoreValues } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -47,11 +50,15 @@ export default function NewGamePage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [game, setGame] = useState<{ id: string; participants: Participant[] } | null>(null);
   const [values, setValues] = useState<ScoreValues>({});
+  const [view, setView] = useState<"entry" | "grid" | "final">("entry");
+  const [currentHole, setCurrentHole] = useState(1);
+  const [standings, setStandings] = useState<StrokeStanding[]>([]);
 
   const createGame = trpc.games.create.useMutation();
   const addParticipants = trpc.games.addParticipants.useMutation();
   const upsertEntry = trpc.scores.upsertEntry.useMutation();
   const deleteEntry = trpc.scores.deleteEntry.useMutation();
+  const finishGame = trpc.games.finish.useMutation();
 
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
@@ -118,21 +125,70 @@ export default function NewGamePage() {
     );
   }
 
+  async function handleFinish() {
+    if (!tripId || !game) return;
+    const res = await finishGame.mutateAsync({ tripId, gameId: game.id });
+    setStandings(res.standings);
+    setView("final");
+  }
+
+  function playAgain() {
+    setGame(null);
+    setValues({});
+    setStandings([]);
+    setSelected([]);
+    setCurrentHole(1);
+    setView("entry");
+  }
+
   // ── Play ──
   if (game) {
     return (
       <div className="fixed inset-0 z-50">
-        <ScoreEntryView
-          gameName="Stroke Play"
-          units={STROKE_UNITS}
-          participants={game.participants}
-          values={values}
-          direction="low_wins"
-          onChange={handleChange}
-          onClear={handleClear}
-          onBack={() => router.push(`/trips/${param}`)}
-          onFinish={() => router.push(`/trips/${param}`)} // Final screen = Task 7
-        />
+        {view === "final" ? (
+          <FinalStandings
+            participants={game.participants}
+            standings={standings}
+            unitCount={STROKE_UNITS.length}
+            dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            onScorecard={() => setView("grid")}
+            onPlayAgain={playAgain}
+          />
+        ) : view === "grid" ? (
+          <div className="flex h-full flex-col">
+            <div className="flex shrink-0 items-center gap-3" style={{ height: 52, padding: "0 16px", background: "var(--color-bt-nav-bg)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+              <button onClick={() => setView("entry")} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>‹ Back</button>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>Scorecard</span>
+            </div>
+            <div className="min-h-0 flex-1">
+              <StandardGrid
+                units={STROKE_UNITS}
+                participants={game.participants}
+                values={values}
+                direction="low_wins"
+                onCellTap={(label) => {
+                  setCurrentHole(Number(label) || 1);
+                  setView("entry");
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <ScoreEntryView
+            gameName="Stroke Play"
+            units={STROKE_UNITS}
+            participants={game.participants}
+            values={values}
+            direction="low_wins"
+            currentHole={currentHole}
+            onHoleChange={setCurrentHole}
+            onChange={handleChange}
+            onClear={handleClear}
+            onBack={() => router.push(`/trips/${param}`)}
+            onOpenGrid={() => setView("grid")}
+            onFinish={handleFinish}
+          />
+        )}
       </div>
     );
   }
