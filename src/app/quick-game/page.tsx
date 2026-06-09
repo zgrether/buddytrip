@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry, type StrokeStanding } from "@/lib/strokePlay";
@@ -25,6 +25,7 @@ interface QuickGameState {
   players: Participant[];
   values: ScoreValues;
   finished: boolean;
+  currentHole: number;
 }
 
 function gridStandings(state: QuickGameState): StrokeStanding[] {
@@ -45,34 +46,38 @@ export default function QuickGamePage() {
   const [state, setState] = useState<QuickGameState | null>(null);
   const [names, setNames] = useState<string[]>(["", ""]);
   const [view, setView] = useState<"entry" | "grid">("entry");
-  const [currentHole, setCurrentHole] = useState(1);
-  const loaded = useRef(false);
+  // currentHole lives IN the persisted state so a refresh resumes on the same
+  // hole (not just the scores).
+  const setCurrentHole = (h: number) =>
+    setState((s) => (s ? { ...s, currentHole: h } : s));
+  const [hydrated, setHydrated] = useState(false);
 
-  // Resume any in-progress game from local storage.
+  // Resume any in-progress game from local storage. Must be in an effect (not a
+  // useState initializer) so it stays client-only — localStorage is undefined
+  // during SSR. The set-state-in-effect rule over-flags this legitimate case.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      // Load persisted state on mount. Must be in an effect (not a useState
-      // initializer) so it stays client-only — localStorage is undefined during
-      // SSR. The set-state-in-effect rule over-flags this legitimate case.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setState(JSON.parse(raw) as QuickGameState);
     } catch {
       /* ignore corrupt storage */
     }
-    loaded.current = true;
+    setHydrated(true);
   }, []);
 
-  // Persist (after the initial load, so we don't clobber on mount).
+  // Persist on change — gated on `hydrated` STATE (not a ref) so the mount pass,
+  // where `state` is still null before the load's setState applies, can't
+  // removeItem and wipe a saved game.
   useEffect(() => {
-    if (!loaded.current) return;
+    if (!hydrated) return;
     try {
       if (state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       else localStorage.removeItem(STORAGE_KEY);
     } catch {
       /* ignore */
     }
-  }, [state]);
+  }, [state, hydrated]);
 
   function start() {
     const valid = names.map((n) => n.trim()).filter(Boolean).slice(0, 4);
@@ -83,8 +88,7 @@ export default function QuickGamePage() {
       initials: initialsOf(name),
       color: PLAYER_COLORS[i % PLAYER_COLORS.length],
     }));
-    setState({ players, values: {}, finished: false });
-    setCurrentHole(1);
+    setState({ players, values: {}, finished: false, currentHole: 1 });
     setView("entry");
   }
 
@@ -106,7 +110,6 @@ export default function QuickGamePage() {
     setState(null);
     setNames(["", ""]);
     setView("entry");
-    setCurrentHole(1);
   }
   function discard() {
     setState(null);
@@ -219,7 +222,7 @@ export default function QuickGamePage() {
           participants={state.players}
           values={state.values}
           direction="low_wins"
-          currentHole={currentHole}
+          currentHole={state.currentHole}
           onHoleChange={setCurrentHole}
           onChange={onChange}
           onClear={onClear}
