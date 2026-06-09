@@ -28,7 +28,7 @@ interface StandardGridProps {
   orientation?: "participants-rows" | "participants-cols";
 }
 
-const NAME_W = 90;
+const NAME_W = 124;
 const HOLE_W = 30;
 const SUB_W = 44;
 const TOTAL_W = 50;

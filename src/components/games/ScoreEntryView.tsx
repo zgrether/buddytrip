@@ -59,6 +59,11 @@ export function ScoreEntryView({
   const valueFor = (pid: string, l: string): number | undefined => values[pid]?.[l];
   const holeComplete = (l: string) => participants.every((p) => valueFor(p.id, l) != null);
   const completedHoles = units.filter((u) => holeComplete(u.label)).length;
+  // 1-based numbers of fully-scored holes — drives the progress bar (a GAP
+  // before the furthest-reached hole renders amber = skipped).
+  const completedHoleNumbers = units
+    .map((u, i) => (holeComplete(u.label) ? i + 1 : 0))
+    .filter((n) => n > 0);
   const allComplete = completedHoles === units.length && units.length > 0;
   const currentComplete = holeComplete(label);
 
@@ -204,37 +209,12 @@ export function ScoreEntryView({
         style={{ padding: "16px 16px" }}
       >
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ gap: 12 }}>
+        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
           {/* The ONLY thing the bigger-fonts pass leaves alone — the main title. */}
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
             Hole {label}
           </div>
-          {/* One dot per unit — teal when that hole is fully scored, gray
-              otherwise. Shows WHICH holes are missing (not just a count) and is
-              tappable to jump straight to a skipped one. */}
-          <div className="flex flex-wrap items-center justify-center" style={{ gap: 6, maxWidth: 300 }}>
-            {units.map((u, i) => {
-              const done = holeComplete(u.label);
-              const isCurrent = i + 1 === hole;
-              return (
-                <button
-                  key={u.label}
-                  onClick={() => goHole(i + 1)}
-                  aria-label={`Hole ${u.label}${done ? " (scored)" : ""}`}
-                  style={{
-                    width: isCurrent ? 11 : 9,
-                    height: isCurrent ? 11 : 9,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background: done ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-                    border: isCurrent
-                      ? "1.5px solid var(--color-bt-accent)"
-                      : "1px solid var(--color-bt-border)",
-                  }}
-                />
-              );
-            })}
-          </div>
+          <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
       </div>
@@ -402,6 +382,58 @@ function ScoreCell({ value, active }: { value: number | undefined; active: boole
     >
       —
     </span>
+  );
+}
+
+/**
+ * Segmented hole-progress bar. `completed` is the set of fully-scored hole
+ * numbers (not a count) — so a GAP before the furthest-reached hole renders
+ * AMBER (= skipped). Done = quiet slate, current = teal (current always wins
+ * over missing, since a current hole is never "missing"), future = faint.
+ */
+function HoleProgress({
+  count,
+  currentHole,
+  completed,
+}: {
+  count: number;
+  currentHole: number;
+  completed: number[];
+}) {
+  const reached = Math.max(currentHole, ...(completed.length ? completed : [currentHole]));
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 2.5,
+        height: 4,
+        width: "100%",
+        maxWidth: 232,
+        margin: "0 auto",
+      }}
+    >
+      {Array.from({ length: count }, (_, i) => {
+        const h = i + 1;
+        const isDone = completed.includes(h);
+        const isCurrent = h === currentHole;
+        const isMissing = !isDone && !isCurrent && h < reached;
+        let bg = "var(--color-bt-card-raised)"; // future
+        let op = 0.6;
+        if (isDone) {
+          bg = "var(--color-bt-text-dim)"; // slate — quiet
+          op = 0.85;
+        } else if (isMissing) {
+          bg = "var(--color-bt-warning)"; // amber — skipped
+          op = 1;
+        } else if (isCurrent) {
+          bg = "var(--color-bt-accent)"; // teal — you are here
+          op = 1;
+        }
+        return <div key={h} style={{ flex: 1, height: 4, borderRadius: 2, background: bg, opacity: op }} />;
+      })}
+    </div>
   );
 }
 

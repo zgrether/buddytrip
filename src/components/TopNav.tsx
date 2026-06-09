@@ -239,7 +239,7 @@ export const TopNav: FC<TopNavProps> = ({
             Global (no trip needed); local-storage backed (Slice A2). */}
         <ToolButton
           icon={Zap}
-          label="Quick"
+          label="Quick Game"
           count={0}
           badgeBg="var(--color-bt-accent)"
           onClick={() => {
