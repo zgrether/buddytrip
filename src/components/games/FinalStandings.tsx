@@ -23,6 +23,8 @@ interface FinalStandingsProps {
   dateLabel: string;
   onScorecard: () => void;
   onPlayAgain: () => void;
+  /** Optional — Quick Game shows a Discard (clears the stored game). */
+  onDiscard?: () => void;
 }
 
 function ordinal(n: number): string {
@@ -38,6 +40,7 @@ export function FinalStandings({
   dateLabel,
   onScorecard,
   onPlayAgain,
+  onDiscard,
 }: FinalStandingsProps) {
   const byId = new Map(participants.map((p) => [p.id, p]));
   const sorted = [...standings].sort((a, b) => a.position - b.position);
@@ -112,24 +115,32 @@ export function FinalStandings({
       </div>
 
       {/* Actions */}
-      <div
-        className="flex shrink-0 gap-2.5"
-        style={{ padding: "12px 16px 28px", borderTop: "1px solid var(--color-bt-border)" }}
-      >
-        <button
-          onClick={onScorecard}
-          className="flex-1"
-          style={{ height: 48, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 500 }}
-        >
-          Scorecard
-        </button>
-        <button
-          onClick={onPlayAgain}
-          className="flex-1"
-          style={{ height: 48, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 14, fontWeight: 600 }}
-        >
-          Play Again
-        </button>
+      <div className="shrink-0" style={{ padding: "12px 16px 28px", borderTop: "1px solid var(--color-bt-border)" }}>
+        <div className="flex gap-2.5">
+          <button
+            onClick={onScorecard}
+            className="flex-1"
+            style={{ height: 48, borderRadius: 12, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 14, fontWeight: 500 }}
+          >
+            Scorecard
+          </button>
+          <button
+            onClick={onPlayAgain}
+            className="flex-1"
+            style={{ height: 48, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 14, fontWeight: 600 }}
+          >
+            Play Again
+          </button>
+        </div>
+        {onDiscard && (
+          <button
+            onClick={onDiscard}
+            className="mt-2.5 w-full"
+            style={{ height: 40, borderRadius: 12, background: "transparent", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)", fontSize: 13 }}
+          >
+            Discard game
+          </button>
+        )}
       </div>
     </div>
   );

@@ -7,27 +7,11 @@ import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import type { Participant, ScoreUnit, ScoreValues } from "@/components/games/types";
+import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
+import type { Participant, ScoreValues } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STROKE_PLAY = "gtt_stroke_play";
-
-// Player identity palette (identity colors, not theme tokens — sanctioned like
-// team colors per STYLE_GUIDE §7). Temporary: the real per-player color comes
-// with the Games tab / competition teams.
-const PLAYER_COLORS = ["#2dd4bf", "#60a5fa", "#f59e0b", "#a855f7"];
-
-// Stroke-play units (18 holes, front/back-9). Temporary inline build — the real
-// Games tab (Slice E) drives these from the template's scorecard_schema.
-const STROKE_UNITS: ScoreUnit[] = Array.from({ length: 18 }, (_, i) => ({
-  label: String(i + 1),
-  section: i < 9 ? "front" : "back",
-}));
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-}
 
 /**
  * Minimal "new stroke-play game" flow (Slice A, Task 6 create step). TEMPORARY —
@@ -149,7 +133,7 @@ export default function NewGamePage() {
           <FinalStandings
             participants={game.participants}
             standings={standings}
-            unitCount={STROKE_UNITS.length}
+            unitCount={STROKE_PLAY_UNITS.length}
             dateLabel={new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             onScorecard={() => setView("grid")}
             onPlayAgain={playAgain}
@@ -162,7 +146,7 @@ export default function NewGamePage() {
             </div>
             <div className="min-h-0 flex-1">
               <StandardGrid
-                units={STROKE_UNITS}
+                units={STROKE_PLAY_UNITS}
                 participants={game.participants}
                 values={values}
                 direction="low_wins"
@@ -176,7 +160,7 @@ export default function NewGamePage() {
         ) : (
           <ScoreEntryView
             gameName="Stroke Play"
-            units={STROKE_UNITS}
+            units={STROKE_PLAY_UNITS}
             participants={game.participants}
             values={values}
             direction="low_wins"

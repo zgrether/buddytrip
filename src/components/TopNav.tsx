@@ -3,7 +3,7 @@
 import type { FC } from "react";
 import { Suspense, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Pin, MessageCircle, Megaphone, ChevronDown } from "lucide-react";
+import { Pin, MessageCircle, Megaphone, ChevronDown, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
 import { TripSwitcher } from "./TripSwitcher";
@@ -234,6 +234,21 @@ export const TopNav: FC<TopNavProps> = ({
             active={chatOpen}
           />
         )}
+
+        {/* Quick Game ⚡ — context-free stroke-play, fire from anywhere.
+            Global (no trip needed); local-storage backed (Slice A2). */}
+        <ToolButton
+          icon={Zap}
+          label="Quick"
+          count={0}
+          badgeBg="var(--color-bt-accent)"
+          onClick={() => {
+            onDismissPanels?.();
+            router.push("/quick-game");
+          }}
+          ariaLabel="Quick game"
+          testId="quick-game-button"
+        />
 
         {/* Feedback — beta-only outbound channel. Slight teal resting bg
             so it reads as a distinct CTA in the tool cluster without
