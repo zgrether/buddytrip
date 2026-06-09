@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight, Grid3x3, Check } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import { StrokeKeypad } from "./StrokeKeypad";
@@ -62,13 +62,17 @@ export function ScoreEntryView({
   const allComplete = completedHoles === units.length && units.length > 0;
   const currentComplete = holeComplete(label);
 
-  // Active participant (keypad open) — first unscored on this hole by default.
-  const [activePid, setActivePid] = useState<string | null>(null);
-  useEffect(() => {
-    const firstUnscored = participants.find((p) => valueFor(p.id, label) == null);
-    setActivePid(firstUnscored?.id ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hole]);
+  // Active player (keypad target). DERIVED, not stored: default is the first
+  // unscored player on the current hole; a row tap sets an explicit `override`
+  // scoped to that hole. Because the override is hole-scoped, it auto-clears
+  // when the hole changes — whether via the nav here OR a parent-controlled
+  // `currentHole` (e.g. tapping a cell in the review grid) — with no
+  // render-phase setState to reset it.
+  const [override, setOverride] = useState<{ hole: number; pid: string } | null>(null);
+  const activePid =
+    override && override.hole === hole && participants.some((p) => p.id === override.pid)
+      ? override.pid
+      : (participants.find((p) => valueFor(p.id, label) == null)?.id ?? null);
 
   // ── Live standings (shared logic) ────────────────────────────────────
   const entries: StrokeEntry[] = [];
@@ -97,7 +101,7 @@ export function ScoreEntryView({
     const next = participants.find(
       (p) => p.id !== activePid && valueFor(p.id, label) == null
     );
-    setActivePid(next?.id ?? null);
+    setOverride(next ? { hole, pid: next.id } : null);
   };
   const clear = () => {
     // Delete the active cell's score; keypad stays open on this participant so
@@ -128,8 +132,8 @@ export function ScoreEntryView({
           <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
         <div className="text-center">
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{gameName}</div>
-          <div style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{gameName}</div>
+          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
             Hole {hole} of {units.length}
           </div>
         </div>
@@ -150,7 +154,7 @@ export function ScoreEntryView({
       >
         <span
           style={{
-            fontSize: 10,
+            fontSize: 12,
             fontWeight: 700,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
@@ -161,7 +165,7 @@ export function ScoreEntryView({
           Scores
         </span>
         {scoredIds.length === 0 ? (
-          <span style={{ fontStyle: "italic", fontSize: 12, color: "var(--color-bt-text-dim)" }}>
+          <span style={{ fontStyle: "italic", fontSize: 14, color: "var(--color-bt-text-dim)" }}>
             Teeing off
           </span>
         ) : (
@@ -182,10 +186,10 @@ export function ScoreEntryView({
                   }}
                 >
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: p.color }} />
-                  <span style={{ fontSize: 12, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
+                  <span style={{ fontSize: 14, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
                     {p.name}
                   </span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text)" }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text)" }}>
                     {totalOf(p.id)}
                   </span>
                 </span>
@@ -197,27 +201,39 @@ export function ScoreEntryView({
       {/* ── Hole navigation ── */}
       <div
         className="flex shrink-0 items-center justify-between"
-        style={{ height: 56, padding: "0 16px" }}
+        style={{ padding: "16px 16px" }}
       >
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center" style={{ gap: 12 }}>
+          {/* The ONLY thing the bigger-fonts pass leaves alone — the main title. */}
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
             Hole {label}
           </div>
-          <div className="flex items-center gap-2">
-            <div style={{ width: 90, height: 3, borderRadius: 2, background: "var(--color-bt-card-raised)" }}>
-              <div
-                style={{
-                  width: `${(completedHoles / units.length) * 100}%`,
-                  height: "100%",
-                  borderRadius: 2,
-                  background: "var(--color-bt-accent)",
-                }}
-              />
-            </div>
-            <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-              {completedHoles}/{units.length}
-            </span>
+          {/* One dot per unit — teal when that hole is fully scored, gray
+              otherwise. Shows WHICH holes are missing (not just a count) and is
+              tappable to jump straight to a skipped one. */}
+          <div className="flex flex-wrap items-center justify-center" style={{ gap: 6, maxWidth: 300 }}>
+            {units.map((u, i) => {
+              const done = holeComplete(u.label);
+              const isCurrent = i + 1 === hole;
+              return (
+                <button
+                  key={u.label}
+                  onClick={() => goHole(i + 1)}
+                  aria-label={`Hole ${u.label}${done ? " (scored)" : ""}`}
+                  style={{
+                    width: isCurrent ? 11 : 9,
+                    height: isCurrent ? 11 : 9,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background: done ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
+                    border: isCurrent
+                      ? "1.5px solid var(--color-bt-accent)"
+                      : "1px solid var(--color-bt-border)",
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
@@ -234,7 +250,7 @@ export function ScoreEntryView({
           return (
             <div key={p.id}>
               <button
-                onClick={() => setActivePid(p.id)}
+                onClick={() => setOverride({ hole, pid: p.id })}
                 className="flex w-full items-center gap-3 text-left"
                 style={{
                   height: 62,
@@ -254,7 +270,7 @@ export function ScoreEntryView({
                     background: `${p.color}22`,
                     border: `1.5px solid ${p.color}55`,
                     color: p.color,
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: 700,
                     flexShrink: 0,
                   }}
@@ -263,11 +279,11 @@ export function ScoreEntryView({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
+                    <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
                     {done && (
                       <span
                         style={{
-                          fontSize: 9,
+                          fontSize: 10,
                           fontWeight: 700,
                           letterSpacing: "0.08em",
                           color: "var(--color-bt-accent)",
@@ -283,7 +299,7 @@ export function ScoreEntryView({
                   </div>
                   <div
                     style={{
-                      fontSize: 11,
+                      fontSize: 13,
                       color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)",
                     }}
                   >
@@ -300,7 +316,7 @@ export function ScoreEntryView({
                     background: "var(--color-bt-warning-faint)",
                     borderBottom: "1px solid var(--color-bt-warning-border)",
                     color: "var(--color-bt-warning)",
-                    fontSize: 11,
+                    fontSize: 13,
                   }}
                 >
                   Tap a new number to update
@@ -343,7 +359,7 @@ function ScoreCell({ value, active }: { value: number | undefined; active: boole
           border: "2px solid var(--color-bt-accent)",
           boxShadow: "0 0 0 3px rgba(45,212,191,0.12)",
           color: "var(--color-bt-accent)",
-          fontSize: 14,
+          fontSize: 16,
           flexShrink: 0,
         }}
       >
@@ -362,7 +378,7 @@ function ScoreCell({ value, active }: { value: number | undefined; active: boole
           border: active ? "2px solid var(--color-bt-accent)" : "1px solid var(--color-bt-border)",
           background: "var(--color-bt-card-raised)",
           color: "var(--color-bt-text)",
-          fontSize: 22,
+          fontSize: 26,
           fontWeight: 700,
           flexShrink: 0,
         }}
@@ -380,7 +396,7 @@ function ScoreCell({ value, active }: { value: number | undefined; active: boole
         borderRadius: 10,
         border: "1.5px dashed var(--color-bt-border)",
         color: "var(--color-bt-text-dim)",
-        fontSize: 14,
+        fontSize: 16,
         flexShrink: 0,
       }}
     >
@@ -427,7 +443,7 @@ function BottomCTA({ label, onClick, subtext, icon }: { label: string; onClick: 
           borderRadius: 12,
           background: "var(--color-bt-accent)",
           color: "#0d1f1a",
-          fontSize: 16,
+          fontSize: 17,
           fontWeight: 600,
         }}
       >
@@ -435,7 +451,7 @@ function BottomCTA({ label, onClick, subtext, icon }: { label: string; onClick: 
         {label}
       </button>
       {subtext && (
-        <div className="text-center" style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
+        <div className="text-center" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
           {subtext}
         </div>
       )}

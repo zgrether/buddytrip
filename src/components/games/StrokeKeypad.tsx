@@ -50,7 +50,7 @@ export function StrokeKeypad({
         style={{
           height: KEY_H,
           borderRadius: 10,
-          fontSize: 22,
+          fontSize: 24,
           background: selected ? "var(--color-bt-accent)" : "var(--color-bt-card)",
           border: selected ? "none" : "1px solid var(--color-bt-border)",
           color: selected ? "#0d1f1a" : "var(--color-bt-text)",
@@ -71,7 +71,7 @@ export function StrokeKeypad({
     >
       <div
         className="text-center"
-        style={{ fontSize: 11, color: "var(--color-bt-text-dim)", marginBottom: 10 }}
+        style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 10 }}
       >
         {participantName} — Enter score
       </div>
@@ -105,7 +105,7 @@ export function StrokeKeypad({
           style={{
             height: KEY_H,
             borderRadius: 10,
-            fontSize: 13,
+            fontSize: 15,
             background: tensSelected ? "var(--color-bt-accent)" : "var(--color-bt-card)",
             border: tensSelected ? "none" : "1px solid var(--color-bt-border)",
             color: tensSelected ? "#0d1f1a" : "var(--color-bt-text-dim)",

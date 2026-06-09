@@ -52,6 +52,10 @@ export default function QuickGamePage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
+      // Load persisted state on mount. Must be in an effect (not a useState
+      // initializer) so it stays client-only — localStorage is undefined during
+      // SSR. The set-state-in-effect rule over-flags this legitimate case.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setState(JSON.parse(raw) as QuickGameState);
     } catch {
       /* ignore corrupt storage */
