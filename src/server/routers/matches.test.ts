@@ -1,0 +1,292 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { TestContext } from "../../__tests__/helpers/test-setup";
+
+const MATCH_PLAY = "gtt_match_play_singles";
+
+type Side = { type: string; id: string } | null;
+interface MatchRow {
+  id: string;
+  side_a: Side;
+  side_b: Side;
+  result: string | null;
+  margin: string | null;
+  status: string;
+  display_order: number;
+}
+
+let ctx: TestContext;
+let tripId: string;
+let owner: string, planner: string, member: string, outsider: string;
+
+// Shared across both describes — cleanup only after the whole file.
+beforeAll(async () => {
+  ctx = await TestContext.create();
+  tripId = await ctx.createTrip("Match Play Trip");
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  await ctx.addTripMember(tripId, "outsider", "Member"); // 4th player for a full foursome
+  owner = ctx.user.id;
+  planner = ctx.getUser("planner").id;
+  member = ctx.getUser("member").id;
+  outsider = ctx.getUser("outsider").id;
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+describe("matches router (Slice B — setup + visibility)", () => {
+  let gameId: string;
+  let m1: string, m2: string;
+
+  beforeAll(async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Singles" });
+    gameId = game.id;
+  });
+
+  it("setPairings — Organizer sets two matches; one with an empty slot", async () => {
+    const matches = (await ctx.callerAs("planner").matches.setPairings({
+      tripId,
+      gameId,
+      matches: [
+        { sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 },
+        { sideA: { type: "user", id: planner }, sideB: null, matchNumber: 2 },
+      ],
+    })) as MatchRow[];
+    expect(matches).toHaveLength(2);
+    m1 = matches[0].id;
+    m2 = matches[1].id;
+    expect(matches[0].side_a?.id).toBe(owner);
+    expect(matches[0].side_b?.id).toBe(member);
+    expect(matches[1].side_b).toBeNull(); // TBD slot
+  });
+
+  it("setHandicap — recipient gets n, the other side gets 0 (never split)", async () => {
+    await ctx.callerAs("planner").matches.setHandicap({
+      tripId,
+      gameId,
+      matchId: m1,
+      recipientUserId: member,
+      strokes: 3,
+    });
+    const { data } = await ctx.admin
+      .from("game_participants")
+      .select("user_id, handicap_strokes")
+      .eq("game_id", gameId);
+    const hcap = Object.fromEntries(
+      (data as { user_id: string; handicap_strokes: number | null }[]).map((p) => [
+        p.user_id,
+        p.handicap_strokes,
+      ])
+    );
+    expect(hcap[member]).toBe(3);
+    expect(hcap[owner]).toBe(0);
+  });
+
+  it("listByGame — a Member sees nothing before pairings are published", async () => {
+    const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId });
+    expect(res.published).toBe(false);
+    expect(res.matches).toHaveLength(0);
+  });
+
+  it("listByGame — Owner/Organizer always see match detail (even unpublished)", async () => {
+    const res = await ctx.callerAs("planner").matches.listByGame({ tripId, gameId });
+    expect(res.published).toBe(false);
+    expect(res.matches).toHaveLength(2);
+  });
+
+  it("activate — publishes pairings; the Member can now see them", async () => {
+    await ctx.callerAs("planner").matches.activate({ tripId, gameId });
+    const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId });
+    expect(res.published).toBe(true);
+    expect(res.matches).toHaveLength(2);
+    const { data: game } = await ctx.admin.from("games").select("status").eq("id", gameId).single();
+    expect((game as { status: string }).status).toBe("active");
+  });
+
+  it("assignPlayer — moving a player clears the vacated match's handicap", async () => {
+    // member is in match 1 (side_b). Move them into match 2's empty slot.
+    await ctx.callerAs("planner").matches.assignPlayer({
+      tripId,
+      gameId,
+      matchId: m2,
+      slot: "b",
+      userId: member,
+    });
+    const { data: matches } = await ctx.admin
+      .from("game_matches")
+      .select("id, side_a, side_b")
+      .eq("game_id", gameId);
+    const byId = Object.fromEntries(
+      (matches as { id: string; side_a: Side; side_b: Side }[]).map((r) => [r.id, r])
+    );
+    expect(byId[m1].side_b).toBeNull(); // vacated
+    expect(byId[m2].side_b?.id).toBe(member); // moved here
+
+    const { data: parts } = await ctx.admin
+      .from("game_participants")
+      .select("user_id, handicap_strokes")
+      .eq("game_id", gameId);
+    const hcap = Object.fromEntries(
+      (parts as { user_id: string; handicap_strokes: number | null }[]).map((p) => [
+        p.user_id,
+        p.handicap_strokes,
+      ])
+    );
+    // match 1's relationship is gone → both its players' handicaps cleared
+    expect(hcap[member]).toBeNull();
+    expect(hcap[owner]).toBeNull();
+  });
+
+  it("setup procedures reject a plain Member", async () => {
+    await expect(
+      ctx.callerAs("member").matches.setPairings({
+        tripId,
+        gameId,
+        matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+      })
+    ).rejects.toThrow();
+    await expect(ctx.callerAs("member").matches.activate({ tripId, gameId })).rejects.toThrow();
+  });
+});
+
+describe("match-play results — computeMatchPlayResults via games.finish", () => {
+  // Enter both sides' gross for the given holes. scoreA[h] / scoreB[h].
+  async function enter(
+    gameId: string,
+    a: string,
+    b: string,
+    scoreA: Record<number, number>,
+    scoreB: Record<number, number>
+  ) {
+    const caller = ctx.caller();
+    for (const [h, v] of Object.entries(scoreA)) {
+      await caller.scores.upsertEntry({ tripId, gameId, participantId: a, unitLabel: h, value: v });
+    }
+    for (const [h, v] of Object.entries(scoreB)) {
+      await caller.scores.upsertEntry({ tripId, gameId, participantId: b, unitLabel: h, value: v });
+    }
+  }
+
+  async function freshGame(name: string) {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name });
+    return game.id;
+  }
+
+  it("a closed-out match resolves to a_win / 3&2 with one game_results row per side", async () => {
+    const gameId = await freshGame("Close 3&2");
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+    // owner wins holes 1-3, halves 4-16 → +3 frozen at hole 16 = 3&2.
+    const aWins = { 1: 4, 2: 4, 3: 4 };
+    const aHalf: Record<number, number> = {};
+    const bHalf: Record<number, number> = {};
+    for (let h = 4; h <= 16; h++) {
+      aHalf[h] = 4;
+      bHalf[h] = 4;
+    }
+    await enter(gameId, owner, member, { ...aWins, ...aHalf }, { 1: 5, 2: 5, 3: 5, ...bHalf });
+
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({ result: "a_win", margin: "3&2", status: "complete" });
+
+    const { data: results } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, position, raw_score")
+      .eq("game_id", gameId);
+    const rows = results as { entity_id: string; position: number; raw_score: number | null }[];
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.entity_id === owner)?.position).toBe(1);
+    expect(rows.find((r) => r.entity_id === member)?.position).toBe(2);
+    expect(rows.every((r) => r.raw_score === null)).toBe(true); // match play has no aggregate
+  });
+
+  it("FREEZE — play-it-out holes after close-out never change the result", async () => {
+    const gameId = await freshGame("Freeze");
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+    const aHalf: Record<number, number> = {};
+    const bHalf: Record<number, number> = {};
+    for (let h = 4; h <= 16; h++) {
+      aHalf[h] = 4;
+      bHalf[h] = 4;
+    }
+    // close 3&2, then member wins 17 & 18 (play-it-out)
+    await enter(
+      gameId,
+      owner,
+      member,
+      { 1: 4, 2: 4, 3: 4, ...aHalf, 17: 6, 18: 6 },
+      { 1: 5, 2: 5, 3: 5, ...bHalf, 17: 3, 18: 3 }
+    );
+
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    expect(matches[0]).toMatchObject({ result: "a_win", margin: "3&2" }); // still 3&2, not recomputed
+  });
+
+  it("net allocation (fallback) — a received stroke flips a hole", async () => {
+    const gameId = await freshGame("Net stroke");
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+    // member gets 1 stroke → fallback puts it on hole 1.
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId: (await firstMatchId(gameId)), recipientUserId: member, strokes: 1 });
+    // hole 1: owner 4, member 5 → gross owner wins, but member's net 4 → halved.
+    await enter(gameId, owner, member, { 1: 4 }, { 1: 5 });
+
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    // one decided hole, halved → all square through 18 is not reached; in-progress
+    // halve means diff 0, not over → result null but the hole was a halve (net).
+    // Assert via game_results that neither side leads (both position 1).
+    const { data: results } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, position")
+      .eq("game_id", gameId);
+    const rows = results as { entity_id: string; position: number }[];
+    expect(rows.find((r) => r.entity_id === owner)?.position).toBe(1);
+    expect(rows.find((r) => r.entity_id === member)?.position).toBe(1);
+    expect(matches[0].result).toBeNull(); // not over yet
+  });
+
+  it("two matches in one game compute independently", async () => {
+    const gameId = await freshGame("Two matches");
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [
+        { sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 },
+        { sideA: { type: "user", id: planner }, sideB: { type: "user", id: outsider }, matchNumber: 2 },
+      ],
+    });
+    // Match 1: owner wins holes 1-10 → closes 10&8. Match 2: only hole 1 entered → in progress.
+    const aWins: Record<number, number> = {};
+    const bLoss: Record<number, number> = {};
+    for (let h = 1; h <= 10; h++) {
+      aWins[h] = 3;
+      bLoss[h] = 5;
+    }
+    await enter(gameId, owner, member, aWins, bLoss);
+    await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: planner, unitLabel: "1", value: 4 });
+    await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: outsider, unitLabel: "1", value: 5 });
+
+    const { matches } = await ctx.caller().games.finish({ tripId, gameId });
+    const byOrder = (matches as { matchId: string; result: string | null; status: string }[]);
+    // sorted by nothing in particular; find the closed one + the open one
+    expect(byOrder.some((m) => m.result === "a_win" && m.status === "complete")).toBe(true);
+    expect(byOrder.some((m) => m.result === null && m.status === "active")).toBe(true);
+  });
+
+  async function firstMatchId(gameId: string): Promise<string> {
+    const { data } = await ctx.admin.from("game_matches").select("id").eq("game_id", gameId).limit(1).single();
+    return (data as { id: string }).id;
+  }
+});

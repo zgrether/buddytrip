@@ -21,6 +21,7 @@ import { feedbackRouter } from "./routers/feedback";
 import { newsRouter } from "./routers/news";
 import { gamesRouter } from "./routers/games";
 import { scoresRouter } from "./routers/scores";
+import { matchesRouter } from "./routers/matches";
 
 export const appRouter = router({
   users: usersRouter,
@@ -45,6 +46,7 @@ export const appRouter = router({
   news: newsRouter,
   games: gamesRouter,
   scores: scoresRouter,
+  matches: matchesRouter,
 });
 
 export type AppRouter = typeof appRouter;

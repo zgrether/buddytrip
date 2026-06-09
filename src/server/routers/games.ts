@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { computeStrokePlayResults } from "../lib/strokePlay";
+import { computeMatchPlayResults } from "../lib/matchPlay";
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -155,15 +156,16 @@ export const gamesRouter = router({
     }),
 
   // finish — Owner/Organizer. Compute + persist results, mark complete.
-  // Idempotent: computeStrokePlayResults replaces prior game_results, and
-  // setting status='complete' again is a no-op (safe on a double-tap).
+  // Branches on the game type's result_strategy (data-driven, NOT a hardcoded
+  // format name) so new formats slot in without touching this. Idempotent: each
+  // compute replaces prior game_results, and status='complete' again is a no-op.
   finish: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
-        .select("id")
+        .select("id, game_type_id")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
@@ -171,7 +173,17 @@ export const gamesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
 
-      const standings = await computeStrokePlayResults(ctx.supabase, input.gameId);
+      const { data: template } = await ctx.supabase
+        .from("game_type_templates")
+        .select("result_strategy")
+        .eq("id", game.game_type_id as string)
+        .maybeSingle();
+      const strategy = (template?.result_strategy as string | null) ?? "stroke_total";
+
+      const isMatchPlay = strategy === "match_play";
+      const matches = isMatchPlay ? await computeMatchPlayResults(ctx.supabase, input.gameId) : [];
+      const standings = isMatchPlay ? [] : await computeStrokePlayResults(ctx.supabase, input.gameId);
+
       const { error } = await ctx.supabase
         .from("games")
         .update({ status: "complete" })
@@ -182,6 +194,6 @@ export const gamesRouter = router({
           message: `Failed to finish game: ${error.message}`,
         });
       }
-      return { standings };
+      return { standings, matches };
     }),
 });
