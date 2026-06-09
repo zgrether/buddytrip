@@ -52,6 +52,9 @@ export default function NewMatchGamePage() {
   // Setup editing state
   const [draft, setDraft] = useState<DraftMatch[]>([]);
   const [selector, setSelector] = useState<{ matchIdx: number; slot: "a" | "b" } | null>(null);
+  // Back-stack: forward transitions push the screen they left; Back pops to it.
+  // Empty stack means we arrived directly (derived screen) → leave to trip home.
+  const [navStack, setNavStack] = useState<Screen[]>([]);
   // Scoring
   const [values, setValues] = useState<ScoreValues>({});
   const [view, setView] = useState<"entry" | "grid">("entry");
@@ -118,13 +121,29 @@ export default function NewMatchGamePage() {
             : "ready";
   const screen = manualScreen ?? derived;
 
+  // Forward step: remember the screen we're leaving so Back can return to it.
+  const go = (next: Screen) => {
+    setNavStack((s) => [...s, screen]);
+    setManualScreen(next);
+  };
+  // Back step: pop to the previous workflow screen, or leave to the trip home
+  // when there's nothing to pop (we arrived directly at a derived screen).
+  const goBack = () => {
+    if (navStack.length === 0) {
+      router.push(`/trips/${param}`);
+      return;
+    }
+    setManualScreen(navStack[navStack.length - 1]);
+    setNavStack((s) => s.slice(0, -1));
+  };
+
   // ── Actions ──────────────────────────────────────────────────────────
   async function handleCreate() {
     if (!tripId) return;
     const g = await createGame.mutateAsync({ tripId, gameTypeId: MATCH_PLAY, name: "Singles Match Play" });
     setGameId(g.id);
     setDraft(Array.from({ length: matchCount }, (_, i) => ({ matchNumber: i + 1, a: null, b: null, handicap: 0 })));
-    setManualScreen("setup");
+    go("setup");
   }
 
   function startSetup() {
@@ -147,7 +166,7 @@ export default function NewMatchGamePage() {
     } else if (draft.length === 0) {
       setDraft(Array.from({ length: matchCount }, (_, i) => ({ matchNumber: i + 1, a: null, b: null, handicap: 0 })));
     }
-    setManualScreen("setup");
+    go("setup");
   }
 
   async function saveMatchups() {
@@ -166,14 +185,14 @@ export default function NewMatchGamePage() {
       await setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) });
     }
     await matchesQ.refetch();
-    setManualScreen("ready");
+    go("ready");
   }
 
   async function handleActivate() {
     if (!tripId || !gameId) return;
     await activate.mutateAsync({ tripId, gameId });
     await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
-    setManualScreen("activated");
+    go("activated");
   }
 
   function handleChange(participantId: string, unitLabel: string, value: number) {
@@ -271,7 +290,7 @@ export default function NewMatchGamePage() {
             onHoleChange={setCurrentHole}
             onChange={handleChange}
             onClear={handleClear}
-            onBack={() => router.push(`/trips/${param}`)}
+            onBack={goBack}
             onOpenGrid={() => setView("grid")}
             onFinish={handleFinish}
           />
@@ -283,7 +302,7 @@ export default function NewMatchGamePage() {
   // ── Shell for the setup screens ──
   return (
     <div className="mx-auto max-w-md px-4 py-5" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
-      <button onClick={() => router.push(`/trips/${param}`)} className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)", fontSize: 14, marginBottom: 14 }}>
+      <button onClick={goBack} className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)", fontSize: 14, marginBottom: 14 }}>
         <ChevronLeft size={18} /> Back
       </button>
 
@@ -330,7 +349,7 @@ export default function NewMatchGamePage() {
           groups={groups}
           myId={me?.id}
           published={published}
-          onEnter={() => setManualScreen("score")}
+          onEnter={() => go("score")}
         />
       )}
 
