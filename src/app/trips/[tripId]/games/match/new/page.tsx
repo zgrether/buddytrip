@@ -898,21 +898,27 @@ function Stepper({ dir, disabled, onClick }: { dir: "inc" | "dec"; disabled: boo
 function Slot({ player, onTap, align }: { player: Participant | null; onTap: () => void; align?: "right" }) {
   const dir = align === "right" ? "row-reverse" : "row";
   if (!player) {
-    // The plus + label live together inside one dashed pill.
+    // The plus + label live together inside one dashed pill (card-raised so it
+    // reads as a fillable block against the match card).
     return (
       <button
         onClick={onTap}
         className="flex min-w-0 flex-1 items-center justify-center gap-1.5"
-        style={{ flexDirection: dir, height: 40, borderRadius: 10, border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+        style={{ flexDirection: dir, height: 44, borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
       >
         <Plus size={15} />
         <span style={{ fontSize: 14, fontWeight: 500 }}>Add player</span>
       </button>
     );
   }
+  // Filled block — lighter card-raised pill so the player stands out on the card.
   return (
-    <button onClick={onTap} className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: dir }}>
-      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={32} />
+    <button
+      onClick={onTap}
+      className="flex min-w-0 flex-1 items-center gap-2"
+      style={{ flexDirection: dir, height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={30} />
       <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
     </button>
   );
