@@ -345,11 +345,11 @@ function ScoreCell({ value, active }: { value: number | undefined; active: boole
           border: "2px solid var(--color-bt-accent)",
           boxShadow: "0 0 0 3px rgba(45,212,191,0.12)",
           color: "var(--color-bt-accent)",
-          fontSize: 16,
+          fontSize: 24,
           flexShrink: 0,
         }}
       >
-        ···
+      +
       </span>
     );
   }
@@ -381,12 +381,12 @@ function ScoreCell({ value, active }: { value: number | undefined; active: boole
         height: 46,
         borderRadius: 10,
         border: "1.5px dashed var(--color-bt-border)",
-        color: "var(--color-bt-text-dim)",
-        fontSize: 16,
+        color: "var(--color-bt-border)",
+        fontSize: 24,
         flexShrink: 0,
       }}
     >
-      —
+      +
     </span>
   );
 }

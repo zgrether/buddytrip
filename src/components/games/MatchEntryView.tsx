@@ -6,6 +6,7 @@ import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
+import { Avatar } from "@/components/Avatar";
 import type { ScoreUnit, Participant, ScoreValues } from "./types";
 
 /**
@@ -47,6 +48,8 @@ interface MatchEntryViewProps {
   /** Bottom-CTA label when the card is complete/over (defaults to "Finish"). */
   finishLabel?: string;
   finishSubtext?: string;
+  /** Current user's id — appends "(you)" to their name on the board + rows. */
+  meId?: string;
 }
 
 export function MatchEntryView({
@@ -64,6 +67,7 @@ export function MatchEntryView({
   subtitle,
   finishLabel = "Finish",
   finishSubtext = "Saves results · shows final standings",
+  meId,
 }: MatchEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -186,6 +190,8 @@ export function MatchEntryView({
                 results={decided}
                 label={m.label}
                 holeCount={units.length}
+                youId={meId}
+                hideFormat
               />
 
               {/* Closed-out result banner (§4) */}
@@ -259,6 +265,7 @@ export function MatchEntryView({
                 dead={deadHere}
                 valueFor={valueFor}
                 onTap={() => setOverride({ hole, pid: m.a.id })}
+                isMe={!!meId && m.a.id === meId}
               />
               <PlayerRow
                 group={g}
@@ -270,6 +277,7 @@ export function MatchEntryView({
                 dead={deadHere}
                 valueFor={valueFor}
                 onTap={() => setOverride({ hole, pid: m.b.id })}
+                isMe={!!meId && m.b.id === meId}
                 last
               />
             </div>
@@ -321,6 +329,7 @@ function PlayerRow({
   dead,
   valueFor,
   onTap,
+  isMe,
   last,
 }: {
   group: { st: ReturnType<typeof matchState>; strokeHolesA: Set<number>; strokeHolesB: Set<number> };
@@ -332,27 +341,15 @@ function PlayerRow({
   dead: boolean;
   valueFor: (pid: string, l: string) => number | undefined;
   onTap: () => void;
+  isMe?: boolean;
   last?: boolean;
 }) {
   const v = valueFor(player.id, label);
   const stroked = (isA ? group.strokeHolesA : group.strokeHolesB).has(hole);
 
-  // Subtitle: gross/net when scored on a stroke hole; else this player's match state.
-  let subtitle: string;
-  let subLead = false;
-  if (v != null && stroked) {
-    subtitle = `Gross ${v} · net ${v - 1}`;
-  } else {
-    const diff = isA ? group.st.diff : -group.st.diff;
-    if (diff > 0) {
-      subtitle = `${diff} UP`;
-      subLead = true;
-    } else if (diff < 0) {
-      subtitle = `${-diff} down`;
-    } else {
-      subtitle = "All square";
-    }
-  }
+  // Score entry only cares about THIS hole — never the match state. Awaiting a
+  // score until one is entered; then the gross/net (stroke holes only).
+  const subtitle = v == null ? "Awaiting score" : stroked ? `Gross ${v} · net ${v - 1}` : "";
 
   return (
     <button
@@ -369,27 +366,13 @@ function PlayerRow({
         paddingLeft: 11,
       }}
     >
-      <span
-        className="flex items-center justify-center"
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: "50%",
-          background: `${player.color}22`,
-          border: `1.5px solid ${player.color}55`,
-          color: player.color,
-          fontSize: 15,
-          fontWeight: 700,
-          flexShrink: 0,
-        }}
-      >
-        {player.initials}
-      </span>
+      <Avatar name={player.name} avatarIcon={player.avatarIcon} sizePx={34} />
       <div className="min-w-0 flex-1">
-        <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>{player.name}</span>
-        <div style={{ fontSize: 13, color: subLead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
-          {subtitle}
-        </div>
+        <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>
+          {player.name}
+          {isMe && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
+        </span>
+        <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
       </div>
       <MatchScoreCell value={v} active={active} stroked={stroked} />
     </button>
@@ -414,10 +397,10 @@ function MatchScoreCell({ value, active, stroked }: { value: number | undefined;
           border: "2px solid var(--color-bt-accent)",
           boxShadow: "0 0 0 3px rgba(45,212,191,0.12)",
           color: "var(--color-bt-accent)",
-          fontSize: 16,
+          fontSize: 24,
         }}
       >
-        ···{pip}
+        +{pip}
       </span>
     );
   }
@@ -445,11 +428,11 @@ function MatchScoreCell({ value, active, stroked }: { value: number | undefined;
       style={{
         ...base,
         border: "1.5px dashed var(--color-bt-border)",
-        color: "var(--color-bt-text-dim)",
-        fontSize: 16,
+        color: "var(--color-bt-border)",
+        fontSize: 24,
       }}
     >
-      —{pip}
+      +{pip}
     </span>
   );
 }

@@ -33,6 +33,10 @@ interface MatchCardProps {
   rightColor?: string;
   holeCount?: number;
   onClick?: () => void;
+  /** Current user's id — appends "(you)" to their name. */
+  youId?: string;
+  /** Hide the "· 1v1" suffix in the header (entry page shows just "MATCH #"). */
+  hideFormat?: boolean;
 }
 
 export function MatchCard({
@@ -44,6 +48,8 @@ export function MatchCard({
   rightColor,
   holeCount = 18,
   onClick,
+  youId,
+  hideFormat,
 }: MatchCardProps) {
   const st = matchState(results);
   const teams = !!(leftColor && rightColor);
@@ -73,7 +79,7 @@ export function MatchCard({
       {/* 1 · Header */}
       <div className="flex items-center" style={{ height: 26, padding: "0 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
         <span className="flex-1" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
-          {label} · 1v1
+          {hideFormat ? label : `${label} · 1v1`}
         </span>
         <span
           className="flex-1 text-center"
@@ -87,13 +93,13 @@ export function MatchCard({
       {/* 2 · Row */}
       <div className="flex" style={{ height: 50, alignItems: "stretch" }}>
         <Margin active={aLeads} square={square} text={aLeads ? leadText : "AS"} color={lc} closed={st.closed} />
-        <NameCell name={a.name} align="right" tinted={aLeads} color={lc} />
+        <NameCell name={a.name} align="right" tinted={aLeads} color={lc} you={!!youId && a.id === youId} />
         <div style={{ width: 3, background: wonL }} />
         <div className="flex items-center justify-center" style={{ width: 40, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {centerNum}
         </div>
         <div style={{ width: 3, background: wonR }} />
-        <NameCell name={b.name} align="left" tinted={bLeads} color={rc} />
+        <NameCell name={b.name} align="left" tinted={bLeads} color={rc} you={!!youId && b.id === youId} />
         <Margin active={bLeads} square={square} text={bLeads ? leadText : "AS"} color={rc} closed={st.closed} />
       </div>
 
@@ -132,7 +138,7 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
 
 /** Name column — leans inward (left col right-justified, right col left-justified);
  *  leading side gets a faint tint of its emphasis color. Uniform 600 weight. */
-function NameCell({ name, align, tinted, color }: { name: string; align: "left" | "right"; tinted: boolean; color: string }) {
+function NameCell({ name, align, tinted, color, you }: { name: string; align: "left" | "right"; tinted: boolean; color: string; you?: boolean }) {
   return (
     <div
       className="flex min-w-0 flex-1 items-center"
@@ -140,6 +146,7 @@ function NameCell({ name, align, tinted, color }: { name: string; align: "left" 
     >
       <span style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {name}
+        {you && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
       </span>
     </div>
   );

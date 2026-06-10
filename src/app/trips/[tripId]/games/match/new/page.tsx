@@ -161,6 +161,17 @@ export default function NewMatchGamePage() {
   const decidedFor = (g: MatchGroupData) =>
     buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB);
 
+  // A match's current hole = the first hole either player hasn't scored yet, so
+  // opening a match drops you where it's at (not the hole you left from).
+  const currentHoleFor = (g: MatchGroupData) => {
+    const va = mergedFor(g.a.id);
+    const vb = mergedFor(g.b.id);
+    for (let h = 1; h <= STROKE_PLAY_UNITS.length; h++) {
+      if (va[String(h)] == null || vb[String(h)] == null) return h;
+    }
+    return STROKE_PLAY_UNITS.length;
+  };
+
   // Derive the screen from server state; manual transitions take precedence.
   // Active/complete → the flat overview; pending → setup (owner) or wait (member).
   const derived: Screen = !gameId
@@ -367,6 +378,7 @@ export default function NewMatchGamePage() {
             onFinish={goBack}
             finishLabel="Back to matches"
             finishSubtext="Scores save as you enter"
+            meId={me?.id}
           />
         )}
       </div>
@@ -433,6 +445,8 @@ export default function NewMatchGamePage() {
           onFinish={handleFinish}
           finishing={finishGame.isPending}
           onOpenMatch={(matchId) => {
+            const g = groups.find((x) => x.matchId === matchId);
+            if (g) setCurrentHole(currentHoleFor(g));
             setSelectedMatchId(matchId);
             setValues((v) => (Object.keys(v).length ? v : loadedValues));
             go("score");
@@ -803,38 +817,36 @@ function Overview({
   if (!published) return <MemberWait />;
   const decideds = groups.map(decidedFor);
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d).over);
+  const underway = decideds.some((d) => d.length > 0);
   return (
     <div>
-      {/* Full-width banner — Edit lives in the title bar now. */}
-      <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 10 }}>
-        <Flag size={15} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
-          {complete ? "Round complete" : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
-        </span>
-      </div>
+      {/* Pre-round banner — disappears once the first match starts. Edit lives in
+          the title bar; round-complete keeps its banner. */}
+      {(complete || !underway) && (
+        <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 10 }}>
+          <Flag size={15} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
+            {complete ? "Round complete" : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
+          </span>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2.5">
-        {groups.map((g, i) => {
-          const mine = g.a.id === myId || g.b.id === myId;
-          return (
-            <div
-              key={g.matchId}
-              style={mine ? { borderRadius: 13, padding: 1.5, background: "var(--color-bt-accent-border)" } : undefined}
-            >
-              <MatchCard
-                a={g.a}
-                b={g.b}
-                results={decideds[i]}
-                label={`Match ${i + 1}`}
-                onClick={() => onOpenMatch(g.matchId)}
-              />
-            </div>
-          );
-        })}
+        {groups.map((g, i) => (
+          <MatchCard
+            key={g.matchId}
+            a={g.a}
+            b={g.b}
+            results={decideds[i]}
+            label={`Match ${i + 1}`}
+            youId={myId}
+            onClick={() => onOpenMatch(g.matchId)}
+          />
+        ))}
       </div>
 
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "12px 0 0 2px" }}>
-        Tap a match to enter scores — the round starts on your first score.
+        {underway ? "Tap a match to keep scoring." : "Tap a match to enter scores — the round starts on your first score."}
       </p>
 
       {canEdit && !complete && allOver && (
