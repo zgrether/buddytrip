@@ -11,6 +11,8 @@ import { MatchStrip } from "@/components/games/MatchStrip";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { Avatar } from "@/components/Avatar";
+import { TimePicker } from "@/components/TimePicker";
+import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
 import type { Participant, ScoreValues } from "@/components/games/types";
@@ -510,25 +512,12 @@ function NewGame({
 
       <div className="mt-5 flex flex-col gap-2.5">
         <StubRow label="Course" value="Add a course" />
-        <div className="flex items-center justify-between" style={rowStyle}>
-          <span style={fieldTitle}>First tee time</span>
-          <input
-            type="time"
-            value={teeTime}
-            onChange={(e) => setTeeTime(e.target.value)}
-            aria-label="First tee time"
-            style={{
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              textAlign: "right",
-              fontSize: 15,
-              fontWeight: teeTime ? 600 : 400,
-              color: teeTime ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
-              colorScheme: "dark",
-            }}
-          />
-        </div>
+        <TimePicker
+          label="First tee time"
+          presets="tee"
+          value={parseTime(teeTime)}
+          onChange={(v) => setTeeTime(toTime24(v))}
+        />
         <div className="flex items-center justify-between" style={rowStyle}>
           <span style={fieldTitle}>Matches</span>
           <div className="flex items-center gap-3">
