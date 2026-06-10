@@ -745,7 +745,7 @@ function MatchSetup({
               <div className="flex items-center justify-between" style={{ gap: 8 }}>
                 <Slot player={a} onTap={() => openSelector(i, "a")} />
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>vs</span>
-                <Slot player={b} onTap={() => openSelector(i, "b")} align="right" />
+                <Slot player={b} onTap={() => openSelector(i, "b")} />
               </div>
               {both ? (
                 <div style={{ marginTop: 12 }}>
@@ -766,7 +766,11 @@ function MatchSetup({
         })}
       </div>
 
-      <PrimaryButton label="Ready to tee off" onClick={onReady} disabled={saving} />
+      <PrimaryButton
+        label="Ready to tee off"
+        onClick={onReady}
+        disabled={saving || draft.length === 0 || !draft.every((d) => d.a?.id && d.b?.id)}
+      />
     </div>
   );
 }
@@ -933,11 +937,10 @@ function Stepper({ dir, disabled, onClick }: { dir: "inc" | "dec"; disabled: boo
   );
 }
 
-function Slot({ player, onTap, align }: { player: Participant | null; onTap: () => void; align?: "right" }) {
-  const dir = align === "right" ? "row-reverse" : "row";
+function Slot({ player, onTap }: { player: Participant | null; onTap: () => void }) {
   if (!player) {
     // The plus + label live together inside one dashed pill (card-raised so it
-    // reads as a fillable block). Always "+ Add player" — not reversed.
+    // reads as a fillable block). Always "+ Add player".
     return (
       <button
         onClick={onTap}
@@ -950,12 +953,12 @@ function Slot({ player, onTap, align }: { player: Participant | null; onTap: () 
     );
   }
   // Filled block — lighter card-raised pill so the player stands out on the card.
-  // Plain Avatar (profile icon / initials), not the inverted team-color fill.
+  // Avatar is always left of the name (we never put it after the name).
   return (
     <button
       onClick={onTap}
       className="flex min-w-0 flex-1 items-center gap-2"
-      style={{ flexDirection: dir, height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+      style={{ height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
       <Avatar name={player.name} avatarIcon={player.avatarIcon} sizePx={30} />
       <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
