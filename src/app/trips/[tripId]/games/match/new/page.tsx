@@ -374,12 +374,23 @@ export default function NewMatchGamePage() {
   }
 
   // ── Shell for the setup screens ──
+  const headerTitle = screen === "new" ? "New game" : screen === "setup" ? "Set Pairings" : "Matches";
   return (
-    <div className="mx-auto max-w-md px-4 py-5" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
-      <button onClick={goBack} className="flex items-center gap-1" style={{ color: "var(--color-bt-text-dim)", fontSize: 14, marginBottom: 14 }}>
-        <ChevronLeft size={18} /> Back
-      </button>
+    <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
+      <SetupHeader
+        title={headerTitle}
+        subtitle="Singles · 1v1 Match Play"
+        onBack={goBack}
+        right={
+          screen === "overview" && canEdit && status !== "complete" ? (
+            <button onClick={startSetup} style={{ color: "var(--color-bt-accent)", fontSize: 14, fontWeight: 600 }}>
+              Edit
+            </button>
+          ) : null
+        }
+      />
 
+      <div className="mx-auto w-full max-w-md px-4 py-5">
       {screen === "new" && (
         <NewGame
           matchCount={matchCount}
@@ -419,7 +430,6 @@ export default function NewMatchGamePage() {
           teeLabel={formatTee(gameQ.data?.tee_time as string | null | undefined)}
           canEdit={canEdit}
           decidedFor={decidedFor}
-          onEdit={startSetup}
           onFinish={handleFinish}
           finishing={finishGame.isPending}
           onOpenMatch={(matchId) => {
@@ -429,6 +439,7 @@ export default function NewMatchGamePage() {
           }}
         />
       )}
+      </div>
 
       {/* Player selector sheet */}
       {selector && (
@@ -480,6 +491,45 @@ function assignInDraft(prev: DraftMatch[], matchIdx: number, slot: "a" | "b", us
   return next;
 }
 
+/**
+ * Setup-flow title bar — matches the entry app bar (Quick Game / score views):
+ * back arrow only (top-left), centered title (white) + subtitle, optional
+ * top-right slot (the overview's Edit link).
+ */
+function SetupHeader({
+  title,
+  subtitle,
+  onBack,
+  right,
+}: {
+  title: string;
+  subtitle: string;
+  onBack: () => void;
+  right?: React.ReactNode;
+}) {
+  return (
+    <header
+      className="flex shrink-0 items-center justify-between"
+      style={{
+        height: 52,
+        padding: "0 8px",
+        background: "var(--color-bt-nav-bg)",
+        backdropFilter: "blur(14px)",
+        borderBottom: "1px solid var(--color-bt-subtle-border)",
+      }}
+    >
+      <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
+        <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
+      </button>
+      <div className="min-w-0 text-center">
+        <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{title}</div>
+        <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
+      </div>
+      <div className="flex h-9 min-w-9 items-center justify-end pr-1">{right}</div>
+    </header>
+  );
+}
+
 function NewGame({
   matchCount,
   setMatchCount,
@@ -507,10 +557,7 @@ function NewGame({
   const value = Math.min(Math.max(1, matchCount), maxMatches);
   return (
     <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Singles match play</h1>
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>1v1 · low net wins each match</p>
-
-      <div className="mt-5 flex flex-col gap-3.5">
+      <div className="flex flex-col gap-3.5">
         {/* Course — stub picker (Slice C); same field style as the tee time. */}
         <div>
           <FieldLabel>Course</FieldLabel>
@@ -626,12 +673,11 @@ function MatchSetup({
 
   return (
     <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Set pairings</h1>
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>
-        Singles · {draft.length} {draft.length === 1 ? "match" : "matches"} · tap a slot to pick a player, drag to reorder
+      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 14 }}>
+        Tap a slot to pick a player · drag to reorder.
       </p>
 
-      <div className="mt-4 flex flex-col gap-3">
+      <div className="flex flex-col gap-3">
         {draft.map((d, i) => {
           const a = partFor(d.a);
           const b = partFor(d.b);
@@ -739,7 +785,6 @@ function Overview({
   teeLabel,
   canEdit,
   decidedFor,
-  onEdit,
   onFinish,
   finishing,
   onOpenMatch,
@@ -751,7 +796,6 @@ function Overview({
   teeLabel: string;
   canEdit: boolean;
   decidedFor: (g: MatchGroupData) => HoleResult[];
-  onEdit: () => void;
   onFinish: () => void;
   finishing: boolean;
   onOpenMatch: (matchId: string) => void;
@@ -761,18 +805,12 @@ function Overview({
   const allOver = groups.length > 0 && decideds.every((d) => matchState(d).over);
   return (
     <div>
-      <div className="flex items-start justify-between gap-3" style={{ marginBottom: 10 }}>
-        <div className="flex items-center gap-2" style={{ flex: 1, padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)" }}>
-          <Flag size={15} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
-            {complete ? "Round complete" : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
-          </span>
-        </div>
-        {canEdit && !complete && (
-          <button onClick={onEdit} className="flex items-center gap-1" style={{ height: 40, padding: "0 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
-            Edit
-          </button>
-        )}
+      {/* Full-width banner — Edit lives in the title bar now. */}
+      <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 10 }}>
+        <Flag size={15} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
+          {complete ? "Round complete" : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
+        </span>
       </div>
 
       <div className="flex flex-col gap-2.5">
