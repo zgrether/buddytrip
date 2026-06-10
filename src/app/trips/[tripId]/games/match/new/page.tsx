@@ -404,7 +404,7 @@ export default function NewMatchGamePage() {
         }
       />
 
-      <div className="mx-auto w-full max-w-md px-4 py-5">
+      <div className="w-full px-4 py-5">
       {screen === "new" && (
         <NewGame
           matchCount={matchCount}
