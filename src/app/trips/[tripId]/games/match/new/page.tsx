@@ -257,15 +257,17 @@ export default function NewMatchGamePage() {
       gameId,
       matches: draft.map((d, i) => ({ sideA: d.a, sideB: d.b, matchNumber: i + 1 })),
     });
-    // Persist handicaps (one side n, other 0) for fully-paired matches.
-    for (let i = 0; i < draft.length; i++) {
-      const d = draft[i];
+    // Persist handicaps (one side n, other 0) for fully-paired matches and
+    // activate — all in parallel: they each only depend on the just-saved
+    // pairings, touch different rows, and there are no scores yet (no recompute
+    // contention). Avoids a chain of sequential round-trips.
+    const handicapWrites = draft.flatMap((d, i) => {
       const row = saved[i] as { id: string } | undefined;
-      if (!row || !d.a?.id || !d.b?.id || d.handicap === 0) continue;
+      if (!row || !d.a?.id || !d.b?.id || d.handicap === 0) return [];
       const recipientUserId = d.handicap < 0 ? d.a.id : d.b.id;
-      await setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) });
-    }
-    await activate.mutateAsync({ tripId, gameId });
+      return [setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) })];
+    });
+    await Promise.all([...handicapWrites, activate.mutateAsync({ tripId, gameId })]);
     await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
     go("overview");
   }
@@ -779,7 +781,7 @@ function MatchSetup({
       </div>
 
       <PrimaryButton
-        label="Ready to tee off"
+        label={saving ? "Setting up…" : "Ready to tee off"}
         onClick={onReady}
         disabled={saving || draft.length === 0 || !draft.every((d) => d.a?.id && d.b?.id)}
       />

@@ -72,6 +72,9 @@ export async function computeMatchPlayResults(
     .select("participant_id, unit_label, value")
     .eq("game_id", gameId)
     .eq("participant_type", "user");
+  // Nothing scored yet → nothing to derive. Skips the wasted recompute that the
+  // setup-time setHandicap calls would otherwise trigger (no results to write).
+  if ((entries ?? []).length === 0) return [];
   const gross = new Map<string, Record<string, number>>();
   for (const e of entries ?? []) {
     if (e.value == null) continue;
