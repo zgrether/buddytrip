@@ -139,12 +139,15 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
 /** Name column — leans inward (left col right-justified, right col left-justified);
  *  leading side gets a faint tint of its emphasis color. Uniform 600 weight. */
 function NameCell({ name, align, tinted, color, you }: { name: string; align: "left" | "right"; tinted: boolean; color: string; you?: boolean }) {
+  // Shrink the font for long names (the cell is narrow) instead of truncating.
+  const len = name.length + (you ? 6 : 0);
+  const fontSize = len > 16 ? 13 : len > 12 ? 15 : 17;
   return (
     <div
       className="flex min-w-0 flex-1 items-center"
       style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: "0 10px", background: tinted ? `${color}29` : "transparent" }}
     >
-      <span style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <span style={{ fontSize, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {name}
         {you && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
       </span>

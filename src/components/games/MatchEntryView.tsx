@@ -126,6 +126,17 @@ export function MatchEntryView({
   const activeParticipant = allParticipants.find((p) => p.id === activePid) ?? null;
   const isCorrection = activePid != null && valueFor(activePid, label) != null;
 
+  // The board reflects a hole only once it's confirmed: while the keypad is open
+  // on the current hole (activePid set), exclude that hole from the match-state
+  // computation so a tentative tap can't flash a wrong "X UP"/win before the ✓.
+  const editing = activePid != null;
+  const committedGross = (pid: string) => {
+    const v = values[pid] ?? {};
+    if (!editing) return v;
+    const { [label]: _omit, ...rest } = v;
+    return rest;
+  };
+
   // Progress + completion (dead holes don't require scores).
   const holeComplete = (h: number, l: string) => requiredOn(h, l).length === 0;
   const completedHoleNumbers = units
@@ -179,7 +190,10 @@ export function MatchEntryView({
       {/* Match board(s) — pinned at the top, above the hole selector */}
       <div className="shrink-0" style={{ padding: "12px 12px 0" }}>
         {groups.map((g) => {
-          const { m, decided, st } = g;
+          const { m } = g;
+          // Board state excludes the in-progress hole (computes on ✓, not on tap).
+          const boardDecided = buildDecided(committedGross(m.a.id), committedGross(m.b.id), m.strokesA, m.strokesB);
+          const st = matchState(boardDecided);
           const winner = st.leader === "A" ? m.a : st.leader === "B" ? m.b : null;
           const loser = st.leader === "A" ? m.b : st.leader === "B" ? m.a : null;
           return (
@@ -187,7 +201,7 @@ export function MatchEntryView({
               <MatchCard
                 a={m.a}
                 b={m.b}
-                results={decided}
+                results={boardDecided}
                 label={m.label}
                 holeCount={units.length}
                 youId={meId}
