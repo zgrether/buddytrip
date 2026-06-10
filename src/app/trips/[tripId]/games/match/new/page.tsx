@@ -899,12 +899,12 @@ function Slot({ player, onTap, align }: { player: Participant | null; onTap: () 
   const dir = align === "right" ? "row-reverse" : "row";
   if (!player) {
     // The plus + label live together inside one dashed pill (card-raised so it
-    // reads as a fillable block against the match card).
+    // reads as a fillable block). Always "+ Add player" — not reversed.
     return (
       <button
         onClick={onTap}
         className="flex min-w-0 flex-1 items-center justify-center gap-1.5"
-        style={{ flexDirection: dir, height: 44, borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+        style={{ height: 44, borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
       >
         <Plus size={15} />
         <span style={{ fontSize: 14, fontWeight: 500 }}>Add player</span>
@@ -912,13 +912,14 @@ function Slot({ player, onTap, align }: { player: Participant | null; onTap: () 
     );
   }
   // Filled block — lighter card-raised pill so the player stands out on the card.
+  // Plain Avatar (profile icon / initials), not the inverted team-color fill.
   return (
     <button
       onClick={onTap}
       className="flex min-w-0 flex-1 items-center gap-2"
       style={{ flexDirection: dir, height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
-      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={30} />
+      <Avatar name={player.name} avatarIcon={player.avatarIcon} sizePx={30} />
       <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
     </button>
   );
