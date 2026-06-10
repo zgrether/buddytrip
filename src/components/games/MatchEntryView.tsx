@@ -42,6 +42,11 @@ interface MatchEntryViewProps {
   onFinish?: () => void;
   onBack?: () => void;
   onOpenGrid?: () => void;
+  /** App-bar subtitle (defaults to "Hole N of N"). */
+  subtitle?: string;
+  /** Bottom-CTA label when the card is complete/over (defaults to "Finish"). */
+  finishLabel?: string;
+  finishSubtext?: string;
 }
 
 export function MatchEntryView({
@@ -56,6 +61,9 @@ export function MatchEntryView({
   onFinish,
   onBack,
   onOpenGrid,
+  subtitle,
+  finishLabel = "Finish",
+  finishSubtext = "Saves results · shows final standings",
 }: MatchEntryViewProps) {
   const [holeInternal, setHoleInternal] = useState(currentHole ?? 1);
   const hole = currentHole ?? holeInternal;
@@ -156,7 +164,7 @@ export function MatchEntryView({
         <div className="text-center">
           <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{gameName}</div>
           <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-            Hole {hole} of {units.length}
+            {subtitle ?? `Hole ${hole} of ${units.length}`}
           </div>
         </div>
         <button onClick={onOpenGrid} aria-label="Scorecard grid" className="flex h-9 w-9 items-center justify-center">
@@ -290,7 +298,7 @@ export function MatchEntryView({
           onConfirm={confirmAdvance}
         />
       ) : canFinish ? (
-        <BottomCTA label="Finish" icon onClick={() => onFinish?.()} subtext="Saves results · shows final standings" />
+        <BottomCTA label={finishLabel} icon onClick={() => onFinish?.()} subtext={finishSubtext} />
       ) : currentComplete && hole < units.length ? (
         <BottomCTA label={`Hole ${units[hole]?.label ?? hole + 1} ›`} onClick={() => goHole(hole + 1)} />
       ) : null}

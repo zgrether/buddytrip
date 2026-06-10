@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag, Check } from "lucide-react";
+import { Flag, Check, ChevronRight } from "lucide-react";
 import { matchState, type HoleResult } from "@/lib/matchPlay";
 import type { Participant } from "./types";
 
@@ -26,6 +26,7 @@ interface MatchStripProps {
   strokesB?: number; // strokes B receives (badge)
   label?: string; // "Match 1"
   holeCount?: number; // segments in the history bar (golf = 18)
+  onClick?: () => void; // when set, the whole strip is a tappable overview row (+ chevron)
 }
 
 export function MatchStrip({
@@ -36,6 +37,7 @@ export function MatchStrip({
   strokesB = 0,
   label = "Match",
   holeCount = 18,
+  onClick,
 }: MatchStripProps) {
   const st = matchState(decided);
   const winning = st.up > 0; // someone leads
@@ -48,16 +50,21 @@ export function MatchStrip({
   const aWon = st.over && aLeads;
   const bWon = st.over && bLeads;
 
+  const containerStyle: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    padding: "8px 12px 9px",
+    background: st.closed ? "var(--color-bt-place-1-bg)" : "var(--color-bt-card)",
+    border: st.closed ? "1px solid rgba(34,197,94,0.25)" : "1px solid var(--color-bt-border)",
+    borderRadius: 12,
+  };
+  const Container = onClick ? "button" : "div";
   return (
-    <div
-      style={{
-        padding: "8px 12px 9px",
-        background: st.closed ? "var(--color-bt-place-1-bg)" : "var(--color-bt-card)",
-        border: st.closed
-          ? "1px solid rgba(34,197,94,0.25)"
-          : "1px solid var(--color-bt-border)",
-        borderRadius: 12,
-      }}
+    <Container
+      onClick={onClick}
+      className={onClick ? "transition-transform active:scale-[0.99]" : undefined}
+      style={containerStyle}
     >
       {/* Label row */}
       <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
@@ -72,32 +79,35 @@ export function MatchStrip({
         >
           {label} · 1v1
         </span>
-        {st.over ? (
-          <span
-            className="flex items-center gap-1"
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "var(--color-bt-place-1-text)",
-            }}
-          >
-            <Flag size={11} strokeWidth={2.4} /> Final
-          </span>
-        ) : (
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "var(--color-bt-text-dim)",
-            }}
-          >
-            thru {st.thru}
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {st.over ? (
+            <span
+              className="flex items-center gap-1"
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--color-bt-place-1-text)",
+              }}
+            >
+              <Flag size={11} strokeWidth={2.4} /> Final
+            </span>
+          ) : (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              thru {st.thru}
+            </span>
+          )}
+          {onClick && <ChevronRight size={13} style={{ color: "var(--color-bt-text-dim)" }} />}
+        </span>
       </div>
 
       {/* Status row */}
@@ -171,7 +181,7 @@ export function MatchStrip({
           return <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: bg, opacity: op }} />;
         })}
       </div>
-    </div>
+    </Container>
   );
 }
 

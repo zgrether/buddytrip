@@ -1,16 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Flag, Lock, Check, GripVertical, Plus, Minus } from "lucide-react";
+import { ChevronLeft, Flag, Lock, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
+import { MatchStrip } from "@/components/games/MatchStrip";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { Avatar } from "@/components/Avatar";
-import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
+import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
@@ -33,7 +34,7 @@ interface DraftMatch {
   b: SideRef;
   handicap: number; // signed: <0 → a gets |n|, >0 → b gets n, 0 → even
 }
-type Screen = "new" | "prepair" | "member-wait" | "setup" | "ready" | "activated" | "score";
+type Screen = "new" | "member-wait" | "setup" | "overview" | "score";
 
 /**
  * Singles match-play game flow (Slice B). TEMPORARY route — the real Games tab
@@ -70,6 +71,7 @@ export default function NewMatchGamePage() {
   const [values, setValues] = useState<ScoreValues>({});
   const [view, setView] = useState<"entry" | "grid">("entry");
   const [currentHole, setCurrentHole] = useState(1);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
@@ -149,38 +151,23 @@ export default function NewMatchGamePage() {
   }
 
   // Persisted scores overlaid with this session's local edits (local wins), so
-  // the matchup cards' live status reflects scores entered before this load AND
-  // just now, without waiting on a refetch.
+  // the overview strips reflect scores entered before this load AND just now,
+  // without waiting on a refetch.
   const mergedFor = (pid: string) => ({ ...(loadedValues[pid] ?? {}), ...(values[pid] ?? {}) });
 
-  // Live match status — null until the match is underway.
-  function liveStatusFor(g: MatchGroupData): { text: string; green: boolean } | null {
-    const decided = buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB);
-    if (decided.length === 0) return null;
-    const st = matchState(decided);
-    const first = (p: Participant) => p.name.split(/\s+/)[0];
-    if (st.over) {
-      if (st.up === 0) return { text: `Halved · ${st.margin}`, green: false };
-      const winner = st.leader === "A" ? g.a : g.b;
-      return { text: `${first(winner)} · ${st.margin}`, green: true };
-    }
-    if (st.up === 0) return { text: `All square · thru ${st.thru}`, green: false };
-    const leader = st.leader === "A" ? g.a : g.b;
-    return { text: `${first(leader)} ${st.up} UP · thru ${st.thru}`, green: true };
-  }
+  // Decided holes (A's perspective) for an overview strip — the shared builder.
+  const decidedFor = (g: MatchGroupData) =>
+    buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB);
 
   // Derive the screen from server state; manual transitions take precedence.
+  // Active/complete → the flat overview; pending → setup (owner) or wait (member).
   const derived: Screen = !gameId
     ? "new"
-    : status === "complete"
-      ? "score"
-      : status === "active"
-        ? "activated"
-        : !canEdit
-          ? "member-wait"
-          : serverMatches.length === 0
-            ? "prepair"
-            : "ready";
+    : status === "complete" || status === "active"
+      ? "overview"
+      : !canEdit
+        ? "member-wait"
+        : "setup";
   const screen = manualScreen ?? derived;
 
   // Forward step: remember the screen we're leaving so Back can return to it.
@@ -198,6 +185,16 @@ export default function NewMatchGamePage() {
     setManualScreen(navStack[navStack.length - 1]);
     setNavStack((s) => s.slice(0, -1));
   };
+
+  // Seed the editable draft from the server when we land on setup for an
+  // existing game (e.g. owner opens a pending game, or taps Edit) and the local
+  // draft is empty. Create + Edit also seed via their handlers; this covers a
+  // direct/derived landing.
+  useEffect(() => {
+    if (screen === "setup" && draft.length === 0 && serverMatches.length > 0) {
+      setDraft(serverDraftFrom(serverMatches, handicapOf));
+    }
+  }, [screen, draft.length, serverMatches, handicapOf]);
 
   // ── Actions ──────────────────────────────────────────────────────────
   async function handleCreate() {
@@ -237,7 +234,10 @@ export default function NewMatchGamePage() {
     go("setup");
   }
 
-  async function saveMatchups() {
+  // Ready to tee off — one action: persist the pairings + handicaps, publish
+  // (activate) so members can see them, and land on the overview. No separate
+  // Save-then-Activate, no confirmation screen.
+  async function readyToTeeOff() {
     if (!tripId || !gameId) return;
     const saved = await setPairings.mutateAsync({
       tripId,
@@ -252,15 +252,9 @@ export default function NewMatchGamePage() {
       const recipientUserId = d.handicap < 0 ? d.a.id : d.b.id;
       await setHandicap.mutateAsync({ tripId, gameId, matchId: row.id, recipientUserId, strokes: Math.abs(d.handicap) });
     }
-    await matchesQ.refetch();
-    go("ready");
-  }
-
-  async function handleActivate() {
-    if (!tripId || !gameId) return;
     await activate.mutateAsync({ tripId, gameId });
-    await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
-    go("activated");
+    await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+    go("overview");
   }
 
   function handleChange(participantId: string, unitLabel: string, value: number) {
@@ -282,7 +276,8 @@ export default function NewMatchGamePage() {
   async function handleFinish() {
     if (!tripId || !gameId) return;
     await finishGame.mutateAsync({ tripId, gameId });
-    await Promise.all([gameQ.refetch(), matchesQ.refetch()]);
+    await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
+    go("overview");
   }
 
   // Scoreable groups (fully-paired matches) for the entry view + grid.
@@ -305,15 +300,21 @@ export default function NewMatchGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [serverMatches, handicapOf, colorOf, nameOf]
   );
-  const scoringParticipants = useMemo(() => groups.flatMap((g) => [g.a, g.b]), [groups]);
-  const pips = useMemo(() => {
+  // One match at a time: the strip tapped on the overview (falls back to the
+  // first). Single-match entry — no shared keypad across matches.
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g.matchId === selectedMatchId) ?? groups[0] ?? null,
+    [groups, selectedMatchId]
+  );
+  const entryParticipants = selectedGroup ? [selectedGroup.a, selectedGroup.b] : [];
+  const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
-    for (const g of groups) {
-      m[g.a.id] = new Set([...strokeHoles(g.strokesA)].map(String));
-      m[g.b.id] = new Set([...strokeHoles(g.strokesB)].map(String));
+    if (selectedGroup) {
+      m[selectedGroup.a.id] = new Set([...strokeHoles(selectedGroup.strokesA)].map(String));
+      m[selectedGroup.b.id] = new Set([...strokeHoles(selectedGroup.strokesB)].map(String));
     }
     return m;
-  }, [groups]);
+  }, [selectedGroup]);
 
   // ── Loading ──
   if (!tripId || roleLoading || (gameId && (gameQ.isLoading || matchesQ.isLoading))) {
@@ -324,8 +325,8 @@ export default function NewMatchGamePage() {
     );
   }
 
-  // ── Scoring (active/complete) ──
-  if (screen === "score") {
+  // ── Single-match scoring (one match at a time) ──
+  if (screen === "score" && selectedGroup) {
     return (
       <div className="fixed inset-0 z-50">
         {view === "grid" ? (
@@ -337,10 +338,10 @@ export default function NewMatchGamePage() {
             <div className="min-h-0 flex-1">
               <StandardGrid
                 units={STROKE_PLAY_UNITS}
-                participants={scoringParticipants}
+                participants={entryParticipants}
                 values={values}
                 direction="low_wins"
-                pips={pips}
+                pips={entryPips}
                 onCellTap={(label) => {
                   setCurrentHole(Number(label) || 1);
                   setView("entry");
@@ -350,9 +351,10 @@ export default function NewMatchGamePage() {
           </div>
         ) : (
           <MatchEntryView
-            gameName="Singles Match Play"
+            gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
+            subtitle="Singles match · 1v1"
             units={STROKE_PLAY_UNITS}
-            matches={groups}
+            matches={[selectedGroup]}
             values={values}
             currentHole={currentHole}
             onHoleChange={setCurrentHole}
@@ -360,7 +362,9 @@ export default function NewMatchGamePage() {
             onClear={handleClear}
             onBack={goBack}
             onOpenGrid={() => setView("grid")}
-            onFinish={handleFinish}
+            onFinish={goBack}
+            finishLabel="Back to matches"
+            finishSubtext="Scores save as you enter"
           />
         )}
       </div>
@@ -390,8 +394,6 @@ export default function NewMatchGamePage() {
 
       {screen === "member-wait" && <MemberWait />}
 
-      {screen === "prepair" && <PrePairings count={serverMatches.length || matchCount} onSet={startSetup} />}
-
       {screen === "setup" && (
         <MatchSetup
           tripId={tripId}
@@ -401,33 +403,25 @@ export default function NewMatchGamePage() {
           colorOf={colorOf}
           avatarIconOf={avatarIconOf}
           openSelector={(matchIdx, slot) => setSelector({ matchIdx, slot })}
-          onSave={saveMatchups}
-          saving={setPairings.isPending || setHandicap.isPending}
+          onReady={readyToTeeOff}
+          saving={setPairings.isPending || setHandicap.isPending || activate.isPending}
         />
       )}
 
-      {screen === "ready" && (
-        <ReadyToCompete
-          draft={draft.length ? draft : serverDraftFrom(serverMatches, handicapOf)}
-          nameOf={nameOf}
-          colorOf={colorOf}
-          avatarIconOf={avatarIconOf}
-          onEdit={startSetup}
-          onActivate={handleActivate}
-          activating={activate.isPending}
-        />
-      )}
-
-      {screen === "activated" && (
-        <ActivatedMember
+      {screen === "overview" && (
+        <Overview
           groups={groups}
           myId={me?.id}
           published={published}
+          complete={status === "complete"}
           teeLabel={formatTee(gameQ.data?.tee_time as string | null | undefined)}
           canEdit={canEdit}
-          liveStatusFor={liveStatusFor}
+          decidedFor={decidedFor}
           onEdit={startSetup}
-          onEnter={() => {
+          onFinish={handleFinish}
+          finishing={finishGame.isPending}
+          onOpenMatch={(matchId) => {
+            setSelectedMatchId(matchId);
             setValues((v) => (Object.keys(v).length ? v : loadedValues));
             go("score");
           }}
@@ -567,32 +561,6 @@ function MemberWait() {
   );
 }
 
-function PrePairings({ count, onSet }: { count: number; onSet: () => void }) {
-  return (
-    <div>
-      <div className="flex items-center gap-3" style={{ marginBottom: 18 }}>
-        <div className="flex items-center justify-center" style={{ width: 44, height: 44, borderRadius: 12, background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}>
-          <Flag size={20} style={{ color: "var(--color-bt-accent)" }} />
-        </div>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>Ready to set the pairings?</div>
-          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{count} matches to fill</div>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2.5">
-        {Array.from({ length: count }, (_, i) => (
-          <div key={i} className="flex items-center justify-between" style={{ ...rowStyle, padding: "14px" }}>
-            <TbdChip />
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-            <TbdChip />
-          </div>
-        ))}
-      </div>
-      <PrimaryButton label="Set pairings" onClick={onSet} />
-    </div>
-  );
-}
-
 function MatchSetup({
   draft,
   setDraft,
@@ -600,7 +568,7 @@ function MatchSetup({
   colorOf,
   avatarIconOf,
   openSelector,
-  onSave,
+  onReady,
   saving,
 }: {
   tripId: string;
@@ -610,7 +578,7 @@ function MatchSetup({
   colorOf: Map<string, string>;
   avatarIconOf: Map<string, string | null>;
   openSelector: (matchIdx: number, slot: "a" | "b") => void;
-  onSave: () => void;
+  onReady: () => void;
   saving: boolean;
 }) {
   // Drag-to-reorder (mirrors the news composer): `ins` is the insertion slot in
@@ -655,9 +623,9 @@ function MatchSetup({
 
   return (
     <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Ready to set the pairings?</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Set pairings</h1>
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>
-        {draft.length} {draft.length === 1 ? "match" : "matches"} · tap a slot to pick a player, drag to reorder
+        Singles · {draft.length} {draft.length === 1 ? "match" : "matches"} · tap a slot to pick a player, drag to reorder
       </p>
 
       <div className="mt-4 flex flex-col gap-3">
@@ -749,128 +717,92 @@ function MatchSetup({
         })}
       </div>
 
-      <PrimaryButton label="Save matchups" onClick={onSave} disabled={saving} />
+      <PrimaryButton label="Ready to tee off" onClick={onReady} disabled={saving} />
     </div>
   );
 }
 
-function ReadyToCompete({
-  draft,
-  nameOf,
-  colorOf,
-  avatarIconOf,
-  onEdit,
-  onActivate,
-  activating,
-}: {
-  draft: DraftMatch[];
-  nameOf: Map<string, string>;
-  colorOf: Map<string, string>;
-  avatarIconOf: Map<string, string | null>;
-  onEdit: () => void;
-  onActivate: () => void;
-  activating: boolean;
-}) {
-  const set = draft.filter((d) => d.a?.id && d.b?.id).length;
-  const part = (ref: SideRef, fallbackColor: string): Participant | null => {
-    if (!ref?.id) return null;
-    const name = nameOf.get(ref.id) ?? "Player";
-    return { id: ref.id, name, initials: initialsOf(name), color: colorOf.get(ref.id) ?? fallbackColor, avatarIcon: avatarIconOf.get(ref.id) ?? null };
-  };
-  return (
-    <div>
-      <div className="flex items-center gap-3" style={{ marginBottom: 18 }}>
-        <div className="flex items-center justify-center" style={{ width: 44, height: 44, borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)" }}>
-          <Check size={22} style={{ color: "var(--color-bt-place-1-text)" }} />
-        </div>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>Ready to compete</div>
-          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{set} matches set · publish pairings to the crew</div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2.5">
-        {draft.map((d, i) => {
-          const a = part(d.a, PLAYER_COLORS[i * 2 % PLAYER_COLORS.length]);
-          const b = part(d.b, PLAYER_COLORS[(i * 2 + 1) % PLAYER_COLORS.length]);
-          const recipient = d.handicap < 0 ? a?.name : d.handicap > 0 ? b?.name : null;
-          const holes = [...strokeHoles(Math.abs(d.handicap))].sort((x, y) => x - y);
-          const handicapLine = recipient ? `${recipient} gets ${Math.abs(d.handicap)} · holes ${holes.join(", ")}` : "Even match";
-          return <MatchupCard key={i} n={i + 1} a={a} b={b} handicapLine={handicapLine} />;
-        })}
-      </div>
-
-      <div className="mt-5 flex items-center gap-3">
-        <button onClick={onEdit} style={{ height: 50, padding: "0 18px", borderRadius: 12, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 15, fontWeight: 600 }}>
-          Edit
-        </button>
-        <button onClick={onActivate} disabled={activating} className="flex-1 disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
-          Publish pairings
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ActivatedMember({
+/**
+ * Overview — the flat list of tappable match strips (the post-setup home for a
+ * match-play game). Banner + Edit (owner) + N strips, one per 1v1. Tapping a
+ * strip opens single-match entry. When every match is decided, the owner can
+ * finish the round.
+ */
+function Overview({
   groups,
   myId,
   published,
+  complete,
   teeLabel,
   canEdit,
-  liveStatusFor,
+  decidedFor,
   onEdit,
-  onEnter,
+  onFinish,
+  finishing,
+  onOpenMatch,
 }: {
   groups: MatchGroupData[];
   myId: string | undefined;
   published: boolean;
+  complete: boolean;
   teeLabel: string;
   canEdit: boolean;
-  liveStatusFor: (g: MatchGroupData) => { text: string; green: boolean } | null;
+  decidedFor: (g: MatchGroupData) => HoleResult[];
   onEdit: () => void;
-  onEnter: () => void;
+  onFinish: () => void;
+  finishing: boolean;
+  onOpenMatch: (matchId: string) => void;
 }) {
   if (!published) return <MemberWait />;
-  const underway = groups.some((g) => liveStatusFor(g));
+  const decideds = groups.map(decidedFor);
+  const allOver = groups.length > 0 && decideds.every((d) => matchState(d).over);
   return (
     <div>
-      <div className="flex items-start justify-between gap-3" style={{ marginBottom: 8 }}>
+      <div className="flex items-start justify-between gap-3" style={{ marginBottom: 10 }}>
         <div className="flex items-center gap-2" style={{ flex: 1, padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)" }}>
-          <Check size={16} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
+          <Flag size={15} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
-            Matchups are set{teeLabel ? ` · tees off ${teeLabel}` : ""}
+            {complete ? "Round complete" : `Matchups are set${teeLabel ? ` · tees off ${teeLabel}` : ""}`}
           </span>
         </div>
-        {canEdit && (
+        {canEdit && !complete && (
           <button onClick={onEdit} className="flex items-center gap-1" style={{ height: 40, padding: "0 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
             Edit
           </button>
         )}
       </div>
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "0 0 14px 2px" }}>
-        {underway ? "Tap a match to keep scoring." : "Tap a match to keep score."}
-      </p>
 
       <div className="flex flex-col gap-2.5">
         {groups.map((g, i) => {
           const mine = g.a.id === myId || g.b.id === myId;
-          const recipient = g.strokesA > 0 ? g.a : g.strokesB > 0 ? g.b : null;
-          const n = g.strokesA > 0 ? g.strokesA : g.strokesB;
           return (
-            <MatchupCard
+            <div
               key={g.matchId}
-              n={i + 1}
-              a={g.a}
-              b={g.b}
-              mine={mine}
-              status={liveStatusFor(g)}
-              handicapLine={recipient ? `${recipient.name} gets ${n}` : "Even match"}
-              onClick={onEnter}
-            />
+              style={mine ? { borderRadius: 13, padding: 1.5, background: "var(--color-bt-accent-border)" } : undefined}
+            >
+              <MatchStrip
+                a={g.a}
+                b={g.b}
+                decided={decideds[i]}
+                strokesA={g.strokesA}
+                strokesB={g.strokesB}
+                label={`Match ${i + 1}`}
+                onClick={() => onOpenMatch(g.matchId)}
+              />
+            </div>
           );
         })}
       </div>
+
+      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "12px 0 0 2px" }}>
+        Tap a match to enter scores — the round starts on your first score.
+      </p>
+
+      {canEdit && !complete && allOver && (
+        <button onClick={onFinish} disabled={finishing} className="mt-5 w-full disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
+          Finish round
+        </button>
+      )}
     </div>
   );
 }
@@ -945,90 +877,6 @@ const rowStyle: React.CSSProperties = {
 
 const fieldTitle: React.CSSProperties = { fontSize: 15, color: "var(--color-bt-text-dim)" };
 
-const matchLabel: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "var(--color-bt-text-dim)",
-};
-
-/**
- * The canonical match layout shared by setup (read), ready-to-compete, and the
- * activated matchup list: MATCH n top-left (+ status / YOUR MATCH top-right),
- * player A left-justified, player B right-justified with the `vs` centered,
- * handicap line centered below. Tappable when `onClick` is given.
- */
-function MatchupCard({
-  n,
-  a,
-  b,
-  handicapLine,
-  mine,
-  status,
-  onClick,
-}: {
-  n: number;
-  a: Participant | null;
-  b: Participant | null;
-  handicapLine: string;
-  mine?: boolean;
-  status?: { text: string; green: boolean } | null;
-  onClick?: () => void;
-}) {
-  const cardStyle: React.CSSProperties = {
-    padding: "12px 14px",
-    borderRadius: 12,
-    background: mine ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-    border: `1px solid ${mine ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-  };
-  const inner = (
-    <>
-      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-        <span style={matchLabel}>Match {n}</span>
-        {status ? (
-          <span style={{ fontSize: 11, fontWeight: 700, color: status.green ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
-            {status.text}
-          </span>
-        ) : mine ? (
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-bt-accent)" }}>YOUR MATCH</span>
-        ) : null}
-      </div>
-      <div className="flex items-center justify-between" style={{ gap: 8 }}>
-        <PlayerSide p={a} align="left" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>vs</span>
-        <PlayerSide p={b} align="right" />
-      </div>
-      <div className="text-center" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 10 }}>{handicapLine}</div>
-    </>
-  );
-  return onClick ? (
-    <button onClick={onClick} className="block w-full text-left transition-transform active:scale-[0.99]" style={cardStyle}>
-      {inner}
-    </button>
-  ) : (
-    <div style={cardStyle}>{inner}</div>
-  );
-}
-
-function PlayerSide({ p, align }: { p: Participant | null; align: "left" | "right" }) {
-  const dir = align === "right" ? "row-reverse" : "row";
-  if (!p) {
-    return (
-      <div className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: dir }}>
-        <span className="flex items-center justify-center" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>?</span>
-        <span style={{ fontSize: 15, color: "var(--color-bt-text-dim)" }}>TBD</span>
-      </div>
-    );
-  }
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: dir }}>
-      <Avatar name={p.name} avatarIcon={p.avatarIcon} teamColor={p.color} sizePx={32} />
-      <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-    </div>
-  );
-}
-
 function StubRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between" style={rowStyle}>
@@ -1043,15 +891,6 @@ function Stepper({ dir, disabled, onClick }: { dir: "inc" | "dec"; disabled: boo
     <button onClick={onClick} disabled={disabled} className="flex items-center justify-center disabled:opacity-30" style={{ width: 30, height: 30, borderRadius: 8, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)" }}>
       {dir === "inc" ? <Plus size={16} /> : <Minus size={16} />}
     </button>
-  );
-}
-
-function TbdChip() {
-  return (
-    <span className="flex items-center gap-2">
-      <span className="flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)", fontSize: 10, fontWeight: 700 }}>?</span>
-      <span style={{ fontSize: 14, color: "var(--color-bt-text-dim)" }}>TBD</span>
-    </span>
   );
 }
 

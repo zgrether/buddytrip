@@ -68,19 +68,15 @@ export const matchesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
 
-      // Replace existing matches + card for a clean re-save.
+      // Replace existing matches for a clean re-save. play_group_id is NOT
+      // written in Slice B — the overview is a flat list, not foursome-grouped
+      // (the play_groups table is Slice C's 2v2 scoring side).
       await ctx.supabase.from("game_matches").delete().eq("game_id", input.gameId);
-      await ctx.supabase.from("play_groups").delete().eq("game_id", input.gameId);
-
-      const cardId = crypto.randomUUID();
-      await ctx.supabase
-        .from("play_groups")
-        .insert({ id: cardId, game_id: input.gameId, display_name: "Card 1" });
 
       const rows = input.matches.map((m, i) => ({
         id: crypto.randomUUID(),
         game_id: input.gameId,
-        play_group_id: cardId,
+        play_group_id: null,
         match_number: m.matchNumber,
         display_order: i,
         side_a: m.sideA,
@@ -107,7 +103,7 @@ export const matchesRouter = router({
             id: crypto.randomUUID(),
             game_id: input.gameId,
             user_id: userId,
-            play_group_id: cardId,
+            play_group_id: null,
             team_id: null,
           })),
           { onConflict: "game_id,user_id", ignoreDuplicates: true }
