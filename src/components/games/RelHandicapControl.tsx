@@ -51,13 +51,17 @@ export function RelHandicapControl({ a, b, value, onChange }: RelHandicapControl
 
   return (
     <div style={{ padding: "2px 2px 0" }}>
+      <div
+        style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginBottom: 6 }}
+      >
+        Who gets strokes?
+      </div>
       {/* Row 1 · Direction (segmented control) */}
       <div
         className="flex"
         style={{ gap: 4, padding: 4, borderRadius: 12, background: "var(--color-bt-card-raised)" }}
       >
         <Segment selected={side === "a"} onClick={() => pickSide("a")}>
-          <span style={dotStyle(a.color)} />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
         </Segment>
         <Segment selected={even} onClick={() => onChange(0)}>
@@ -65,7 +69,6 @@ export function RelHandicapControl({ a, b, value, onChange }: RelHandicapControl
         </Segment>
         <Segment selected={side === "b"} onClick={() => pickSide("b")}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
-          <span style={dotStyle(b.color)} />
         </Segment>
       </div>
 
@@ -142,8 +145,4 @@ function StepButton({ symbol, disabled, onClick }: { symbol: string; disabled: b
       {symbol}
     </button>
   );
-}
-
-function dotStyle(color: string): React.CSSProperties {
-  return { width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 };
 }

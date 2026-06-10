@@ -747,7 +747,7 @@ function MatchSetup({
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>vs</span>
                 <Slot player={b} onTap={() => openSelector(i, "b")} />
               </div>
-              {both ? (
+              {both && (
                 <div style={{ marginTop: 12 }}>
                   <RelHandicapControl
                     a={a}
@@ -755,10 +755,6 @@ function MatchSetup({
                     value={d.handicap}
                     onChange={(v) => setDraft((prev) => prev.map((x, j) => (j === i ? { ...x, handicap: v } : x)))}
                   />
-                </div>
-              ) : (
-                <div className="text-center" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
-                  Add both players to set a handicap
                 </div>
               )}
             </div>
