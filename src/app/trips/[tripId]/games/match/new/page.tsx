@@ -756,9 +756,11 @@ function MatchSetup({
                   <GripVertical size={16} />
                 </span>
               </div>
-              <div className="flex items-center justify-between" style={{ gap: 8 }}>
+              {/* Grid with minmax(0,1fr) columns → the two slots are always
+                  equal width regardless of name length, vs stays centered. */}
+              <div className="grid items-center" style={{ gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8 }}>
                 <Slot player={a} onTap={() => openSelector(i, "a")} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>vs</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
                 <Slot player={b} onTap={() => openSelector(i, "b")} />
               </div>
               {both && (
@@ -950,8 +952,8 @@ function Slot({ player, onTap }: { player: Participant | null; onTap: () => void
     return (
       <button
         onClick={onTap}
-        className="flex min-w-0 flex-1 items-center justify-center gap-1.5"
-        style={{ height: 44, borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+        className="flex items-center justify-center gap-1.5"
+        style={{ width: "100%", minWidth: 0, height: 44, borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
       >
         <Plus size={15} />
         <span style={{ fontSize: 14, fontWeight: 500 }}>Add player</span>
@@ -963,11 +965,11 @@ function Slot({ player, onTap }: { player: Participant | null; onTap: () => void
   return (
     <button
       onClick={onTap}
-      className="flex min-w-0 flex-1 items-center gap-2"
-      style={{ height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+      className="flex items-center gap-2"
+      style={{ width: "100%", minWidth: 0, height: 44, padding: "0 10px", borderRadius: 10, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
       <Avatar name={player.name} avatarIcon={player.avatarIcon} sizePx={30} />
-      <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
+      <span style={{ minWidth: 0, fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
     </button>
   );
 }
