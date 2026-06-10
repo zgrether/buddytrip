@@ -844,6 +844,7 @@ function Overview({
             results={decideds[i]}
             label={`Match ${i + 1}`}
             youId={myId}
+            hideFormat
             onClick={() => onOpenMatch(g.matchId)}
           />
         ))}
