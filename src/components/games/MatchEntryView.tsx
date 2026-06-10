@@ -172,27 +172,14 @@ export function MatchEntryView({
         </button>
       </header>
 
-      {/* Hole navigation */}
-      <div className="flex shrink-0 items-center justify-between" style={{ padding: "16px 16px 12px" }}>
-        <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
-            Hole {label}
-          </div>
-          <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
-        </div>
-        <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
-      </div>
-
-      {/* Match groups: strip + (banner) + two rows */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: "0 12px 8px" }}>
+      {/* Match board(s) — pinned at the top, above the hole selector */}
+      <div className="shrink-0" style={{ padding: "12px 12px 0" }}>
         {groups.map((g) => {
           const { m, decided, st } = g;
-          const deadHere = g.isDeadHole(hole) && !playOut.has(m.matchId);
           const winner = st.leader === "A" ? m.a : st.leader === "B" ? m.b : null;
           const loser = st.leader === "A" ? m.b : st.leader === "B" ? m.a : null;
           return (
-            <div key={m.matchId} style={{ marginTop: 12 }}>
+            <div key={m.matchId} style={{ marginBottom: 8 }}>
               <MatchCard
                 a={m.a}
                 b={m.b}
@@ -238,33 +225,53 @@ export function MatchEntryView({
                   )}
                 </div>
               )}
+            </div>
+          );
+        })}
+      </div>
 
-              {/* Two rows */}
-              <div style={{ marginTop: 6, borderRadius: 12, overflow: "hidden", border: "1px solid var(--color-bt-border)" }}>
-                <PlayerRow
-                  group={g}
-                  player={m.a}
-                  isA
-                  label={label}
-                  hole={hole}
-                  active={activePid === m.a.id}
-                  dead={deadHere}
-                  valueFor={valueFor}
-                  onTap={() => setOverride({ hole, pid: m.a.id })}
-                />
-                <PlayerRow
-                  group={g}
-                  player={m.b}
-                  isA={false}
-                  label={label}
-                  hole={hole}
-                  active={activePid === m.b.id}
-                  dead={deadHere}
-                  valueFor={valueFor}
-                  onTap={() => setOverride({ hole, pid: m.b.id })}
-                  last
-                />
-              </div>
+      {/* Hole navigation */}
+      <div className="flex shrink-0 items-center justify-between" style={{ padding: "8px 16px 12px" }}>
+        <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
+        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
+            Hole {label}
+          </div>
+          <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
+        </div>
+        <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
+      </div>
+
+      {/* Player rows */}
+      <div className="flex-1 overflow-y-auto" style={{ padding: "0 12px 8px" }}>
+        {groups.map((g) => {
+          const { m } = g;
+          const deadHere = g.isDeadHole(hole) && !playOut.has(m.matchId);
+          return (
+            <div key={m.matchId} style={{ borderRadius: 12, overflow: "hidden", border: "1px solid var(--color-bt-border)" }}>
+              <PlayerRow
+                group={g}
+                player={m.a}
+                isA
+                label={label}
+                hole={hole}
+                active={activePid === m.a.id}
+                dead={deadHere}
+                valueFor={valueFor}
+                onTap={() => setOverride({ hole, pid: m.a.id })}
+              />
+              <PlayerRow
+                group={g}
+                player={m.b}
+                isA={false}
+                label={label}
+                hole={hole}
+                active={activePid === m.b.id}
+                dead={deadHere}
+                valueFor={valueFor}
+                onTap={() => setOverride({ hole, pid: m.b.id })}
+                last
+              />
             </div>
           );
         })}
