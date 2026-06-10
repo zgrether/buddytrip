@@ -93,6 +93,18 @@ These patterns have been established through prior work. Follow them exactly —
    imports the pure fn. Mirror this split for every new `result_strategy`, and
    branch `games.finish` on the template's `result_strategy` (data-driven, NOT a
    hardcoded format name) so new strategies slot in without touching `finish`.
+9. **Derived values recompute on every input — not just the obvious one.** A value
+   derived from multiple inputs must re-derive when *any* of them changes;
+   enumerate the full trigger set, not just the one that's easy to think of.
+   Match-play hole results derive from `score_entries` +
+   `game_participants.handicap_strokes` + roster (`side_a`/`side_b`), so
+   `matches.setHandicap` and `matches.assignPlayer` retrigger the recompute
+   (`computeMatchPlayResults` + client query invalidation) exactly as a score
+   entry does. **Freeze boundary:** recompute in-progress matches only — pass
+   `computeMatchPlayResults(..., { skipComplete: true })` so a `complete`/frozen
+   result is never rewritten by a late edit (`finish` omits the flag → processes
+   all). The tell to watch for: "X is derived from {A, B, C}" but the code only
+   re-derives on a change to A.
 
 ## Guest → real-user conversion (auth)
 
