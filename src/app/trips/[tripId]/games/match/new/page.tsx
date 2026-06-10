@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, Flag, Lock, GripVertical, Plus, Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Lock, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -510,25 +510,39 @@ function NewGame({
       <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Singles match play</h1>
       <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>1v1 · low net wins each match</p>
 
-      <div className="mt-5 flex flex-col gap-2.5">
-        <StubRow label="Course" value="Add a course" />
+      <div className="mt-5 flex flex-col gap-3.5">
+        {/* Course — stub picker (Slice C); same field style as the tee time. */}
+        <div>
+          <FieldLabel>Course</FieldLabel>
+          <button type="button" className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm" style={pillStyle}>
+            <span style={{ color: "var(--color-bt-text-dim)" }}>Select a course</span>
+            <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
+          </button>
+        </div>
+
         <TimePicker
           label="First tee time"
           presets="tee"
           value={parseTime(teeTime)}
           onChange={(v) => setTeeTime(toTime24(v))}
         />
-        <div className="flex items-center justify-between" style={rowStyle}>
-          <span style={fieldTitle}>Matches</span>
-          <div className="flex items-center gap-3">
-            <Stepper dir="dec" disabled={value <= 1} onClick={() => setMatchCount(Math.max(1, value - 1))} />
-            <span style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)", minWidth: 18, textAlign: "center" }}>{value}</span>
-            <Stepper dir="inc" disabled={value >= maxMatches} onClick={() => setMatchCount(Math.min(maxMatches, value + 1))} />
+
+        {/* Matches — count stepper. */}
+        <div>
+          <FieldLabel>Matches to add</FieldLabel>
+          <div className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5" style={pillStyle}>
+            <span style={{ fontSize: 14, color: "var(--color-bt-text)" }}>
+              {value} {value === 1 ? "match" : "matches"}
+            </span>
+            <div className="flex items-center gap-2">
+              <Stepper dir="dec" disabled={value <= 1} onClick={() => setMatchCount(Math.max(1, value - 1))} />
+              <Stepper dir="inc" disabled={value >= maxMatches} onClick={() => setMatchCount(Math.min(maxMatches, value + 1))} />
+            </div>
           </div>
+          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 6, paddingLeft: 2 }}>
+            {crewCount} in the crew · up to {maxMatches} singles match{maxMatches === 1 ? "" : "es"}
+          </p>
         </div>
-        <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", padding: "0 2px" }}>
-          {crewCount} in the crew · up to {maxMatches} singles match{maxMatches === 1 ? "" : "es"}
-        </p>
       </div>
 
       <PrimaryButton label="Create game" onClick={onCreate} disabled={pending} />
@@ -855,23 +869,21 @@ function PlayerSelector({
 
 // ── Small shared bits ──
 
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  padding: "14px",
-  borderRadius: 12,
-  background: "var(--color-bt-card)",
-  border: "1px solid var(--color-bt-border)",
+// Card-raised pill — matches the TimePicker trigger (Course / Matches fields).
+const pillStyle: React.CSSProperties = {
+  background: "var(--color-bt-card-raised)",
+  borderColor: "var(--color-bt-border)",
 };
 
-const fieldTitle: React.CSSProperties = { fontSize: 15, color: "var(--color-bt-text-dim)" };
-
-function StubRow({ label, value }: { label: string; value: string }) {
+// Field label above a control — same style as the TimePicker's label.
+function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between" style={rowStyle}>
-      <span style={fieldTitle}>{label}</span>
-      <span style={{ fontSize: 14, color: "var(--color-bt-text-dim)" }}>{value} ›</span>
-    </div>
+    <label
+      className="mb-1 block text-[11px] font-semibold uppercase tracking-wider"
+      style={{ color: "var(--color-bt-text-dim)" }}
+    >
+      {children}
+    </label>
   );
 }
 
