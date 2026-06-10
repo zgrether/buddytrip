@@ -44,11 +44,16 @@ interface GameResultRow {
 
 export async function computeMatchPlayResults(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  opts?: { skipComplete?: boolean }
 ): Promise<MatchOutcome[]> {
+  // Freeze boundary: incremental re-derives (setHandicap / assignPlayer) pass
+  // skipComplete so a finished match's recorded result is never rewritten by a
+  // late input edit. `finish` passes nothing → processes every match.
+  const skipComplete = opts?.skipComplete ?? false;
   const { data: matches } = await supabase
     .from("game_matches")
-    .select("id, side_a, side_b")
+    .select("id, side_a, side_b, status")
     .eq("game_id", gameId);
 
   // user_id → handicap strokes (null = 0).
@@ -77,11 +82,14 @@ export async function computeMatchPlayResults(
 
   const outcomes: MatchOutcome[] = [];
   const resultRows: GameResultRow[] = [];
+  const processedEntities: string[] = [];
 
   for (const m of matches ?? []) {
+    if (skipComplete && m.status === "complete") continue; // frozen — leave as-is
     const a = m.side_a as SideRef | null;
     const b = m.side_b as SideRef | null;
     if (!a?.id || !b?.id) continue; // singles needs both sides set
+    processedEntities.push(a.id, b.id);
 
     const decided = buildDecided(
       gross.get(a.id) ?? {},
@@ -119,7 +127,15 @@ export async function computeMatchPlayResults(
     );
   }
 
-  await supabase.from("game_results").delete().eq("game_id", gameId);
+  // Replace game_results for the processed sides only — when skipComplete, a
+  // frozen match's rows are left intact; otherwise the whole game is rewritten.
+  if (skipComplete) {
+    if (processedEntities.length > 0) {
+      await supabase.from("game_results").delete().eq("game_id", gameId).in("entity_id", processedEntities);
+    }
+  } else {
+    await supabase.from("game_results").delete().eq("game_id", gameId);
+  }
   if (resultRows.length > 0) {
     await supabase.from("game_results").insert(resultRows);
   }

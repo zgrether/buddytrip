@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { computeMatchPlayResults } from "../lib/matchPlay";
 
 /**
  * matches — singles match-play setup + read (Slice B).
@@ -197,6 +198,10 @@ export const matchesRouter = router({
         { onConflict: "game_id,user_id", ignoreDuplicates: true }
       );
 
+      // Roster is a recompute INPUT — re-derive every match touched (the
+      // destination and any vacated match), in-progress only.
+      await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
+
       const { data } = await ctx.supabase
         .from("game_matches")
         .select("*")
@@ -254,6 +259,9 @@ export const matchesRouter = router({
           .eq("game_id", input.gameId)
           .eq("user_id", other);
       }
+      // Handicap is a recompute INPUT — re-derive in-progress matches so existing
+      // hole results reflect the new strokes (a frozen/complete match is skipped).
+      await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
       return { ok: true };
     }),
 

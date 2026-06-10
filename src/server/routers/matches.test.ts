@@ -289,4 +289,58 @@ describe("match-play results — computeMatchPlayResults via games.finish", () =
     const { data } = await ctx.admin.from("game_matches").select("id").eq("game_id", gameId).limit(1).single();
     return (data as { id: string }).id;
   }
+
+  async function positionOf(gameId: string, entityId: string): Promise<number | undefined> {
+    const { data } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, position")
+      .eq("game_id", gameId);
+    return (data as { entity_id: string; position: number }[]).find((r) => r.entity_id === entityId)?.position;
+  }
+
+  it("editing a handicap on an in-progress match re-derives its hole results", async () => {
+    const gameId = await freshGame("Handicap re-derive");
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+    const matchId = await firstMatchId(gameId);
+    // Hole 1: owner 5, member 4 → with no strokes, member wins the hole.
+    await enter(gameId, owner, member, { 1: 5 }, { 1: 4 });
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientUserId: member, strokes: 0 });
+    expect(await positionOf(gameId, member)).toBe(1); // member leads
+    expect(await positionOf(gameId, owner)).toBe(2);
+
+    // Give OWNER a stroke on hole 1 (fallback) → owner net 4 = member 4 → halved.
+    // The previously-shown member win must NOT persist — the result re-derives.
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientUserId: owner, strokes: 1 });
+    expect(await positionOf(gameId, owner)).toBe(1); // all square now
+    expect(await positionOf(gameId, member)).toBe(1);
+  });
+
+  it("a late handicap edit does NOT rewrite a complete (frozen) match", async () => {
+    const gameId = await freshGame("Freeze on edit");
+    await ctx.caller().matches.setPairings({
+      tripId,
+      gameId,
+      matches: [{ sideA: { type: "user", id: owner }, sideB: { type: "user", id: member }, matchNumber: 1 }],
+    });
+    const matchId = await firstMatchId(gameId);
+    // Close 3&2: owner wins 1-3, halves 4-16.
+    const aHalf: Record<number, number> = {};
+    const bHalf: Record<number, number> = {};
+    for (let h = 4; h <= 16; h++) {
+      aHalf[h] = 4;
+      bHalf[h] = 4;
+    }
+    await enter(gameId, owner, member, { 1: 4, 2: 4, 3: 4, ...aHalf }, { 1: 5, 2: 5, 3: 5, ...bHalf });
+    await ctx.caller().games.finish({ tripId, gameId }); // status → complete, a_win 3&2
+
+    // A big late handicap to member would change earlier holes — but the match
+    // is frozen, so its recorded result must be untouched.
+    await ctx.caller().matches.setHandicap({ tripId, gameId, matchId, recipientUserId: member, strokes: 18 });
+    const { data } = await ctx.admin.from("game_matches").select("result, margin, status").eq("id", matchId).single();
+    expect(data).toMatchObject({ result: "a_win", margin: "3&2", status: "complete" });
+  });
 });
