@@ -2,16 +2,26 @@
 
 import { useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Flag, Lock, Check, GripVertical, Plus, Minus } from "lucide-react";
+import { ChevronLeft, Flag, Lock, Check, GripVertical, Plus, Minus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
-import { strokeHoles } from "@/lib/matchPlay";
+import { Avatar } from "@/components/Avatar";
+import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
 import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
 import type { Participant, ScoreValues } from "@/components/games/types";
+
+/** "07:40" → "7:40 AM". Empty/invalid → "". */
+function formatTee(t: string | null | undefined): string {
+  if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return "";
+  const [h, m] = t.split(":").map(Number);
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MATCH_PLAY = "gtt_match_play_singles";
@@ -49,6 +59,7 @@ export default function NewMatchGamePage() {
 
   // New-game form
   const [matchCount, setMatchCount] = useState(2);
+  const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
   // Setup editing state
   const [draft, setDraft] = useState<DraftMatch[]>([]);
   const [selector, setSelector] = useState<{ matchIdx: number; slot: "a" | "b" } | null>(null);
@@ -62,6 +73,7 @@ export default function NewMatchGamePage() {
 
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
+  const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
 
   const createGame = trpc.games.create.useMutation();
   const setPairings = trpc.matches.setPairings.useMutation();
@@ -76,6 +88,22 @@ export default function NewMatchGamePage() {
     for (const c of crew.data ?? []) m.set(c.user_id, c.displayName ?? c.user?.name ?? "Player");
     return m;
   }, [crew.data]);
+
+  const avatarIconOf = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const c of crew.data ?? []) m.set(c.user_id, c.user?.avatar_icon ?? null);
+    return m;
+  }, [crew.data]);
+
+  // Loaded scores (for live match status on the matchup page + scoring resume).
+  const loadedValues = useMemo(() => {
+    const v: ScoreValues = {};
+    for (const e of scoresQ.data ?? []) {
+      if (e.value == null) continue;
+      (v[e.participant_id] ??= {})[e.unit_label] = e.value;
+    }
+    return v;
+  }, [scoresQ.data]);
 
   // Max singles matches = floor(players ÷ 2): the standalone pool is
   // undifferentiated, so any two of the crew pair up (Slice B). In a 2-team
@@ -111,7 +139,34 @@ export default function NewMatchGamePage() {
 
   function participant(id: string, fallbackColor?: string): Participant {
     const name = nameOf.get(id) ?? "Player";
-    return { id, name, initials: initialsOf(name), color: colorOf.get(id) ?? fallbackColor ?? PLAYER_COLORS[0] };
+    return {
+      id,
+      name,
+      initials: initialsOf(name),
+      color: colorOf.get(id) ?? fallbackColor ?? PLAYER_COLORS[0],
+      avatarIcon: avatarIconOf.get(id) ?? null,
+    };
+  }
+
+  // Persisted scores overlaid with this session's local edits (local wins), so
+  // the matchup cards' live status reflects scores entered before this load AND
+  // just now, without waiting on a refetch.
+  const mergedFor = (pid: string) => ({ ...(loadedValues[pid] ?? {}), ...(values[pid] ?? {}) });
+
+  // Live match status — null until the match is underway.
+  function liveStatusFor(g: MatchGroupData): { text: string; green: boolean } | null {
+    const decided = buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB);
+    if (decided.length === 0) return null;
+    const st = matchState(decided);
+    const first = (p: Participant) => p.name.split(/\s+/)[0];
+    if (st.over) {
+      if (st.up === 0) return { text: `Halved · ${st.margin}`, green: false };
+      const winner = st.leader === "A" ? g.a : g.b;
+      return { text: `${first(winner)} · ${st.margin}`, green: true };
+    }
+    if (st.up === 0) return { text: `All square · thru ${st.thru}`, green: false };
+    const leader = st.leader === "A" ? g.a : g.b;
+    return { text: `${first(leader)} ${st.up} UP · thru ${st.thru}`, green: true };
   }
 
   // Derive the screen from server state; manual transitions take precedence.
@@ -147,7 +202,12 @@ export default function NewMatchGamePage() {
   // ── Actions ──────────────────────────────────────────────────────────
   async function handleCreate() {
     if (!tripId) return;
-    const g = await createGame.mutateAsync({ tripId, gameTypeId: MATCH_PLAY, name: "Singles Match Play" });
+    const g = await createGame.mutateAsync({
+      tripId,
+      gameTypeId: MATCH_PLAY,
+      name: "Singles Match Play",
+      teeTime: teeTime || null,
+    });
     setGameId(g.id);
     const count = Math.min(Math.max(1, matchCount), maxMatches);
     setDraft(Array.from({ length: count }, (_, i) => ({ matchNumber: i + 1, a: null, b: null, handicap: 0 })));
@@ -320,6 +380,8 @@ export default function NewMatchGamePage() {
           setMatchCount={setMatchCount}
           maxMatches={maxMatches}
           crewCount={crewCount}
+          teeTime={teeTime}
+          setTeeTime={setTeeTime}
           onCreate={handleCreate}
           pending={createGame.isPending}
           canEdit={canEdit}
@@ -337,7 +399,7 @@ export default function NewMatchGamePage() {
           setDraft={setDraft}
           nameOf={nameOf}
           colorOf={colorOf}
-          crew={(crew.data ?? []).map((c) => c.user_id)}
+          avatarIconOf={avatarIconOf}
           openSelector={(matchIdx, slot) => setSelector({ matchIdx, slot })}
           onSave={saveMatchups}
           saving={setPairings.isPending || setHandicap.isPending}
@@ -348,6 +410,8 @@ export default function NewMatchGamePage() {
         <ReadyToCompete
           draft={draft.length ? draft : serverDraftFrom(serverMatches, handicapOf)}
           nameOf={nameOf}
+          colorOf={colorOf}
+          avatarIconOf={avatarIconOf}
           onEdit={startSetup}
           onActivate={handleActivate}
           activating={activate.isPending}
@@ -359,7 +423,14 @@ export default function NewMatchGamePage() {
           groups={groups}
           myId={me?.id}
           published={published}
-          onEnter={() => go("score")}
+          teeLabel={formatTee(gameQ.data?.tee_time as string | null | undefined)}
+          canEdit={canEdit}
+          liveStatusFor={liveStatusFor}
+          onEdit={startSetup}
+          onEnter={() => {
+            setValues((v) => (Object.keys(v).length ? v : loadedValues));
+            go("score");
+          }}
         />
       )}
 
@@ -371,6 +442,7 @@ export default function NewMatchGamePage() {
           draft={draft}
           crew={(crew.data ?? []).map((c) => c.user_id)}
           nameOf={nameOf}
+          avatarIconOf={avatarIconOf}
           onPick={(userId) => {
             setDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, userId));
             setSelector(null);
@@ -417,6 +489,8 @@ function NewGame({
   setMatchCount,
   maxMatches,
   crewCount,
+  teeTime,
+  setTeeTime,
   onCreate,
   pending,
   canEdit,
@@ -425,6 +499,8 @@ function NewGame({
   setMatchCount: (n: number) => void;
   maxMatches: number;
   crewCount: number;
+  teeTime: string;
+  setTeeTime: (t: string) => void;
   onCreate: () => void;
   pending: boolean;
   canEdit: boolean;
@@ -440,9 +516,27 @@ function NewGame({
 
       <div className="mt-5 flex flex-col gap-2.5">
         <StubRow label="Course" value="Add a course" />
-        <StubRow label="When" value="Add a time" />
         <div className="flex items-center justify-between" style={rowStyle}>
-          <span style={{ fontSize: 15, color: "var(--color-bt-text)" }}>Matches</span>
+          <span style={fieldTitle}>First tee time</span>
+          <input
+            type="time"
+            value={teeTime}
+            onChange={(e) => setTeeTime(e.target.value)}
+            aria-label="First tee time"
+            style={{
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              textAlign: "right",
+              fontSize: 15,
+              fontWeight: teeTime ? 600 : 400,
+              color: teeTime ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+              colorScheme: "dark",
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between" style={rowStyle}>
+          <span style={fieldTitle}>Matches</span>
           <div className="flex items-center gap-3">
             <Stepper dir="dec" disabled={value <= 1} onClick={() => setMatchCount(Math.max(1, value - 1))} />
             <span style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)", minWidth: 18, textAlign: "center" }}>{value}</span>
@@ -504,6 +598,7 @@ function MatchSetup({
   setDraft,
   nameOf,
   colorOf,
+  avatarIconOf,
   openSelector,
   onSave,
   saving,
@@ -513,7 +608,7 @@ function MatchSetup({
   setDraft: (fn: (prev: DraftMatch[]) => DraftMatch[]) => void;
   nameOf: Map<string, string>;
   colorOf: Map<string, string>;
-  crew: string[];
+  avatarIconOf: Map<string, string | null>;
   openSelector: (matchIdx: number, slot: "a" | "b") => void;
   onSave: () => void;
   saving: boolean;
@@ -549,13 +644,21 @@ function MatchSetup({
   function partFor(ref: SideRef): Participant | null {
     if (!ref?.id) return null;
     const name = nameOf.get(ref.id) ?? "Player";
-    return { id: ref.id, name, initials: initialsOf(name), color: colorOf.get(ref.id) ?? PLAYER_COLORS[0] };
+    return {
+      id: ref.id,
+      name,
+      initials: initialsOf(name),
+      color: colorOf.get(ref.id) ?? PLAYER_COLORS[0],
+      avatarIcon: avatarIconOf.get(ref.id) ?? null,
+    };
   }
 
   return (
     <div>
-      <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Set the matchups</h1>
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>Tap a slot to pick a player · drag to reorder.</p>
+      <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--color-bt-text)" }}>Ready to set the pairings?</h1>
+      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 4 }}>
+        {draft.length} {draft.length === 1 ? "match" : "matches"} · tap a slot to pick a player, drag to reorder
+      </p>
 
       <div className="mt-4 flex flex-col gap-3">
         {draft.map((d, i) => {
@@ -654,17 +757,26 @@ function MatchSetup({
 function ReadyToCompete({
   draft,
   nameOf,
+  colorOf,
+  avatarIconOf,
   onEdit,
   onActivate,
   activating,
 }: {
   draft: DraftMatch[];
   nameOf: Map<string, string>;
+  colorOf: Map<string, string>;
+  avatarIconOf: Map<string, string | null>;
   onEdit: () => void;
   onActivate: () => void;
   activating: boolean;
 }) {
   const set = draft.filter((d) => d.a?.id && d.b?.id).length;
+  const part = (ref: SideRef, fallbackColor: string): Participant | null => {
+    if (!ref?.id) return null;
+    const name = nameOf.get(ref.id) ?? "Player";
+    return { id: ref.id, name, initials: initialsOf(name), color: colorOf.get(ref.id) ?? fallbackColor, avatarIcon: avatarIconOf.get(ref.id) ?? null };
+  };
   return (
     <div>
       <div className="flex items-center gap-3" style={{ marginBottom: 18 }}>
@@ -673,27 +785,18 @@ function ReadyToCompete({
         </div>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>Ready to compete</div>
-          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{set} matches set · activate to announce to the crew</div>
+          <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{set} matches set · publish pairings to the crew</div>
         </div>
       </div>
 
       <div className="flex flex-col gap-2.5">
         {draft.map((d, i) => {
-          const aName = d.a?.id ? (nameOf.get(d.a.id) ?? "TBD") : "TBD";
-          const bName = d.b?.id ? (nameOf.get(d.b.id) ?? "TBD") : "TBD";
-          const recipient = d.handicap < 0 ? aName : d.handicap > 0 ? bName : null;
+          const a = part(d.a, PLAYER_COLORS[i * 2 % PLAYER_COLORS.length]);
+          const b = part(d.b, PLAYER_COLORS[(i * 2 + 1) % PLAYER_COLORS.length]);
+          const recipient = d.handicap < 0 ? a?.name : d.handicap > 0 ? b?.name : null;
           const holes = [...strokeHoles(Math.abs(d.handicap))].sort((x, y) => x - y);
-          return (
-            <div key={i} style={{ ...rowStyle, display: "block", padding: "12px 14px" }}>
-              <div className="flex items-center justify-between">
-                <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{aName} <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>vs</span> {bName}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>Match {i + 1}</span>
-              </div>
-              <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 4 }}>
-                {recipient ? `${recipient} gets ${Math.abs(d.handicap)} · holes ${holes.join(", ")}` : "Even match"}
-              </div>
-            </div>
-          );
+          const handicapLine = recipient ? `${recipient} gets ${Math.abs(d.handicap)} · holes ${holes.join(", ")}` : "Even match";
+          return <MatchupCard key={i} n={i + 1} a={a} b={b} handicapLine={handicapLine} />;
         })}
       </div>
 
@@ -702,7 +805,7 @@ function ReadyToCompete({
           Edit
         </button>
         <button onClick={onActivate} disabled={activating} className="flex-1 disabled:opacity-40" style={{ height: 50, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
-          Activate round
+          Publish pairings
         </button>
       </div>
     </div>
@@ -713,50 +816,58 @@ function ActivatedMember({
   groups,
   myId,
   published,
+  teeLabel,
+  canEdit,
+  liveStatusFor,
+  onEdit,
   onEnter,
 }: {
   groups: MatchGroupData[];
   myId: string | undefined;
   published: boolean;
+  teeLabel: string;
+  canEdit: boolean;
+  liveStatusFor: (g: MatchGroupData) => { text: string; green: boolean } | null;
+  onEdit: () => void;
   onEnter: () => void;
 }) {
   if (!published) return <MemberWait />;
+  const underway = groups.some((g) => liveStatusFor(g));
   return (
     <div>
-      <div className="flex items-center gap-2" style={{ padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)", marginBottom: 8 }}>
-        <Check size={16} style={{ color: "var(--color-bt-place-1-text)" }} />
-        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>Matchups are set</span>
+      <div className="flex items-start justify-between gap-3" style={{ marginBottom: 8 }}>
+        <div className="flex items-center gap-2" style={{ flex: 1, padding: "10px 14px", borderRadius: 12, background: "var(--color-bt-place-1-bg)", border: "1px solid rgba(34,197,94,0.25)" }}>
+          <Check size={16} style={{ color: "var(--color-bt-place-1-text)", flexShrink: 0 }} />
+          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
+            Matchups are set{teeLabel ? ` · tees off ${teeLabel}` : ""}
+          </span>
+        </div>
+        {canEdit && (
+          <button onClick={onEdit} className="flex items-center gap-1" style={{ height: 40, padding: "0 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text)", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+            Edit
+          </button>
+        )}
       </div>
-      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "0 0 14px 2px" }}>Tap a match to keep score.</p>
+      <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", margin: "0 0 14px 2px" }}>
+        {underway ? "Tap a match to keep scoring." : "Tap a match to keep score."}
+      </p>
 
       <div className="flex flex-col gap-2.5">
-        {groups.map((g) => {
+        {groups.map((g, i) => {
           const mine = g.a.id === myId || g.b.id === myId;
           const recipient = g.strokesA > 0 ? g.a : g.strokesB > 0 ? g.b : null;
           const n = g.strokesA > 0 ? g.strokesA : g.strokesB;
           return (
-            <button
+            <MatchupCard
               key={g.matchId}
+              n={i + 1}
+              a={g.a}
+              b={g.b}
+              mine={mine}
+              status={liveStatusFor(g)}
+              handicapLine={recipient ? `${recipient.name} gets ${n}` : "Even match"}
               onClick={onEnter}
-              className="flex w-full items-center justify-between gap-3 text-left transition-transform active:scale-[0.99]"
-              style={{
-                padding: "12px 14px",
-                borderRadius: 12,
-                background: mine ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-                border: `1px solid ${mine ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-              }}
-            >
-              <div className="min-w-0">
-                {mine && <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-bt-accent)", marginBottom: 4 }}>YOUR MATCH</div>}
-                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>
-                  {g.a.name} <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>vs</span> {g.b.name}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 3 }}>
-                  {recipient ? `${recipient.name} gets ${n}` : "Even match"}
-                </div>
-              </div>
-              <ChevronRight size={18} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-            </button>
+            />
           );
         })}
       </div>
@@ -770,6 +881,7 @@ function PlayerSelector({
   draft,
   crew,
   nameOf,
+  avatarIconOf,
   onPick,
   onClose,
 }: {
@@ -778,6 +890,7 @@ function PlayerSelector({
   draft: DraftMatch[];
   crew: string[];
   nameOf: Map<string, string>;
+  avatarIconOf: Map<string, string | null>;
   onPick: (userId: string) => void;
   onClose: () => void;
 }) {
@@ -798,7 +911,7 @@ function PlayerSelector({
         <div className="mt-2 flex flex-col gap-1.5">
           {available.length === 0 && <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Everyone&apos;s assigned.</span>}
           {available.map((id) => (
-            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} onClick={() => onPick(id)} />
+            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} onClick={() => onPick(id)} />
           ))}
         </div>
         {taken.length > 0 && (
@@ -806,7 +919,7 @@ function PlayerSelector({
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Already in a match</div>
             <div className="mt-2 flex flex-col gap-1.5">
               {taken.map((id) => (
-                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
+                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} avatarIcon={avatarIconOf.get(id) ?? null} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
               ))}
             </div>
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
@@ -830,10 +943,96 @@ const rowStyle: React.CSSProperties = {
   border: "1px solid var(--color-bt-border)",
 };
 
+const fieldTitle: React.CSSProperties = { fontSize: 15, color: "var(--color-bt-text-dim)" };
+
+const matchLabel: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "var(--color-bt-text-dim)",
+};
+
+/**
+ * The canonical match layout shared by setup (read), ready-to-compete, and the
+ * activated matchup list: MATCH n top-left (+ status / YOUR MATCH top-right),
+ * player A left-justified, player B right-justified with the `vs` centered,
+ * handicap line centered below. Tappable when `onClick` is given.
+ */
+function MatchupCard({
+  n,
+  a,
+  b,
+  handicapLine,
+  mine,
+  status,
+  onClick,
+}: {
+  n: number;
+  a: Participant | null;
+  b: Participant | null;
+  handicapLine: string;
+  mine?: boolean;
+  status?: { text: string; green: boolean } | null;
+  onClick?: () => void;
+}) {
+  const cardStyle: React.CSSProperties = {
+    padding: "12px 14px",
+    borderRadius: 12,
+    background: mine ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+    border: `1px solid ${mine ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+  };
+  const inner = (
+    <>
+      <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
+        <span style={matchLabel}>Match {n}</span>
+        {status ? (
+          <span style={{ fontSize: 11, fontWeight: 700, color: status.green ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
+            {status.text}
+          </span>
+        ) : mine ? (
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "var(--color-bt-accent)" }}>YOUR MATCH</span>
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between" style={{ gap: 8 }}>
+        <PlayerSide p={a} align="left" />
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>vs</span>
+        <PlayerSide p={b} align="right" />
+      </div>
+      <div className="text-center" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 10 }}>{handicapLine}</div>
+    </>
+  );
+  return onClick ? (
+    <button onClick={onClick} className="block w-full text-left transition-transform active:scale-[0.99]" style={cardStyle}>
+      {inner}
+    </button>
+  ) : (
+    <div style={cardStyle}>{inner}</div>
+  );
+}
+
+function PlayerSide({ p, align }: { p: Participant | null; align: "left" | "right" }) {
+  const dir = align === "right" ? "row-reverse" : "row";
+  if (!p) {
+    return (
+      <div className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: dir }}>
+        <span className="flex items-center justify-center" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>?</span>
+        <span style={{ fontSize: 15, color: "var(--color-bt-text-dim)" }}>TBD</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: dir }}>
+      <Avatar name={p.name} avatarIcon={p.avatarIcon} teamColor={p.color} sizePx={32} />
+      <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+    </div>
+  );
+}
+
 function StubRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between" style={rowStyle}>
-      <span style={{ fontSize: 15, color: "var(--color-bt-text)" }}>{label}</span>
+      <span style={fieldTitle}>{label}</span>
       <span style={{ fontSize: 14, color: "var(--color-bt-text-dim)" }}>{value} ›</span>
     </div>
   );
@@ -857,31 +1056,36 @@ function TbdChip() {
 }
 
 function Slot({ player, onTap, align }: { player: Participant | null; onTap: () => void; align?: "right" }) {
+  const dir = align === "right" ? "row-reverse" : "row";
   if (!player) {
+    // The plus + label live together inside one dashed pill.
     return (
-      <button onClick={onTap} className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: align === "right" ? "row-reverse" : "row" }}>
-        <span className="flex items-center justify-center" style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)", flexShrink: 0 }}>
-          <Plus size={15} />
-        </span>
-        <span style={{ fontSize: 14, color: "var(--color-bt-text-dim)" }}>Add player</span>
+      <button
+        onClick={onTap}
+        className="flex min-w-0 flex-1 items-center justify-center gap-1.5"
+        style={{ flexDirection: dir, height: 40, borderRadius: 10, border: "1.5px dashed var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}
+      >
+        <Plus size={15} />
+        <span style={{ fontSize: 14, fontWeight: 500 }}>Add player</span>
       </button>
     );
   }
   return (
-    <button onClick={onTap} className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: align === "right" ? "row-reverse" : "row" }}>
-      <span className="flex items-center justify-center" style={{ width: 32, height: 32, borderRadius: "50%", background: `${player.color}22`, border: `1.5px solid ${player.color}55`, color: player.color, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-        {player.initials}
-      </span>
+    <button onClick={onTap} className="flex min-w-0 flex-1 items-center gap-2" style={{ flexDirection: dir }}>
+      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={32} />
       <span style={{ fontSize: 15, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
     </button>
   );
 }
 
-function SelectorRow({ name, sub, dim, onClick }: { name: string; sub?: string; dim?: boolean; onClick: () => void }) {
+function SelectorRow({ name, avatarIcon, sub, dim, onClick }: { name: string; avatarIcon?: string | null; sub?: string; dim?: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center justify-between text-left" style={{ padding: "11px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dim ? 0.55 : 1 }}>
-      <span style={{ fontSize: 15, color: "var(--color-bt-text)" }}>{name}</span>
-      {sub && <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>{sub}</span>}
+    <button onClick={onClick} className="flex w-full items-center justify-between gap-2 text-left" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dim ? 0.55 : 1 }}>
+      <span className="flex min-w-0 items-center gap-2.5">
+        <Avatar name={name} avatarIcon={avatarIcon} sizePx={30} />
+        <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+      </span>
+      {sub && <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>{sub}</span>}
     </button>
   );
 }

@@ -22,6 +22,7 @@ export const gamesRouter = router({
         tripId: z.string(),
         gameTypeId: z.string(),
         name: z.string().max(200).optional(),
+        teeTime: z.string().max(5).nullable().optional(), // "HH:MM" 24h
       })
     )
     .use(requireTripRole("Organizer"))
@@ -35,6 +36,7 @@ export const gamesRouter = router({
         competition_id: null,
         game_type_id: input.gameTypeId,
         name: input.name ?? null,
+        tee_time: input.teeTime ?? null,
         status: "pending",
       });
       if (insertErr) {

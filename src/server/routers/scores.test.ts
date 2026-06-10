@@ -78,4 +78,12 @@ describe("scores router (Slice A — per-hole entry)", () => {
         .scores.upsertEntry({ tripId, gameId, participantId: ownerId, unitLabel: "2", value: 4 })
     ).rejects.toThrow();
   });
+
+  it("listByGame returns the game's entries to any member", async () => {
+    await ctx
+      .callerAs("member")
+      .scores.upsertEntry({ tripId, gameId, participantId: memberId, unitLabel: "3", value: 5 });
+    const entries = await ctx.callerAs("member").scores.listByGame({ tripId, gameId });
+    expect(entries.some((e) => e.participant_id === memberId && e.unit_label === "3" && e.value === 5)).toBe(true);
+  });
 });
