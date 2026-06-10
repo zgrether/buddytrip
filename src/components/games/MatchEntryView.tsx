@@ -4,14 +4,14 @@ import { useState } from "react";
 import { ChevronLeft, Grid3x3 } from "lucide-react";
 import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
 import { StrokeKeypad } from "./StrokeKeypad";
-import { MatchStrip } from "./MatchStrip";
+import { MatchCard } from "./MatchCard";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import type { ScoreUnit, Participant, ScoreValues } from "./types";
 
 /**
  * MatchEntryView — the per-hole entry surface for singles match play (Slice B).
  * It is the Slice A entry view with three things layered on (the only deltas):
- *   1. a MatchStrip pinned per match group,
+ *   1. a MatchCard pinned per match group,
  *   2. a stroke pip + gross/net subtitle on the receiving player's cell,
  *   3. rows GROUPED by match (one strip + its two rows; repeats for a foursome).
  *
@@ -193,12 +193,10 @@ export function MatchEntryView({
           const loser = st.leader === "A" ? m.b : st.leader === "B" ? m.a : null;
           return (
             <div key={m.matchId} style={{ marginTop: 12 }}>
-              <MatchStrip
+              <MatchCard
                 a={m.a}
                 b={m.b}
-                decided={decided}
-                strokesA={m.strokesA}
-                strokesB={m.strokesB}
+                results={decided}
                 label={m.label}
                 holeCount={units.length}
               />

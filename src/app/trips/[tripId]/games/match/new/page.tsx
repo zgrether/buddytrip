@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
-import { MatchStrip } from "@/components/games/MatchStrip";
+import { MatchCard } from "@/components/games/MatchCard";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { Avatar } from "@/components/Avatar";
@@ -825,12 +825,10 @@ function Overview({
               key={g.matchId}
               style={mine ? { borderRadius: 13, padding: 1.5, background: "var(--color-bt-accent-border)" } : undefined}
             >
-              <MatchStrip
+              <MatchCard
                 a={g.a}
                 b={g.b}
-                decided={decideds[i]}
-                strokesA={g.strokesA}
-                strokesB={g.strokesB}
+                results={decideds[i]}
                 label={`Match ${i + 1}`}
                 onClick={() => onOpenMatch(g.matchId)}
               />
