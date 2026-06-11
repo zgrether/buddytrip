@@ -102,9 +102,10 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
   };
 
   return (
-    <div className="relative h-full" style={{ background: "var(--color-bt-base)" }}>
-      <div className="h-full overflow-x-auto">
-        <div style={{ minWidth: "max-content" }}>
+    <div className="flex h-full flex-col" style={{ background: "var(--color-bt-base)" }}>
+      <div className="relative min-h-0 flex-1">
+        <div className="h-full overflow-x-auto">
+          <div style={{ minWidth: "max-content" }}>
           {/* Header */}
           <div
             className="flex"
@@ -190,14 +191,20 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
               </div>
             );
           })}
-          {hasPar && <Legend />}
+          </div>
         </div>
+        {/* Right-edge fade signalling more columns */}
+        <div
+          className="pointer-events-none absolute right-0 top-0 h-full"
+          style={{ width: 24, background: "linear-gradient(to right, transparent, var(--color-bt-base))" }}
+        />
       </div>
-      {/* Right-edge fade signalling more columns */}
-      <div
-        className="pointer-events-none absolute right-0 top-0 h-full"
-        style={{ width: 24, background: "linear-gradient(to right, transparent, var(--color-bt-base))" }}
-      />
+      {/* Legend is pinned below the scroller — it does NOT scroll with the grid. */}
+      {hasPar && (
+        <div className="shrink-0" style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}>
+          <Legend />
+        </div>
+      )}
     </div>
   );
 }
