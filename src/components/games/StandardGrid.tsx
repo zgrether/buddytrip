@@ -111,22 +111,22 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
           <div
             className="flex"
             style={{
-              height: 36,
+              height: 38,
               position: "sticky",
               top: 0,
               zIndex: 2,
-              background: "var(--color-bt-card)",
+              background: "var(--color-bt-card-raised)",
               borderBottom: "1px solid var(--color-bt-border)",
             }}
           >
-            <div className="flex items-center" style={{ ...nameCell, padding: "0 10px" }}>
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
+            <div className="flex items-center" style={{ ...nameCell, background: "var(--color-bt-card-raised)", padding: "0 10px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
                 Hole
               </span>
             </div>
             {units.map((u) => (
               <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{u.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>{u.label}</span>
               </div>
             ))}
             {/* Out / In subtotals + Total as trailing columns. */}
@@ -135,17 +135,17 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
             <HeaderSub label="Total" wide />
           </div>
 
-          {/* Par row — same surface as the Hole header (card). */}
+          {/* Par row — same surface as the Hole header. */}
           {hasPar && (
-            <div className="flex" style={{ height: 28, background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-              <div className="flex items-center" style={{ ...nameCell, padding: "0 10px" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
+            <div className="flex" style={{ height: 30, background: "var(--color-bt-card-raised)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+              <div className="flex items-center" style={{ ...nameCell, background: "var(--color-bt-card-raised)", padding: "0 10px" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
                   Par
                 </span>
               </div>
               {units.map((u) => (
                 <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
-                  <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{u.par}</span>
+                  <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{u.par}</span>
                 </div>
               ))}
               {hasSections && <ParSub value={parSum(front)} />}
@@ -156,15 +156,15 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
 
           {/* Stroke-index row — no surface (sits on base), smaller + dimmer. */}
           {hasIndex && (
-            <div className="flex" style={{ height: 24, background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+            <div className="flex" style={{ height: 26, background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
               <div className="flex items-center" style={{ ...nameCell, background: "var(--color-bt-base)", padding: "0 10px" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
                   Index
                 </span>
               </div>
               {units.map((u) => (
                 <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
-                  <span style={{ fontSize: 10, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.strokeIndex}</span>
+                  <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.strokeIndex}</span>
                 </div>
               ))}
               {hasSections && <IndexSub />}
@@ -186,7 +186,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
                   >
                     {p.initials}
                   </span>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.name}
                   </span>
                 </div>
