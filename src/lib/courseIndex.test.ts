@@ -115,6 +115,14 @@ describe("buildScorecardSchema", () => {
     expect(s.scoring?.sections?.[0].units).toHaveLength(9);
   });
 
+  it("fills a sequential index when none is provided (stroke index off)", () => {
+    const par = Array(18).fill(4);
+    const s = buildScorecardSchema(template, par, [], 18);
+    expect(s.units.metadata?.handicap_index).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+    const s9 = buildScorecardSchema(template, Array(9).fill(4), undefined, 9);
+    expect(s9.units.metadata?.handicap_index).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
   it("does not mutate the template", () => {
     buildScorecardSchema(template, Array(18).fill(3), Array.from({ length: 18 }, (_, i) => i + 1), 18);
     expect(template.units.metadata?.par).toEqual(Array(18).fill(4));

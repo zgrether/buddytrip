@@ -29,7 +29,8 @@ export const coursesRouter = router({
         location: z.string().trim().max(200).optional(),
         holeCount: z.union([z.literal(9), z.literal(18)]),
         par: z.array(z.number().int().min(3).max(7)),
-        handicapIndex: z.array(z.number().int().min(1)),
+        handicapIndex: z.array(z.number().int().min(1)).optional(),
+        hasStrokeIndex: z.boolean().optional(),
         teeSets: z.array(teeSetSchema).max(12).optional(),
         source: z.enum(["manual", "golfapi"]).optional(),
         providerId: z.string().max(120).optional(),
@@ -37,19 +38,22 @@ export const coursesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const n = input.holeCount;
-      if (input.par.length !== n || input.handicapIndex.length !== n) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `par and handicapIndex must each have ${n} entries`,
-        });
+      const hasIndex = input.hasStrokeIndex ?? true;
+      if (input.par.length !== n) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `par must have ${n} entries` });
       }
-      // Permutation gate — never persist a course with a broken index.
-      const check = validateStrokeIndex(input.handicapIndex, n);
-      if (!check.valid) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Stroke index must be a complete permutation of 1..N (no gaps or duplicates)",
-        });
+      // Permutation gate — only when the course HAS an index; never persist a
+      // broken one. Index-off courses store an empty index (net unavailable).
+      if (hasIndex) {
+        if ((input.handicapIndex ?? []).length !== n) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `handicapIndex must have ${n} entries` });
+        }
+        if (!validateStrokeIndex(input.handicapIndex!, n).valid) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Stroke index must be a complete permutation of 1..N (no gaps or duplicates)",
+          });
+        }
       }
 
       const id = crypto.randomUUID();
@@ -59,7 +63,8 @@ export const coursesRouter = router({
         location: input.location ?? null,
         hole_count: n,
         par: input.par,
-        handicap_index: input.handicapIndex,
+        handicap_index: hasIndex ? input.handicapIndex : [],
+        has_stroke_index: hasIndex,
         tee_sets: input.teeSets ?? [],
         source: input.source ?? "manual",
         provider_id: input.providerId ?? null,

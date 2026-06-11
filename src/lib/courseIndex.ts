@@ -110,17 +110,21 @@ const range = (from: number, to: number): string[] =>
 export function buildScorecardSchema(
   template: ScorecardSchema,
   par: number[],
-  handicapIndex: number[],
+  handicapIndex: number[] | null | undefined,
   holeCount: number
 ): ScorecardSchema {
   const next = JSON.parse(JSON.stringify(template)) as ScorecardSchema;
   const labels = range(1, holeCount);
+  // A course without a real index (stroke index off) snapshots a sequential
+  // 1..N index of the right length — net falls back to hole order; it never
+  // leaves a stale 18-long template index on a 9-hole game.
+  const index = handicapIndex?.length ? handicapIndex : Array.from({ length: holeCount }, (_, i) => i + 1);
 
   next.units = {
     ...next.units,
     count: holeCount,
     labels,
-    metadata: { ...(next.units.metadata ?? {}), par, handicap_index: handicapIndex },
+    metadata: { ...(next.units.metadata ?? {}), par, handicap_index: index },
   };
 
   if (next.scoring) {

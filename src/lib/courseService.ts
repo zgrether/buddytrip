@@ -42,6 +42,26 @@ export interface CourseDetail {
   holes: CourseHole[];
 }
 
+// Well-known tee names → a display color dot. Arbitrary/free-text names fall
+// back to the neutral dim token (safe lookup — never throws on unknown names).
+const TEE_DOT: Record<string, string> = {
+  black: "#1f2937",
+  blue: "#3b82f6",
+  white: "#e5e7eb",
+  gold: "#f59e0b",
+  yellow: "#eab308",
+  red: "#ef4444",
+  green: "#22c55e",
+  silver: "#cbd5e1",
+  member: "#a855f7",
+  championship: "#1f2937",
+};
+export function teeColor(name: string): string {
+  const key = name.trim().toLowerCase();
+  for (const k of Object.keys(TEE_DOT)) if (key.includes(k)) return TEE_DOT[k];
+  return "var(--color-bt-text-dim)";
+}
+
 /** Search the provider for courses. Returns [] on any failure (→ manual entry). */
 export async function searchCourses(
   query: string,

@@ -52,6 +52,25 @@ describe("courses router — global library", () => {
     ).rejects.toThrow(/18 entries/i);
   });
 
+  it("saves an index-off course (no handicapIndex) and applies a sequential snapshot", async () => {
+    const course = await ctx.caller().courses.create({
+      name: "Gross Only GC",
+      holeCount: 18,
+      par: PAR,
+      hasStrokeIndex: false,
+    });
+    courseIds.push(course.id as string);
+    expect(course.has_stroke_index).toBe(false);
+    expect(course.handicap_index).toEqual([]);
+
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Gross" });
+    const updated = await ctx.caller().games.applyCourse({ tripId, gameId: game.id as string, courseId: course.id as string });
+    const schema = updated!.scorecard_schema as { units: { metadata: { par: number[]; handicap_index: number[] } } };
+    expect(schema.units.metadata.par).toEqual(PAR);
+    // No real index → sequential 1..18 snapshot (net falls back to hole order).
+    expect(schema.units.metadata.handicap_index).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+  });
+
   it("list + getById surface a saved course", async () => {
     const list = await ctx.caller().courses.list({ limit: 50 });
     expect(list.some((c: { id: string }) => c.id === courseIds[0])).toBe(true);

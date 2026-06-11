@@ -190,17 +190,19 @@ export const gamesRouter = router({
 
       const { data: course } = await ctx.supabase
         .from("courses")
-        .select("hole_count, par, handicap_index")
+        .select("hole_count, par, handicap_index, has_stroke_index")
         .eq("id", input.courseId)
         .maybeSingle();
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
 
       const holeCount = course.hole_count as number;
       const par = course.par as number[];
-      const handicapIndex = course.handicap_index as number[];
-      // Defense in depth: never snapshot a broken index even if a row predates
-      // the create-time gate.
-      if (!validateStrokeIndex(handicapIndex, holeCount).valid) {
+      const hasIndex = (course.has_stroke_index as boolean | null) ?? true;
+      // Index-off course → snapshot par only (buildScorecardSchema fills a
+      // sequential index; net falls back to hole order). Index-on → validate it
+      // as defense in depth before snapshotting.
+      const handicapIndex = hasIndex ? (course.handicap_index as number[]) : null;
+      if (hasIndex && !validateStrokeIndex(handicapIndex!, holeCount).valid) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Course stroke index is not a valid permutation — fix it before use.",

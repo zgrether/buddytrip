@@ -1,30 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Search, Plus, X, AlertTriangle, MapPin, PencilLine } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Search, Plus, X, AlertTriangle, MapPin, PencilLine, GripVertical } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { HoleEditor } from "./HoleEditor";
+import { HoleEditor, Keypad } from "./HoleEditor";
 import {
   searchCourses,
   getCourseDetail,
   parFromDetail,
   indexFromDetail,
   teeSetsFromDetail,
+  teeColor,
   type CourseSummary,
 } from "@/lib/courseService";
 import { validateStrokeIndex, applyStrokeIndexSwap, type IndexEntry } from "@/lib/courseIndex";
 import { NavArrow, HoleProgress } from "../entryChrome";
 
 /**
- * CoursePicker — the Course Selector/Builder flow (Slice C part 2). A full-screen
- * overlay launched from the new-game "Select a course" field. Two paths, one
- * editor: lookup (search → results → confirm) and manual (new course → stepped
- * per-hole entry), both producing a saved global `courses` row; on apply it
- * hands the parent { id, name } to snapshot onto the game (games.applyCourse).
+ * CoursePicker — the Course Selector/Builder flow (Slice C + addendum C-1). A
+ * full-screen overlay launched from the new-game "Select a course" field. Two
+ * paths, one editor: lookup (search → results → confirm) and manual (new course
+ * → stepped per-hole entry), both producing a saved global `courses` row; on
+ * apply it hands the parent { id, name } to snapshot onto the game.
  *
- * The stroke index is enforced as a valid 1..N permutation via swap-on-edit, and
- * `Use this course` / `Save` is blocked until complete — including dirty lookup
- * data, where golfapi's missing hcp lands as null and is flagged here.
+ * Stroke index is optional (a creation toggle); when on it's enforced as a valid
+ * 1..N permutation via the 18-cell grid's swap-on-pick, and Use/Save is blocked
+ * until complete. Per-hole controls are tap-first: par segmented, yards keypad,
+ * index grid — no ± steppers.
  */
 
 type TeeSet = { name: string; yards: (number | null)[] };
@@ -34,6 +36,7 @@ interface Draft {
   holeCount: 9 | 18;
   par: number[];
   index: IndexEntry[];
+  hasStrokeIndex: boolean;
   teeSets: TeeSet[];
   source: "manual" | "golfapi";
   providerId?: string;
@@ -50,6 +53,7 @@ function blankDraft(holeCount: 9 | 18): Draft {
     holeCount,
     par: Array(holeCount).fill(4),
     index: Array(holeCount).fill(null),
+    hasStrokeIndex: true,
     teeSets: [blankTee(holeCount, "White")],
     source: "manual",
   };
@@ -68,16 +72,13 @@ export function CoursePicker({
   const [searching, setSearching] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => blankDraft(18));
   const [activeTee, setActiveTee] = useState(0);
-  const [hole, setHole] = useState(1); // 1-based, entry screen
-  const [editingHole, setEditingHole] = useState<number | null>(null); // confirm-edit, 1-based
+  const [hole, setHole] = useState(1);
+  const [editingHole, setEditingHole] = useState<number | null>(null);
   const [pulling, setPulling] = useState(false);
 
   const recent = trpc.courses.list.useQuery({ limit: 8 });
   const createCourse = trpc.courses.create.useMutation();
 
-  // Debounced provider search. All setState runs inside the timeout/async
-  // callback (never synchronously in the effect body); stale results for a
-  // too-short query are hidden by `showResults` in the render, not cleared here.
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) return;
@@ -100,12 +101,18 @@ export function CoursePicker({
     () => validateStrokeIndex(draft.index, draft.holeCount),
     [draft.index, draft.holeCount]
   );
+  const indexComplete = !draft.hasStrokeIndex || validation.valid;
+  const missingCount = draft.hasStrokeIndex
+    ? validation.unsetHoles.length + validation.duplicateHoles.length + validation.outOfRangeHoles.length
+    : 0;
   const flagged = useMemo(
-    () => new Set([...validation.unsetHoles, ...validation.duplicateHoles, ...validation.outOfRangeHoles]),
-    [validation]
+    () =>
+      draft.hasStrokeIndex
+        ? new Set([...validation.unsetHoles, ...validation.duplicateHoles, ...validation.outOfRangeHoles])
+        : new Set<number>(),
+    [validation, draft.hasStrokeIndex]
   );
 
-  // ── Draft mutators ────────────────────────────────────────────────────
   const setPar = (h: number, value: number) =>
     setDraft((d) => ({ ...d, par: d.par.map((p, i) => (i === h - 1 ? value : p)) }));
   const setIndex = (h: number, value: number) =>
@@ -118,15 +125,12 @@ export function CoursePicker({
       ),
     }));
 
-  // ── Pull a lookup result → confirm ──────────────────────────────────────
   async function pull(summary: CourseSummary) {
     setPulling(true);
     const detail = await getCourseDetail(summary.id);
     setPulling(false);
     if (!detail || detail.holes.length === 0) {
-      // No usable scorecard — fall back to manual, prefilled with what we know.
-      const d = blankDraft(18);
-      setDraft({ ...d, name: summary.name, location: summary.location });
+      setDraft({ ...blankDraft(18), name: summary.name, location: summary.location });
       setActiveTee(0);
       setHole(1);
       setScreen("new");
@@ -140,6 +144,7 @@ export function CoursePicker({
       holeCount,
       par: parFromDetail(detail).slice(0, holeCount),
       index: indexFromDetail(detail).slice(0, holeCount),
+      hasStrokeIndex: true,
       teeSets: tees.length ? tees.map((t) => ({ ...t, yards: t.yards.slice(0, holeCount) })) : [blankTee(holeCount, "White")],
       source: "golfapi",
       providerId: detail.externalId,
@@ -148,15 +153,15 @@ export function CoursePicker({
     setScreen("confirm");
   }
 
-  // ── Save (shared by confirm + manual entry) ──────────────────────────────
   async function save() {
-    if (!validation.valid || !draft.name.trim()) return;
+    if (!indexComplete || !draft.name.trim()) return;
     const course = await createCourse.mutateAsync({
       name: draft.name.trim(),
       location: draft.location.trim() || undefined,
       holeCount: draft.holeCount,
       par: draft.par,
-      handicapIndex: draft.index as number[], // valid ⇒ all numbers
+      handicapIndex: draft.hasStrokeIndex ? (draft.index as number[]) : undefined,
+      hasStrokeIndex: draft.hasStrokeIndex,
       teeSets: draft.teeSets,
       source: draft.source,
       providerId: draft.providerId,
@@ -193,6 +198,7 @@ export function CoursePicker({
           draft={draft}
           hole={editingHole}
           activeTee={activeTee}
+          setActiveTee={setActiveTee}
           flagged={flagged}
           setPar={setPar}
           setIndex={setIndex}
@@ -220,7 +226,8 @@ export function CoursePicker({
           draft={draft}
           activeTee={activeTee}
           setActiveTee={setActiveTee}
-          validation={validation}
+          indexComplete={indexComplete}
+          missingCount={missingCount}
           flagged={flagged}
           saving={createCourse.isPending}
           onEditHole={(h) => setEditingHole(h)}
@@ -235,8 +242,8 @@ export function CoursePicker({
           setHole={setHole}
           activeTee={activeTee}
           setActiveTee={setActiveTee}
-          validation={validation}
-          flagged={flagged}
+          indexComplete={indexComplete}
+          missingCount={missingCount}
           saving={createCourse.isPending}
           setPar={setPar}
           setIndex={setIndex}
@@ -253,7 +260,6 @@ interface RecentCourse {
   name: string;
   location: string | null;
   hole_count: number;
-  par: number[];
 }
 
 // ── Search ──────────────────────────────────────────────────────────────────
@@ -280,7 +286,7 @@ function SearchScreen({
 }) {
   const showResults = query.trim().length >= 2;
   return (
-    <div className="flex-1 overflow-y-auto" style={{ padding: "16px" }}>
+    <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
       <div className="flex items-center gap-2 rounded-xl border px-3" style={{ background: "var(--color-bt-card-raised)", borderColor: "var(--color-bt-border)" }}>
         <Search size={16} style={{ color: "var(--color-bt-text-dim)" }} />
         <input
@@ -298,22 +304,9 @@ function SearchScreen({
       {showResults ? (
         <div className="mt-4 flex flex-col gap-2">
           {searching && <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Searching…</p>}
-          {!searching && results.length === 0 && (
-            <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No matches.</p>
-          )}
+          {!searching && results.length === 0 && <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No matches.</p>}
           {results.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => onPick(c)}
-              className="flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left"
-              style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-            >
-              <span className="min-w-0">
-                <span className="block truncate" style={{ fontSize: 15, color: "var(--color-bt-text)" }}>{c.name}</span>
-                {c.location && <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>{c.location}</span>}
-              </span>
-              <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-            </button>
+            <CourseRow key={c.id} name={c.name} sub={c.location} onClick={() => onPick(c)} />
           ))}
         </div>
       ) : (
@@ -322,27 +315,13 @@ function SearchScreen({
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Recent courses</p>
             <div className="flex flex-col gap-2">
               {recent.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => onPickRecent(c)}
-                  className="flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left"
-                  style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate" style={{ fontSize: 15, color: "var(--color-bt-text)" }}>{c.name}</span>
-                    <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
-                      {[c.location, `${c.hole_count} holes`].filter(Boolean).join(" · ")}
-                    </span>
-                  </span>
-                  <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
-                </button>
+                <CourseRow key={c.id} name={c.name} sub={[c.location, `${c.hole_count} holes`].filter(Boolean).join(" · ")} onClick={() => onPickRecent(c)} />
               ))}
             </div>
           </div>
         )
       )}
 
-      {/* Manual entry — first-class, always present (not an error state). */}
       <button
         onClick={onManual}
         className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3"
@@ -358,12 +337,25 @@ function SearchScreen({
   );
 }
 
+function CourseRow({ name, sub, onClick }: { name: string; sub?: string | null; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left" style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}>
+      <span className="min-w-0">
+        <span className="block truncate" style={{ fontSize: 15, color: "var(--color-bt-text)" }}>{name}</span>
+        {sub && <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>{sub}</span>}
+      </span>
+      <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+    </button>
+  );
+}
+
 // ── Confirm (lookup) ──────────────────────────────────────────────────────────
 function ConfirmScreen({
   draft,
   activeTee,
   setActiveTee,
-  validation,
+  indexComplete,
+  missingCount,
   flagged,
   saving,
   onEditHole,
@@ -372,7 +364,8 @@ function ConfirmScreen({
   draft: Draft;
   activeTee: number;
   setActiveTee: (i: number) => void;
-  validation: ReturnType<typeof validateStrokeIndex>;
+  indexComplete: boolean;
+  missingCount: number;
   flagged: Set<number>;
   saving: boolean;
   onEditHole: (h: number) => void;
@@ -390,30 +383,15 @@ function ConfirmScreen({
           </div>
         )}
 
-        {/* Tee chips */}
         {draft.teeSets.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto">
             {draft.teeSets.map((t, i) => (
-              <button
-                key={t.name + i}
-                onClick={() => setActiveTee(i)}
-                style={{
-                  padding: "5px 12px",
-                  borderRadius: 9999,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  border: `1px solid ${i === activeTee ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-                  background: i === activeTee ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-                  color: i === activeTee ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                }}
-              >
-                {t.name}
-              </button>
+              <TeeChip key={i} name={t.name || `Tee ${i + 1}`} on={i === activeTee} onClick={() => setActiveTee(i)} />
             ))}
           </div>
         )}
 
-        {!validation.valid && (
+        {draft.hasStrokeIndex && !indexComplete && (
           <div className="mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5" style={{ background: "var(--color-bt-warning-faint)", borderColor: "var(--color-bt-warning-border)" }}>
             <AlertTriangle size={15} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
             <span style={{ fontSize: 12.5, color: "var(--color-bt-warning)" }}>
@@ -422,9 +400,8 @@ function ConfirmScreen({
           </div>
         )}
 
-        {/* Per-hole rows */}
         <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)" }}>
-          <HoleHeader />
+          <HoleHeader hasIndex={draft.hasStrokeIndex} />
           {draft.par.map((p, i) => {
             const h = i + 1;
             const bad = flagged.has(h);
@@ -438,22 +415,21 @@ function ConfirmScreen({
                 <Cell w={48} bold>{h}</Cell>
                 <Cell w={72} dim>{tee?.yards[i] ?? "—"}</Cell>
                 <Cell w={56}>{p}</Cell>
-                <span className="flex flex-1 items-center justify-between pr-3">
-                  <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: bad ? 700 : 500, color: bad ? "var(--color-bt-warning)" : "var(--color-bt-text)" }}>
-                    {draft.index[i] ?? "—"}
+                {draft.hasStrokeIndex && (
+                  <span className="flex flex-1 items-center justify-between pr-3">
+                    <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: bad ? 700 : 500, color: bad ? "var(--color-bt-warning)" : "var(--color-bt-text)" }}>
+                      {draft.index[i] ?? "—"}
+                    </span>
+                    <PencilLine size={13} style={{ color: "var(--color-bt-text-dim)" }} />
                   </span>
-                  <PencilLine size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-                </span>
+                )}
+                {!draft.hasStrokeIndex && <span className="flex flex-1 justify-end pr-3"><PencilLine size={13} style={{ color: "var(--color-bt-text-dim)" }} /></span>}
               </button>
             );
           })}
         </div>
       </div>
-      <Footer
-        label={validation.valid ? "Use this course" : `${validation.unsetHoles.length + validation.duplicateHoles.length + validation.outOfRangeHoles.length} holes need a valid index`}
-        disabled={!validation.valid || saving}
-        onClick={onUse}
-      />
+      <Footer label={indexComplete ? "Use this course" : `${missingCount} holes need a valid index`} disabled={!indexComplete || saving} onClick={onUse} />
     </>
   );
 }
@@ -477,9 +453,16 @@ function NewCourseScreen({
       teeSets: d.teeSets.map((t) => ({ ...t, yards: Array(n).fill(null) })),
     }));
   const addTee = () => setDraft((d) => ({ ...d, teeSets: [...d.teeSets, blankTee(d.holeCount, "")] }));
-  const setTeeName = (i: number, name: string) =>
-    setDraft((d) => ({ ...d, teeSets: d.teeSets.map((t, ti) => (ti === i ? { ...t, name } : t)) }));
+  const setTeeName = (i: number, name: string) => setDraft((d) => ({ ...d, teeSets: d.teeSets.map((t, ti) => (ti === i ? { ...t, name } : t)) }));
   const removeTee = (i: number) => setDraft((d) => ({ ...d, teeSets: d.teeSets.filter((_, ti) => ti !== i) }));
+  const reorderTee = (from: number, to: number) =>
+    setDraft((d) => {
+      if (from === to) return d;
+      const next = [...d.teeSets];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...d, teeSets: next };
+    });
 
   return (
     <>
@@ -509,34 +492,112 @@ function NewCourseScreen({
               ))}
             </div>
           </Field>
+
+          {/* Stroke index toggle. */}
+          <button
+            onClick={() => setDraft((d) => ({ ...d, hasStrokeIndex: !d.hasStrokeIndex }))}
+            className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left"
+            style={{ background: "var(--color-bt-card-raised)", borderColor: "var(--color-bt-border)" }}
+          >
+            <span className="min-w-0">
+              <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--color-bt-text)" }}>Add stroke indices</span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
+                The course&apos;s 1–{draft.holeCount} difficulty ranking. Needed for net play — skip if you don&apos;t have it.
+              </span>
+            </span>
+            <Switch on={draft.hasStrokeIndex} />
+          </button>
+
           <Field label="Tee sets">
-            <div className="flex flex-col gap-2">
-              {draft.teeSets.map((t, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    value={t.name}
-                    onChange={(e) => setTeeName(i, e.target.value)}
-                    placeholder="Name them anything (White, Member…)"
-                    className="w-full rounded-xl border px-3 py-2.5 text-sm"
-                    style={inputStyle}
-                  />
-                  {draft.teeSets.length > 1 && (
-                    <button onClick={() => removeTee(i)} aria-label="Remove tee" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ border: "1px solid var(--color-bt-border)", color: "var(--color-bt-text-dim)" }}>
-                      <X size={15} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button onClick={addTee} className="flex items-center justify-center gap-1.5 rounded-xl border py-2" style={{ borderStyle: "dashed", borderColor: "var(--color-bt-accent-border)", color: "var(--color-bt-accent)" }}>
-                <Plus size={15} />
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Add tee set</span>
-              </button>
-            </div>
+            <TeeList tees={draft.teeSets} onName={setTeeName} onRemove={removeTee} onReorder={reorderTee} />
+            <button onClick={addTee} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border py-2" style={{ borderStyle: "dashed", borderColor: "var(--color-bt-accent-border)", color: "var(--color-bt-accent)" }}>
+              <Plus size={15} />
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Add tee set</span>
+            </button>
+            <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 6 }}>Drag to order · longest first.</p>
           </Field>
         </div>
       </div>
       <Footer label="Start entering holes" disabled={!draft.name.trim() || draft.teeSets.every((t) => !t.name.trim())} onClick={onStart} />
     </>
+  );
+}
+
+/** Pointer-drag reorderable tee list (works on touch + mouse). */
+function TeeList({
+  tees,
+  onName,
+  onRemove,
+  onReorder,
+}: {
+  tees: TeeSet[];
+  onName: (i: number, name: string) => void;
+  onRemove: (i: number) => void;
+  onReorder: (from: number, to: number) => void;
+}) {
+  const ROW = 52;
+  const [drag, setDrag] = useState<{ from: number; dy: number } | null>(null);
+  const startY = useRef(0);
+
+  const total = (t: TeeSet) => t.yards.reduce<number>((a, y) => a + (y ?? 0), 0);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {tees.map((t, i) => {
+        const dragging = drag?.from === i;
+        return (
+          <div
+            key={i}
+            className="flex items-center gap-2 rounded-xl border px-2"
+            style={{
+              height: 44,
+              background: "var(--color-bt-card-raised)",
+              borderColor: dragging ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
+              transform: dragging ? `translateY(${drag!.dy}px)` : undefined,
+              zIndex: dragging ? 2 : undefined,
+              position: dragging ? "relative" : undefined,
+              touchAction: "none",
+            }}
+          >
+            <span
+              onPointerDown={(e) => {
+                (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                startY.current = e.clientY;
+                setDrag({ from: i, dy: 0 });
+              }}
+              onPointerMove={(e) => {
+                if (drag?.from === i) setDrag({ from: i, dy: e.clientY - startY.current });
+              }}
+              onPointerUp={() => {
+                if (drag?.from === i) {
+                  const to = Math.max(0, Math.min(tees.length - 1, i + Math.round(drag.dy / ROW)));
+                  onReorder(i, to);
+                  setDrag(null);
+                }
+              }}
+              className="flex h-9 w-7 cursor-grab items-center justify-center"
+              style={{ color: "var(--color-bt-text-dim)", touchAction: "none" }}
+            >
+              <GripVertical size={16} />
+            </span>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: teeColor(t.name || `Tee ${i + 1}`), flexShrink: 0 }} />
+            <input
+              value={t.name}
+              onChange={(e) => onName(i, e.target.value)}
+              placeholder="Name them anything (White, Member…)"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              style={{ color: "var(--color-bt-text)" }}
+            />
+            <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{total(t) > 0 ? `${total(t)} yds` : ""}</span>
+            {tees.length > 1 && (
+              <button onClick={() => onRemove(i)} aria-label="Remove tee" className="flex h-8 w-8 shrink-0 items-center justify-center" style={{ color: "var(--color-bt-text-dim)" }}>
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -547,8 +608,8 @@ function EntryScreen({
   setHole,
   activeTee,
   setActiveTee,
-  validation,
-  flagged,
+  indexComplete,
+  missingCount,
   saving,
   setPar,
   setIndex,
@@ -560,8 +621,8 @@ function EntryScreen({
   setHole: (h: number) => void;
   activeTee: number;
   setActiveTee: (i: number) => void;
-  validation: ReturnType<typeof validateStrokeIndex>;
-  flagged: Set<number>;
+  indexComplete: boolean;
+  missingCount: number;
   saving: boolean;
   setPar: (h: number, v: number) => void;
   setIndex: (h: number, v: number) => void;
@@ -570,6 +631,21 @@ function EntryScreen({
 }) {
   const n = draft.holeCount;
   const completed = draft.index.map((v, i) => (v != null ? i + 1 : 0)).filter(Boolean);
+  const yardsOf = () => draft.teeSets[activeTee]?.yards[hole - 1] ?? null;
+  const pushDigit = (d: number) => {
+    const cur = yardsOf();
+    if (cur == null && d === 0) return; // no leading zero
+    const next = (cur ?? 0) * 10 + d;
+    if (next > 999) return;
+    setYards(hole, next);
+  };
+  const backspace = () => {
+    const cur = yardsOf();
+    setYards(hole, cur == null || cur < 10 ? null : Math.floor(cur / 10));
+  };
+  const lastHole = hole >= n;
+  const onNext = () => (lastHole ? onSave() : setHole(hole + 1));
+
   return (
     <>
       <div className="flex shrink-0 items-center justify-between" style={{ padding: "12px 16px" }}>
@@ -582,32 +658,32 @@ function EntryScreen({
       </div>
 
       <div className="flex-1 overflow-y-auto" style={{ padding: "4px 16px 8px" }}>
-        <TeeChips draft={draft} activeTee={activeTee} setActiveTee={setActiveTee} />
-        <div style={{ marginTop: 14 }}>
-          <HoleEditor
-            holeNumber={hole}
-            holeCount={n}
-            par={draft.par[hole - 1]}
-            index={draft.index[hole - 1] ?? null}
-            teeName={draft.teeSets[activeTee]?.name || null}
-            yards={draft.teeSets[activeTee]?.yards[hole - 1] ?? null}
-            swapHint="Reusing an index swaps it with the hole that currently has it."
-            onPar={(v) => setPar(hole, v)}
-            onIndex={(v) => setIndex(hole, v)}
-            onYards={(v) => setYards(hole, v)}
-          />
-        </div>
+        <HoleEditor
+          holeNumber={hole}
+          holeCount={n}
+          par={draft.par[hole - 1]}
+          onPar={(v) => setPar(hole, v)}
+          hasStrokeIndex={draft.hasStrokeIndex}
+          index={draft.index}
+          onIndexPick={(v) => setIndex(hole, v)}
+          tees={draft.teeSets}
+          activeTee={activeTee}
+          onTee={setActiveTee}
+          yards={yardsOf()}
+          yardsActive
+          onYardsTap={() => {}}
+        />
+        {lastHole && !indexComplete && (
+          <p style={{ fontSize: 12.5, color: "var(--color-bt-warning)", marginTop: 12 }}>{missingCount} holes still need a stroke index.</p>
+        )}
       </div>
 
-      {hole < n ? (
-        <Footer label={`Next · Hole ${hole + 1}`} onClick={() => setHole(hole + 1)} />
-      ) : (
-        <Footer
-          label={validation.valid ? "Save course" : `${flagged.size} holes need a valid index`}
-          disabled={!validation.valid || saving}
-          onClick={onSave}
-        />
-      )}
+      <Keypad
+        onDigit={pushDigit}
+        onBackspace={backspace}
+        onNext={onNext}
+        nextLabel={lastHole ? (saving ? "Saving…" : "Save ›") : `Hole ${hole + 1} ›`}
+      />
     </>
   );
 }
@@ -617,6 +693,7 @@ function HoleEditScreen({
   draft,
   hole,
   activeTee,
+  setActiveTee,
   flagged,
   setPar,
   setIndex,
@@ -626,12 +703,27 @@ function HoleEditScreen({
   draft: Draft;
   hole: number;
   activeTee: number;
+  setActiveTee: (i: number) => void;
   flagged: Set<number>;
   setPar: (h: number, v: number) => void;
   setIndex: (h: number, v: number) => void;
   setYards: (h: number, v: number | null) => void;
   onDone: () => void;
 }) {
+  const [yardsActive, setYardsActive] = useState(false);
+  const yardsOf = () => draft.teeSets[activeTee]?.yards[hole - 1] ?? null;
+  const pushDigit = (d: number) => {
+    const cur = yardsOf();
+    if (cur == null && d === 0) return;
+    const next = (cur ?? 0) * 10 + d;
+    if (next > 999) return;
+    setYards(hole, next);
+  };
+  const backspace = () => {
+    const cur = yardsOf();
+    setYards(hole, cur == null || cur < 10 ? null : Math.floor(cur / 10));
+  };
+
   return (
     <>
       <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
@@ -639,60 +731,75 @@ function HoleEditScreen({
           holeNumber={hole}
           holeCount={draft.holeCount}
           par={draft.par[hole - 1]}
-          index={draft.index[hole - 1] ?? null}
-          teeName={draft.teeSets[activeTee]?.name || null}
-          yards={draft.teeSets[activeTee]?.yards[hole - 1] ?? null}
-          swapHint="Reusing an index swaps it with the hole that currently has it."
           onPar={(v) => setPar(hole, v)}
-          onIndex={(v) => setIndex(hole, v)}
-          onYards={(v) => setYards(hole, v)}
+          hasStrokeIndex={draft.hasStrokeIndex}
+          index={draft.index}
+          onIndexPick={(v) => setIndex(hole, v)}
+          tees={draft.teeSets}
+          activeTee={activeTee}
+          onTee={setActiveTee}
+          yards={yardsOf()}
+          yardsActive={yardsActive}
+          onYardsTap={() => setYardsActive(true)}
+          showSwapWarning
         />
       </div>
-      <Footer label="Done" disabled={flagged.has(hole)} onClick={onDone} />
+      {yardsActive ? (
+        <Keypad onDigit={pushDigit} onBackspace={backspace} onNext={() => setYardsActive(false)} nextLabel="Done ✓" />
+      ) : (
+        <Footer label="Done" disabled={flagged.has(hole)} onClick={onDone} />
+      )}
     </>
   );
 }
 
 // ── Shared bits ───────────────────────────────────────────────────────────────
-
 const inputStyle: React.CSSProperties = {
   background: "var(--color-bt-card-raised)",
   borderColor: "var(--color-bt-border)",
   color: "var(--color-bt-text)",
 };
 
-function TeeChips({ draft, activeTee, setActiveTee }: { draft: Draft; activeTee: number; setActiveTee: (i: number) => void }) {
-  if (draft.teeSets.length <= 1) return null;
+function TeeChip({ name, on, onClick }: { name: string; on: boolean; onClick: () => void }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {draft.teeSets.map((t, i) => (
-        <button
-          key={t.name + i}
-          onClick={() => setActiveTee(i)}
-          style={{
-            padding: "4px 11px",
-            borderRadius: 9999,
-            fontSize: 12.5,
-            fontWeight: 600,
-            border: `1px solid ${i === activeTee ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-            background: i === activeTee ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-            color: i === activeTee ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-          }}
-        >
-          {t.name || `Tee ${i + 1}`}
-        </button>
-      ))}
-    </div>
+    <button
+      onClick={onClick}
+      className="flex shrink-0 items-center gap-1.5"
+      style={{
+        padding: "5px 12px",
+        borderRadius: 9999,
+        fontSize: 13,
+        fontWeight: 600,
+        border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+        background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+        color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+      }}
+    >
+      <span style={{ width: 9, height: 9, borderRadius: "50%", background: teeColor(name), flexShrink: 0 }} />
+      {name}
+    </button>
   );
 }
 
-function HoleHeader() {
+function Switch({ on }: { on: boolean }) {
+  return (
+    <span
+      className="relative shrink-0"
+      style={{ width: 40, height: 24, borderRadius: 9999, background: on ? "var(--color-bt-accent)" : "var(--color-bt-border)", transition: "background 0.15s" }}
+    >
+      <span style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
+    </span>
+  );
+}
+
+function HoleHeader({ hasIndex }: { hasIndex: boolean }) {
   return (
     <div className="flex items-center" style={{ height: 30, background: "var(--color-bt-card-raised)", borderBottom: "1px solid var(--color-bt-border)" }}>
       <HCell w={48}>Hole</HCell>
       <HCell w={72}>Yds</HCell>
       <HCell w={56}>Par</HCell>
-      <span className="flex-1 pr-3 text-center text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Index</span>
+      {hasIndex && <span className="flex-1 pr-3 text-center text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Index</span>}
+      {!hasIndex && <span className="flex-1" />}
     </div>
   );
 }
@@ -710,7 +817,7 @@ function Cell({ w, children, bold, dim }: { w: number; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{label}</label>
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{label}</label>
       {children}
     </div>
   );
@@ -719,12 +826,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Footer({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick: () => void }) {
   return (
     <div className="shrink-0" style={{ padding: 16, borderTop: "1px solid var(--color-bt-subtle-border)", background: "var(--color-bt-base)" }}>
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        className="w-full disabled:opacity-40"
-        style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}
-      >
+      <button onClick={onClick} disabled={disabled} className="w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
         {label}
       </button>
     </div>
