@@ -208,11 +208,21 @@ cascade — see the auth section.
 
 `circle_events` and `circle_courses` (migration 024) are intentionally **thin
 anchor stubs** — `id, circle_id, name, created_at` only. Their full columns
-(e.g. `thread_id`, `year`, `recap_text`, `video_url`; course `holes`,
-`par_values`, `tee_sets`) are deferred to the competition/history build, when
-the real shapes are known. When those land, `thread_id` and every other FK
-column must be `text` (e.g. `thread_id text REFERENCES trips(id)`), per the rule
-above — never `uuid`.
+(e.g. `thread_id`, `year`, `recap_text`, `video_url`) are deferred to the
+competition/history build, when the real shapes are known. When those land,
+`thread_id` and every other FK column must be `text` (e.g.
+`thread_id text REFERENCES trips(id)`), per the rule above — never `uuid`.
+
+**Course data is global, NOT circle-scoped** (revised in Slice C part 2). A
+course's par, stroke index, and per-tee yards are global facts (Pebble Creek's
+index is the same for everyone), so they live in a standalone global **`courses`**
+table (migration 039) reached via **`CourseService`** (`src/lib/courseService.ts`)
+— *not* `circle_courses`, and *not* the dead `golf_course_details` (archived only).
+`circle_courses` stays the thin stub, now reserved for a later **Circle-Era join**
+(`circle_id` → `course_id` into the global `courses`), never the course-data home.
+Applying a course to a game **snapshots** its `par[]` + `handicap_index[]` into
+`games.scorecard_schema.units.metadata` (the shape `strokeHoles` reads); the
+snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 
 ## What "Done" Means for Any Task
 

@@ -4,6 +4,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
+import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema } from "@/lib/courseIndex";
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -155,6 +156,84 @@ export const gamesRouter = router({
         .eq("game_id", input.gameId)
         .order("created_at", { ascending: true });
       return data ?? [];
+    }),
+
+  // applyCourse — Owner/Organizer. THE CONTRACT (Slice C §0): snapshot the
+  // course's par[] + handicap_index[] into games.scorecard_schema.units.metadata
+  // (a COPY, not a live ref) so a later edit to the global course never rescores
+  // this game. course_id is kept as provenance. Re-snapshot is allowed before
+  // any score exists; FROZEN once scores are entered (freeze boundary).
+  applyCourse: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string(), courseId: z.string().min(1) }))
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id, game_type_id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+
+      // Freeze boundary: once any score is in, the par/index the game is being
+      // played on is fixed — re-applying a course would silently rescore it.
+      const { count } = await ctx.supabase
+        .from("score_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("game_id", input.gameId);
+      if ((count ?? 0) > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Scores are already entered — the course can't be changed now.",
+        });
+      }
+
+      const { data: course } = await ctx.supabase
+        .from("courses")
+        .select("hole_count, par, handicap_index")
+        .eq("id", input.courseId)
+        .maybeSingle();
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
+
+      const holeCount = course.hole_count as number;
+      const par = course.par as number[];
+      const handicapIndex = course.handicap_index as number[];
+      // Defense in depth: never snapshot a broken index even if a row predates
+      // the create-time gate.
+      if (!validateStrokeIndex(handicapIndex, holeCount).valid) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Course stroke index is not a valid permutation — fix it before use.",
+        });
+      }
+
+      const { data: template } = await ctx.supabase
+        .from("game_type_templates")
+        .select("scorecard_schema")
+        .eq("id", game.game_type_id as string)
+        .maybeSingle();
+      const baseSchema = template?.scorecard_schema as ScorecardSchema | null;
+      if (!baseSchema?.units) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Game type has no scorecard schema to snapshot onto.",
+        });
+      }
+
+      const snapshot = buildScorecardSchema(baseSchema, par, handicapIndex, holeCount);
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ scorecard_schema: snapshot, course_id: input.courseId })
+        .eq("id", input.gameId);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to apply course: ${error.message}`,
+        });
+      }
+
+      const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
+      return data;
     }),
 
   // finish — Owner/Organizer. Compute + persist results, mark complete.
