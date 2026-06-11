@@ -12,9 +12,10 @@ import { StandardGrid } from "@/components/games/StandardGrid";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import { Avatar } from "@/components/Avatar";
 import { TimePicker } from "@/components/TimePicker";
+import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
-import { STROKE_PLAY_UNITS, PLAYER_COLORS, initialsOf } from "@/lib/strokePlayConfig";
+import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf } from "@/lib/strokePlayConfig";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 /** "07:40" → "7:40 AM". Empty/invalid → "". */
@@ -74,12 +75,18 @@ export default function NewMatchGamePage() {
   const [view, setView] = useState<"entry" | "grid">("entry");
   const [currentHole, setCurrentHole] = useState(1);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  // Course (Slice C): picked on the new-game screen, applied to the game once
+  // it's created. id null until chosen.
+  const [courseId, setCourseId] = useState<string | null>(null);
+  const [courseName, setCourseName] = useState<string | null>(null);
+  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
 
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
   const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
 
   const createGame = trpc.games.create.useMutation();
+  const applyCourse = trpc.games.applyCourse.useMutation();
   const setPairings = trpc.matches.setPairings.useMutation();
   const setHandicap = trpc.matches.setHandicap.useMutation();
   const activate = trpc.matches.activate.useMutation();
@@ -157,19 +164,28 @@ export default function NewMatchGamePage() {
   // without waiting on a refetch.
   const mergedFor = (pid: string) => ({ ...(loadedValues[pid] ?? {}), ...(values[pid] ?? {}) });
 
+  // Effective scorecard: the game's course snapshot (Slice C) or the template
+  // default. Drives par + stroke index for the grid, pips, and decided holes —
+  // the SAME index the server scores on (no sequential fallback once set).
+  const scUnits = useMemo(
+    () => unitsFromSchema(gameQ.data?.scorecard_schema as Parameters<typeof unitsFromSchema>[0]),
+    [gameQ.data]
+  );
+  const scIndex = useMemo(() => strokeIndexOf(scUnits), [scUnits]);
+
   // Decided holes (A's perspective) for an overview strip — the shared builder.
   const decidedFor = (g: MatchGroupData) =>
-    buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB);
+    buildDecided(mergedFor(g.a.id), mergedFor(g.b.id), g.strokesA, g.strokesB, scIndex, scUnits.length);
 
   // A match's current hole = the first hole either player hasn't scored yet, so
   // opening a match drops you where it's at (not the hole you left from).
   const currentHoleFor = (g: MatchGroupData) => {
     const va = mergedFor(g.a.id);
     const vb = mergedFor(g.b.id);
-    for (let h = 1; h <= STROKE_PLAY_UNITS.length; h++) {
+    for (let h = 1; h <= scUnits.length; h++) {
       if (va[String(h)] == null || vb[String(h)] == null) return h;
     }
-    return STROKE_PLAY_UNITS.length;
+    return scUnits.length;
   };
 
   // Derive the screen from server state; manual transitions take precedence.
@@ -219,6 +235,14 @@ export default function NewMatchGamePage() {
       teeTime: teeTime || null,
     });
     setGameId(g.id);
+    // Snapshot the chosen course's par+index onto the new game (the §0 contract).
+    if (courseId) {
+      try {
+        await applyCourse.mutateAsync({ tripId, gameId: g.id, courseId });
+      } catch {
+        // Non-fatal: the game still works on the template default par/index.
+      }
+    }
     const count = Math.min(Math.max(1, matchCount), maxMatches);
     setDraft(Array.from({ length: count }, (_, i) => ({ matchNumber: i + 1, a: null, b: null, handicap: 0 })));
     go("setup");
@@ -325,11 +349,11 @@ export default function NewMatchGamePage() {
   const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
     if (selectedGroup) {
-      m[selectedGroup.a.id] = new Set([...strokeHoles(selectedGroup.strokesA)].map(String));
-      m[selectedGroup.b.id] = new Set([...strokeHoles(selectedGroup.strokesB)].map(String));
+      m[selectedGroup.a.id] = new Set([...strokeHoles(selectedGroup.strokesA, scIndex)].map(String));
+      m[selectedGroup.b.id] = new Set([...strokeHoles(selectedGroup.strokesB, scIndex)].map(String));
     }
     return m;
-  }, [selectedGroup]);
+  }, [selectedGroup, scIndex]);
 
   // ── Loading ──
   if (!tripId || roleLoading || (gameId && (gameQ.isLoading || matchesQ.isLoading))) {
@@ -352,7 +376,7 @@ export default function NewMatchGamePage() {
             </div>
             <div className="min-h-0 flex-1">
               <StandardGrid
-                units={STROKE_PLAY_UNITS}
+                units={scUnits}
                 participants={entryParticipants}
                 values={values}
                 direction="low_wins"
@@ -368,7 +392,7 @@ export default function NewMatchGamePage() {
           <MatchEntryView
             gameName={`${selectedGroup.a.name} v ${selectedGroup.b.name}`}
             subtitle="Singles match · 1v1"
-            units={STROKE_PLAY_UNITS}
+            units={scUnits}
             matches={[selectedGroup]}
             values={values}
             currentHole={currentHole}
@@ -413,9 +437,22 @@ export default function NewMatchGamePage() {
           crewCount={crewCount}
           teeTime={teeTime}
           setTeeTime={setTeeTime}
+          courseName={courseName}
+          onPickCourse={() => setCoursePickerOpen(true)}
           onCreate={handleCreate}
-          pending={createGame.isPending}
+          pending={createGame.isPending || applyCourse.isPending}
           canEdit={canEdit}
+        />
+      )}
+
+      {coursePickerOpen && (
+        <CoursePicker
+          onClose={() => setCoursePickerOpen(false)}
+          onApply={({ id, name }) => {
+            setCourseId(id);
+            setCourseName(name);
+            setCoursePickerOpen(false);
+          }}
         />
       )}
 
@@ -553,6 +590,8 @@ function NewGame({
   crewCount,
   teeTime,
   setTeeTime,
+  courseName,
+  onPickCourse,
   onCreate,
   pending,
   canEdit,
@@ -563,6 +602,8 @@ function NewGame({
   crewCount: number;
   teeTime: string;
   setTeeTime: (t: string) => void;
+  courseName: string | null;
+  onPickCourse: () => void;
   onCreate: () => void;
   pending: boolean;
   canEdit: boolean;
@@ -574,11 +615,13 @@ function NewGame({
   return (
     <div>
       <div className="flex flex-col gap-3.5">
-        {/* Course — stub picker (Slice C); same field style as the tee time. */}
+        {/* Course — opens the Course Selector (Slice C); same field style as the tee time. */}
         <div>
           <FieldLabel>Course</FieldLabel>
-          <button type="button" className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm" style={pillStyle}>
-            <span style={{ color: "var(--color-bt-text-dim)" }}>Select a course</span>
+          <button type="button" onClick={onPickCourse} className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm" style={pillStyle}>
+            <span style={{ color: courseName ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
+              {courseName ?? "Select a course"}
+            </span>
             <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
           </button>
         </div>
