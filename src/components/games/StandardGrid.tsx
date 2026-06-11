@@ -104,7 +104,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
   return (
     <div className="h-full" style={{ background: "var(--color-bt-base)" }}>
       <div className="relative">
-        <div className="overflow-x-auto">
+        <div className="no-scrollbar overflow-x-auto">
           <div style={{ minWidth: "max-content" }}>
           {/* Header */}
           <div
@@ -288,10 +288,11 @@ function SubCell({
         height: 44,
         flexShrink: 0,
         background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
-        color: leader ? "var(--color-bt-place-1-text)" : bold ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+        // Totals are white; only the leader/winner goes green.
+        color: leader ? "var(--color-bt-place-1-text)" : "var(--color-bt-text)",
       }}
     >
-      <span style={{ fontSize: bold ? 14 : 13, fontWeight: bold ? 700 : 600 }}>{value}</span>
+      <span style={{ fontSize: bold ? 17 : 16, fontWeight: bold ? 700 : 600 }}>{value}</span>
       {vsPar != null && <VsPar diff={vsPar} />}
     </div>
   );
