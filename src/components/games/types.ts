@@ -11,6 +11,11 @@ export interface ScoreUnit {
   label: string;
   /** Section bucket from `scorecard_schema.scoring.sections` (front/back-9). */
   section?: "front" | "back";
+  /** Par for this hole — drives GolfCard par-relative coloring (Slice C). */
+  par?: number;
+  /** Stroke (handicap) index, 1 = hardest. From `metadata.handicap_index[]`;
+   *  shown in the GolfCard INDEX row and (with a course) allocates strokes. */
+  strokeIndex?: number;
 }
 
 export interface Participant {
