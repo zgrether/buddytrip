@@ -54,6 +54,7 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
   // units carry par (always for stroke play; real course par lands with the
   // picker). ±-vs-par is over the holes a player has actually scored.
   const hasPar = units.length > 0 && units.every((u) => u.par != null);
+  const hasIndex = units.length > 0 && units.every((u) => u.strokeIndex != null);
   const parSum = (list: ScoreUnit[]) => list.reduce((a, u) => a + (u.par ?? 0), 0);
   const vsParOf = (pid: string, list: ScoreUnit[]): number => {
     const scored = list.filter((u) => valOf(pid, u.label) != null);
@@ -134,9 +135,9 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
             <HeaderSub label="Total" wide />
           </div>
 
-          {/* Par row */}
+          {/* Par row — same surface as the Hole header (card). */}
           {hasPar && (
-            <div className="flex" style={{ height: 28, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+            <div className="flex" style={{ height: 28, background: "var(--color-bt-card)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
               <div className="flex items-center" style={{ ...nameCell, padding: "0 10px" }}>
                 <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
                   Par
@@ -153,12 +154,32 @@ export function StandardGrid({ units, participants, values, onCellTap, pips }: S
             </div>
           )}
 
+          {/* Stroke-index row — no surface (sits on base), smaller + dimmer. */}
+          {hasIndex && (
+            <div className="flex" style={{ height: 24, background: "var(--color-bt-base)", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+              <div className="flex items-center" style={{ ...nameCell, background: "var(--color-bt-base)", padding: "0 10px" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>
+                  Index
+                </span>
+              </div>
+              {units.map((u) => (
+                <div key={u.label} className="flex items-center justify-center" style={{ ...cellBase, ...divider(u.label) }}>
+                  <span style={{ fontSize: 10, color: "var(--color-bt-text-dim)", opacity: 0.75, fontVariantNumeric: "tabular-nums" }}>{u.strokeIndex}</span>
+                </div>
+              ))}
+              {hasSections && <IndexSub />}
+              {hasSections && <IndexSub />}
+              <IndexSub wide />
+            </div>
+          )}
+
           {/* Rows */}
-          {participants.map((p) => {
+          {participants.map((p, i) => {
             const isLeader = leaderIds.has(p.id);
+            const rowBg = i % 2 === 0 ? "var(--color-bt-card)" : "var(--color-bt-base)";
             return (
-              <div key={p.id} className="flex" style={{ height: 44, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-                <div className="flex items-center gap-1.5" style={{ ...nameCell, padding: "0 10px" }}>
+              <div key={p.id} className="flex" style={{ height: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+                <div className="flex items-center gap-1.5" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
                   <span
                     className="flex items-center justify-center"
                     style={{ width: 18, height: 18, borderRadius: "50%", background: `${p.color}22`, color: p.color, fontSize: 8, fontWeight: 700, flexShrink: 0 }}
@@ -303,6 +324,21 @@ function VsPar({ diff }: { diff: number }) {
   const text = diff > 0 ? `+${diff}` : diff < 0 ? `−${Math.abs(diff)}` : "E";
   const color = diff > 0 ? "#93c5fd" : diff < 0 ? "#fca5a5" : "var(--color-bt-text-dim)";
   return <span style={{ fontSize: 10, fontWeight: 600, color, fontVariantNumeric: "tabular-nums" }}>{text}</span>;
+}
+
+/** Blank subtotal cell for the index row — keeps the Out/In/Total tint columns
+ *  continuous without showing a meaningless index sum. */
+function IndexSub({ wide }: { wide?: boolean }) {
+  return (
+    <div
+      style={{
+        width: wide ? TOTAL_W : SUB_W,
+        minWidth: wide ? TOTAL_W : SUB_W,
+        flexShrink: 0,
+        background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
+      }}
+    />
+  );
 }
 
 function ParSub({ value, wide }: { value: number; wide?: boolean }) {
