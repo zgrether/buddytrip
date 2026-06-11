@@ -104,4 +104,34 @@ export const scoresRouter = router({
       }
       return { ok: true };
     }),
+
+  // listByGame — all user-type score entries for a game (any trip member). Lets
+  // the client hydrate values on load (resume scoring) and compute live match
+  // status on the matchup page via the shared matchPlay module.
+  listByGame: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      const { data, error } = await ctx.supabase
+        .from("score_entries")
+        .select("participant_id, unit_label, value")
+        .eq("game_id", input.gameId)
+        .eq("participant_type", "user");
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to list scores: ${error.message}`,
+        });
+      }
+      return data ?? [];
+    }),
 });
