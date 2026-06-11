@@ -5,6 +5,8 @@ import { ChevronLeft, Grid3x3 } from "lucide-react";
 import { computeStrokePlayStandings, type StrokeEntry } from "@/lib/strokePlay";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
+import { GolfChip } from "./GolfChip";
+import { golfWord, golfResult, GOLF_STYLE } from "./golfScore";
 import type { ScoreUnit, Participant, ScoreValues, ScoreDirection } from "./types";
 
 /**
@@ -75,6 +77,9 @@ export function ScoreEntryView({
   // `currentHole` (e.g. tapping a cell in the review grid) — with no
   // render-phase setState to reset it.
   const [override, setOverride] = useState<{ hole: number; pid: string } | null>(null);
+  // The cell just committed — gets the one-shot eagle/birdie celebration.
+  const [lastCommit, setLastCommit] = useState<{ hole: number; pid: string } | null>(null);
+  const par = unit?.par;
   const activePid =
     override && override.hole === hole && participants.some((p) => p.id === override.pid)
       ? override.pid
@@ -103,6 +108,7 @@ export function ScoreEntryView({
   const commit = (v: number) => {
     if (!activePid) return;
     onChange(activePid, label, v);
+    setLastCommit({ hole, pid: activePid });
     // Pin this player as active so a committed score does NOT auto-advance.
     // Advancing waits for ✓ (confirmAdvance) — lets the user validate/edit the
     // number first. Applies equally to a new entry and an edit.
@@ -220,6 +226,11 @@ export function ScoreEntryView({
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
             Hole {label}
           </div>
+          {par != null && (
+            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
+              Par {par}
+            </div>
+          )}
           <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
@@ -286,13 +297,25 @@ export function ScoreEntryView({
                   <div
                     style={{
                       fontSize: 13,
-                      color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)",
+                      fontWeight: par != null && v != null ? 600 : 400,
+                      color:
+                        par != null && v != null
+                          ? GOLF_STYLE[golfResult(v, par)!].fg
+                          : lead
+                            ? "var(--color-bt-place-1-text)"
+                            : "var(--color-bt-text-dim)",
                     }}
                   >
-                    {total === 0 ? "No scores yet" : lead ? `${total} total · Leading` : `${total} total`}
+                    {par != null && v != null
+                      ? golfWord(v, par)
+                      : total === 0
+                        ? "No scores yet"
+                        : lead
+                          ? `${total} total · Leading`
+                          : `${total} total`}
                   </div>
                 </div>
-                <ScoreCell value={v} active={active} />
+                <ScoreCell value={v} active={active} par={par} celebrate={lastCommit?.pid === p.id && lastCommit?.hole === hole} />
               </button>
               {active && isCorrection && (
                 <div
@@ -333,7 +356,25 @@ export function ScoreEntryView({
   );
 }
 
-function ScoreCell({ value, active }: { value: number | undefined; active: boolean }) {
+function ScoreCell({
+  value,
+  active,
+  par,
+  celebrate,
+}: {
+  value: number | undefined;
+  active: boolean;
+  par?: number;
+  celebrate?: boolean;
+}) {
+  // Committed (not being edited) + par known → the golf shape IS the cell.
+  if (!active && value != null && par != null) {
+    return (
+      <span className="flex items-center justify-center" style={{ width: 52, height: 46, flexShrink: 0 }}>
+        <GolfChip value={value} par={par} size={42} fontSize={22} celebrate={celebrate} />
+      </span>
+    );
+  }
   if (active && value == null) {
     return (
       <span

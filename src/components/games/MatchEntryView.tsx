@@ -7,6 +7,8 @@ import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
+import { GolfChip } from "./GolfChip";
+import { golfWord } from "./golfScore";
 import type { ScoreUnit, Participant, ScoreValues } from "./types";
 
 /**
@@ -118,6 +120,8 @@ export function MatchEntryView({
 
   // Active player (keypad target) — DERIVED, hole-scoped override (Slice A pattern).
   const [override, setOverride] = useState<{ hole: number; pid: string } | null>(null);
+  // The cell just committed — gets the one-shot eagle/birdie celebration.
+  const [lastCommit, setLastCommit] = useState<{ hole: number; pid: string } | null>(null);
   const interactiveHere = allParticipants.filter((p) => isInteractive(p.id, hole));
   const activePid =
     override && override.hole === hole && interactiveHere.some((p) => p.id === override.pid)
@@ -147,9 +151,11 @@ export function MatchEntryView({
   const allMatchesOver = groups.every((g) => g.st.over);
   const canFinish = allMatchesOver || allHolesComplete;
 
+  const par = unit?.par;
   const commit = (v: number) => {
     if (!activePid) return;
     onChange(activePid, label, v);
+    setLastCommit({ hole, pid: activePid });
     setOverride({ hole, pid: activePid }); // pin — no auto-advance (waits for ✓)
   };
   const confirmAdvance = () => {
@@ -257,6 +263,11 @@ export function MatchEntryView({
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
             Hole {label}
           </div>
+          {par != null && (
+            <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
+              Par {par}
+            </div>
+          )}
           <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
@@ -280,6 +291,8 @@ export function MatchEntryView({
                 valueFor={valueFor}
                 onTap={() => setOverride({ hole, pid: m.a.id })}
                 isMe={!!meId && m.a.id === meId}
+                par={par}
+                celebrate={lastCommit?.pid === m.a.id && lastCommit?.hole === hole}
               />
               <PlayerRow
                 group={g}
@@ -292,6 +305,8 @@ export function MatchEntryView({
                 valueFor={valueFor}
                 onTap={() => setOverride({ hole, pid: m.b.id })}
                 isMe={!!meId && m.b.id === meId}
+                par={par}
+                celebrate={lastCommit?.pid === m.b.id && lastCommit?.hole === hole}
                 last
               />
             </div>
@@ -344,6 +359,8 @@ function PlayerRow({
   valueFor,
   onTap,
   isMe,
+  par,
+  celebrate,
   last,
 }: {
   group: { st: ReturnType<typeof matchState>; strokeHolesA: Set<number>; strokeHolesB: Set<number> };
@@ -356,14 +373,29 @@ function PlayerRow({
   valueFor: (pid: string, l: string) => number | undefined;
   onTap: () => void;
   isMe?: boolean;
+  par?: number;
+  celebrate?: boolean;
   last?: boolean;
 }) {
   const v = valueFor(player.id, label);
   const stroked = (isA ? group.strokeHolesA : group.strokeHolesB).has(hole);
 
   // Score entry only cares about THIS hole — never the match state. Awaiting a
-  // score until one is entered; then the gross/net (stroke holes only).
-  const subtitle = v == null ? "Awaiting score" : stroked ? `Gross ${v} · net ${v - 1}` : "";
+  // score until one is entered; then the golf word for the GROSS, and on a
+  // stroke hole the bold NET word (what counts): "Bogey · net Par".
+  let subtitle: React.ReactNode = "Awaiting score";
+  if (v != null && par != null) {
+    const gw = golfWord(v, par);
+    subtitle = stroked ? (
+      <>
+        {gw} · net <span style={{ fontWeight: 700, color: "var(--color-bt-text)" }}>{golfWord(v - 1, par)}</span>
+      </>
+    ) : (
+      gw
+    );
+  } else if (v != null) {
+    subtitle = stroked ? `Gross ${v} · net ${v - 1}` : "";
+  }
 
   return (
     <button
@@ -388,12 +420,24 @@ function PlayerRow({
         </span>
         <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
       </div>
-      <MatchScoreCell value={v} active={active} stroked={stroked} />
+      <MatchScoreCell value={v} active={active} stroked={stroked} par={par} celebrate={celebrate} />
     </button>
   );
 }
 
-function MatchScoreCell({ value, active, stroked }: { value: number | undefined; active: boolean; stroked: boolean }) {
+function MatchScoreCell({
+  value,
+  active,
+  stroked,
+  par,
+  celebrate,
+}: {
+  value: number | undefined;
+  active: boolean;
+  stroked: boolean;
+  par?: number;
+  celebrate?: boolean;
+}) {
   const base: React.CSSProperties = {
     position: "relative",
     width: 52,
@@ -402,6 +446,16 @@ function MatchScoreCell({ value, active, stroked }: { value: number | undefined;
     flexShrink: 0,
   };
   const pip = stroked ? <StrokePip /> : null;
+  // Committed (not being edited) + par known → color the GROSS with the golf
+  // shape; the stroke pip stays in the corner (net is stated in the subtitle).
+  if (!active && value != null && par != null) {
+    return (
+      <span className="flex items-center justify-center" style={{ ...base }}>
+        <GolfChip value={value} par={par} size={42} fontSize={22} celebrate={celebrate} />
+        {pip}
+      </span>
+    );
+  }
   if (active && value == null) {
     return (
       <span

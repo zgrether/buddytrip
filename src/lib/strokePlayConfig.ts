@@ -9,9 +9,14 @@ import type { ScoreUnit } from "@/components/games/types";
  * template, so it uses this known stroke-play shape. The scorecard components
  * stay schema-driven (they take `units` as a prop) — this is just the data.
  */
+// Default par-72 layout (matches the template `scorecard_schema.metadata.par`).
+// Real per-hole par replaces this once a course is attached (Slice C picker).
+const DEFAULT_PAR = [4, 5, 3, 4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4];
+
 export const STROKE_PLAY_UNITS: ScoreUnit[] = Array.from({ length: 18 }, (_, i) => ({
   label: String(i + 1),
   section: i < 9 ? "front" : "back",
+  par: DEFAULT_PAR[i],
 }));
 
 // Player identity palette (identity colors, not theme tokens — sanctioned like
