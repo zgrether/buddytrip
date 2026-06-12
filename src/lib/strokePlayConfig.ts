@@ -49,9 +49,21 @@ export function unitsFromSchema(schema?: SchemaLike | null): ScoreUnit[] {
   }));
 }
 
-/** The stroke-index array (handicap index per hole) for `strokeHoles`/`buildDecided`. */
+/**
+ * The per-hole stroke-index array for `strokeHoles` / `buildDecided` / `strokeHint`.
+ *
+ * A course's index is all-or-nothing (the picker blocks partial saves), so units
+ * are either ALL ranked or ALL unranked. When complete we return the real index;
+ * when ABSENT we return the SEQUENTIAL identity `[1..N]` — **never a zero-fill**.
+ * A `[0,0,…]` array is the trap: `strokeHoles` treats any length-N array as a real
+ * index and `(0-1) % N = -1 < n` strikes EVERY hole, which both mis-allocates and
+ * diverges from the server (it scores the index-less snapshot via `strokeHoles`'
+ * `undefined` → sequential fallback). Identity `[1..N]` reproduces that exact
+ * sequential allocation and makes the handicap hint read "first N holes".
+ */
 export function strokeIndexOf(units: ScoreUnit[]): number[] {
-  return units.map((u) => u.strokeIndex ?? 0);
+  if (units.every((u) => u.strokeIndex != null)) return units.map((u) => u.strokeIndex as number);
+  return units.map((_, i) => i + 1); // sequential identity — no real index present
 }
 
 // Player identity palette (identity colors, not theme tokens — sanctioned like
