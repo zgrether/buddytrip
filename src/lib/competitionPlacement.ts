@@ -77,6 +77,35 @@ export function placementPoints(
   return out;
 }
 
+/**
+ * Like placementPoints but also returns each team's PLACE (1-based; tied teams
+ * share the group's starting place — two tied for 3rd are both place 3). For the
+ * scoreboard grid cell ("3rd · 3 pts"). Same averaging as placementPoints.
+ */
+export function placementDetail(
+  distribution: number[],
+  standings: Standing[],
+  direction: Direction
+): Map<string, { place: number; points: number }> {
+  const out = new Map<string, { place: number; points: number }>();
+  if (standings.length === 0) return out;
+  const sorted = [...standings].sort((a, b) =>
+    direction === "low_wins" ? a.value - b.value : b.value - a.value
+  );
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1].value === sorted[i].value) j++;
+    const groupSize = j - i + 1;
+    let pot = 0;
+    for (let k = i; k <= j; k++) pot += dist(distribution, k);
+    const share = pot / groupSize;
+    for (let k = i; k <= j; k++) out.set(sorted[k].entityId, { place: i + 1, points: share });
+    i = j + 1;
+  }
+  return out;
+}
+
 /** Sum awarded by one game = sum(distribution[0 .. numTeams-1]). Invariant under
  *  ties (5b averaging preserves it). A shell with a distribution but no results
  *  still contributes this to points-available. */

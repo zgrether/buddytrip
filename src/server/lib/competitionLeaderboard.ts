@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rollUp, type LiveGame } from "@/lib/competitionPlacement";
+import { rollUp, placementDetail, type LiveGame } from "@/lib/competitionPlacement";
 
 /**
  * Server roll-up wrapper (Slice D1 §5/§6). The DB-read half of the CLAUDE.md #8
@@ -30,13 +30,15 @@ export async function computeCompetitionLeaderboard(
     .eq("id", competitionId)
     .maybeSingle();
 
-  // Live (non-dropped) competition games only.
+  // Games of this competition. We fetch ALL (incl. dropped) so the grid can show
+  // an "Abandoned" column, but only LIVE ones feed the roll-up / points-available.
   const { data: gameRows } = await supabase
     .from("games")
-    .select("id, points_distribution, status")
+    .select("id, name, points_distribution, status")
     .eq("competition_id", competitionId)
-    .neq("status", "dropped");
-  const live = gameRows ?? [];
+    .order("created_at", { ascending: true });
+  const allGames = gameRows ?? [];
+  const live = allGames.filter((g) => g.status !== "dropped");
 
   const gameIds = live.map((g) => g.id as string);
   const { data: results } = gameIds.length
@@ -64,8 +66,27 @@ export async function computeCompetitionLeaderboard(
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
 
+  // Per-game grid cells (place + points per team) — same averaging as the totals,
+  // so the grid and the totals can't disagree. Only live games carry cells.
+  const cells: { gameId: string; teamId: string; place: number; points: number }[] = [];
+  for (const g of liveGames) {
+    if (!g.distribution || g.standings.length === 0) continue;
+    const detail = placementDetail(g.distribution, g.standings, g.direction);
+    for (const [teamId, d] of detail) {
+      cells.push({ gameId: g.id, teamId, place: d.place, points: d.points });
+    }
+  }
+
   return {
     teams: teams ?? [],
+    games: allGames.map((g) => ({
+      id: g.id as string,
+      name: (g.name as string | null) ?? "Game",
+      distribution: (g.points_distribution as number[] | null) ?? null,
+      status: g.status as string,
+      dropped: g.status === "dropped",
+    })),
+    cells,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
     teamTotals: Object.fromEntries(roll.teamTotals),

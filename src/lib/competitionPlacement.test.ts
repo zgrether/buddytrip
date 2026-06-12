@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   placementPoints,
+  placementDetail,
   awardedForGame,
   winThreshold,
   rollUp,
@@ -57,6 +58,16 @@ describe("placementPoints — averaged ties (§5b)", () => {
 
   it("empty standings → no points (Phase-1 shell, not yet played)", () => {
     expect(placementPoints([9, 6, 4, 2], [], "low_wins").size).toBe(0);
+  });
+});
+
+describe("placementDetail — place + points for the grid cell", () => {
+  it("returns the 1-based place and points; tied teams share the group's place", () => {
+    const d = placementDetail([9, 6, 4, 2], standings([1, 2, 3, 3]), "low_wins");
+    expect(d.get("t0")).toEqual({ place: 1, points: 9 });
+    expect(d.get("t1")).toEqual({ place: 2, points: 6 });
+    expect(d.get("t2")).toEqual({ place: 3, points: 3 }); // tied 3rd → place 3, (4+2)/2
+    expect(d.get("t3")).toEqual({ place: 3, points: 3 });
   });
 });
 
