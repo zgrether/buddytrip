@@ -124,7 +124,7 @@ export function HoleEditor({
 
       {/* Yards — tappable numeric field; the keypad (screen) fills it. */}
       <div>
-        <FieldLabel>{`Yards · ${teeName}`}</FieldLabel>
+        <FieldLabel>{`Yards · ${teeName} Tees`}</FieldLabel>
         <button
           onClick={onYardsTap}
           className="flex w-full items-center justify-between rounded-xl border px-3"
@@ -143,7 +143,7 @@ export function HoleEditor({
             )}
             {yardsActive && <span style={{ color: "var(--color-bt-accent)", fontWeight: 400 }}>|</span>}
           </span>
-          <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>yds · optional</span>
+          <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>yds</span>
         </button>
       </div>
 

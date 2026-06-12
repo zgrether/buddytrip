@@ -19,10 +19,13 @@ export function HoleProgress({
   count,
   currentHole,
   completed,
+  maxWidth = 232,
 }: {
   count: number;
   currentHole: number;
   completed: number[];
+  /** Cap the bar width (default 232, centered). Pass "100%" for edge-to-edge. */
+  maxWidth?: number | string;
 }) {
   const reached = Math.max(currentHole, ...(completed.length ? completed : [currentHole]));
   return (
@@ -34,7 +37,7 @@ export function HoleProgress({
         gap: 2.5,
         height: 4,
         width: "100%",
-        maxWidth: 232,
+        maxWidth,
         margin: "0 auto",
       }}
     >

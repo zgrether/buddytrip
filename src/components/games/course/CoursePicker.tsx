@@ -750,13 +750,15 @@ function EntryScreen({
 
   return (
     <>
-      <div className="flex shrink-0 items-center justify-between" style={{ padding: "16px 16px" }}>
-        <NavArrow dir="prev" disabled={hole <= 1} onClick={() => setHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
+      <div className="shrink-0" style={{ padding: "12px 16px 6px" }}>
+        <div className="flex items-center justify-between">
+          <NavArrow dir="prev" disabled={hole <= 1} onClick={() => setHole(hole - 1)} />
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>Hole {hole}</div>
-          <HoleProgress count={n} currentHole={hole} completed={completed} />
+          <NavArrow dir="next" disabled={hole >= n} onClick={() => setHole(hole + 1)} />
         </div>
-        <NavArrow dir="next" disabled={hole >= n} onClick={() => setHole(hole + 1)} />
+        <div style={{ marginTop: 14 }}>
+          <HoleProgress count={n} currentHole={hole} completed={completed} maxWidth="100%" />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto" style={{ padding: "4px 16px 8px" }}>
@@ -779,14 +781,14 @@ function EntryScreen({
 
       {yardsActive && (
         <Keypad
-          title={`Yards · ${teeName}`}
+          title={`Yards · ${teeName} Tees`}
           hint="Done to keep editing the hole"
           onDigit={pushDigit}
           onBackspace={backspace}
           onDone={() => setYardsActive(false)}
         />
       )}
-      <div className="shrink-0" style={{ padding: "12px 16px 24px", borderTop: "1px solid var(--color-bt-subtle-border)", background: "var(--color-bt-card-float)" }}>
+      <div className="shrink-0" style={{ padding: "10px 16px 14px", background: "transparent" }}>
         <div className="flex items-center gap-3">
           <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>Hole {hole} / {n}</span>
           <button
@@ -862,7 +864,7 @@ function HoleEditScreen({
       </div>
       {yardsActive && (
         <Keypad
-          title={`Yards · ${teeName}`}
+          title={`Yards · ${teeName} Tees`}
           hint="Done to keep editing the hole"
           onDigit={pushDigit}
           onBackspace={backspace}
