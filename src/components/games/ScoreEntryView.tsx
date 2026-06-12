@@ -229,6 +229,7 @@ export function ScoreEntryView({
           {par != null && (
             <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
               Par {par}
+              {unit?.strokeIndex != null && ` · Hdcp ${unit.strokeIndex}`}
             </div>
           )}
           <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />

@@ -115,12 +115,13 @@ describe("buildScorecardSchema", () => {
     expect(s.scoring?.sections?.[0].units).toHaveLength(9);
   });
 
-  it("fills a sequential index when none is provided (stroke index off)", () => {
+  it("OMITS handicap_index when none is provided (index optional → fallback)", () => {
     const par = Array(18).fill(4);
     const s = buildScorecardSchema(template, par, [], 18);
-    expect(s.units.metadata?.handicap_index).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+    expect(s.units.metadata?.par).toEqual(par);
+    expect(s.units.metadata?.handicap_index).toBeUndefined();
     const s9 = buildScorecardSchema(template, Array(9).fill(4), undefined, 9);
-    expect(s9.units.metadata?.handicap_index).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(s9.units.metadata?.handicap_index).toBeUndefined();
   });
 
   it("does not mutate the template", () => {

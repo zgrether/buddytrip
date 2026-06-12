@@ -36,12 +36,16 @@ interface SchemaLike {
 export function unitsFromSchema(schema?: SchemaLike | null): ScoreUnit[] {
   const meta = schema?.units?.metadata;
   const labels = schema?.units?.labels;
-  if (!labels?.length || !meta?.par || !meta?.handicap_index) return STROKE_PLAY_UNITS;
+  if (!labels?.length || !meta?.par) return STROKE_PLAY_UNITS;
+  // The stroke index is OPTIONAL: an index-less course snapshots par with no
+  // handicap_index, so strokeIndex stays undefined here → the GolfCard INDEX row
+  // omits itself and strokeHoles falls back to sequential.
+  const hasIndex = meta.handicap_index?.length === labels.length;
   return labels.map((label, i) => ({
     label,
     section: i < 9 ? "front" : "back",
     par: meta.par![i],
-    strokeIndex: meta.handicap_index![i],
+    strokeIndex: hasIndex ? meta.handicap_index![i] : undefined,
   }));
 }
 
