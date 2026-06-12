@@ -121,7 +121,7 @@ export function RackBoard({
       ) : variant === "carded" ? (
         <div className="flex flex-col gap-2.5">
           {slots.map((s) => (
-            <div key={s.slot} className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)" }}>
+            <div key={s.slot} className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)", background: "var(--color-bt-card)" }}>
               <div className="flex items-center" style={{ height: 24, padding: "0 12px", background: "var(--color-bt-card-raised)", borderBottom: "1px solid var(--color-bt-border)" }}>
                 <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>Slot {s.slot}</span>
               </div>
@@ -134,12 +134,14 @@ export function RackBoard({
           {/* Slot numbers float in a left gutter — OUTSIDE the rack border. */}
           <div className="flex shrink-0 flex-col" style={{ width: 22, marginRight: 6 }}>
             {slots.map((s) => (
-              <div key={s.slot} className="flex items-center justify-center" style={{ height: ROW_H }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{s.slot}</span>
+              <div key={s.slot} className="flex flex-col" style={{ height: ROW_H, paddingTop: TOP_PAD }}>
+                <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{s.slot}</span>
+                </div>
               </div>
             ))}
           </div>
-          <div className="min-w-0 flex-1 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)" }}>
+          <div className="min-w-0 flex-1 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)", background: "var(--color-bt-card)" }}>
             {slots.map((s, i) => (
               <div key={s.slot} style={{ borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}>
                 <RackRow slot={s} nameOf={nameOf} colorOf={colorOf} />
@@ -180,9 +182,10 @@ export function RackBoard({
 // Two fixed-height bands keep the PRIMARY line (net-to-par · name · vs · name ·
 // net-to-par) on one row and the SECONDARY line (THRU · gap) beneath — so the
 // scores, names, and "vs" all sit on the same vertical line.
+const TOP_PAD = 6; // breathing room above the score/name
 const PRIMARY = 30;
 const SECONDARY = 22;
-const ROW_H = PRIMARY + SECONDARY;
+const ROW_H = TOP_PAD + PRIMARY + SECONDARY;
 
 function RackRow({ slot, nameOf, colorOf }: { slot: RackSlot; nameOf: (id: string) => string; colorOf: (t: "A" | "B") => string }) {
   const aLead = slot.leader === "A";
@@ -192,7 +195,7 @@ function RackRow({ slot, nameOf, colorOf }: { slot: RackSlot; nameOf: (id: strin
     <div className="flex items-stretch" style={{ height: ROW_H }}>
       <ScoreBlock value={slot.a.value} thru={slot.a.thru} lead={aLead} color={colorOf("A")} />
       <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} />
-      <div className="flex shrink-0 flex-col" style={{ width: 28, background: "var(--color-bt-card-raised)" }}>
+      <div className="flex shrink-0 flex-col" style={{ width: 28, paddingTop: TOP_PAD, background: "var(--color-bt-card-raised)" }}>
         <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>vs</span>
         </div>
@@ -206,7 +209,7 @@ function RackRow({ slot, nameOf, colorOf }: { slot: RackSlot; nameOf: (id: strin
 
 function ScoreBlock({ value, thru, lead, color }: { value: number; thru: number; lead: boolean; color: string }) {
   return (
-    <div className="flex shrink-0 flex-col" style={{ width: 60, background: lead ? color : "transparent" }}>
+    <div className="flex shrink-0 flex-col" style={{ width: 60, paddingTop: TOP_PAD, background: lead ? color : "transparent" }}>
       <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
         <span style={{ fontSize: 22, fontWeight: 800, color: lead ? "#fff" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
           {fmtToPar(value)}
@@ -224,7 +227,7 @@ function ScoreBlock({ value, thru, lead, color }: { value: number; thru: number;
 function NameBlock({ name, align, lead, color, gapText }: { name: string; align: "left" | "right"; lead: boolean; color: string; gapText: string | null }) {
   const justify = align === "right" ? "flex-end" : "flex-start";
   return (
-    <div className="flex min-w-0 flex-1 flex-col" style={{ padding: "0 10px", background: lead ? `${color}29` : "transparent" }}>
+    <div className="flex min-w-0 flex-1 flex-col" style={{ padding: `${TOP_PAD}px 10px 0`, background: lead ? `${color}29` : "transparent" }}>
       <div className="flex w-full items-center" style={{ height: PRIMARY, justifyContent: justify }}>
         <span className="max-w-full truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{name}</span>
       </div>
