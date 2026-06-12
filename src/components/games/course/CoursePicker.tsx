@@ -363,6 +363,7 @@ export function CoursePicker({
           setActiveTee={setActiveTee}
           indexOptedIn={indexOptedIn}
           onOptInIndex={() => setIndexOptedIn(true)}
+          indexUsable={indexUsable}
           setPar={setPar}
           setIndex={setIndex}
           setYards={setYards}
@@ -766,6 +767,7 @@ function EntryScreen({
   setActiveTee,
   indexOptedIn,
   onOptInIndex,
+  indexUsable,
   setPar,
   setIndex,
   setYards,
@@ -778,6 +780,7 @@ function EntryScreen({
   setActiveTee: (i: number) => void;
   indexOptedIn: boolean;
   onOptInIndex: () => void;
+  indexUsable: boolean;
   setPar: (h: number, v: number) => void;
   setIndex: (h: number, v: number) => void;
   setYards: (h: number, v: number | null) => void;
@@ -803,6 +806,11 @@ function EntryScreen({
     setYards(hole, cur == null || cur < 10 ? null : Math.floor(cur / 10));
   };
   const lastHole = hole >= n;
+  // Per-hole Next is never blocked. The last-hole "Done · review card" IS gated,
+  // but only on a started-but-incomplete stroke index table (a course-wide
+  // datum): rank them all, or leave the table empty (fallback). The inline amber
+  // reminder explains why it's disabled.
+  const reviewBlocked = lastHole && !indexUsable;
   const footerLabel = lastHole ? "Done · review card" : "Next hole ›";
   const onAdvance = () => (lastHole ? onReview() : setHole(hole + 1));
 
@@ -852,7 +860,8 @@ function EntryScreen({
           <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>Hole {hole} / {n}</span>
           <button
             onClick={onAdvance}
-            className="flex-1"
+            disabled={reviewBlocked}
+            className="flex-1 disabled:opacity-40"
             style={{ height: 54, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}
           >
             {footerLabel}

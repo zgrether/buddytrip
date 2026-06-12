@@ -66,7 +66,7 @@ export function HoleEditor({
   // them actually helps someone finish.
   const unset = idxValidation.unsetHoles;
   const idxRemainingLabel =
-    unset.length > 6 ? `${unset.length} of ${holeCount} holes still need a rank` : `Unset: holes ${unset.join(", ")}`;
+    unset.length > 6 ? `${unset.length} of ${holeCount} holes still need a rank` : `Remaining holes: ${unset.join(", ")}`;
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
       {/* Tee tabs — which tee's yardage you're filling. */}
@@ -238,7 +238,7 @@ export function HoleEditor({
             <div className="mt-2 flex items-start gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)" }}>
               <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
               <span style={{ fontSize: 12, color: "var(--color-bt-text)", lineHeight: 1.4 }}>
-                <span style={{ fontWeight: 700 }}>Finish the index to use it.</span> {idxRemainingLabel}.
+                <span style={{ fontWeight: 700 }}>Complete the stroke index table.</span> {idxRemainingLabel}.
               </span>
             </div>
             <p style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", marginTop: 6, lineHeight: 1.45 }}>
