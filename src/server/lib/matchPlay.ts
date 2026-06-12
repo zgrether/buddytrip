@@ -14,9 +14,11 @@ import { buildDecided, matchState } from "@/lib/matchPlay";
  * - Idempotent: a recompute updates the match rows in place and replaces the
  *   game's `game_results`.
  *
- * Stroke index: course metadata when a course is attached; the course is stubbed
- * in Slice B, so the sequential fallback in `buildDecided` is the normal path
- * until the Slice C course picker lands (replaces it with no change here).
+ * Stroke index: a game's own `scorecard_schema` snapshot (written when a course
+ * is applied — Slice C) drives `buildDecided`. A no-course game has no snapshot,
+ * so it falls through to `strokeHoles`'s sequential allocation — the documented
+ * Slice B fallback, kept as the no-course path (NOT the template default, which
+ * is only a display placeholder).
  */
 
 interface SideRef {
@@ -55,6 +57,10 @@ export async function computeMatchPlayResults(
     .from("game_matches")
     .select("id, side_a, side_b, status")
     .eq("game_id", gameId);
+
+  // Stroke index: the game's course snapshot if one is applied, else undefined
+  // → `buildDecided` uses the sequential fallback (the no-course path).
+  const { strokeIndex, holeCount } = await loadStrokeIndex(supabase, gameId);
 
   // user_id → handicap strokes (null = 0).
   const { data: parts } = await supabase
@@ -98,7 +104,9 @@ export async function computeMatchPlayResults(
       gross.get(a.id) ?? {},
       gross.get(b.id) ?? {},
       hcap.get(a.id) ?? 0,
-      hcap.get(b.id) ?? 0
+      hcap.get(b.id) ?? 0,
+      strokeIndex,
+      holeCount
     );
     const st = matchState(decided);
 
@@ -144,6 +152,25 @@ export async function computeMatchPlayResults(
   }
 
   return outcomes;
+}
+
+interface SchemaShape {
+  units?: { count?: number; metadata?: { handicap_index?: number[] } };
+}
+
+/** The game's snapshot stroke index + hole count, if a course has been applied.
+ *  No snapshot → undefined → caller uses the sequential fallback. */
+async function loadStrokeIndex(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ strokeIndex?: number[]; holeCount?: number }> {
+  const { data: game } = await supabase
+    .from("games")
+    .select("scorecard_schema")
+    .eq("id", gameId)
+    .maybeSingle();
+  const schema = game?.scorecard_schema as SchemaShape | null;
+  return { strokeIndex: schema?.units?.metadata?.handicap_index, holeCount: schema?.units?.count };
 }
 
 function mkResult(gameId: string, entityId: string, position: number): GameResultRow {

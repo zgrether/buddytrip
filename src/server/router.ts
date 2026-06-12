@@ -15,6 +15,7 @@ import { teamAssignmentsRouter } from "./routers/teamAssignments";
 import { logisticsRouter } from "./routers/logistics";
 import { scheduleRouter } from "./routers/schedule";
 import { golfCoursesRouter } from "./routers/golfCourses";
+import { coursesRouter } from "./routers/courses";
 import { ideaLodgingRouter } from "./routers/ideaLodging";
 import { archivedIdeasRouter } from "./routers/archivedIdeas";
 import { feedbackRouter } from "./routers/feedback";
@@ -40,6 +41,7 @@ export const appRouter = router({
   logistics: logisticsRouter,
   schedule: scheduleRouter,
   golfCourses: golfCoursesRouter,
+  courses: coursesRouter,
   ideaLodging: ideaLodgingRouter,
   archivedIdeas: archivedIdeasRouter,
   feedback: feedbackRouter,
