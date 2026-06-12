@@ -508,7 +508,7 @@ function ConfirmScreen({
           </div>
         </div>
       </div>
-      <Footer label={indexUsable ? "Use this course" : "Finish the index to use it"} disabled={!indexUsable || saving} onClick={onUse} />
+      <Footer label={indexUsable ? "Use this course" : "Finish the index to use this course"} disabled={!indexUsable || saving} onClick={onUse} />
     </>
   );
 }

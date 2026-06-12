@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Delete } from "lucide-react";
+import { Check, Delete, AlertTriangle } from "lucide-react";
 import { teeColor } from "@/lib/courseService";
 import { validateStrokeIndex, type IndexEntry } from "@/lib/courseIndex";
 
@@ -59,7 +59,7 @@ export function HoleEditor({
   // them actually helps someone finish.
   const unset = idxValidation.unsetHoles;
   const idxRemainingLabel =
-    unset.length > 6 ? `${unset.length} of ${holeCount} holes still need an index` : `holes ${unset.join(", ")} still need an index`;
+    unset.length > 6 ? `${unset.length} of ${holeCount} holes still need a rank` : `holes ${unset.join(", ")} still need a rank`;
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
       {/* Tee tabs — which tee's yardage you're filling. */}
@@ -135,8 +135,12 @@ export function HoleEditor({
             boxShadow: yardsActive ? "0 0 0 3px rgba(45,212,191,0.12)" : undefined,
           }}
         >
-          <span style={{ fontSize: 22, fontWeight: 700, color: yards == null ? "var(--color-bt-text-dim)" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
-            {yards == null ? "—" : yards}
+          <span style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+            {yards == null ? (
+              <span style={{ color: "var(--color-bt-text-dim)", opacity: 0.4 }}>000</span>
+            ) : (
+              <span style={{ color: "var(--color-bt-text)" }}>{yards}</span>
+            )}
             {yardsActive && <span style={{ color: "var(--color-bt-accent)", fontWeight: 400 }}>|</span>}
           </span>
           <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>yds · optional</span>
@@ -195,9 +199,17 @@ export function HoleEditor({
             })}
           </div>
           {idxStarted && !idxValidation.valid ? (
-            <p style={{ fontSize: 12, color: "var(--color-bt-warning)", marginTop: 8, lineHeight: 1.45 }}>
-              Finish the index to use it — {idxRemainingLabel}. Each rank 1–{holeCount} is used once; setting one already in use swaps with the hole that holds it.
-            </p>
+            <>
+              <div className="mt-2 flex items-start gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)" }}>
+                <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 12, color: "var(--color-bt-warning)", lineHeight: 1.4 }}>
+                  <span style={{ fontWeight: 700 }}>Finish the index to use it.</span> {idxRemainingLabel}.
+                </span>
+              </div>
+              <p style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", marginTop: 6, lineHeight: 1.45 }}>
+                Each rank 1–{holeCount} is used once — setting one already in use swaps with the hole that holds it.
+              </p>
+            </>
           ) : (
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
               Optional — read it off the course&apos;s scorecard, or leave it unset and strokes fall on holes 1–{holeCount}. Each rank 1–{holeCount} is used once.
@@ -230,19 +242,19 @@ export function Keypad({
   onNext: () => void;
   nextLabel: string;
 }) {
+  // Matches StrokeKeypad (the normal hole keypad) exactly — light card-float
+  // panel, darker card buttons, bold numbers — differing only in the bottom row
+  // (0 instead of 10+, the accent Next instead of the ✓ confirm).
   return (
-    <div
-      className="shrink-0"
-      style={{ padding: 10, borderTop: "1px solid var(--color-bt-subtle-border)", background: "var(--color-bt-nav-bg)", backdropFilter: "blur(14px)" }}
-    >
-      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+    <div style={{ background: "var(--color-bt-card-float)", borderTop: "1px solid var(--color-bt-border)", padding: "12px 16px 22px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
           <Key key={d} onClick={() => onDigit(d)}>
             {d}
           </Key>
         ))}
-        <Key onClick={onBackspace} aria-label="Backspace">
-          <Delete size={20} style={{ color: "var(--color-bt-text)" }} />
+        <Key onClick={onBackspace} aria-label="Backspace" dim>
+          <Delete size={20} strokeWidth={1.9} />
         </Key>
         <Key onClick={() => onDigit(0)}>0</Key>
         <Key onClick={onNext} accent>
@@ -253,19 +265,19 @@ export function Keypad({
   );
 }
 
-function Key({ children, onClick, accent, ...rest }: { children: React.ReactNode; onClick: () => void; accent?: boolean } & React.HTMLAttributes<HTMLButtonElement>) {
+const KEY_H = 54;
+function Key({ children, onClick, accent, dim, ...rest }: { children: React.ReactNode; onClick: () => void; accent?: boolean; dim?: boolean } & React.HTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       onClick={onClick}
       {...rest}
-      className="flex items-center justify-center"
+      className="flex items-center justify-center font-semibold transition-transform active:scale-[0.97]"
       style={{
-        height: 48,
+        height: KEY_H,
         borderRadius: 10,
-        fontSize: accent ? 15 : 20,
-        fontWeight: accent ? 600 : 600,
-        background: accent ? "var(--color-bt-accent)" : "var(--color-bt-card-raised)",
-        color: accent ? "#0d1f1a" : "var(--color-bt-text)",
+        fontSize: accent ? 15 : 24,
+        background: accent ? "var(--color-bt-accent)" : "var(--color-bt-card)",
+        color: accent ? "#0d1f1a" : dim ? "var(--color-bt-text-dim)" : "var(--color-bt-text)",
         border: accent ? "none" : "1px solid var(--color-bt-border)",
       }}
     >
