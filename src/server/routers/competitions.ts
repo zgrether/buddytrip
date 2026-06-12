@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 
 const SCOREBOARD_STYLES = [
   "grid",
@@ -45,6 +46,17 @@ export const competitionsRouter = router({
 
       return data;
     }),
+
+  // -----------------------------------------------------------------------
+  // leaderboard — the derived roll-up (D1 §5/§6): points-available, per-team
+  // totals, the win number, points-to-clinch. Renders from Phase-1 fields alone
+  // (distribution + order) and recomputes from the LIVE game set every read, so
+  // dropping/restoring a game moves the win number. Any trip member can view it.
+  // -----------------------------------------------------------------------
+  leaderboard: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string() }))
+    .use(requireTripMember)
+    .query(({ ctx, input }) => computeCompetitionLeaderboard(ctx.supabase, input.competitionId)),
 
   // -----------------------------------------------------------------------
   // create — new competition for a trip (canEdit, MVP one-per-trip)
