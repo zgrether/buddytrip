@@ -1,0 +1,108 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { TestContext } from "../../__tests__/helpers/test-setup";
+
+const RACK = "gtt_rack_n_stack";
+const PAR = [4, 5, 3, 4, 4, 3, 5, 4, 4]; // front 9; net par over 9 = 36
+
+let ctx: TestContext;
+let tripId: string;
+let competitionId: string;
+let teamA: string, teamB: string;
+let owner: string, planner: string, member: string, outsider: string;
+
+beforeAll(async () => {
+  ctx = await TestContext.create();
+  tripId = await ctx.createTrip("Rack Trip");
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  await ctx.addTripMember(tripId, "outsider", "Member");
+  owner = ctx.user.id;
+  planner = ctx.getUser("planner").id;
+  member = ctx.getUser("member").id;
+  outsider = ctx.getUser("outsider").id;
+
+  competitionId = await ctx.createCompetition(tripId, "Rack Cup");
+  teamA = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU", color: "#3b82f6" });
+  teamB = await ctx.createTeam(competitionId, "Red", { shortName: "RED", color: "#ef4444" });
+  // owner+planner → Blue; member+outsider → Red.
+  await ctx.admin.from("team_assignments").insert([
+    { competition_id: competitionId, user_id: owner, team_id: teamA },
+    { competition_id: competitionId, user_id: planner, team_id: teamA },
+    { competition_id: competitionId, user_id: member, team_id: teamB },
+    { competition_id: competitionId, user_id: outsider, team_id: teamB },
+  ]);
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+async function enter(gameId: string, userId: string, gross: number[]) {
+  for (let i = 0; i < gross.length; i++) {
+    await ctx.callerAs("planner").scores.upsertEntry({
+      tripId,
+      gameId,
+      participantId: userId,
+      unitLabel: String(i + 1),
+      value: gross[i],
+    });
+  }
+}
+
+describe("rack-n-stack — finish distills team points to game_results", () => {
+  it("Blue (all pars) beats Red (all bogeys) 2–0 over two slots", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Day 1", competitionId });
+    const gameId = game.id as string;
+
+    // Two foursomes (mixed) — grouping is entry-only; slots derive from teams.
+    await ctx.callerAs("planner").playGroups.setFoursomes({
+      tripId,
+      gameId,
+      groups: [
+        { name: "Group 1", userIds: [owner, member] },
+        { name: "Group 2", userIds: [planner, outsider] },
+      ],
+    });
+
+    // Blue plays pars (net-to-par 0); Red plays bogeys (+9 thru 9). Handicap 0.
+    await enter(gameId, owner, PAR);
+    await enter(gameId, planner, PAR);
+    await enter(gameId, member, PAR.map((p) => p + 1));
+    await enter(gameId, outsider, PAR.map((p) => p + 1));
+
+    const res = await ctx.caller().games.finish({ tripId, gameId });
+    const teams = res.teams as { teamId: string; points: number; position: number }[];
+    const blue = teams.find((t) => t.teamId === teamA)!;
+    const red = teams.find((t) => t.teamId === teamB)!;
+    expect(blue.points).toBe(2);
+    expect(red.points).toBe(0);
+    expect(blue.position).toBe(1);
+    expect(red.position).toBe(2);
+
+    // Persisted as team rows with the numeric points column.
+    const { data: rows } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, entity_type, points")
+      .eq("game_id", gameId);
+    expect(rows).toHaveLength(2);
+    expect(rows!.every((r) => r.entity_type === "team")).toBe(true);
+    expect(rows!.find((r) => r.entity_id === teamA)!.points).toBe(2);
+  });
+
+  it("a tied slot halves ½/½", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Day 2", competitionId });
+    const gameId = game.id as string;
+    await ctx.callerAs("planner").playGroups.setFoursomes({
+      tripId,
+      gameId,
+      groups: [{ name: "G", userIds: [owner, member] }],
+    });
+    // One vs one, identical scores → halve.
+    await enter(gameId, owner, PAR);
+    await enter(gameId, member, PAR);
+    const res = await ctx.caller().games.finish({ tripId, gameId });
+    const teams = res.teams as { teamId: string; points: number }[];
+    expect(teams.find((t) => t.teamId === teamA)!.points).toBe(0.5);
+    expect(teams.find((t) => t.teamId === teamB)!.points).toBe(0.5);
+  });
+});

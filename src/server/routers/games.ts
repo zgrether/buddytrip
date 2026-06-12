@@ -4,6 +4,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
+import { computeRackNStackResults } from "../lib/rackNStack";
 import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema } from "@/lib/courseIndex";
 
 /**
@@ -24,6 +25,7 @@ export const gamesRouter = router({
         gameTypeId: z.string(),
         name: z.string().max(200).optional(),
         teeTime: z.string().max(5).nullable().optional(), // "HH:MM" 24h
+        competitionId: z.string().nullable().optional(), // team formats (rack-n-stack)
       })
     )
     .use(requireTripRole("Organizer"))
@@ -34,7 +36,7 @@ export const gamesRouter = router({
       const { error: insertErr } = await ctx.supabase.from("games").insert({
         id,
         trip_id: ctx.tripId,
-        competition_id: null,
+        competition_id: input.competitionId ?? null,
         game_type_id: input.gameTypeId,
         name: input.name ?? null,
         tee_time: input.teeTime ?? null,
@@ -263,9 +265,14 @@ export const gamesRouter = router({
         .maybeSingle();
       const strategy = (template?.result_strategy as string | null) ?? "stroke_total";
 
-      const isMatchPlay = strategy === "match_play";
-      const matches = isMatchPlay ? await computeMatchPlayResults(ctx.supabase, input.gameId) : [];
-      const standings = isMatchPlay ? [] : await computeStrokePlayResults(ctx.supabase, input.gameId);
+      // Data-driven branch on the template's result_strategy (CLAUDE.md #8) —
+      // new strategies slot in here without touching the rest of finish.
+      const matches = strategy === "match_play" ? await computeMatchPlayResults(ctx.supabase, input.gameId) : [];
+      const teams = strategy === "rack_n_stack" ? await computeRackNStackResults(ctx.supabase, input.gameId) : [];
+      const standings =
+        strategy === "match_play" || strategy === "rack_n_stack"
+          ? []
+          : await computeStrokePlayResults(ctx.supabase, input.gameId);
 
       const { error } = await ctx.supabase
         .from("games")
@@ -277,6 +284,6 @@ export const gamesRouter = router({
           message: `Failed to finish game: ${error.message}`,
         });
       }
-      return { standings, matches };
+      return { standings, matches, teams };
     }),
 });
