@@ -21,7 +21,13 @@ export const playGroupsRouter = router({
         tripId: z.string(),
         gameId: z.string(),
         groups: z
-          .array(z.object({ name: z.string().max(60).optional(), userIds: z.array(z.string().min(1)).min(1).max(6) }))
+          .array(
+            z.object({
+              name: z.string().max(60).optional(),
+              teeTime: z.string().max(5).nullable().optional(), // "HH:MM" 24h
+              userIds: z.array(z.string().min(1)).min(1).max(6),
+            })
+          )
           .max(12),
       })
     )
@@ -59,7 +65,7 @@ export const playGroupsRouter = router({
         const groupId = crypto.randomUUID();
         const { error: gErr } = await ctx.supabase
           .from("play_groups")
-          .insert({ id: groupId, game_id: input.gameId, display_name: g.name ?? `Group ${i + 1}` });
+          .insert({ id: groupId, game_id: input.gameId, display_name: g.name ?? `Group ${i + 1}`, tee_time: g.teeTime ?? null });
         if (gErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to create group: ${gErr.message}` });
         const { error: aErr } = await ctx.supabase
           .from("game_participants")
@@ -96,7 +102,7 @@ export const playGroupsRouter = router({
 async function readGroups(supabase: import("@supabase/supabase-js").SupabaseClient, gameId: string) {
   const { data: groups } = await supabase
     .from("play_groups")
-    .select("id, display_name, created_at")
+    .select("id, display_name, tee_time, created_at")
     .eq("game_id", gameId)
     .order("created_at", { ascending: true });
   const { data: participants } = await supabase

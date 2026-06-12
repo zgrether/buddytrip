@@ -40,12 +40,14 @@ export function RsDayScore({
   pointsA,
   pointsB,
   final,
+  projected,
 }: {
   teamA: RackTeam;
   teamB: RackTeam;
   pointsA: number;
   pointsB: number;
   final?: boolean;
+  projected?: boolean;
 }) {
   return (
     <div
@@ -57,7 +59,9 @@ export function RsDayScore({
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "var(--color-bt-text-dim)" }}>
           {final ? "FINAL" : "RACK"}
         </span>
-        <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>matches won</span>
+        <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+          matches won{projected && !final ? " · proj" : ""}
+        </span>
       </div>
       <TeamTotal team={teamB} points={pointsB} align="right" />
     </div>

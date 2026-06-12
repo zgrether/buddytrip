@@ -19,6 +19,7 @@ export interface FoursomePlayer {
 export interface FoursomeGroupView {
   id: string;
   name: string;
+  teeLabel: string | null; // e.g. "7:40" — null when no tee set
   thru: number | null; // null = not started
   players: FoursomePlayer[];
   mine: boolean;
@@ -53,6 +54,7 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
               )}
             </div>
             <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1 }}>
+              {g.teeLabel ? `${g.teeLabel} tee · ` : ""}
               {g.thru == null ? "not started" : `thru ${g.thru}`}
             </div>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">

@@ -7,6 +7,8 @@ import { trpc } from "@/lib/trpc-client";
 import { useTripRole } from "@/hooks/useTripRole";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
+import { TimePicker } from "@/components/TimePicker";
+import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
@@ -16,6 +18,20 @@ import type { Participant, ScoreValues } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RACK = "gtt_rack_n_stack";
+
+/** "07:40" → "7:40" (no AM/PM); "" / invalid → null. */
+function teeLabel(t: string | null | undefined): string | null {
+  if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return null;
+  const [h, m] = t.split(":").map(Number);
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")}`;
+}
+/** Add minutes to "HH:MM" 24h (wraps within a day). */
+function addMinutes(t: string, mins: number): string {
+  const [h, m] = t.split(":").map(Number);
+  const total = (h * 60 + m + mins) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
 
 /** Chunk into groups of `size`, interleaving the two teams so groups are mixed. */
 function autoFoursomes(teamA: string[], teamB: string[], size = 4): string[][] {
@@ -45,6 +61,7 @@ export default function RackNStackPage() {
   const [mode, setMode] = useState<RackMode>("current");
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
+  const [firstTee, setFirstTee] = useState(""); // "HH:MM" 24h; groups stagger +10
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   const [currentHole, setCurrentHole] = useState(1);
   const [values, setValues] = useState<ScoreValues>({});
@@ -151,6 +168,7 @@ export default function RackNStackPage() {
       return {
         id: g.id as string,
         name: (g.display_name as string) ?? "Group",
+        teeLabel: teeLabel((g as { tee_time?: string | null }).tee_time),
         thru: maxThru > 0 ? maxThru : null,
         players: members.map((p) => ({ id: p.user_id as string, name: nameOf.get(p.user_id as string) ?? "Player", teamColor: colorForUser(p.user_id as string) })),
         mine: !!me && members.some((p) => p.user_id === me.id),
@@ -172,7 +190,11 @@ export default function RackNStackPage() {
     }
     const aIds = [...teamOf.entries()].filter(([, t]) => t === "A").map(([id]) => id);
     const bIds = [...teamOf.entries()].filter(([, t]) => t === "B").map(([id]) => id);
-    const groups = autoFoursomes(aIds, bIds).map((userIds, i) => ({ name: `Group ${i + 1}`, userIds }));
+    const groups = autoFoursomes(aIds, bIds).map((userIds, i) => ({
+      name: `Group ${i + 1}`,
+      userIds,
+      teeTime: firstTee ? addMinutes(firstTee, i * 10) : null,
+    }));
     await setFoursomes.mutateAsync({ tripId, gameId: g.id, groups });
     setGameId(g.id);
   }
@@ -265,8 +287,9 @@ export default function RackNStackPage() {
                 <span style={{ color: pendingCourse ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>{pendingCourse?.name ?? "Select a course (optional)"}</span>
               </button>
             </div>
+            <TimePicker label="First tee time" presets="tee" value={parseTime(firstTee)} onChange={(v) => setFirstTee(toTime24(v))} />
             <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)" }}>
-              {assignQ.data?.length ?? 0} players across {teamMeta.A.name} &amp; {teamMeta.B.name} — they&apos;ll be auto-grouped into foursomes you can regroup later.
+              {assignQ.data?.length ?? 0} players across {teamMeta.A.name} &amp; {teamMeta.B.name} — they&apos;ll be auto-grouped into foursomes (tee times stagger by 10 min) you can regroup later.
             </p>
             {canEdit && (
               <button onClick={startRack} disabled={createGame.isPending || setFoursomes.isPending} className="mt-2 w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
@@ -286,8 +309,8 @@ export default function RackNStackPage() {
   const final = gameQ.data?.status === "complete";
   const allThru18 = rack.slots.length > 0 && rack.slots.every((s) => s.a.thru >= scUnits.length && s.b.thru >= scUnits.length);
   return (
-    <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
-      <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} />
+    <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack" subtitle={final ? "Net stroke play · final" : "Net stroke play · standings"}>
+      <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
       <RackBoard
         teamA={teamMeta.A}
