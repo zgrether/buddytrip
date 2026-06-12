@@ -13,7 +13,7 @@ export const scheduleRouter = router({
     .query(async ({ ctx }) => {
       const { data, error } = await ctx.supabase
         .from("schedule_items")
-        .select("*, course:golf_courses(id, place_id, name, address, lat, lng), competition_events:events!events_agenda_item_id_fkey(id, title, type, scoring_format)")
+        .select("*, course:golf_courses(id, place_id, name, address, lat, lng), competition_games:games!games_schedule_item_id_fkey(id, name, game_type_id, status)")
         .eq("trip_id", ctx.tripId)
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true });

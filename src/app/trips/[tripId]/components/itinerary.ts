@@ -22,7 +22,7 @@ export interface ItineraryScheduleItem {
   course_name?: string | null;
   course_location?: string | null;
   tee_times?: string[] | null;
-  competition_events?: Array<{ id: string; title: string; type: string }> | null;
+  competition_games?: Array<{ id: string; name: string | null; game_type_id: string | null; status: string }> | null;
 }
 
 export interface ItineraryLogisticsItem {
@@ -73,8 +73,8 @@ export type ItineraryEvent =
       sortOrder: number;
       /** Golf only. null = no tee times set; [] = walk-on; [...] = specific times. */
       teeTimes?: string[] | null;
-      /** Competition events linked to this agenda item. */
-      competitionEvents?: Array<{ id: string; title: string; type: string }> | null;
+      /** Competition games linked to this agenda item. */
+      competitionGames?: Array<{ id: string; name: string | null; game_type_id: string | null; status: string }> | null;
     }
   | {
       kind: "lodging-checkin" | "lodging-checkout";
@@ -195,7 +195,7 @@ export function buildItinerary(input: {
       itemType: item.item_type,
       sortOrder: item.sort_order,
       teeTimes: item.item_type === "golf" ? (item.tee_times ?? null) : undefined,
-      competitionEvents: item.competition_events?.length ? item.competition_events : null,
+      competitionGames: item.competition_games?.length ? item.competition_games : null,
     });
   }
 
