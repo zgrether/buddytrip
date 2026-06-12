@@ -12,6 +12,7 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
+import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { unitsFromSchema, strokeIndexOf, initialsOf } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -64,6 +65,7 @@ export default function RackNStackPage() {
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
   const [firstTee, setFirstTee] = useState(""); // "HH:MM" 24h; groups stagger +10
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
+  const [showHandicaps, setShowHandicaps] = useState(false);
   const [currentHole, setCurrentHole] = useState(1);
   const [values, setValues] = useState<ScoreValues>({});
 
@@ -80,6 +82,7 @@ export default function RackNStackPage() {
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
   const setFoursomes = trpc.playGroups.setFoursomes.useMutation();
+  const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
   const upsertEntry = trpc.scores.upsertEntry.useMutation();
   const deleteEntry = trpc.scores.deleteEntry.useMutation();
   const finishGame = trpc.games.finish.useMutation();
@@ -178,6 +181,22 @@ export default function RackNStackPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupsQ.data, participants, scUnits, scIndex, nameOf, me, loadedValues, values, teamOf, teamMeta]);
 
+  const handicapPlayers: HandicapPlayer[] = useMemo(
+    () =>
+      participants.map((p) => {
+        const id = p.user_id as string;
+        return {
+          id,
+          name: nameOf.get(id) ?? "Player",
+          avatarIcon: avatarOf.get(id) ?? null,
+          teamColor: teamOf.get(id) ? colorForUser(id) : null,
+          strokes: handicapOf.get(id) ?? 0,
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [participants, nameOf, avatarOf, teamOf, teamMeta, handicapOf]
+  );
+
   // ── Handlers ─────────────────────────────────────────────────────────
   async function startRack() {
     if (!tripId || !competitionId) return;
@@ -198,7 +217,13 @@ export default function RackNStackPage() {
     }));
     await setFoursomes.mutateAsync({ tripId, gameId: g.id, groups });
     setGameId(g.id);
+    setShowHandicaps(true); // Pairings ✓ → Handicaps step
   }
+
+  const onSetStrokes = (userId: string, strokes: number) =>
+    setStrokes
+      .mutateAsync({ tripId: tripId!, gameId: gameId!, userId, strokes })
+      .then(() => utils.playGroups.listByGame.invalidate({ tripId: tripId!, gameId: gameId! }));
 
   const handleChange = (pid: string, unit: string, value: number) => {
     setValues((v) => ({ ...v, [pid]: { ...(v[pid] ?? {}), [unit]: value } }));
@@ -276,6 +301,23 @@ export default function RackNStackPage() {
     );
   }
 
+  // Handicaps setup step (after pairings; before play). Reached only via the
+  // canEdit-gated start/edit affordances; the mutation is server-canEdit-gated.
+  if (showHandicaps && gameId) {
+    return (
+      <div className="flex flex-col" style={{ height: "100vh" }}>
+        <HandicapRoster
+          players={handicapPlayers}
+          holeCount={scUnits.length}
+          strokeIndex={scIndex}
+          onSetStrokes={onSetStrokes}
+          onDone={() => setShowHandicaps(false)}
+          onBack={() => setShowHandicaps(false)}
+        />
+      </div>
+    );
+  }
+
   // No game yet → setup.
   if (!gameId) {
     return (
@@ -313,6 +355,13 @@ export default function RackNStackPage() {
     <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack" subtitle={final ? "Net stroke play · final" : "Net stroke play · standings"}>
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
+      {canEdit && !final && (
+        <div className="px-3">
+          <button onClick={() => setShowHandicaps(true)} style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-accent)" }}>
+            Edit handicaps
+          </button>
+        </div>
+      )}
       <RackBoard
         teamA={teamMeta.A}
         teamB={teamMeta.B}
