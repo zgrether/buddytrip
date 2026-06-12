@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Delete, AlertTriangle } from "lucide-react";
+import { Check, Delete, AlertTriangle, Info } from "lucide-react";
 import { teeColor } from "@/lib/courseService";
 import { validateStrokeIndex, type IndexEntry } from "@/lib/courseIndex";
 
@@ -59,7 +59,7 @@ export function HoleEditor({
   // them actually helps someone finish.
   const unset = idxValidation.unsetHoles;
   const idxRemainingLabel =
-    unset.length > 6 ? `${unset.length} of ${holeCount} holes still need a rank` : `holes ${unset.join(", ")} still need a rank`;
+    unset.length > 6 ? `${unset.length} of ${holeCount} holes still need a rank` : `Unset: holes ${unset.join(", ")}`;
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
       {/* Tee tabs — which tee's yardage you're filling. */}
@@ -210,9 +210,14 @@ export function HoleEditor({
                 Each rank 1–{holeCount} is used once — setting one already in use swaps with the hole that holds it.
               </p>
             </>
+          ) : idxValidation.valid ? (
+            <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8, lineHeight: 1.45 }}>
+              All {holeCount} ranks set. Strokes land on the hardest holes; tap any to adjust (it swaps).
+            </p>
           ) : (
-            <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
-              Optional — read it off the course&apos;s scorecard, or leave it unset and strokes fall on holes 1–{holeCount}. Each rank 1–{holeCount} is used once.
+            <p className="mt-2 flex items-start gap-1.5" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}>
+              <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>No hole difficulty set — strokes will fall on holes 1–{holeCount}. Add a stroke index any time for handicaps to land on the hardest holes.</span>
             </p>
           )}
         </div>
@@ -225,24 +230,30 @@ export function HoleEditor({
   );
 }
 
-/** Docked 3-column numeric keypad that fills the active yards field.
- *  `1–9`, then `⌫ · 0 · Next ›` (accent Next commits + advances). */
+/** Dismissable yards keypad — an ACCESSORY that sits above the persistent
+ *  footer, never the advance control. `1–9`, then `⌫ · 0 · ✓`; the accent ✓
+ *  closes the keypad ("Done to keep editing the hole"). Hole advance lives in
+ *  the footer (Next hole ›), so it never depends on which field you touched
+ *  last. Matches StrokeKeypad (light card-float panel, dark bold keys). */
 export function Keypad({
+  title,
+  hint,
   onDigit,
   onBackspace,
-  onNext,
-  nextLabel,
+  onDone,
 }: {
+  title: string;
+  hint?: string;
   onDigit: (d: number) => void;
   onBackspace: () => void;
-  onNext: () => void;
-  nextLabel: string;
+  onDone: () => void;
 }) {
-  // Matches StrokeKeypad (the normal hole keypad) exactly — light card-float
-  // panel, darker card buttons, bold numbers — differing only in the bottom row
-  // (0 instead of 10+, the accent Next instead of the ✓ confirm).
   return (
-    <div style={{ background: "var(--color-bt-card-float)", borderTop: "1px solid var(--color-bt-border)", padding: "12px 16px 22px" }}>
+    <div style={{ background: "var(--color-bt-card-float)", borderTop: "1px solid var(--color-bt-border)", padding: "10px 16px 14px" }}>
+      <div className="mb-2 flex items-center justify-between">
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>{title}</span>
+        {hint && <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>{hint}</span>}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
           <Key key={d} onClick={() => onDigit(d)}>
@@ -253,8 +264,8 @@ export function Keypad({
           <Delete size={20} strokeWidth={1.9} />
         </Key>
         <Key onClick={() => onDigit(0)}>0</Key>
-        <Key onClick={onNext} accent>
-          {nextLabel}
+        <Key onClick={onDone} aria-label="Done" accent>
+          <Check size={22} strokeWidth={2.4} />
         </Key>
       </div>
     </div>

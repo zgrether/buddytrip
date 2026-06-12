@@ -248,9 +248,10 @@ export function CoursePicker({
         <button onClick={back} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
           <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
-        <div className="flex min-w-0 flex-col items-center" style={{ lineHeight: 1.1 }}>
-          <div className="max-w-full truncate" style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)" }}>{headerTitle}</div>
-          {headerSubtitle && <div style={{ fontSize: 11.5, fontWeight: 500, color: "var(--color-bt-text-dim)", marginTop: 2 }}>{headerSubtitle}</div>}
+        {/* Same shape + spacing as the score-entry header (ScoreEntryView). */}
+        <div className="flex min-w-0 flex-col items-center text-center">
+          <div className="max-w-full truncate" style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{headerTitle}</div>
+          {headerSubtitle && <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{headerSubtitle}</div>}
         </div>
         <button onClick={onClose} aria-label="Close" className="flex h-9 w-9 items-center justify-center">
           <X size={20} style={{ color: "var(--color-bt-text-dim)" }} />
@@ -724,10 +725,10 @@ function EntryScreen({
 }) {
   const n = draft.holeCount;
   const completed = draft.index.map((v, i) => (v != null ? i + 1 : 0)).filter(Boolean);
-  // The keypad is a yards tool — it docks only while the yards field is focused
-  // (tap the field to open, "Done" to dismiss). Hole nav is the ‹ › arrows; the
-  // footer carries Next / Save when the keypad isn't up.
+  // The keypad is a dismissable yards accessory; the footer below it is the
+  // PERSISTENT advance/save control. Advancing never depends on the keypad.
   const [yardsActive, setYardsActive] = useState(false);
+  const teeName = draft.teeSets[activeTee]?.name?.trim() || `Tee ${activeTee + 1}`;
   const yardsOf = () => draft.teeSets[activeTee]?.yards[hole - 1] ?? null;
   const pushDigit = (d: number) => {
     const cur = yardsOf();
@@ -741,14 +742,18 @@ function EntryScreen({
     setYards(hole, cur == null || cur < 10 ? null : Math.floor(cur / 10));
   };
   const lastHole = hole >= n;
-  const onNext = () => (lastHole ? onSave() : setHole(hole + 1));
-  const footerLabel = lastHole ? (!indexUsable ? "Finish the index" : saving ? "Saving…" : "Save course") : `Hole ${hole + 1} ›`;
+  // A started-but-incomplete index blocks the footer (the index is course-wide);
+  // the ‹ › arrows still move between holes so you can finish it.
+  const blocked = !indexUsable;
+  const footerLabel = blocked ? "Finish the index to use this course" : lastHole ? (saving ? "Saving…" : "Save course") : "Next hole ›";
+  const onAdvance = () => (lastHole ? onSave() : setHole(hole + 1));
 
   return (
     <>
-      <div className="flex shrink-0 items-center justify-between" style={{ padding: "12px 16px" }}>
+      <div className="flex shrink-0 items-center justify-between" style={{ padding: "16px 16px" }}>
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => setHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex flex-col items-center" style={{ gap: 12, flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>Hole {hole}</div>
           <HoleProgress count={n} currentHole={hole} completed={completed} />
         </div>
         <NavArrow dir="next" disabled={hole >= n} onClick={() => setHole(hole + 1)} />
@@ -772,11 +777,28 @@ function EntryScreen({
         />
       </div>
 
-      {yardsActive ? (
-        <Keypad onDigit={pushDigit} onBackspace={backspace} onNext={() => setYardsActive(false)} nextLabel="Done ✓" />
-      ) : (
-        <Footer label={footerLabel} disabled={lastHole && (!indexUsable || saving)} onClick={onNext} />
+      {yardsActive && (
+        <Keypad
+          title={`Yards · ${teeName}`}
+          hint="Done to keep editing the hole"
+          onDigit={pushDigit}
+          onBackspace={backspace}
+          onDone={() => setYardsActive(false)}
+        />
       )}
+      <div className="shrink-0" style={{ padding: "12px 16px 24px", borderTop: "1px solid var(--color-bt-subtle-border)", background: "var(--color-bt-card-float)" }}>
+        <div className="flex items-center gap-3">
+          <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>Hole {hole} / {n}</span>
+          <button
+            onClick={onAdvance}
+            disabled={blocked || (lastHole && saving)}
+            className="flex-1 disabled:opacity-40"
+            style={{ height: 54, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}
+          >
+            {footerLabel}
+          </button>
+        </div>
+      </div>
     </>
   );
 }
@@ -804,6 +826,7 @@ function HoleEditScreen({
   onDone: () => void;
 }) {
   const [yardsActive, setYardsActive] = useState(false);
+  const teeName = draft.teeSets[activeTee]?.name?.trim() || `Tee ${activeTee + 1}`;
   const yardsOf = () => draft.teeSets[activeTee]?.yards[hole - 1] ?? null;
   const pushDigit = (d: number) => {
     const cur = yardsOf();
@@ -837,11 +860,16 @@ function HoleEditScreen({
           showSwapWarning
         />
       </div>
-      {yardsActive ? (
-        <Keypad onDigit={pushDigit} onBackspace={backspace} onNext={() => setYardsActive(false)} nextLabel="Done ✓" />
-      ) : (
-        <Footer label="Done" disabled={flagged.has(hole)} onClick={onDone} />
+      {yardsActive && (
+        <Keypad
+          title={`Yards · ${teeName}`}
+          hint="Done to keep editing the hole"
+          onDigit={pushDigit}
+          onBackspace={backspace}
+          onDone={() => setYardsActive(false)}
+        />
       )}
+      <Footer label="Save hole" disabled={flagged.has(hole)} onClick={onDone} />
     </>
   );
 }
