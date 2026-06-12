@@ -31,20 +31,20 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
       <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
         Groups · tap to enter scores
       </span>
-      <div className="mt-2 flex flex-col gap-2">
+      <div className="mt-2 grid grid-cols-2 gap-2">
         {groups.map((g) => (
           <button
             key={g.id}
             onClick={() => onEnter(g.id)}
-            className="w-full rounded-xl border text-left"
+            className="min-w-0 rounded-xl border text-left"
             style={{
               padding: "10px 12px",
               background: g.mine ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
               borderColor: g.mine ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
             }}
           >
-            <div className="flex items-center justify-between">
-              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{g.name}</span>
+            <div className="flex items-center justify-between gap-1">
+              <span className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{g.name}</span>
               {g.mine ? (
                 <span className="flex items-center gap-0.5" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-accent)" }}>
                   Enter <ChevronRight size={15} />
@@ -53,7 +53,7 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
                 <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
               )}
             </div>
-            <div style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1 }}>
+            <div className="truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1, whiteSpace: "nowrap" }}>
               {g.teeLabel ? `${g.teeLabel} tee · ` : ""}
               {g.thru == null ? "not started" : `thru ${g.thru}`}
             </div>

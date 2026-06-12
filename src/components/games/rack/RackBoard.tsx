@@ -130,17 +130,22 @@ export function RackBoard({
           ))}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)" }}>
-          {slots.map((s, i) => (
-            <div key={s.slot} className="flex items-stretch" style={{ borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}>
-              <span className="flex shrink-0 items-center justify-center" style={{ width: 26, fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-                {s.slot}
-              </span>
-              <div className="min-w-0 flex-1">
+        <div className="flex items-stretch">
+          {/* Slot numbers float in a left gutter — OUTSIDE the rack border. */}
+          <div className="flex shrink-0 flex-col" style={{ width: 22, marginRight: 6 }}>
+            {slots.map((s) => (
+              <div key={s.slot} className="flex items-center justify-center" style={{ height: ROW_H }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{s.slot}</span>
+              </div>
+            ))}
+          </div>
+          <div className="min-w-0 flex-1 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)" }}>
+            {slots.map((s, i) => (
+              <div key={s.slot} style={{ borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}>
                 <RackRow slot={s} nameOf={nameOf} colorOf={colorOf} />
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -172,17 +177,26 @@ export function RackBoard({
   );
 }
 
-// ── One slot — inert readout (match-board outer-edge layout) ──────────────────
+// Two fixed-height bands keep the PRIMARY line (net-to-par · name · vs · name ·
+// net-to-par) on one row and the SECONDARY line (THRU · gap) beneath — so the
+// scores, names, and "vs" all sit on the same vertical line.
+const PRIMARY = 30;
+const SECONDARY = 22;
+const ROW_H = PRIMARY + SECONDARY;
+
 function RackRow({ slot, nameOf, colorOf }: { slot: RackSlot; nameOf: (id: string) => string; colorOf: (t: "A" | "B") => string }) {
   const aLead = slot.leader === "A";
   const bLead = slot.leader === "B";
   const gap = Math.round(slot.gap);
   return (
-    <div className="flex items-stretch" style={{ minHeight: 56 }}>
+    <div className="flex items-stretch" style={{ height: ROW_H }}>
       <ScoreBlock value={slot.a.value} thru={slot.a.thru} lead={aLead} color={colorOf("A")} />
       <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} />
-      <div className="flex shrink-0 items-center justify-center" style={{ width: 30, background: "var(--color-bt-card-raised)" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>vs</span>
+      <div className="flex shrink-0 flex-col" style={{ width: 28, background: "var(--color-bt-card-raised)" }}>
+        <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>vs</span>
+        </div>
+        <div style={{ height: SECONDARY }} />
       </div>
       <NameBlock name={nameOf(slot.b.id)} align="left" lead={bLead} color={colorOf("B")} gapText={bLead ? `Up by ${gap}` : null} />
       <ScoreBlock value={slot.b.value} thru={slot.b.thru} lead={bLead} color={colorOf("B")} />
@@ -192,28 +206,31 @@ function RackRow({ slot, nameOf, colorOf }: { slot: RackSlot; nameOf: (id: strin
 
 function ScoreBlock({ value, thru, lead, color }: { value: number; thru: number; lead: boolean; color: string }) {
   return (
-    <div
-      className="flex shrink-0 flex-col items-center justify-center"
-      style={{ width: 64, background: lead ? color : "transparent" }}
-    >
-      <span style={{ fontSize: 24, fontWeight: 800, color: lead ? "#fff" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-        {fmtToPar(value)}
-      </span>
-      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", color: lead ? "rgba(255,255,255,0.85)" : "var(--color-bt-text-dim)", marginTop: 3 }}>
-        THRU {thru}
-      </span>
+    <div className="flex shrink-0 flex-col" style={{ width: 60, background: lead ? color : "transparent" }}>
+      <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: lead ? "#fff" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+          {fmtToPar(value)}
+        </span>
+      </div>
+      <div className="flex items-center justify-center" style={{ height: SECONDARY }}>
+        <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.06em", color: lead ? "rgba(255,255,255,0.85)" : "var(--color-bt-text-dim)" }}>
+          THRU {thru}
+        </span>
+      </div>
     </div>
   );
 }
 
 function NameBlock({ name, align, lead, color, gapText }: { name: string; align: "left" | "right"; lead: boolean; color: string; gapText: string | null }) {
+  const justify = align === "right" ? "flex-end" : "flex-start";
   return (
-    <div
-      className="flex min-w-0 flex-1 flex-col justify-center"
-      style={{ padding: "0 10px", alignItems: align === "right" ? "flex-end" : "flex-start", background: lead ? `${color}29` : "transparent" }}
-    >
-      <span className="max-w-full truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{name}</span>
-      {gapText && <span style={{ fontSize: 11.5, fontWeight: 600, color, marginTop: 1 }}>{gapText}</span>}
+    <div className="flex min-w-0 flex-1 flex-col" style={{ padding: "0 10px", background: lead ? `${color}29` : "transparent" }}>
+      <div className="flex w-full items-center" style={{ height: PRIMARY, justifyContent: justify }}>
+        <span className="max-w-full truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{name}</span>
+      </div>
+      <div className="flex w-full items-center" style={{ height: SECONDARY, justifyContent: justify }}>
+        {gapText && <span style={{ fontSize: 11, fontWeight: 600, color }}>{gapText}</span>}
+      </div>
     </div>
   );
 }
@@ -231,10 +248,12 @@ export function RsToggle({ mode, onMode }: { mode: RackMode; onMode: (m: RackMod
           padding: "3px 9px",
           borderRadius: 9999,
           fontSize: 12,
-          fontWeight: 600,
-          border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-          background: on ? "var(--color-bt-accent)" : "transparent",
-          color: on ? "#0d1f1a" : "var(--color-bt-text-dim)",
+          fontWeight: on ? 700 : 600,
+          // Toggled-on = a neutral elevated fill (NOT the teal CTA), so "on" reads
+          // as a selected control rather than a call to action.
+          border: `1px solid ${on ? "var(--color-bt-text-dim)" : "var(--color-bt-border)"}`,
+          background: on ? "var(--color-bt-card-raised)" : "transparent",
+          color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
         }}
       >
         <TrendingUp size={13} />
