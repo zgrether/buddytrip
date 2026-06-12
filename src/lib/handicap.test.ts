@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { effectiveStrokes, clampStrokes, strokeHint } from "./handicap";
 import { strokeHoles } from "./matchPlay";
+import { unitsFromSchema, strokeIndexOf } from "./strokePlayConfig";
 
 describe("effectiveStrokes", () => {
   it("defaults null to 0", () => {
@@ -51,5 +52,44 @@ describe("strokeHint", () => {
     const struck = [...strokeHoles(6, REAL)].sort((a, b) => a - b);
     const hint = strokeHint(6, 18, REAL)!;
     for (const h of struck) expect(hint).toContain(String(h));
+  });
+});
+
+// Regression: an index-less course (par snapshotted, handicap_index OMITTED) must
+// fall back SEQUENTIALLY on the client, exactly as the server scores it — never a
+// zero-fill index (which `strokeHoles` would read as "every hole"). Guards the
+// audit C8/C9/C10 divergence: client live strip vs. server persisted result.
+describe("index-less course → sequential fallback (no client/server divergence)", () => {
+  const indexLessSchema = {
+    units: {
+      labels: Array.from({ length: 18 }, (_, i) => String(i + 1)),
+      metadata: { par: Array(18).fill(4) }, // par only — NO handicap_index
+    },
+  };
+  const units = unitsFromSchema(indexLessSchema);
+
+  it("unitsFromSchema leaves strokeIndex undefined (so GolfCard omits the INDEX row)", () => {
+    expect(units.every((u) => u.strokeIndex == null)).toBe(true);
+  });
+
+  it("strokeIndexOf returns the sequential identity [1..18], NOT a zero-fill", () => {
+    const idx = strokeIndexOf(units);
+    expect(idx).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+    expect(idx.some((v) => v === 0)).toBe(false);
+  });
+
+  it("allocation is sequential and matches the server's undefined-index fallback", () => {
+    const idx = strokeIndexOf(units);
+    const client = [...strokeHoles(5, idx)].sort((a, b) => a - b);
+    const server = [...strokeHoles(5, undefined)].sort((a, b) => a - b); // server: snapshot omits index
+    expect(client).toEqual([1, 2, 3, 4, 5]); // first 5 holes, NOT all 18
+    expect(client).toEqual(server); // no divergence
+  });
+
+  it("the hint reads 'first N holes' and agrees with the allocation", () => {
+    const idx = strokeIndexOf(units);
+    expect(strokeHint(5, 18, idx)).toBe("5 strokes · first 5 holes");
+    const struck = [...strokeHoles(5, idx)];
+    expect(struck).toEqual([1, 2, 3, 4, 5]);
   });
 });
