@@ -2,6 +2,9 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
+import { clampStrokes } from "@/lib/handicap";
+import { computeMatchPlayResults } from "../lib/matchPlay";
+import { computeRackNStackResults } from "../lib/rackNStack";
 
 /**
  * playGroups — foursomes for a game (the scoring-side use of `play_groups`,
@@ -79,17 +82,43 @@ export const playGroupsRouter = router({
     }),
 
   // setHandicap — Owner/Organizer. Net strokes for one participant (null = 0).
-  setHandicap: authedProcedure
-    .input(z.object({ tripId: z.string(), gameId: z.string(), userId: z.string().min(1), strokes: z.number().int().min(0).max(54) }))
+  // setParticipantStrokes — Owner/Organizer. The per-player ABSOLUTE handicap
+  // (Mode A), distinct from match play's relative one-side setHandicap. Server-
+  // clamped to 0–18. Handicap is a scoring input, so the change re-derives the
+  // game's in-progress results (CLAUDE.md "derived values recompute" pattern) —
+  // a frozen/complete game is never rewritten.
+  setParticipantStrokes: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string(), userId: z.string().min(1), strokes: z.number().int() }))
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id, status, game_type_id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+
+      const strokes = clampStrokes(input.strokes);
       const { error } = await ctx.supabase
         .from("game_participants")
-        .update({ handicap_strokes: input.strokes })
+        .update({ handicap_strokes: strokes })
         .eq("game_id", input.gameId)
         .eq("user_id", input.userId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set handicap: ${error.message}` });
-      return { ok: true };
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set strokes: ${error.message}` });
+
+      // Re-derive in-progress results; leave a complete (frozen) game untouched.
+      if (game.status !== "complete") {
+        const { data: tmpl } = await ctx.supabase
+          .from("game_type_templates")
+          .select("result_strategy")
+          .eq("id", game.game_type_id as string)
+          .maybeSingle();
+        const strategy = (tmpl?.result_strategy as string | null) ?? "stroke_total";
+        if (strategy === "match_play") await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
+        else if (strategy === "rack_n_stack") await computeRackNStackResults(ctx.supabase, input.gameId);
+      }
+      return { ok: true, strokes };
     }),
 
   // listByGame — any trip member. Foursomes + each participant's group/handicap.

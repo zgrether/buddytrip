@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDecided, matchState } from "@/lib/matchPlay";
+import { effectiveStrokes } from "@/lib/handicap";
 
 /**
  * DB-persist side of match-play results. Reads each `game_matches` row, gathers
@@ -69,7 +70,7 @@ export async function computeMatchPlayResults(
     .eq("game_id", gameId);
   const hcap = new Map<string, number>();
   for (const p of parts ?? []) {
-    hcap.set(p.user_id as string, (p.handicap_strokes as number | null) ?? 0);
+    hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
   }
 
   // user_id → { unit_label → gross }.

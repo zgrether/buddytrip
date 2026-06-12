@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { playerStats, computeRack, type RackPlayer, type Team } from "@/lib/rackNStack";
+import { effectiveStrokes } from "@/lib/handicap";
 
 /**
  * DB-persist side of rack-n-stack. Builds the SAME read-model the live client
@@ -66,7 +67,7 @@ export async function computeRackNStackResults(
     .select("user_id, handicap_strokes")
     .eq("game_id", gameId);
   const hcap = new Map<string, number>();
-  for (const p of parts ?? []) hcap.set(p.user_id as string, (p.handicap_strokes as number | null) ?? 0);
+  for (const p of parts ?? []) hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
 
   const { data: entries } = await supabase
     .from("score_entries")

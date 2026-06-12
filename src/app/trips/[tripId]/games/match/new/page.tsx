@@ -16,6 +16,7 @@ import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, matchState, strokeHoles, type HoleResult } from "@/lib/matchPlay";
 import { PLAYER_COLORS, initialsOf, unitsFromSchema, strokeIndexOf } from "@/lib/strokePlayConfig";
+import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 /** "07:40" → "7:40 AM". Empty/invalid → "". */
@@ -144,7 +145,7 @@ export default function NewMatchGamePage() {
 
   const handicapOf = useMemo(() => {
     const m = new Map<string, number>();
-    for (const p of serverParticipants) m.set(p.user_id as string, (p.handicap_strokes as number | null) ?? 0);
+    for (const p of serverParticipants) m.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
     return m;
   }, [serverParticipants]);
 

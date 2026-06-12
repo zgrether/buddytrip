@@ -12,8 +12,10 @@ import { parseTime, toTime24 } from "@/lib/time";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
+import { HandicapRoster, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { unitsFromSchema, strokeIndexOf, initialsOf } from "@/lib/strokePlayConfig";
+import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -58,11 +60,21 @@ export default function RackNStackPage() {
   const utils = trpc.useUtils();
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
+  // Resume the trip's latest in-progress rack game so returning here (no nav
+  // entry yet) lands on the SAME game instead of starting a fresh one — which
+  // would look like the handicaps/scores were lost.
+  const gamesList = trpc.games.listByTrip.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const resumeId = useMemo(() => {
+    const g = (gamesList.data ?? []).find((x) => x.game_type_id === RACK && x.status !== "complete");
+    return (g?.id as string | undefined) ?? null;
+  }, [gamesList.data]);
+  const gid = gameId ?? resumeId;
   const [mode, setMode] = useState<RackMode>("current");
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string } | null>(null);
   const [firstTee, setFirstTee] = useState(""); // "HH:MM" 24h; groups stagger +10
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
+  const [showHandicaps, setShowHandicaps] = useState(false);
   const [currentHole, setCurrentHole] = useState(1);
   const [values, setValues] = useState<ScoreValues>({});
 
@@ -72,13 +84,14 @@ export default function RackNStackPage() {
   const teamsQ = trpc.teams.list.useQuery({ tripId: tripId!, competitionId: competitionId! }, { enabled: !!tripId && !!competitionId });
   const assignQ = trpc.teamAssignments.list.useQuery({ tripId: tripId!, competitionId: competitionId! }, { enabled: !!tripId && !!competitionId });
 
-  const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
-  const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
-  const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { enabled: !!tripId && !!gameId });
+  const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
+  const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
+  const scoresQ = trpc.scores.listByGame.useQuery({ tripId: tripId!, gameId: gid! }, { enabled: !!tripId && !!gid });
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
   const setFoursomes = trpc.playGroups.setFoursomes.useMutation();
+  const setStrokes = trpc.playGroups.setParticipantStrokes.useMutation();
   const upsertEntry = trpc.scores.upsertEntry.useMutation();
   const deleteEntry = trpc.scores.deleteEntry.useMutation();
   const finishGame = trpc.games.finish.useMutation();
@@ -142,7 +155,7 @@ export default function RackNStackPage() {
   const participants = useMemo(() => groupsQ.data?.participants ?? [], [groupsQ.data]);
   const handicapOf = useMemo(() => {
     const m = new Map<string, number>();
-    for (const p of participants) m.set(p.user_id as string, (p.handicap_strokes as number | null) ?? 0);
+    for (const p of participants) m.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
     return m;
   }, [participants]);
 
@@ -177,6 +190,22 @@ export default function RackNStackPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupsQ.data, participants, scUnits, scIndex, nameOf, me, loadedValues, values, teamOf, teamMeta]);
 
+  const handicapPlayers: HandicapPlayer[] = useMemo(
+    () =>
+      participants.map((p) => {
+        const id = p.user_id as string;
+        return {
+          id,
+          name: nameOf.get(id) ?? "Player",
+          avatarIcon: avatarOf.get(id) ?? null,
+          teamColor: teamOf.get(id) ? colorForUser(id) : null,
+          strokes: handicapOf.get(id) ?? 0,
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [participants, nameOf, avatarOf, teamOf, teamMeta, handicapOf]
+  );
+
   // ── Handlers ─────────────────────────────────────────────────────────
   async function startRack() {
     if (!tripId || !competitionId) return;
@@ -197,14 +226,20 @@ export default function RackNStackPage() {
     }));
     await setFoursomes.mutateAsync({ tripId, gameId: g.id, groups });
     setGameId(g.id);
+    setShowHandicaps(true); // Pairings ✓ → Handicaps step
   }
+
+  const onSetStrokes = (userId: string, strokes: number) =>
+    setStrokes
+      .mutateAsync({ tripId: tripId!, gameId: gid!, userId, strokes })
+      .then(() => utils.playGroups.listByGame.invalidate({ tripId: tripId!, gameId: gid! }));
 
   const handleChange = (pid: string, unit: string, value: number) => {
     setValues((v) => ({ ...v, [pid]: { ...(v[pid] ?? {}), [unit]: value } }));
-    if (!tripId || !gameId) return;
+    if (!tripId || !gid) return;
     upsertEntry.mutate(
-      { tripId, gameId, participantId: pid, unitLabel: unit, value },
-      { onSettled: () => utils.scores.listByGame.invalidate({ tripId, gameId }) }
+      { tripId, gameId: gid, participantId: pid, unitLabel: unit, value },
+      { onSettled: () => utils.scores.listByGame.invalidate({ tripId, gameId: gid }) }
     );
   };
   const handleClear = (pid: string, unit: string) => {
@@ -213,17 +248,17 @@ export default function RackNStackPage() {
       delete next[unit];
       return { ...v, [pid]: next };
     });
-    if (!tripId || !gameId) return;
+    if (!tripId || !gid) return;
     deleteEntry.mutate(
-      { tripId, gameId, participantId: pid, unitLabel: unit },
-      { onSettled: () => utils.scores.listByGame.invalidate({ tripId, gameId }) }
+      { tripId, gameId: gid, participantId: pid, unitLabel: unit },
+      { onSettled: () => utils.scores.listByGame.invalidate({ tripId, gameId: gid }) }
     );
   };
 
   async function finish() {
-    if (!tripId || !gameId) return;
-    await finishGame.mutateAsync({ tripId, gameId });
-    await utils.games.getById.invalidate({ tripId, gameId });
+    if (!tripId || !gid) return;
+    await finishGame.mutateAsync({ tripId, gameId: gid });
+    await utils.games.getById.invalidate({ tripId, gameId: gid });
   }
 
   // ── Render ───────────────────────────────────────────────────────────
@@ -248,7 +283,7 @@ export default function RackNStackPage() {
   }
 
   // Entry: the tapped foursome's stroke-play card.
-  if (entryGroupId && gameId) {
+  if (entryGroupId && gid) {
     const members = participants.filter((p) => p.play_group_id === entryGroupId);
     const groupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
     const ps: Participant[] = members.map((p) => {
@@ -275,8 +310,25 @@ export default function RackNStackPage() {
     );
   }
 
+  // Handicaps setup step (after pairings; before play). Reached only via the
+  // canEdit-gated start/edit affordances; the mutation is server-canEdit-gated.
+  if (showHandicaps && gid) {
+    return (
+      <div className="flex flex-col" style={{ height: "100vh" }}>
+        <HandicapRoster
+          players={handicapPlayers}
+          holeCount={scUnits.length}
+          strokeIndex={scIndex}
+          onSetStrokes={onSetStrokes}
+          onDone={() => setShowHandicaps(false)}
+          onBack={() => setShowHandicaps(false)}
+        />
+      </div>
+    );
+  }
+
   // No game yet → setup.
-  if (!gameId) {
+  if (!gid) {
     return (
       <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack" subtitle="Net stroke play · team rack">
         <div className="w-full px-4 py-5">
@@ -312,6 +364,13 @@ export default function RackNStackPage() {
     <Shell onBack={() => router.push(`/trips/${param}`)} title="Rack-n-Stack" subtitle={final ? "Net stroke play · final" : "Net stroke play · standings"}>
       <RsDayScore teamA={teamMeta.A} teamB={teamMeta.B} pointsA={rack.points.A} pointsB={rack.points.B} final={final} projected={mode === "projected"} />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(1); }} />
+      {canEdit && !final && (
+        <div className="px-3">
+          <button onClick={() => setShowHandicaps(true)} style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-accent)" }}>
+            Edit handicaps
+          </button>
+        </div>
+      )}
       <RackBoard
         teamA={teamMeta.A}
         teamB={teamMeta.B}

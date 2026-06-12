@@ -89,6 +89,32 @@ describe("rack-n-stack — finish distills team points to game_results", () => {
     expect(rows!.find((r) => r.entity_id === teamA)!.points).toBe(2);
   });
 
+  it("setParticipantStrokes clamps 0–18, persists, and is canEdit-gated", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "HC", competitionId });
+    const gameId = game.id as string;
+    await ctx.callerAs("planner").playGroups.setFoursomes({ tripId, gameId, groups: [{ userIds: [owner, member] }] });
+
+    // Over-cap clamps to 18.
+    const r = await ctx.callerAs("planner").playGroups.setParticipantStrokes({ tripId, gameId, userId: owner, strokes: 25 });
+    expect(r.strokes).toBe(18);
+    const { data: row } = await ctx.admin
+      .from("game_participants")
+      .select("handicap_strokes")
+      .eq("game_id", gameId)
+      .eq("user_id", owner)
+      .single();
+    expect(row!.handicap_strokes).toBe(18);
+
+    // Negative clamps to 0.
+    const r0 = await ctx.callerAs("planner").playGroups.setParticipantStrokes({ tripId, gameId, userId: owner, strokes: -3 });
+    expect(r0.strokes).toBe(0);
+
+    // A plain member cannot set strokes (game setup is canEdit-only).
+    await expect(
+      ctx.callerAs("member").playGroups.setParticipantStrokes({ tripId, gameId, userId: owner, strokes: 5 })
+    ).rejects.toThrow();
+  });
+
   it("a tied slot halves ½/½", async () => {
     const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Day 2", competitionId });
     const gameId = game.id as string;
