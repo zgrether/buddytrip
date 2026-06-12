@@ -40,6 +40,8 @@ interface Draft {
   teeSets: TeeSet[];
   source: "manual" | "golfapi";
   providerId?: string;
+  /** Set when reviewing an existing library course; applied as-is unless edited. */
+  existingId?: string;
 }
 
 type Screen = "search" | "confirm" | "new" | "entry";
@@ -75,6 +77,9 @@ export function CoursePicker({
   const [hole, setHole] = useState(1);
   const [editingHole, setEditingHole] = useState<number | null>(null);
   const [pulling, setPulling] = useState(false);
+  // True once any hole is edited — a reviewed library course is applied as-is
+  // when untouched, or saved as a new course (a copy) when edited.
+  const [edited, setEdited] = useState(false);
 
   const recent = trpc.courses.list.useQuery({ limit: 8 });
   const createCourse = trpc.courses.create.useMutation();
@@ -113,19 +118,26 @@ export function CoursePicker({
     [validation, draft.hasStrokeIndex]
   );
 
-  const setPar = (h: number, value: number) =>
+  const setPar = (h: number, value: number) => {
+    setEdited(true);
     setDraft((d) => ({ ...d, par: d.par.map((p, i) => (i === h - 1 ? value : p)) }));
-  const setIndex = (h: number, value: number) =>
+  };
+  const setIndex = (h: number, value: number) => {
+    setEdited(true);
     setDraft((d) => ({ ...d, index: applyStrokeIndexSwap(d.index, h - 1, value) }));
-  const setYards = (h: number, value: number | null) =>
+  };
+  const setYards = (h: number, value: number | null) => {
+    setEdited(true);
     setDraft((d) => ({
       ...d,
       teeSets: d.teeSets.map((t, ti) =>
         ti === activeTee ? { ...t, yards: t.yards.map((y, i) => (i === h - 1 ? value : y)) } : t
       ),
     }));
+  };
 
   async function pull(summary: CourseSummary) {
+    setEdited(false);
     setPulling(true);
     const detail = await getCourseDetail(summary.id);
     setPulling(false);
@@ -153,8 +165,32 @@ export function CoursePicker({
     setScreen("confirm");
   }
 
+  // Review a saved library course on the Confirm screen before applying (eyeball
+  // / fix-a-hole). Untouched → applied as-is; edited → saved as a copy.
+  function reviewRecent(c: RecentCourse) {
+    setEdited(false);
+    setDraft({
+      name: c.name,
+      location: c.location ?? "",
+      holeCount: c.hole_count,
+      par: c.par,
+      index: c.has_stroke_index ? c.handicap_index : Array(c.hole_count).fill(null),
+      hasStrokeIndex: c.has_stroke_index,
+      teeSets: c.tee_sets?.length ? c.tee_sets : [blankTee(c.hole_count, "White")],
+      source: "manual",
+      existingId: c.id,
+    });
+    setActiveTee(0);
+    setScreen("confirm");
+  }
+
   async function save() {
     if (!indexComplete || !draft.name.trim()) return;
+    // Reviewing an existing library course, unedited → apply it directly.
+    if (draft.existingId && !edited) {
+      onApply({ id: draft.existingId, name: draft.name.trim() });
+      return;
+    }
     const course = await createCourse.mutateAsync({
       name: draft.name.trim(),
       location: draft.location.trim() || undefined,
@@ -214,8 +250,9 @@ export function CoursePicker({
           recent={(recent.data as RecentCourse[]) ?? []}
           pulling={pulling}
           onPick={pull}
-          onPickRecent={(c) => onApply({ id: c.id, name: c.name })}
+          onPickRecent={reviewRecent}
           onManual={() => {
+            setEdited(false);
             setDraft(blankDraft(18));
             setActiveTee(0);
             setScreen("new");
@@ -259,7 +296,11 @@ interface RecentCourse {
   id: string;
   name: string;
   location: string | null;
-  hole_count: number;
+  hole_count: 9 | 18;
+  par: number[];
+  handicap_index: number[];
+  has_stroke_index: boolean;
+  tee_sets: TeeSet[];
 }
 
 // ── Search ──────────────────────────────────────────────────────────────────
