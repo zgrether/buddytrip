@@ -23,10 +23,11 @@ import { NavArrow, HoleProgress } from "../entryChrome";
  * → stepped per-hole entry), both producing a saved global `courses` row; on
  * apply it hands the parent { id, name } to snapshot onto the game.
  *
- * Stroke index is optional (a creation toggle); when on it's enforced as a valid
- * 1..N permutation via the 18-cell grid's swap-on-pick, and Use/Save is blocked
- * until complete. Per-hole controls are tap-first: par segmented, yards keypad,
- * index grid — no ± steppers.
+ * Par is required; the stroke index is OPTIONAL. An untouched index saves on par
+ * alone (sequential fallback) — only a STARTED-but-incomplete index blocks
+ * Use/Save; a complete one is enforced as a valid 1..N permutation via the
+ * 18-cell grid's swap-on-pick. A dirty/partial pulled index is treated as absent.
+ * Per-hole controls are tap-first: par segmented, yards keypad, index grid.
  */
 
 type TeeSet = { name: string; yards: (number | null)[] };
@@ -106,16 +107,17 @@ export function CoursePicker({
     () => validateStrokeIndex(draft.index, draft.holeCount),
     [draft.index, draft.holeCount]
   );
-  const indexComplete = !draft.hasStrokeIndex || validation.valid;
-  const missingCount = draft.hasStrokeIndex
-    ? validation.unsetHoles.length + validation.duplicateHoles.length + validation.outOfRangeHoles.length
-    : 0;
+  // The stroke index is OPTIONAL: untouched (no hole set) is a legal, saveable
+  // state (sequential fallback). Only a STARTED-but-incomplete index blocks
+  // Use/Save. A complete permutation is the real index.
+  const indexStarted = draft.hasStrokeIndex && draft.index.some((v) => v != null);
+  const indexUsable = !indexStarted || validation.valid; // untouched OR complete
   const flagged = useMemo(
     () =>
-      draft.hasStrokeIndex
+      indexStarted && !validation.valid
         ? new Set([...validation.unsetHoles, ...validation.duplicateHoles, ...validation.outOfRangeHoles])
         : new Set<number>(),
-    [validation, draft.hasStrokeIndex]
+    [validation, indexStarted]
   );
 
   const setPar = (h: number, value: number) => {
@@ -150,12 +152,19 @@ export function CoursePicker({
     }
     const holeCount = (detail.holes.length >= 18 ? 18 : 9) as 9 | 18;
     const tees = teeSetsFromDetail(detail);
+    // Dirty lookup data: a complete clean permutation is kept; a missing/partial
+    // pulled index is treated as ABSENT (cleared to untouched → fallback) rather
+    // than carried in as a started-but-broken index.
+    const pulledIndex = indexFromDetail(detail).slice(0, holeCount);
+    const cleanIndex = validateStrokeIndex(pulledIndex, holeCount).valid
+      ? pulledIndex
+      : Array(holeCount).fill(null);
     setDraft({
       name: detail.name,
       location: detail.location,
       holeCount,
       par: parFromDetail(detail).slice(0, holeCount),
-      index: indexFromDetail(detail).slice(0, holeCount),
+      index: cleanIndex,
       hasStrokeIndex: true,
       teeSets: tees.length ? tees.map((t) => ({ ...t, yards: t.yards.slice(0, holeCount) })) : [blankTee(holeCount, "White")],
       source: "golfapi",
@@ -185,19 +194,22 @@ export function CoursePicker({
   }
 
   async function save() {
-    if (!indexComplete || !draft.name.trim()) return;
+    if (!indexUsable || !draft.name.trim()) return;
     // Reviewing an existing library course, unedited → apply it directly.
     if (draft.existingId && !edited) {
       onApply({ id: draft.existingId, name: draft.name.trim() });
       return;
     }
+    // Snapshot the index ONLY when it's a complete permutation; an untouched or
+    // index-less course saves on par alone (sequential fallback).
+    const hasIndex = validation.valid;
     const course = await createCourse.mutateAsync({
       name: draft.name.trim(),
       location: draft.location.trim() || undefined,
       holeCount: draft.holeCount,
       par: draft.par,
-      handicapIndex: draft.hasStrokeIndex ? (draft.index as number[]) : undefined,
-      hasStrokeIndex: draft.hasStrokeIndex,
+      handicapIndex: hasIndex ? (draft.index as number[]) : undefined,
+      hasStrokeIndex: hasIndex,
       teeSets: draft.teeSets,
       source: draft.source,
       providerId: draft.providerId,
@@ -263,8 +275,7 @@ export function CoursePicker({
           draft={draft}
           activeTee={activeTee}
           setActiveTee={setActiveTee}
-          indexComplete={indexComplete}
-          missingCount={missingCount}
+          indexUsable={indexUsable}
           flagged={flagged}
           saving={createCourse.isPending}
           onEditHole={(h) => setEditingHole(h)}
@@ -279,8 +290,7 @@ export function CoursePicker({
           setHole={setHole}
           activeTee={activeTee}
           setActiveTee={setActiveTee}
-          indexComplete={indexComplete}
-          missingCount={missingCount}
+          indexUsable={indexUsable}
           saving={createCourse.isPending}
           setPar={setPar}
           setIndex={setIndex}
@@ -403,8 +413,7 @@ function ConfirmScreen({
   draft,
   activeTee,
   setActiveTee,
-  indexComplete,
-  missingCount,
+  indexUsable,
   flagged,
   saving,
   onEditHole,
@@ -413,8 +422,7 @@ function ConfirmScreen({
   draft: Draft;
   activeTee: number;
   setActiveTee: (i: number) => void;
-  indexComplete: boolean;
-  missingCount: number;
+  indexUsable: boolean;
   flagged: Set<number>;
   saving: boolean;
   onEditHole: (h: number) => void;
@@ -447,13 +455,19 @@ function ConfirmScreen({
           </div>
         )}
 
-        {draft.hasStrokeIndex && !indexComplete && (
+        {!indexUsable ? (
           <div className="mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5" style={{ background: "var(--color-bt-warning-faint)", borderColor: "var(--color-bt-warning-border)" }}>
             <AlertTriangle size={15} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
             <span style={{ fontSize: 12.5, color: "var(--color-bt-warning)" }}>
-              This course&apos;s stroke index is incomplete — a wrong index mis-allocates handicap strokes. Tap the flagged holes to fix before using.
+              Stroke index started but incomplete — finish it (a wrong index mis-allocates handicap strokes), or clear it to play on par alone. Tap the flagged holes.
             </span>
           </div>
+        ) : (
+          !draft.index.some((v) => v != null) && (
+            <p className="mt-3" style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}>
+              No hole difficulty set — strokes fall on holes 1–{draft.holeCount}. Tap a hole to set the index any time so handicaps land on the hardest holes.
+            </p>
+          )
         )}
 
         <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)" }}>
@@ -494,7 +508,7 @@ function ConfirmScreen({
           </div>
         </div>
       </div>
-      <Footer label={indexComplete ? "Use this course" : `${missingCount} holes need a valid index`} disabled={!indexComplete || saving} onClick={onUse} />
+      <Footer label={indexUsable ? "Use this course" : "Finish the index to use it"} disabled={!indexUsable || saving} onClick={onUse} />
     </>
   );
 }
@@ -673,8 +687,7 @@ function EntryScreen({
   setHole,
   activeTee,
   setActiveTee,
-  indexComplete,
-  missingCount,
+  indexUsable,
   saving,
   setPar,
   setIndex,
@@ -686,8 +699,7 @@ function EntryScreen({
   setHole: (h: number) => void;
   activeTee: number;
   setActiveTee: (i: number) => void;
-  indexComplete: boolean;
-  missingCount: number;
+  indexUsable: boolean;
   saving: boolean;
   setPar: (h: number, v: number) => void;
   setIndex: (h: number, v: number) => void;
@@ -738,16 +750,13 @@ function EntryScreen({
           yardsActive
           onYardsTap={() => {}}
         />
-        {lastHole && !indexComplete && (
-          <p style={{ fontSize: 12.5, color: "var(--color-bt-warning)", marginTop: 12 }}>{missingCount} holes still need a stroke index.</p>
-        )}
       </div>
 
       <Keypad
         onDigit={pushDigit}
         onBackspace={backspace}
         onNext={onNext}
-        nextLabel={lastHole ? (saving ? "Saving…" : "Save ›") : `Hole ${hole + 1} ›`}
+        nextLabel={lastHole ? (!indexUsable ? "Finish the index" : saving ? "Saving…" : "Save ›") : `Hole ${hole + 1} ›`}
       />
     </>
   );

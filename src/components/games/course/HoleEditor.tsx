@@ -2,7 +2,7 @@
 
 import { Check, Delete } from "lucide-react";
 import { teeColor } from "@/lib/courseService";
-import type { IndexEntry } from "@/lib/courseIndex";
+import { validateStrokeIndex, type IndexEntry } from "@/lib/courseIndex";
 
 /**
  * HoleEditor — the SHARED per-hole editor (Slice C, addendum C-1). One component,
@@ -51,6 +51,9 @@ export function HoleEditor({
   showSwapWarning,
 }: HoleEditorProps) {
   const teeName = tees[activeTee]?.name?.trim() || `Tee ${activeTee + 1}`;
+  const idxValidation = validateStrokeIndex(index, holeCount);
+  const idxStarted = index.some((v) => v != null);
+  const idxSetCount = index.filter((v) => v != null).length;
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
       {/* Tee tabs — which tee's yardage you're filling. */}
@@ -134,10 +137,22 @@ export function HoleEditor({
         </button>
       </div>
 
-      {/* Stroke index — 18-cell grid, or the off-line. */}
+      {/* Stroke index — OPTIONAL 18-cell grid (three states), or the fallback line. */}
       {hasStrokeIndex ? (
         <div>
-          <FieldLabel>Stroke index · 1 = hardest</FieldLabel>
+          <div className="mb-2 flex items-center justify-between">
+            <FieldLabel>{idxStarted ? "Stroke index · 1 = hardest" : "Stroke index · optional"}</FieldLabel>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                color: idxValidation.valid ? "var(--color-bt-accent)" : idxStarted ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+              }}
+            >
+              {idxValidation.valid ? "✓ COMPLETE" : idxStarted ? `${idxSetCount} OF ${holeCount} SET` : "NOT SET"}
+            </span>
+          </div>
           {showSwapWarning && (
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginBottom: 8 }}>
               Reassigning an index swaps it with the hole that currently holds it.
@@ -173,13 +188,19 @@ export function HoleEditor({
               );
             })}
           </div>
-          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
-            Read it off the course&apos;s scorecard. Each rank 1–{holeCount} is used once; ✓ = already assigned.
-          </p>
+          {idxStarted && !idxValidation.valid ? (
+            <p style={{ fontSize: 12, color: "var(--color-bt-warning)", marginTop: 8, lineHeight: 1.45 }}>
+              Finish the index to use it. Unset holes: {idxValidation.unsetHoles.join(", ") || "—"}. Each rank 1–{holeCount} is used once; setting one already in use swaps with the hole that holds it.
+            </p>
+          ) : (
+            <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
+              Optional — read it off the course&apos;s scorecard, or leave it unset and strokes fall on holes 1–{holeCount}. Each rank 1–{holeCount} is used once.
+            </p>
+          )}
         </div>
       ) : (
         <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}>
-          Stroke indices are off for this course — net play is unavailable. Add them in course settings.
+          No hole difficulty set — strokes fall on holes 1–{holeCount}. Turn on stroke indices for handicaps to land on the hardest holes instead.
         </p>
       )}
 
