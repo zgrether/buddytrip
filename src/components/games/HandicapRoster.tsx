@@ -47,29 +47,47 @@ export function HandicapRoster({
   // background refetch (after persist) flows through props without an effect.
   const [local, setLocal] = useState<Record<string, number>>({});
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pending = useRef<Record<string, number>>({}); // edits not yet persisted
+  const onSetRef = useRef(onSetStrokes);
+  useEffect(() => {
+    onSetRef.current = onSetStrokes;
+  });
   const strokesOf = (p: HandicapPlayer) => local[p.id] ?? p.strokes;
 
+  const persist = (id: string, value: number) => {
+    delete pending.current[id];
+    onSetRef.current(id, value).catch(() => {
+      // Rollback: drop the local override → the row falls back to the prop
+      // (the server value, unchanged by the failed write).
+      setLocal((l) => {
+        const copy = { ...l };
+        delete copy[id];
+        return copy;
+      });
+    });
+  };
+
+  // On unmount (Done / Back / nav-away) FLUSH any pending debounced edit so the
+  // value survives leaving without tapping Done — never silently drop it.
   useEffect(() => {
     const t = timers.current;
-    return () => Object.values(t).forEach(clearTimeout);
+    const p = pending.current;
+    return () => {
+      Object.values(t).forEach(clearTimeout);
+      for (const [id, v] of Object.entries(p)) persist(id, v);
+    };
   }, []);
 
-  const bump = (id: string, current: number, delta: number) => {
-    const next = clampStrokes(current + delta);
-    if (next === current) return;
+  const bump = (id: string, base: number, delta: number) => {
+    // Read the freshest value (a rapid second tap before re-render) from the
+    // pending ref, then local, then the prop — so fast +/+ increments correctly.
+    const cur = pending.current[id] ?? local[id] ?? base;
+    const next = clampStrokes(cur + delta);
+    if (next === cur) return;
+    pending.current[id] = next;
     setLocal((l) => ({ ...l, [id]: next })); // optimistic
     clearTimeout(timers.current[id]);
-    timers.current[id] = setTimeout(() => {
-      onSetStrokes(id, next).catch(() => {
-        // Rollback: drop the local override → the row falls back to the prop
-        // (the server value, unchanged by the failed write).
-        setLocal((l) => {
-          const copy = { ...l };
-          delete copy[id];
-          return copy;
-        });
-      });
-    }, DEBOUNCE_MS);
+    timers.current[id] = setTimeout(() => persist(id, next), DEBOUNCE_MS);
   };
 
   const allScratch = players.every((p) => strokesOf(p) === 0);
