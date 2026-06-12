@@ -1,14 +1,13 @@
 "use client";
 
-import { AlertTriangle, Trophy } from "lucide-react";
+import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 import { CompetitionHeader } from "@/components/competition/CompetitionHeader";
 import { CompetitionIntroPanel } from "@/components/competition/CompetitionIntroPanel";
 import { TeamsPanel } from "@/components/competition/TeamsPanel";
-import { EventsPanel } from "@/components/competition/EventsPanel";
+import { CompetitionGamesPanel } from "@/components/competition/CompetitionGamesPanel";
 import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
-import type { EventRow } from "@/components/competition/EventsPanel";
 import type { TabProps } from "./types";
 
 interface CompTabProps extends TabProps {
@@ -132,42 +131,11 @@ function ExistingCompetitionView({
   isOwner: boolean;
   onCompetitionDeleted?: () => void;
 }) {
-  // Fetch events to compute unlinked GOLF count for the nudge panel.
-  const { data: events = [] } = trpc.events.list.useQuery(
-    { tripId, competitionId: competition.id },
-    { enabled: !!competition.id }
-  );
-  const unlinkedGolfCount = (events as EventRow[])
-    .filter((e) => e.type === "GOLF" && !e.is_practice && !e.agenda_item).length;
-
+  // D1 §0/§3: a game's scorecard is gated on scorecard_schema, NEVER on agenda
+  // linkage — so the old "unlinked golf event" nudge (a Phase-2 fact used as a
+  // Phase-1 gate) is gone. The agenda link is orthogonal and optional (§9).
   return (
     <div className="space-y-6 px-4">
-      {/* Nudge: golf events without an agenda link can't provide scorecards */}
-      {canEdit && unlinkedGolfCount > 0 && (
-        <div
-          className="flex items-start gap-3 rounded-xl px-4 py-3"
-          style={{
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-warning-border, var(--color-bt-border))",
-          }}
-        >
-          <span
-            className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-            style={{ background: "var(--color-bt-warning-faint)", color: "var(--color-bt-warning)" }}
-          >
-            <AlertTriangle size={14} />
-          </span>
-          <div>
-            <p className="text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              {unlinkedGolfCount === 1 ? "1 golf event" : `${unlinkedGolfCount} golf events`} not linked to the agenda
-            </p>
-            <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-              Scorecard entry won&apos;t be available until linked to a golf round on the agenda.
-            </p>
-          </div>
-        </div>
-      )}
-
       <CompetitionHeader
         competition={competition}
         tripId={tripId}
@@ -192,7 +160,7 @@ function ExistingCompetitionView({
         canEdit={canEdit}
         isOwner={isOwner}
       />
-      <EventsPanel
+      <CompetitionGamesPanel
         competitionId={competition.id}
         tripId={tripId}
         canEdit={canEdit}
