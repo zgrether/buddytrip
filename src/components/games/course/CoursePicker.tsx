@@ -453,18 +453,19 @@ function ConfirmScreen({
                 className="flex w-full items-center text-left"
                 style={{ height: 38, background: i % 2 === 0 ? "var(--color-bt-card)" : "var(--color-bt-base)", borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}
               >
-                <Cell w={48} bold>{h}</Cell>
-                <Cell w={72} dim>{tee?.yards[i] ?? "—"}</Cell>
-                <Cell w={56}>{p}</Cell>
-                {draft.hasStrokeIndex && (
-                  <span className="flex flex-1 items-center justify-between pr-3">
-                    <span style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: bad ? 700 : 500, color: bad ? "var(--color-bt-warning)" : "var(--color-bt-text)" }}>
-                      {draft.index[i] ?? "—"}
-                    </span>
-                    <PencilLine size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-                  </span>
-                )}
-                {!draft.hasStrokeIndex && <span className="flex flex-1 justify-end pr-3"><PencilLine size={13} style={{ color: "var(--color-bt-text-dim)" }} /></span>}
+                <Cell bold>{h}</Cell>
+                <Cell>
+                  {tee?.yards[i] != null ? (
+                    <span style={{ color: "var(--color-bt-text-dim)" }}>{tee.yards[i]}</span>
+                  ) : (
+                    <span style={{ color: "var(--color-bt-text-dim)", opacity: 0.4 }}>000</span>
+                  )}
+                </Cell>
+                <Cell>{p}</Cell>
+                {draft.hasStrokeIndex && <Cell warn={bad}>{draft.index[i] ?? "—"}</Cell>}
+                <IconCol>
+                  <PencilLine size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+                </IconCol>
               </button>
             );
           })}
@@ -833,26 +834,33 @@ function Switch({ on }: { on: boolean }) {
   );
 }
 
+// Data columns share the width equally (flex:1); the trailing icon column is
+// just wide enough for the edit pencil.
+const ICON_COL = 32;
+
 function HoleHeader({ hasIndex }: { hasIndex: boolean }) {
   return (
     <div className="flex items-center" style={{ height: 30, background: "var(--color-bt-card-raised)", borderBottom: "1px solid var(--color-bt-border)" }}>
-      <HCell w={48}>Hole</HCell>
-      <HCell w={72}>Yds</HCell>
-      <HCell w={56}>Par</HCell>
-      {hasIndex && <span className="flex-1 pr-3 text-center text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Index</span>}
-      {!hasIndex && <span className="flex-1" />}
+      <HCell>Hole</HCell>
+      <HCell>Yds</HCell>
+      <HCell>Par</HCell>
+      {hasIndex && <HCell>Index</HCell>}
+      <span style={{ width: ICON_COL, flexShrink: 0 }} />
     </div>
   );
 }
-function HCell({ w, children }: { w: number; children: React.ReactNode }) {
-  return <span style={{ width: w, textAlign: "center", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-bt-text-dim)" }}>{children}</span>;
+function HCell({ children }: { children: React.ReactNode }) {
+  return <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-bt-text-dim)" }}>{children}</span>;
 }
-function Cell({ w, children, bold, dim }: { w: number; children: React.ReactNode; bold?: boolean; dim?: boolean }) {
+function Cell({ children, bold, warn }: { children: React.ReactNode; bold?: boolean; warn?: boolean }) {
   return (
-    <span style={{ width: w, textAlign: "center", fontSize: 14, fontWeight: bold ? 700 : 500, color: dim ? "var(--color-bt-text-dim)" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
+    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontSize: 14, fontWeight: bold || warn ? 700 : 500, color: warn ? "var(--color-bt-warning)" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
       {children}
     </span>
   );
+}
+function IconCol({ children }: { children: React.ReactNode }) {
+  return <span className="flex items-center justify-center" style={{ width: ICON_COL, flexShrink: 0 }}>{children}</span>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
