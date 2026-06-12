@@ -84,6 +84,61 @@ export function requireTripRole(minRole: TripRole) {
 }
 
 // ---------------------------------------------------------------------------
+// requireGameEdit (Slice D1 §8)
+//
+// The per-game edit gate: passes if the user is trip Owner/Organizer (canEdit)
+// OR a delegated organizer of THIS game (game_organizers row). Game-isolated —
+// a pick'em delegate cannot touch the scramble. Mirror of the DB rule in
+// migration 045 (is_game_organizer); both must agree.
+//
+// Reads tripId + gameId from rawInput. Chain AFTER authedProcedure. Use on every
+// game-EDIT mutation (configure / enter-results); game CREATE stays trip-role
+// (you can't be delegated to a game that doesn't exist yet).
+// ---------------------------------------------------------------------------
+
+export function requireGameEdit() {
+  return middleware(async ({ ctx, getRawInput, next }) => {
+    const raw = await getRawInput();
+    const parsed = z.object({ tripId: z.string(), gameId: z.string() }).safeParse(raw);
+    if (!parsed.success) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "tripId and gameId are required" });
+    }
+    const { tripId, gameId } = parsed.data;
+
+    const role = await resolveTripRole(ctx, tripId); // throws if not a trip member
+    let allowed = ROLE_LEVEL[role] >= ROLE_LEVEL.Organizer;
+
+    if (!allowed) {
+      const { data } = await (
+        ctx.supabase.from("game_organizers") as unknown as {
+          select: (s: string) => {
+            eq: (c: string, v: string) => {
+              eq: (c: string, v: string) => {
+                maybeSingle: () => Promise<{ data: { game_id: string } | null }>;
+              };
+            };
+          };
+        }
+      )
+        .select("game_id")
+        .eq("game_id", gameId)
+        .eq("user_id", ctx.user!.id)
+        .maybeSingle();
+      allowed = !!data;
+    }
+
+    if (!allowed) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Requires trip Organizer role or a game-organizer grant for this game",
+      });
+    }
+
+    return next({ ctx: { ...ctx, tripId, tripRole: role } });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // resolveTripRole — internal shared lookup with request-scoped cache.
 //
 // Every batched procedure that uses requireTripMember / requireTripRole

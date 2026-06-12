@@ -147,6 +147,18 @@ who's in, what they're called, what role they hold — is the Owner's.
 | Set point distributions / placements (scoring) | ✓ | ✓ | — | `events.setPointDistributions` / `setPlacements` |
 | Assign member to a team | ✓ | ✓ | — | `teamAssignments.assign` |
 | Remove a team assignment | ✓ | — | — | `teamAssignments.remove` *(Owner)* |
+| **Edit / configure a game** (status incl. drop, points distribution, course, participants) | ✓ | ✓ | **game organizer of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
+| **Enter a game's results** (manual placement; finish/compute) | ✓ | ✓ | **game organizer of *that* game** | `games.setManualResults` / `finish` |
+| Delegate / revoke a game organizer | ✓ | ✓ | — | `games.addOrganizer` / `removeOrganizer` *(trip staff only — a delegate can't sub-delegate)* |
+| View who runs a game | ✓ | ✓ | ✓ | `games.listOrganizers` |
+
+> **Per-game organizer delegation (Slice D1 §8).** Game edit/configure/enter-results
+> resolves to **`canEdit || isGameOrganizer(gameId)`** — trip Owner/Organizer, OR a
+> user granted organizer of *that specific game* (`game_organizers` row). It is
+> **game-isolated**: a pick'em delegate cannot touch the scramble. Enforced at BOTH
+> layers — the `requireGameEdit` tRPC middleware and the `is_game_organizer(game)`
+> RLS path on `games` (UPDATE) + `game_results` (migration 045). Granting is a
+> trip-staff act (`requireTripRole('Organizer')`).
 
 > **Scoring is Organizer+ today** (`setPlacements`). There is no member-facing
 > "enter your own score" path yet — the intent (see Resolved notes) is for any

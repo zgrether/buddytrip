@@ -4,11 +4,14 @@ import { useMemo, useState } from "react";
 import { BarChart3, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import {
-  buildMockData,
   DEFAULT_STYLE,
   STYLE_COMPONENTS,
   STYLE_META,
   type ScoreboardStyleId,
+  type ScoreboardData,
+  type ScoreboardTeam,
+  type ScoreboardEvent,
+  type ScoreboardCell,
 } from "./scoreboard-styles";
 import { ScoreboardStyleChooser } from "./ScoreboardStyleChooser";
 
@@ -20,21 +23,14 @@ interface Props {
   isOwner: boolean;
 }
 
-interface Team {
-  id: string;
-  name: string;
-  short_name: string;
-  color: string;
-}
-
-interface EventRow {
-  id: string;
-  title: string;
-  type: "GOLF" | "GENERIC";
-  is_practice: boolean;
-  points_available: number | null;
-  point_distributions?: Array<{ position: number; points: number }>;
-  result?: { placements?: Record<string, number> } | null;
+interface LeaderboardResult {
+  teams: { id: string; name: string; short_name: string; color: string }[];
+  games: { id: string; name: string; distribution: number[] | null; status: string; dropped: boolean }[];
+  cells: { gameId: string; teamId: string; place: number; points: number }[];
+  teamTotals: Record<string, number>;
+  pointsAvailable: number;
+  winNumber: number;
+  pointsToClinch: Record<string, number>;
 }
 
 /**
@@ -52,17 +48,13 @@ interface EventRow {
 export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
   const utils = trpc.useUtils();
   const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
-  const { data: teams = [] } = trpc.teams.list.useQuery(
+  // The derived roll-up (D1 §5/§6): the SAME placement math the rest of the app
+  // uses — averaged ties, points-available, win number — over LIVE games. This
+  // replaces the old events-table placement path (retiring).
+  const { data: leaderboard } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
-  const { data: events = [] } = trpc.events.list.useQuery(
-    { tripId, competitionId },
-    { enabled: !!competitionId }
-  );
-
-  const teamsTyped = teams as Team[];
-  const eventsTyped = (events as EventRow[]).filter((e) => !e.is_practice);
 
   // Style lives on the competition row; fall back to the default while
   // the query is loading on first paint.
@@ -100,13 +92,42 @@ export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
     updateStyle.mutate({ tripId, competitionId, scoreboardStyle: id });
   };
 
-  const data = useMemo(
-    () => buildMockData(tripId, teamsTyped, eventsTyped),
-    [tripId, teamsTyped, eventsTyped]
-  );
+  const data = useMemo<ScoreboardData>(() => {
+    const lb = leaderboard as LeaderboardResult | undefined;
+    const teams: ScoreboardTeam[] = (lb?.teams ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      short_name: t.short_name,
+      color: t.color,
+    }));
+    const numTeams = teams.length;
+    // Live games are the scoreboard columns; dropped ones are excluded (§4).
+    const liveGames = (lb?.games ?? []).filter((g) => !g.dropped);
+    const events: ScoreboardEvent[] = liveGames.map((g) => ({
+      id: g.id,
+      title: g.name,
+      points_available: g.distribution
+        ? g.distribution.slice(0, numTeams).reduce((a, b) => a + b, 0)
+        : null,
+    }));
+    const cells: ScoreboardCell[] = (lb?.cells ?? []).map((c) => ({
+      teamId: c.teamId,
+      eventId: c.gameId,
+      points: c.points,
+      place: c.place,
+    }));
+    return {
+      tripId,
+      teams,
+      events,
+      cells,
+      totals: (lb?.teamTotals ?? {}) as Record<string, number>,
+      totalAvailable: lb?.pointsAvailable ?? 0,
+    };
+  }, [leaderboard, tripId]);
 
-  const hasTeams = teamsTyped.length > 0;
-  const hasEvents = eventsTyped.length > 0;
+  const hasTeams = data.teams.length > 0;
+  const hasEvents = data.events.length > 0;
 
   // ── Empty state ────────────────────────────────────────────────────────
   if (!hasTeams || !hasEvents) {
@@ -162,8 +183,8 @@ export function ScoreboardPanel({ competitionId, tripId, isOwner }: Props) {
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <PanelHeader
           accent
-          subtitle={`${data.totalAvailable} total pts · ${eventsTyped.length} event${
-            eventsTyped.length === 1 ? "" : "s"
+          subtitle={`${data.totalAvailable} total pts · ${data.events.length} game${
+            data.events.length === 1 ? "" : "s"
           }`}
         />
         {isOwner && (

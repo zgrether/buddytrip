@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole } from "../middleware";
+import { requireTripMember, requireTripRole, requireGameEdit } from "../middleware";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
@@ -17,7 +17,10 @@ import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema } from 
  * that trip (defends against a gameId from another trip).
  */
 export const gamesRouter = router({
-  // create — Owner/Organizer. Standalone game (competition_id null), pending.
+  // create — Owner/Organizer. The Phase-1 shell (D1 §3): competition_id +
+  // game_type + name + points_distribution + status is a FULLY VALID game; every
+  // Phase-2 field (course, schema, pairings, schedule_item, tee_time) stays null
+  // until someone fills it. A shell is leaderboard-contributing on its own.
   create: authedProcedure
     .input(
       z.object({
@@ -25,7 +28,11 @@ export const gamesRouter = router({
         gameTypeId: z.string(),
         name: z.string().max(200).optional(),
         teeTime: z.string().max(5).nullable().optional(), // "HH:MM" 24h
-        competitionId: z.string().nullable().optional(), // team formats (rack-n-stack)
+        competitionId: z.string().nullable().optional(), // team formats / competition games
+        // Competition-layer fact: ordered points by place, e.g. [9,6,4,2]. (§2a)
+        pointsDistribution: z.array(z.number().min(0)).max(64).nullable().optional(),
+        // Optional, one-directional agenda link — never a gate. (§9)
+        scheduleItemId: z.string().uuid().nullable().optional(),
       })
     )
     .use(requireTripRole("Organizer"))
@@ -40,6 +47,8 @@ export const gamesRouter = router({
         game_type_id: input.gameTypeId,
         name: input.name ?? null,
         tee_time: input.teeTime ?? null,
+        points_distribution: input.pointsDistribution ?? null,
+        schedule_item_id: input.scheduleItemId ?? null,
         status: "pending",
       });
       if (insertErr) {
@@ -62,6 +71,28 @@ export const gamesRouter = router({
       }
       return data;
     }),
+
+  // listTypes — the format catalog driving the creation chips (data-driven, NOT a
+  // hardcoded enum). `manual` (no result_strategy / no scorecard_schema) is the
+  // non-engine "Other" type; the rest are engine golf formats. (§2b/§7)
+  listTypes: authedProcedure.query(async ({ ctx }) => {
+    const { data, error } = await ctx.supabase
+      .from("game_type_templates")
+      .select("id, key, name, description, result_strategy, scorecard_schema, sort_order")
+      .order("sort_order", { ascending: true });
+    if (error) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to list game types: ${error.message}` });
+    }
+    return (data ?? []).map((t) => ({
+      id: t.id as string,
+      key: t.key as string,
+      name: t.name as string,
+      description: (t.description as string | null) ?? null,
+      // "engine" = computes results from a scorecard; otherwise manual (entered).
+      isEngine: t.result_strategy != null,
+      isGolf: t.scorecard_schema != null, // golf engine types carry a scorecard
+    }));
+  }),
 
   // listByTrip — any trip member.
   listByTrip: authedProcedure
@@ -121,7 +152,7 @@ export const gamesRouter = router({
         userIds: z.array(z.string().min(1)).min(2).max(4),
       })
     )
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       // Confirm the game is in this trip before writing participants.
       const { data: game } = await ctx.supabase
@@ -167,7 +198,7 @@ export const gamesRouter = router({
   // any score exists; FROZEN once scores are entered (freeze boundary).
   applyCourse: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string(), courseId: z.string().min(1) }))
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
@@ -246,7 +277,7 @@ export const gamesRouter = router({
   // compute replaces prior game_results, and status='complete' again is a no-op.
   finish: authedProcedure
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
-    .use(requireTripRole("Organizer"))
+    .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       const { data: game } = await ctx.supabase
         .from("games")
@@ -285,5 +316,164 @@ export const gamesRouter = router({
         });
       }
       return { standings, matches, teams };
+    }),
+
+  // update — game-edit gate. Phase-1 shell fields the creation modal edits.
+  update: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        name: z.string().max(200).nullable().optional(),
+        teeTime: z.string().max(5).nullable().optional(),
+        scheduleItemId: z.string().uuid().nullable().optional(),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const patch: Record<string, unknown> = {};
+      if (input.name !== undefined) patch.name = input.name;
+      if (input.teeTime !== undefined) patch.tee_time = input.teeTime;
+      if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
+      if (Object.keys(patch).length === 0) return { success: true };
+      const { error } = await ctx.supabase.from("games").update(patch).eq("id", input.gameId).eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to update game: ${error.message}` });
+      return { success: true };
+    }),
+
+  // setStatus — game-edit gate. A game pulled for time is `dropped`, NOT deleted
+  // (§4): reversible, kept, and excluded from the leaderboard roll-up (which reads
+  // only live games). The win number is DERIVED from the live set, so dropping /
+  // restoring moves it automatically — there is no stored win number to update.
+  setStatus: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        status: z.enum(["pending", "active", "complete", "dropped"]),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ status: input.status })
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set status: ${error.message}` });
+      return { success: true };
+    }),
+
+  // setPointsDistribution — game-edit gate. The competition-layer value
+  // (`[9,6,4,2]`). Editing it re-derives the leaderboard on next read (§5b/§6).
+  setPointsDistribution: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        distribution: z.array(z.number().min(0)).max(64).nullable(),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("games")
+        .update({ points_distribution: input.distribution })
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set distribution: ${error.message}` });
+      return { success: true };
+    }),
+
+  // setManualResults — the manual adapter (§5a), game-edit gate. A non-engine
+  // ("manual") game's per-team finishing order, ENTERED by an organizer into the
+  // SAME `game_results` table engine games compute into. The roll-up never
+  // distinguishes computed from entered. Replace-all so clearing a team drops it.
+  // Placement POINTS stay derived (placementPoints) — we store only the standing.
+  setManualResults: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        placements: z
+          .array(z.object({ entityId: z.string().min(1), position: z.number().int().min(1).max(99) }))
+          .max(64),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+
+      const { error: delErr } = await ctx.supabase.from("game_results").delete().eq("game_id", input.gameId);
+      if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
+
+      if (input.placements.length === 0) return { success: true, count: 0 };
+
+      const rows = input.placements.map((p) => ({
+        id: crypto.randomUUID(),
+        game_id: input.gameId,
+        entity_id: p.entityId,
+        entity_type: "team",
+        position: p.position,
+        raw_score: p.position, // standing = finishing place (low_wins); points derived
+      }));
+      const { error: insErr } = await ctx.supabase.from("game_results").insert(rows);
+      if (insErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to save results: ${insErr.message}` });
+      return { success: true, count: rows.length };
+    }),
+
+  // addOrganizer — trip Owner/Organizer only (delegating is a trip-staff act; a
+  // delegate cannot sub-delegate). Grants BJ the game-scoped organizer role (§8).
+  addOrganizer: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string(), userId: z.string().min(1) }))
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      const { error } = await ctx.supabase
+        .from("game_organizers")
+        .upsert(
+          { game_id: input.gameId, user_id: input.userId, granted_by: ctx.user!.id },
+          { onConflict: "game_id,user_id", ignoreDuplicates: true }
+        );
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to add organizer: ${error.message}` });
+      return { success: true };
+    }),
+
+  // removeOrganizer — trip Owner/Organizer only.
+  removeOrganizer: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string(), userId: z.string().min(1) }))
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("game_organizers")
+        .delete()
+        .eq("game_id", input.gameId)
+        .eq("user_id", input.userId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to remove organizer: ${error.message}` });
+      return { success: true };
+    }),
+
+  // listOrganizers — any trip member can see who runs which game.
+  listOrganizers: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data } = await ctx.supabase
+        .from("game_organizers")
+        .select("user_id, granted_by, created_at")
+        .eq("game_id", input.gameId);
+      return data ?? [];
     }),
 });
