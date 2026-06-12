@@ -72,6 +72,28 @@ export const gamesRouter = router({
       return data;
     }),
 
+  // listTypes — the format catalog driving the creation chips (data-driven, NOT a
+  // hardcoded enum). `manual` (no result_strategy / no scorecard_schema) is the
+  // non-engine "Other" type; the rest are engine golf formats. (§2b/§7)
+  listTypes: authedProcedure.query(async ({ ctx }) => {
+    const { data, error } = await ctx.supabase
+      .from("game_type_templates")
+      .select("id, key, name, description, result_strategy, scorecard_schema, sort_order")
+      .order("sort_order", { ascending: true });
+    if (error) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to list game types: ${error.message}` });
+    }
+    return (data ?? []).map((t) => ({
+      id: t.id as string,
+      key: t.key as string,
+      name: t.name as string,
+      description: (t.description as string | null) ?? null,
+      // "engine" = computes results from a scorecard; otherwise manual (entered).
+      isEngine: t.result_strategy != null,
+      isGolf: t.scorecard_schema != null, // golf engine types carry a scorecard
+    }));
+  }),
+
   // listByTrip — any trip member.
   listByTrip: authedProcedure
     .input(z.object({ tripId: z.string() }))
