@@ -54,6 +54,12 @@ export function HoleEditor({
   const idxValidation = validateStrokeIndex(index, holeCount);
   const idxStarted = index.some((v) => v != null);
   const idxSetCount = index.filter((v) => v != null).length;
+  // Collapse the "still needs an index" list (same rule as the handicap hint):
+  // a count once more than a handful are outstanding, names only when naming
+  // them actually helps someone finish.
+  const unset = idxValidation.unsetHoles;
+  const idxRemainingLabel =
+    unset.length > 6 ? `${unset.length} of ${holeCount} holes still need an index` : `holes ${unset.join(", ")} still need an index`;
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
       {/* Tee tabs — which tee's yardage you're filling. */}
@@ -190,7 +196,7 @@ export function HoleEditor({
           </div>
           {idxStarted && !idxValidation.valid ? (
             <p style={{ fontSize: 12, color: "var(--color-bt-warning)", marginTop: 8, lineHeight: 1.45 }}>
-              Finish the index to use it. Unset holes: {idxValidation.unsetHoles.join(", ") || "—"}. Each rank 1–{holeCount} is used once; setting one already in use swaps with the hole that holds it.
+              Finish the index to use it — {idxRemainingLabel}. Each rank 1–{holeCount} is used once; setting one already in use swaps with the hole that holds it.
             </p>
           ) : (
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
