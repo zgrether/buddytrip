@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Search, Plus, X, AlertTriangle, MapPin, PencilLine, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Plus, X, AlertTriangle, MapPin, PencilLine, GripVertical, Check } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { HoleEditor, Keypad } from "./HoleEditor";
 import {
@@ -45,7 +45,7 @@ interface Draft {
   existingId?: string;
 }
 
-type Screen = "search" | "confirm" | "new" | "entry";
+type Screen = "search" | "confirm" | "new" | "entry" | "saved";
 
 const blankTee = (n: number, name: string): TeeSet => ({ name, yards: Array(n).fill(null) });
 
@@ -81,6 +81,14 @@ export function CoursePicker({
   // True once any hole is edited — a reviewed library course is applied as-is
   // when untouched, or saved as a new course (a copy) when edited.
   const [edited, setEdited] = useState(false);
+  // The stroke index table is opt-in (per the empty-grid scrim) — course-level
+  // UI state, not per-hole (the same table is filled from any hole's screen).
+  const [indexOptedIn, setIndexOptedIn] = useState(false);
+  // The Confirm/review card is two modes: 'use' (pick → drop into the game) and
+  // 'summary' (manual add → save to My courses, NOT auto-used).
+  const [confirmMode, setConfirmMode] = useState<"use" | "summary">("use");
+  // The course just saved via "Save to my courses" — highlighted on My courses.
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const recent = trpc.courses.list.useQuery({ limit: 8 });
   const createCourse = trpc.courses.create.useMutation();
@@ -140,6 +148,8 @@ export function CoursePicker({
 
   async function pull(summary: CourseSummary) {
     setEdited(false);
+    setIndexOptedIn(false);
+    setConfirmMode("use");
     setPulling(true);
     const detail = await getCourseDetail(summary.id);
     setPulling(false);
@@ -178,6 +188,8 @@ export function CoursePicker({
   // / fix-a-hole). Untouched → applied as-is; edited → saved as a copy.
   function reviewRecent(c: RecentCourse) {
     setEdited(false);
+    setIndexOptedIn(false);
+    setConfirmMode("use");
     setDraft({
       name: c.name,
       location: c.location ?? "",
@@ -193,15 +205,10 @@ export function CoursePicker({
     setScreen("confirm");
   }
 
-  async function save() {
-    if (!indexUsable || !draft.name.trim()) return;
-    // Reviewing an existing library course, unedited → apply it directly.
-    if (draft.existingId && !edited) {
-      onApply({ id: draft.existingId, name: draft.name.trim() });
-      return;
-    }
-    // Snapshot the index ONLY when it's a complete permutation; an untouched or
-    // index-less course saves on par alone (sequential fallback).
+  // Persist the draft as a global course. The index is snapshotted ONLY when the
+  // table is a complete 1..N ranking; an untouched (or partial-cleared) table
+  // saves on par alone (fallback: handicap from the first hole onward).
+  async function persistDraft() {
     const hasIndex = validation.valid;
     const course = await createCourse.mutateAsync({
       name: draft.name.trim(),
@@ -214,7 +221,28 @@ export function CoursePicker({
       source: draft.source,
       providerId: draft.providerId,
     });
+    return course;
+  }
+
+  // mode 'use' — pick a course to drop into the game.
+  async function useCourse() {
+    if (!indexUsable || !draft.name.trim()) return;
+    // Reviewing an existing library course, unedited → apply it directly.
+    if (draft.existingId && !edited) {
+      onApply({ id: draft.existingId, name: draft.name.trim() });
+      return;
+    }
+    const course = await persistDraft();
     onApply({ id: course.id as string, name: course.name as string });
+  }
+
+  // mode 'summary' — manual add lands on My courses (NOT auto-used in a game).
+  async function saveToMyCourses() {
+    if (!indexUsable || !draft.name.trim()) return;
+    const course = await persistDraft();
+    setSavedId(course.id as string);
+    await recent.refetch();
+    setScreen("saved");
   }
 
   // On the per-hole screens (stepped entry + single-hole edit) the title is the
@@ -227,14 +255,20 @@ export function CoursePicker({
       : screen === "search"
         ? "Add a course"
         : screen === "confirm"
-          ? "Confirm course"
+          ? confirmMode === "summary"
+            ? "Course summary"
+            : "Confirm course"
           : screen === "new"
             ? "New course"
-            : "Enter holes";
-  const headerSubtitle = holeShown != null ? `Hole ${holeShown} of ${draft.holeCount}` : null;
+            : screen === "saved"
+              ? "My courses"
+              : "Enter holes";
+  const headerSubtitle =
+    holeShown != null ? `Hole ${holeShown} of ${draft.holeCount}` : screen === "confirm" && confirmMode === "summary" ? "Review what you entered" : null;
   const back = () => {
     if (editingHole != null) return setEditingHole(null);
-    if (screen === "confirm" || screen === "new") return setScreen("search");
+    if (screen === "confirm") return setScreen(confirmMode === "summary" ? "entry" : "search");
+    if (screen === "new" || screen === "saved") return setScreen("search");
     if (screen === "entry") return setScreen("new");
     onClose();
   };
@@ -265,6 +299,8 @@ export function CoursePicker({
           activeTee={activeTee}
           setActiveTee={setActiveTee}
           flagged={flagged}
+          indexOptedIn={indexOptedIn}
+          onOptInIndex={() => setIndexOptedIn(true)}
           setPar={setPar}
           setIndex={setIndex}
           setYards={setYards}
@@ -282,6 +318,8 @@ export function CoursePicker({
           onPickRecent={reviewRecent}
           onManual={() => {
             setEdited(false);
+            setIndexOptedIn(false);
+            setConfirmMode("summary");
             setDraft(blankDraft(18));
             setActiveTee(0);
             setScreen("new");
@@ -290,16 +328,32 @@ export function CoursePicker({
       ) : screen === "confirm" ? (
         <ConfirmScreen
           draft={draft}
+          mode={confirmMode}
           activeTee={activeTee}
           setActiveTee={setActiveTee}
           indexUsable={indexUsable}
           flagged={flagged}
           saving={createCourse.isPending}
           onEditHole={(h) => setEditingHole(h)}
-          onUse={save}
+          onPrimary={confirmMode === "summary" ? saveToMyCourses : useCourse}
         />
       ) : screen === "new" ? (
         <NewCourseScreen draft={draft} setDraft={setDraft} onStart={() => { setHole(1); setScreen("entry"); }} />
+      ) : screen === "saved" ? (
+        <SavedScreen
+          courses={(recent.data as RecentCourse[]) ?? []}
+          savedId={savedId}
+          onPick={reviewRecent}
+          onAddAnother={() => {
+            setEdited(false);
+            setIndexOptedIn(false);
+            setConfirmMode("summary");
+            setSavedId(null);
+            setDraft(blankDraft(18));
+            setActiveTee(0);
+            setScreen("new");
+          }}
+        />
       ) : (
         <EntryScreen
           draft={draft}
@@ -307,12 +361,12 @@ export function CoursePicker({
           setHole={setHole}
           activeTee={activeTee}
           setActiveTee={setActiveTee}
-          indexUsable={indexUsable}
-          saving={createCourse.isPending}
+          indexOptedIn={indexOptedIn}
+          onOptInIndex={() => setIndexOptedIn(true)}
           setPar={setPar}
           setIndex={setIndex}
           setYards={setYards}
-          onSave={save}
+          onReview={() => setScreen("confirm")}
         />
       )}
     </div>
@@ -428,26 +482,38 @@ function CourseRow({ name, sub, onClick }: { name: string; sub?: string | null; 
 // ── Confirm (lookup) ──────────────────────────────────────────────────────────
 function ConfirmScreen({
   draft,
+  mode,
   activeTee,
   setActiveTee,
   indexUsable,
   flagged,
   saving,
   onEditHole,
-  onUse,
+  onPrimary,
 }: {
   draft: Draft;
+  mode: "use" | "summary";
   activeTee: number;
   setActiveTee: (i: number) => void;
   indexUsable: boolean;
   flagged: Set<number>;
   saving: boolean;
   onEditHole: (h: number) => void;
-  onUse: () => void;
+  onPrimary: () => void;
 }) {
   const tee = draft.teeSets[activeTee];
   const totalPar = draft.par.reduce<number>((a, p) => a + p, 0);
   const totalYards = (tee?.yards ?? []).reduce<number>((a, y) => a + (y ?? 0), 0);
+  const indexStarted = draft.index.some((v) => v != null);
+  const indexComplete = validateStrokeIndex(draft.index, draft.holeCount).valid;
+  const showIndexCol = indexStarted; // show the rank column once any rank exists
+  const primaryLabel = !indexUsable
+    ? "Finish the stroke index table to save"
+    : saving
+      ? "Saving…"
+      : mode === "summary"
+        ? "Save to my courses"
+        : "Use this course";
   return (
     <>
       <div className="flex-1 overflow-y-auto" style={{ padding: "16px 16px 8px" }}>
@@ -476,19 +542,26 @@ function ConfirmScreen({
           <div className="mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5" style={{ background: "var(--color-bt-warning-faint)", borderColor: "var(--color-bt-warning-border)" }}>
             <AlertTriangle size={15} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
             <span style={{ fontSize: 12.5, color: "var(--color-bt-text)" }}>
-              Stroke index started but incomplete — finish it (a wrong index mis-allocates handicap strokes), or clear it to play on par alone. Tap the flagged holes.
+              You started the stroke index table — rank every hole, or clear it to use an assigned handicap from the first hole onward. Tap the flagged holes.
+            </span>
+          </div>
+        ) : indexComplete ? (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5" style={{ background: "var(--color-bt-accent-faint)", borderColor: "var(--color-bt-accent-border)" }}>
+            <Check size={15} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: 12.5, color: "var(--color-bt-text)" }}>
+              Stroke index table complete — handicap strokes land on the hardest holes first.
             </span>
           </div>
         ) : (
-          !draft.index.some((v) => v != null) && (
-            <p className="mt-3" style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}>
-              No hole difficulty set — strokes fall on holes 1–{draft.holeCount}. Tap a hole to set the index any time so handicaps land on the hardest holes.
-            </p>
-          )
+          <p className="mt-3" style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}>
+            {draft.source === "golfapi"
+              ? "No difficulty ranking — this listing's stroke index table was missing or incomplete, so an assigned handicap is used starting on the first hole and continuing on. Tap a hole to fill in the table yourself."
+              : "No stroke index table — an assigned handicap is used starting on the first hole and continuing on. Tap a hole to fill one in."}
+          </p>
         )}
 
         <div className="mt-3 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)" }}>
-          <HoleHeader hasIndex={draft.hasStrokeIndex} />
+          <HoleHeader hasIndex={showIndexCol} />
           {draft.par.map((p, i) => {
             const h = i + 1;
             const bad = flagged.has(h);
@@ -508,7 +581,7 @@ function ConfirmScreen({
                   )}
                 </Cell>
                 <Cell>{p}</Cell>
-                {draft.hasStrokeIndex && <Cell warn={bad}>{draft.index[i] ?? "—"}</Cell>}
+                {showIndexCol && <Cell warn={bad}>{draft.index[i] ?? "—"}</Cell>}
                 <IconCol>
                   <PencilLine size={13} style={{ color: "var(--color-bt-text-dim)" }} />
                 </IconCol>
@@ -520,12 +593,12 @@ function ConfirmScreen({
             <Cell bold left>Total</Cell>
             <Cell dim>{totalYards > 0 ? totalYards.toLocaleString() : "—"}</Cell>
             <Cell bold>{totalPar}</Cell>
-            {draft.hasStrokeIndex && <Cell> </Cell>}
+            {showIndexCol && <Cell> </Cell>}
             <span style={{ width: ICON_COL, flexShrink: 0 }} />
           </div>
         </div>
       </div>
-      <Footer label={indexUsable ? "Use this course" : "Finish the index to use this course"} disabled={!indexUsable || saving} onClick={onUse} />
+      <Footer label={primaryLabel} disabled={!indexUsable || saving} onClick={onPrimary} />
     </>
   );
 }
@@ -589,21 +662,8 @@ function NewCourseScreen({
             </div>
           </Field>
 
-          {/* Stroke index toggle. */}
-          <button
-            onClick={() => setDraft((d) => ({ ...d, hasStrokeIndex: !d.hasStrokeIndex }))}
-            className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left"
-            style={{ background: "var(--color-bt-card-raised)", borderColor: "var(--color-bt-border)" }}
-          >
-            <span className="min-w-0">
-              <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--color-bt-text)" }}>Add stroke indices</span>
-              <span style={{ display: "block", fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 2 }}>
-                The course&apos;s 1–{draft.holeCount} difficulty ranking. Needed for net play — skip if you don&apos;t have it.
-              </span>
-            </span>
-            <Switch on={draft.hasStrokeIndex} />
-          </button>
-
+          {/* No stroke-index toggle here — the table is opt-in later, on the
+              empty index grid in the per-hole editor (spec §2). */}
           <Field label="Tee sets">
             <TeeList tees={draft.teeSets} onName={setTeeName} onRemove={removeTee} onReorder={reorderTee} />
             <button onClick={addTee} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border py-2" style={{ borderStyle: "dashed", borderColor: "var(--color-bt-accent-border)", color: "var(--color-bt-accent)" }}>
@@ -704,29 +764,30 @@ function EntryScreen({
   setHole,
   activeTee,
   setActiveTee,
-  indexUsable,
-  saving,
+  indexOptedIn,
+  onOptInIndex,
   setPar,
   setIndex,
   setYards,
-  onSave,
+  onReview,
 }: {
   draft: Draft;
   hole: number;
   setHole: (h: number) => void;
   activeTee: number;
   setActiveTee: (i: number) => void;
-  indexUsable: boolean;
-  saving: boolean;
+  indexOptedIn: boolean;
+  onOptInIndex: () => void;
   setPar: (h: number, v: number) => void;
   setIndex: (h: number, v: number) => void;
   setYards: (h: number, v: number | null) => void;
-  onSave: () => void;
+  onReview: () => void;
 }) {
   const n = draft.holeCount;
   const completed = draft.index.map((v, i) => (v != null ? i + 1 : 0)).filter(Boolean);
   // The keypad is a dismissable yards accessory; the footer below it is the
-  // PERSISTENT advance/save control. Advancing never depends on the keypad.
+  // PERSISTENT advance control. Per-hole Next is NEVER blocked — the only gate
+  // is the completion CTA on the review card (spec §4).
   const [yardsActive, setYardsActive] = useState(false);
   const teeName = draft.teeSets[activeTee]?.name?.trim() || `Tee ${activeTee + 1}`;
   const yardsOf = () => draft.teeSets[activeTee]?.yards[hole - 1] ?? null;
@@ -742,11 +803,8 @@ function EntryScreen({
     setYards(hole, cur == null || cur < 10 ? null : Math.floor(cur / 10));
   };
   const lastHole = hole >= n;
-  // A started-but-incomplete index blocks the footer (the index is course-wide);
-  // the ‹ › arrows still move between holes so you can finish it.
-  const blocked = !indexUsable;
-  const footerLabel = blocked ? "Finish the index to use this course" : lastHole ? (saving ? "Saving…" : "Save course") : "Next hole ›";
-  const onAdvance = () => (lastHole ? onSave() : setHole(hole + 1));
+  const footerLabel = lastHole ? "Done · review card" : "Next hole ›";
+  const onAdvance = () => (lastHole ? onReview() : setHole(hole + 1));
 
   return (
     <>
@@ -767,9 +825,10 @@ function EntryScreen({
           holeCount={n}
           par={draft.par[hole - 1]}
           onPar={(v) => setPar(hole, v)}
-          hasStrokeIndex={draft.hasStrokeIndex}
           index={draft.index}
           onIndexPick={(v) => setIndex(hole, v)}
+          indexOptedIn={indexOptedIn}
+          onOptInIndex={onOptInIndex}
           tees={draft.teeSets}
           activeTee={activeTee}
           onTee={setActiveTee}
@@ -793,8 +852,7 @@ function EntryScreen({
           <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>Hole {hole} / {n}</span>
           <button
             onClick={onAdvance}
-            disabled={blocked || (lastHole && saving)}
-            className="flex-1 disabled:opacity-40"
+            className="flex-1"
             style={{ height: 54, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}
           >
             {footerLabel}
@@ -812,6 +870,8 @@ function HoleEditScreen({
   activeTee,
   setActiveTee,
   flagged,
+  indexOptedIn,
+  onOptInIndex,
   setPar,
   setIndex,
   setYards,
@@ -822,6 +882,8 @@ function HoleEditScreen({
   activeTee: number;
   setActiveTee: (i: number) => void;
   flagged: Set<number>;
+  indexOptedIn: boolean;
+  onOptInIndex: () => void;
   setPar: (h: number, v: number) => void;
   setIndex: (h: number, v: number) => void;
   setYards: (h: number, v: number | null) => void;
@@ -850,9 +912,10 @@ function HoleEditScreen({
           holeCount={draft.holeCount}
           par={draft.par[hole - 1]}
           onPar={(v) => setPar(hole, v)}
-          hasStrokeIndex={draft.hasStrokeIndex}
           index={draft.index}
           onIndexPick={(v) => setIndex(hole, v)}
+          indexOptedIn={indexOptedIn}
+          onOptInIndex={onOptInIndex}
           tees={draft.teeSets}
           activeTee={activeTee}
           onTee={setActiveTee}
@@ -904,14 +967,68 @@ function TeeChip({ name, on, onClick }: { name: string; on: boolean; onClick: ()
   );
 }
 
-function Switch({ on }: { on: boolean }) {
+// ── My courses (manual-add destination) ───────────────────────────────────────
+// Lands here after "Save to my courses" — the new course is highlighted (NEW),
+// NOT auto-selected for play. Adding a course and using one are separate
+// concerns (spec §6); tapping a row reviews it (→ Confirm, mode 'use').
+function SavedScreen({
+  courses,
+  savedId,
+  onPick,
+  onAddAnother,
+}: {
+  courses: RecentCourse[];
+  savedId: string | null;
+  onPick: (c: RecentCourse) => void;
+  onAddAnother: () => void;
+}) {
+  const saved = courses.find((c) => c.id === savedId);
   return (
-    <span
-      className="relative shrink-0"
-      style={{ width: 40, height: 24, borderRadius: 9999, background: on ? "var(--color-bt-accent)" : "var(--color-bt-border)", transition: "background 0.15s" }}
-    >
-      <span style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.15s" }} />
-    </span>
+    <>
+      <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
+        {saved && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border px-3 py-2.5" style={{ background: "var(--color-bt-accent-faint)", borderColor: "var(--color-bt-accent-border)" }}>
+            <Check size={15} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: 13, color: "var(--color-bt-text)" }}>
+              <span style={{ fontWeight: 600 }}>{saved.name}</span> added to your courses.
+            </span>
+          </div>
+        )}
+        <div className="flex flex-col gap-2">
+          {courses.map((c) => {
+            const par = (c.par ?? []).reduce<number>((a, p) => a + p, 0);
+            const isNew = c.id === savedId;
+            return (
+              <button
+                key={c.id}
+                onClick={() => onPick(c)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left"
+                style={{
+                  background: isNew ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+                  borderColor: isNew ? "var(--color-bt-accent-border)" : "var(--color-bt-border)",
+                }}
+              >
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate" style={{ fontSize: 15, color: "var(--color-bt-text)" }}>{c.name}</span>
+                    {isNew && (
+                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-bt-accent)", border: "1px solid var(--color-bt-accent-border)", borderRadius: 4, padding: "1px 5px" }}>
+                        NEW
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
+                    {[c.location, par ? `Par ${par}` : "", `${c.hole_count} holes`].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <Footer label="Add another course" onClick={onAddAnother} />
+    </>
   );
 }
 

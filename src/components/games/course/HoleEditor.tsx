@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Delete, AlertTriangle, Info } from "lucide-react";
+import { Check, Delete, AlertTriangle } from "lucide-react";
 import { teeColor } from "@/lib/courseService";
 import { validateStrokeIndex, type IndexEntry } from "@/lib/courseIndex";
 
@@ -18,10 +18,13 @@ interface HoleEditorProps {
   holeCount: number;
   par: number;
   onPar: (value: number) => void;
-  hasStrokeIndex: boolean;
   /** Full index array (for grid selection / used-elsewhere ✓ / swap). */
   index: IndexEntry[];
   onIndexPick: (rank: number) => void;
+  /** The stroke index table is OPTIONAL — opt-in lives here, on the empty grid.
+   *  Until opted in (and with no rank set), the grid is faint under a scrim. */
+  indexOptedIn: boolean;
+  onOptInIndex: () => void;
   tees: { name: string }[];
   activeTee: number;
   onTee: (i: number) => void;
@@ -39,9 +42,10 @@ export function HoleEditor({
   holeCount,
   par,
   onPar,
-  hasStrokeIndex,
   index,
   onIndexPick,
+  indexOptedIn,
+  onOptInIndex,
   tees,
   activeTee,
   onTee,
@@ -54,7 +58,10 @@ export function HoleEditor({
   const idxValidation = validateStrokeIndex(index, holeCount);
   const idxStarted = index.some((v) => v != null);
   const idxSetCount = index.filter((v) => v != null).length;
-  // Collapse the "still needs an index" list (same rule as the handicap hint):
+  // Empty + not opted in → the quiet opt-in scrim over a faint grid (the table
+  // is OPTIONAL, so it must not shout). Anything else → the live grid.
+  const showScrim = !idxStarted && !indexOptedIn;
+  // Collapse the "still needs a rank" clause (same rule as the handicap hint):
   // a count once more than a handful are outstanding, names only when naming
   // them actually helps someone finish.
   const unset = idxValidation.unsetHoles;
@@ -147,28 +154,33 @@ export function HoleEditor({
         </button>
       </div>
 
-      {/* Stroke index — OPTIONAL 18-cell grid (three states), or the fallback line. */}
-      {hasStrokeIndex ? (
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <FieldLabel>{idxStarted ? "Stroke index · 1 = hardest" : "Stroke index · optional"}</FieldLabel>
+      {/* Stroke index TABLE — optional, all-or-nothing. Empty → opt-in scrim
+          over a faint grid; otherwise the live grid (partial → amber reminder,
+          complete → quiet note). The fallback (no table) is fully valid. */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <FieldLabel>{idxStarted ? "Stroke index table · 1 = hardest" : "Stroke index table · optional"}</FieldLabel>
+          {!showScrim && (idxValidation.valid || idxStarted) && (
             <span
               style={{
                 fontSize: 10,
                 fontWeight: 700,
                 letterSpacing: "0.06em",
-                color: idxValidation.valid ? "var(--color-bt-accent)" : idxStarted ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
+                color: idxValidation.valid ? "var(--color-bt-accent)" : "var(--color-bt-warning)",
               }}
             >
-              {idxValidation.valid ? "✓ COMPLETE" : idxStarted ? `${idxSetCount} OF ${holeCount} SET` : "NOT SET"}
+              {idxValidation.valid ? "✓ COMPLETE" : `${idxSetCount} OF ${holeCount} SET`}
             </span>
-          </div>
-          {showSwapWarning && (
-            <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginBottom: 8 }}>
-              Reassigning an index swaps it with the hole that currently holds it.
-            </p>
           )}
-          <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(6, 1fr)" }}>
+        </div>
+        {showSwapWarning && !showScrim && (
+          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginBottom: 8 }}>
+            Reassigning a rank swaps it with the hole that currently holds it.
+          </p>
+        )}
+
+        <div className="relative">
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(6, 1fr)", opacity: showScrim ? 0.28 : 1 }}>
             {Array.from({ length: holeCount }, (_, i) => i + 1).map((rank) => {
               const owner = index.findIndex((v) => v === rank);
               const selected = owner === holeNumber - 1;
@@ -177,6 +189,7 @@ export function HoleEditor({
                 <button
                   key={rank}
                   onClick={() => onIndexPick(rank)}
+                  disabled={showScrim}
                   className="relative flex items-center justify-center"
                   style={{
                     height: 40,
@@ -198,34 +211,50 @@ export function HoleEditor({
               );
             })}
           </div>
-          {idxStarted && !idxValidation.valid ? (
-            <>
-              <div className="mt-2 flex items-start gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)" }}>
-                <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
-                <span style={{ fontSize: 12, color: "var(--color-bt-text)", lineHeight: 1.4 }}>
-                  <span style={{ fontWeight: 700 }}>Finish the index to use it.</span> {idxRemainingLabel}.
-                </span>
-              </div>
-              <p style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", marginTop: 6, lineHeight: 1.45 }}>
-                Each rank 1–{holeCount} is used once — setting one already in use swaps with the hole that holds it.
+
+          {/* Quiet opt-in scrim — the table is optional, so no border, no shout. */}
+          {showScrim && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 px-4 text-center" style={{ background: "color-mix(in srgb, var(--color-bt-base) 82%, transparent)" }}>
+              <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.45, maxWidth: 280 }}>
+                Ranking holes is optional, but you must rank them all if you do.
               </p>
-            </>
-          ) : idxValidation.valid ? (
-            <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8, lineHeight: 1.45 }}>
-              All {holeCount} ranks set. Strokes land on the hardest holes; tap any to adjust (it swaps).
-            </p>
-          ) : (
-            <p className="mt-2 flex items-start gap-1.5" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}>
-              <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-              <span>No hole difficulty set — strokes will fall on holes 1–{holeCount}. Add a stroke index any time for handicaps to land on the hardest holes.</span>
-            </p>
+              <button
+                onClick={onOptInIndex}
+                className="rounded-lg border px-3 py-2"
+                style={{ borderColor: "var(--color-bt-accent-border)", color: "var(--color-bt-accent)", fontSize: 13, fontWeight: 600, background: "transparent" }}
+              >
+                Add a stroke index table
+              </button>
+            </div>
           )}
         </div>
-      ) : (
-        <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}>
-          No hole difficulty set — strokes fall on holes 1–{holeCount}. Turn on stroke indices for handicaps to land on the hardest holes instead.
-        </p>
-      )}
+
+        {showScrim ? (
+          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8, lineHeight: 1.45 }}>
+            Skip it and an assigned handicap is used starting on the first hole and continuing on.
+          </p>
+        ) : idxStarted && !idxValidation.valid ? (
+          <>
+            <div className="mt-2 flex items-start gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)" }}>
+              <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
+              <span style={{ fontSize: 12, color: "var(--color-bt-text)", lineHeight: 1.4 }}>
+                <span style={{ fontWeight: 700 }}>Finish the index to use it.</span> {idxRemainingLabel}.
+              </span>
+            </div>
+            <p style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", marginTop: 6, lineHeight: 1.45 }}>
+              Each rank 1–{holeCount} is used once — setting one already in use swaps with the hole that holds it.
+            </p>
+          </>
+        ) : idxValidation.valid ? (
+          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8, lineHeight: 1.45 }}>
+            All {holeCount} ranks set. Strokes land on the hardest holes; tap any to adjust (it swaps).
+          </p>
+        ) : (
+          <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8, lineHeight: 1.45 }}>
+            Rank every hole 1–{holeCount}, or leave it — skip it and an assigned handicap is used starting on the first hole and continuing on.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
