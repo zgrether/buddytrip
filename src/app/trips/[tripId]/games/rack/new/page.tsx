@@ -14,6 +14,7 @@ import { RsDayScore, RackBoard, type RackTeam } from "@/components/games/rack/Ra
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { playerStats, computeRack, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { unitsFromSchema, strokeIndexOf, initialsOf } from "@/lib/strokePlayConfig";
+import { effectiveStrokes } from "@/lib/handicap";
 import type { Participant, ScoreValues } from "@/components/games/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -142,7 +143,7 @@ export default function RackNStackPage() {
   const participants = useMemo(() => groupsQ.data?.participants ?? [], [groupsQ.data]);
   const handicapOf = useMemo(() => {
     const m = new Map<string, number>();
-    for (const p of participants) m.set(p.user_id as string, (p.handicap_strokes as number | null) ?? 0);
+    for (const p of participants) m.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
     return m;
   }, [participants]);
 
