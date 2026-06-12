@@ -217,8 +217,21 @@ export function CoursePicker({
     onApply({ id: course.id as string, name: course.name as string });
   }
 
+  // On the per-hole screens (stepped entry + single-hole edit) the title is the
+  // course itself, with "Hole N of N" as the subtitle (so the hole number lives
+  // in the header, not buried at the bottom of the editor).
+  const holeShown = editingHole ?? (screen === "entry" ? hole : null);
   const headerTitle =
-    screen === "search" ? "Add a course" : screen === "confirm" ? "Confirm course" : screen === "new" ? "New course" : "Enter holes";
+    holeShown != null
+      ? draft.name.trim() || "New course"
+      : screen === "search"
+        ? "Add a course"
+        : screen === "confirm"
+          ? "Confirm course"
+          : screen === "new"
+            ? "New course"
+            : "Enter holes";
+  const headerSubtitle = holeShown != null ? `Hole ${holeShown} of ${draft.holeCount}` : null;
   const back = () => {
     if (editingHole != null) return setEditingHole(null);
     if (screen === "confirm" || screen === "new") return setScreen("search");
@@ -235,7 +248,10 @@ export function CoursePicker({
         <button onClick={back} aria-label="Back" className="flex h-9 w-9 items-center justify-center">
           <ChevronLeft size={20} style={{ color: "var(--color-bt-text)" }} />
         </button>
-        <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>{headerTitle}</div>
+        <div className="flex min-w-0 flex-col items-center" style={{ lineHeight: 1.1 }}>
+          <div className="max-w-full truncate" style={{ fontSize: 17, fontWeight: 700, color: "var(--color-bt-text)" }}>{headerTitle}</div>
+          {headerSubtitle && <div style={{ fontSize: 11.5, fontWeight: 500, color: "var(--color-bt-text-dim)", marginTop: 2 }}>{headerSubtitle}</div>}
+        </div>
         <button onClick={onClose} aria-label="Close" className="flex h-9 w-9 items-center justify-center">
           <X size={20} style={{ color: "var(--color-bt-text-dim)" }} />
         </button>
@@ -458,7 +474,7 @@ function ConfirmScreen({
         {!indexUsable ? (
           <div className="mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5" style={{ background: "var(--color-bt-warning-faint)", borderColor: "var(--color-bt-warning-border)" }}>
             <AlertTriangle size={15} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
-            <span style={{ fontSize: 12.5, color: "var(--color-bt-warning)" }}>
+            <span style={{ fontSize: 12.5, color: "var(--color-bt-text)" }}>
               Stroke index started but incomplete — finish it (a wrong index mis-allocates handicap strokes), or clear it to play on par alone. Tap the flagged holes.
             </span>
           </div>
@@ -708,6 +724,10 @@ function EntryScreen({
 }) {
   const n = draft.holeCount;
   const completed = draft.index.map((v, i) => (v != null ? i + 1 : 0)).filter(Boolean);
+  // The keypad is a yards tool — it docks only while the yards field is focused
+  // (tap the field to open, "Done" to dismiss). Hole nav is the ‹ › arrows; the
+  // footer carries Next / Save when the keypad isn't up.
+  const [yardsActive, setYardsActive] = useState(false);
   const yardsOf = () => draft.teeSets[activeTee]?.yards[hole - 1] ?? null;
   const pushDigit = (d: number) => {
     const cur = yardsOf();
@@ -722,13 +742,13 @@ function EntryScreen({
   };
   const lastHole = hole >= n;
   const onNext = () => (lastHole ? onSave() : setHole(hole + 1));
+  const footerLabel = lastHole ? (!indexUsable ? "Finish the index" : saving ? "Saving…" : "Save course") : `Hole ${hole + 1} ›`;
 
   return (
     <>
       <div className="flex shrink-0 items-center justify-between" style={{ padding: "12px 16px" }}>
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => setHole(hole - 1)} />
-        <div className="flex flex-col items-center" style={{ gap: 10, flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-bt-text)" }}>Hole {hole}</div>
+        <div className="flex flex-col items-center" style={{ flex: 1, minWidth: 0 }}>
           <HoleProgress count={n} currentHole={hole} completed={completed} />
         </div>
         <NavArrow dir="next" disabled={hole >= n} onClick={() => setHole(hole + 1)} />
@@ -747,17 +767,16 @@ function EntryScreen({
           activeTee={activeTee}
           onTee={setActiveTee}
           yards={yardsOf()}
-          yardsActive
-          onYardsTap={() => {}}
+          yardsActive={yardsActive}
+          onYardsTap={() => setYardsActive(true)}
         />
       </div>
 
-      <Keypad
-        onDigit={pushDigit}
-        onBackspace={backspace}
-        onNext={onNext}
-        nextLabel={lastHole ? (!indexUsable ? "Finish the index" : saving ? "Saving…" : "Save ›") : `Hole ${hole + 1} ›`}
-      />
+      {yardsActive ? (
+        <Keypad onDigit={pushDigit} onBackspace={backspace} onNext={() => setYardsActive(false)} nextLabel="Done ✓" />
+      ) : (
+        <Footer label={footerLabel} disabled={lastHole && (!indexUsable || saving)} onClick={onNext} />
+      )}
     </>
   );
 }
@@ -840,13 +859,13 @@ function TeeChip({ name, on, onClick }: { name: string; on: boolean; onClick: ()
       onClick={onClick}
       className="flex shrink-0 items-center gap-1.5"
       style={{
-        padding: "5px 12px",
-        borderRadius: 9999,
+        padding: "7px 12px",
+        borderRadius: 8,
         fontSize: 13,
-        fontWeight: 600,
-        border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-        background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-        color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+        fontWeight: on ? 600 : 500,
+        border: "1px solid var(--color-bt-border)",
+        background: on ? "var(--color-bt-card-float)" : "var(--color-bt-card-raised)",
+        color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
       }}
     >
       <span style={{ width: 9, height: 9, borderRadius: "50%", background: teeColor(name), flexShrink: 0 }} />

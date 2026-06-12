@@ -76,13 +76,13 @@ export function HoleEditor({
                   onClick={() => onTee(i)}
                   className="flex shrink-0 items-center gap-1.5"
                   style={{
-                    padding: "5px 11px",
-                    borderRadius: 9999,
+                    padding: "7px 12px",
+                    borderRadius: 8,
                     fontSize: 13,
-                    fontWeight: 600,
-                    border: `1px solid ${on ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-                    background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-                    color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                    fontWeight: on ? 600 : 500,
+                    border: "1px solid var(--color-bt-border)",
+                    background: on ? "var(--color-bt-card-float)" : "var(--color-bt-card-raised)",
+                    color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
                   }}
                 >
                   <span style={{ width: 9, height: 9, borderRadius: "50%", background: teeColor(name), flexShrink: 0 }} />
@@ -202,7 +202,7 @@ export function HoleEditor({
             <>
               <div className="mt-2 flex items-start gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--color-bt-warning-faint)", border: "1px solid var(--color-bt-warning-border)" }}>
                 <AlertTriangle size={14} style={{ color: "var(--color-bt-warning)", flexShrink: 0, marginTop: 1 }} />
-                <span style={{ fontSize: 12, color: "var(--color-bt-warning)", lineHeight: 1.4 }}>
+                <span style={{ fontSize: 12, color: "var(--color-bt-text)", lineHeight: 1.4 }}>
                   <span style={{ fontWeight: 700 }}>Finish the index to use it.</span> {idxRemainingLabel}.
                 </span>
               </div>
@@ -221,10 +221,6 @@ export function HoleEditor({
           No hole difficulty set — strokes fall on holes 1–{holeCount}. Turn on stroke indices for handicaps to land on the hardest holes instead.
         </p>
       )}
-
-      <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
-        Hole {holeNumber} of {holeCount}
-      </p>
     </div>
   );
 }
