@@ -355,9 +355,17 @@ function SearchScreen({
           <div className="mt-5">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Recent courses</p>
             <div className="flex flex-col gap-2">
-              {recent.map((c) => (
-                <CourseRow key={c.id} name={c.name} sub={[c.location, `${c.hole_count} holes`].filter(Boolean).join(" · ")} onClick={() => onPickRecent(c)} />
-              ))}
+              {recent.map((c) => {
+                const par = (c.par ?? []).reduce<number>((a, p) => a + p, 0);
+                return (
+                  <CourseRow
+                    key={c.id}
+                    name={c.name}
+                    sub={[c.location, par ? `Par ${par}` : "", `${c.hole_count} holes`].filter(Boolean).join(" · ")}
+                    onClick={() => onPickRecent(c)}
+                  />
+                );
+              })}
             </div>
           </div>
         )
@@ -413,16 +421,23 @@ function ConfirmScreen({
   onUse: () => void;
 }) {
   const tee = draft.teeSets[activeTee];
+  const totalPar = draft.par.reduce<number>((a, p) => a + p, 0);
+  const totalYards = (tee?.yards ?? []).reduce<number>((a, y) => a + (y ?? 0), 0);
   return (
     <>
       <div className="flex-1 overflow-y-auto" style={{ padding: "16px 16px 8px" }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: "var(--color-bt-text)" }}>{draft.name}</div>
-        {draft.location && (
-          <div className="flex items-center gap-1" style={{ marginTop: 2 }}>
-            <MapPin size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-            <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{draft.location}</span>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-x-2" style={{ marginTop: 2 }}>
+          {draft.location && (
+            <span className="flex items-center gap-1">
+              <MapPin size={13} style={{ color: "var(--color-bt-text-dim)" }} />
+              <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{draft.location}</span>
+            </span>
+          )}
+          <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+            {draft.location ? "· " : ""}Par {totalPar}{totalYards > 0 ? ` · ${totalYards.toLocaleString()} yds` : ""}
+          </span>
+        </div>
 
         {draft.teeSets.length > 0 && (
           <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto">
@@ -453,7 +468,7 @@ function ConfirmScreen({
                 className="flex w-full items-center text-left"
                 style={{ height: 38, background: i % 2 === 0 ? "var(--color-bt-card)" : "var(--color-bt-base)", borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}
               >
-                <Cell bold>{h}</Cell>
+                <Cell bold left>{h}</Cell>
                 <Cell>
                   {tee?.yards[i] != null ? (
                     <span style={{ color: "var(--color-bt-text-dim)" }}>{tee.yards[i]}</span>
@@ -469,6 +484,14 @@ function ConfirmScreen({
               </button>
             );
           })}
+          {/* Course totals — par is course-level; yards is the active tee. */}
+          <div className="flex items-center" style={{ height: 36, background: "var(--color-bt-card-raised)", borderTop: "1px solid var(--color-bt-border)" }}>
+            <Cell bold left>Total</Cell>
+            <Cell dim>{totalYards > 0 ? totalYards.toLocaleString() : "—"}</Cell>
+            <Cell bold>{totalPar}</Cell>
+            {draft.hasStrokeIndex && <Cell> </Cell>}
+            <span style={{ width: ICON_COL, flexShrink: 0 }} />
+          </div>
         </div>
       </div>
       <Footer label={indexComplete ? "Use this course" : `${missingCount} holes need a valid index`} disabled={!indexComplete || saving} onClick={onUse} />
@@ -841,7 +864,7 @@ const ICON_COL = 32;
 function HoleHeader({ hasIndex }: { hasIndex: boolean }) {
   return (
     <div className="flex items-center" style={{ height: 30, background: "var(--color-bt-card-raised)", borderBottom: "1px solid var(--color-bt-border)" }}>
-      <HCell>Hole</HCell>
+      <HCell left>Hole</HCell>
       <HCell>Yds</HCell>
       <HCell>Par</HCell>
       {hasIndex && <HCell>Index</HCell>}
@@ -849,12 +872,12 @@ function HoleHeader({ hasIndex }: { hasIndex: boolean }) {
     </div>
   );
 }
-function HCell({ children }: { children: React.ReactNode }) {
-  return <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-bt-text-dim)" }}>{children}</span>;
+function HCell({ children, left }: { children: React.ReactNode; left?: boolean }) {
+  return <span style={{ flex: 1, minWidth: 0, textAlign: left ? "left" : "center", paddingLeft: left ? 12 : 0, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-bt-text-dim)" }}>{children}</span>;
 }
-function Cell({ children, bold, warn }: { children: React.ReactNode; bold?: boolean; warn?: boolean }) {
+function Cell({ children, bold, warn, left, dim }: { children: React.ReactNode; bold?: boolean; warn?: boolean; left?: boolean; dim?: boolean }) {
   return (
-    <span style={{ flex: 1, minWidth: 0, textAlign: "center", fontSize: 14, fontWeight: bold || warn ? 700 : 500, color: warn ? "var(--color-bt-warning)" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
+    <span style={{ flex: 1, minWidth: 0, textAlign: left ? "left" : "center", paddingLeft: left ? 12 : 0, fontSize: 14, fontWeight: bold || warn ? 700 : 500, color: warn ? "var(--color-bt-warning)" : dim ? "var(--color-bt-text-dim)" : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums" }}>
       {children}
     </span>
   );
