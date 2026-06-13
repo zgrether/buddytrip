@@ -34,7 +34,7 @@ export async function computeCompetitionLeaderboard(
   // an "Abandoned" column, but only LIVE ones feed the roll-up / points-available.
   const { data: gameRows } = await supabase
     .from("games")
-    .select("id, name, points_distribution, status")
+    .select("id, name, points_distribution, status, game_type_id")
     .eq("competition_id", competitionId)
     .order("created_at", { ascending: true });
   const allGames = gameRows ?? [];
@@ -79,12 +79,14 @@ export async function computeCompetitionLeaderboard(
 
   return {
     teams: teams ?? [],
+    defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
     games: allGames.map((g) => ({
       id: g.id as string,
       name: (g.name as string | null) ?? "Game",
       distribution: (g.points_distribution as number[] | null) ?? null,
       status: g.status as string,
       dropped: g.status === "dropped",
+      gameTypeId: (g.game_type_id as string | null) ?? null,
     })),
     cells,
     pointsAvailable: roll.pointsAvailable,
