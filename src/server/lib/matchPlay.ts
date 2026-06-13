@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDecided, matchState } from "@/lib/matchPlay";
 import { effectiveStrokes } from "@/lib/handicap";
+import { isPerMatch, type PerMatchDistribution } from "@/lib/pointsDistribution";
 
 /**
  * DB-persist side of match-play results. Reads each `game_matches` row, gathers
@@ -56,7 +57,7 @@ export async function computeMatchPlayResults(
   const skipComplete = opts?.skipComplete ?? false;
   const { data: matches } = await supabase
     .from("game_matches")
-    .select("id, side_a, side_b, status")
+    .select("id, side_a, side_b, status, result")
     .eq("game_id", gameId);
 
   // Stroke index: the game's course snapshot if one is applied, else undefined
@@ -152,6 +153,25 @@ export async function computeMatchPlayResults(
     await supabase.from("game_results").insert(resultRows);
   }
 
+  // Competition adapter: if this game is in a per_match competition, compute
+  // per-team match totals and write entity_type='team' rows to game_results.
+  // Runs AFTER user rows so the full picture is current before a leaderboard read.
+  const { data: gameInfo } = await supabase
+    .from("games")
+    .select("competition_id, points_distribution")
+    .eq("id", gameId)
+    .maybeSingle();
+  if (gameInfo?.competition_id && isPerMatch(gameInfo.points_distribution)) {
+    await writeTeamMatchPoints(
+      supabase,
+      gameId,
+      gameInfo.competition_id as string,
+      (gameInfo.points_distribution as PerMatchDistribution).value,
+      matches ?? [],
+      outcomes
+    );
+  }
+
   return outcomes;
 }
 
@@ -184,4 +204,81 @@ function mkResult(gameId: string, entityId: string, position: number): GameResul
     position,
     competition_points_earned: null,
   };
+}
+
+/** Aggregate decided match outcomes into per-team competition points and write
+ *  them to game_results (entity_type='team', raw_score=accumulated points).
+ *  Combines skipped-complete matches (from the initial query's result field)
+ *  with freshly-computed outcomes so the team total is always complete. */
+async function writeTeamMatchPoints(
+  supabase: SupabaseClient,
+  gameId: string,
+  competitionId: string,
+  perMatchValue: number,
+  allMatches: { id: unknown; side_a: unknown; side_b: unknown; result: unknown }[],
+  freshOutcomes: MatchOutcome[]
+) {
+  // Fresh outcomes override stale results for the matches we just processed.
+  const resultByMatch = new Map<string, "a_win" | "b_win" | "halve" | null>();
+  for (const m of allMatches) {
+    resultByMatch.set(
+      m.id as string,
+      (m.result as "a_win" | "b_win" | "halve" | null) ?? null
+    );
+  }
+  for (const o of freshOutcomes) {
+    resultByMatch.set(o.matchId, o.result);
+  }
+
+  // user → team for this competition.
+  const { data: assignments } = await supabase
+    .from("team_assignments")
+    .select("user_id, team_id")
+    .eq("competition_id", competitionId);
+  const userTeam = new Map<string, string>();
+  for (const a of assignments ?? []) {
+    userTeam.set(a.user_id as string, a.team_id as string);
+  }
+
+  const teamPoints = new Map<string, number>();
+  for (const m of allMatches) {
+    const result = resultByMatch.get(m.id as string);
+    if (!result) continue;
+    const a = m.side_a as SideRef | null;
+    const b = m.side_b as SideRef | null;
+    if (!a?.id || !b?.id) continue;
+    const aTeam = userTeam.get(a.id);
+    const bTeam = userTeam.get(b.id);
+    if (!aTeam || !bTeam) continue;
+
+    if (result === "a_win") {
+      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + perMatchValue);
+    } else if (result === "b_win") {
+      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + perMatchValue);
+    } else {
+      // halve — each side gets half
+      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + perMatchValue / 2);
+      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + perMatchValue / 2);
+    }
+  }
+
+  // Replace all team rows for this game with fresh totals.
+  await supabase
+    .from("game_results")
+    .delete()
+    .eq("game_id", gameId)
+    .eq("entity_type", "team");
+
+  const rows = [...teamPoints.entries()].map(([teamId, pts]) => ({
+    id: crypto.randomUUID(),
+    game_id: gameId,
+    entity_id: teamId,
+    entity_type: "team" as const,
+    raw_score: pts,
+    position: null as number | null,
+    competition_points_earned: null as null,
+  }));
+  if (rows.length > 0) {
+    await supabase.from("game_results").insert(rows);
+  }
 }

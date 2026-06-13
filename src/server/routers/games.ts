@@ -29,8 +29,14 @@ export const gamesRouter = router({
         name: z.string().max(200).optional(),
         teeTime: z.string().max(5).nullable().optional(), // "HH:MM" 24h
         competitionId: z.string().nullable().optional(), // team formats / competition games
-        // Competition-layer fact: ordered points by place, e.g. [9,6,4,2]. (§2a)
-        pointsDistribution: z.array(z.number().min(0)).max(64).nullable().optional(),
+        // Competition-layer fact: tagged distribution shape (D1 follow-on §1).
+        pointsDistribution: z
+          .discriminatedUnion("type", [
+            z.object({ type: z.literal("placement"), values: z.array(z.number().min(0)).max(64) }),
+            z.object({ type: z.literal("per_match"), value: z.number().min(0) }),
+          ])
+          .nullable()
+          .optional(),
         // Optional, one-directional agenda link — never a gate. (§9)
         scheduleItemId: z.string().uuid().nullable().optional(),
       })
@@ -91,6 +97,7 @@ export const gamesRouter = router({
       // "engine" = computes results from a scorecard; otherwise manual (entered).
       isEngine: t.result_strategy != null,
       isGolf: t.scorecard_schema != null, // golf engine types carry a scorecard
+      resultStrategy: (t.result_strategy as string | null) ?? null,
     }));
   }),
 
@@ -371,7 +378,12 @@ export const gamesRouter = router({
       z.object({
         tripId: z.string(),
         gameId: z.string(),
-        distribution: z.array(z.number().min(0)).max(64).nullable(),
+        distribution: z
+          .discriminatedUnion("type", [
+            z.object({ type: z.literal("placement"), values: z.array(z.number().min(0)).max(64) }),
+            z.object({ type: z.literal("per_match"), value: z.number().min(0) }),
+          ])
+          .nullable(),
       })
     )
     .use(requireGameEdit())
