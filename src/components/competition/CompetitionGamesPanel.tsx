@@ -134,6 +134,7 @@ export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props)
           <button
             type="button"
             onClick={() => setCreating(true)}
+            data-testid="add-game"
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
           >
