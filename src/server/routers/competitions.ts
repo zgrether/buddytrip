@@ -59,6 +59,27 @@ export const competitionsRouter = router({
     .query(({ ctx, input }) => computeCompetitionLeaderboard(ctx.supabase, input.competitionId)),
 
   // -----------------------------------------------------------------------
+  // teamAssignmentCounts — per-team member headcount for this competition.
+  // Used by GameSheet to project per_match total before pairings exist:
+  // projected cap = min(...counts), projected total = value × cap.
+  // -----------------------------------------------------------------------
+  teamAssignmentCounts: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data } = await ctx.supabase
+        .from("team_assignments")
+        .select("team_id")
+        .eq("competition_id", input.competitionId);
+      const counts: Record<string, number> = {};
+      for (const r of data ?? []) {
+        const tid = r.team_id as string;
+        counts[tid] = (counts[tid] ?? 0) + 1;
+      }
+      return counts;
+    }),
+
+  // -----------------------------------------------------------------------
   // create — new competition for a trip (canEdit, MVP one-per-trip)
   // -----------------------------------------------------------------------
   create: authedProcedure

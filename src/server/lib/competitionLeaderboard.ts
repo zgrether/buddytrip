@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, type LiveGame } from "@/lib/competitionPlacement";
+import { isPerMatch, isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
  * Server roll-up wrapper (Slice D1 §5/§6). The DB-read half of the CLAUDE.md #8
@@ -7,12 +8,17 @@ import { rollUp, placementDetail, type LiveGame } from "@/lib/competitionPlaceme
  * client-safe pure `rollUp` — so the leaderboard the crew sees and any persisted
  * total can't diverge.
  *
- * Standings spine: every game_results row (entity_type 'team') carries a
- * `position` (1 = best) — engine games COMPUTE it, manual games have it ENTERED
- * (games.setManualResults). The roll-up never distinguishes the two. Direction is
- * low_wins on position. A Phase-1 shell (distribution set, no results yet) still
- * contributes points-available. `dropped` games are excluded here — which is why
- * dropping/restoring moves the win number (it's derived, never stored).
+ * Standings spine:
+ *  - placement games: game_results entity_type='team', position=rank (1=best),
+ *    direction low_wins. Distribution values are the ranked payout array.
+ *  - per_match games: game_results entity_type='team', raw_score=match points
+ *    (written by the adapter in computeMatchPlayResults). No position. We build a
+ *    SYNTHETIC distribution (sorted actual points) so rollUp's placementPoints
+ *    passes the values through directly (direction high_wins).
+ *
+ * `dropped` games are excluded from the roll-up — which is why
+ * dropping/restoring a game recomputes the win number (§4): it is derived here,
+ * never stored.
  */
 export async function computeCompetitionLeaderboard(
   supabase: SupabaseClient,
@@ -49,6 +55,8 @@ export async function computeCompetitionLeaderboard(
         .eq("entity_type", "team")
     : { data: [] as { game_id: string; entity_id: string; position: number | null; raw_score: number | null }[] };
 
+  // For placement games: value = position (lower wins).
+  // For per_match games: value = raw_score (match points, higher wins).
   const standingsByGame = new Map<string, { entityId: string; value: number }[]>();
   for (const r of results ?? []) {
     const arr = standingsByGame.get(r.game_id as string) ?? [];
@@ -56,13 +64,41 @@ export async function computeCompetitionLeaderboard(
     standingsByGame.set(r.game_id as string, arr);
   }
 
-  const liveGames: LiveGame[] = live.map((g) => ({
-    id: g.id as string,
-    distribution: (g.points_distribution as number[] | null) ?? null,
-    numTeams: teamIds.length,
-    standings: standingsByGame.get(g.id as string) ?? [],
-    direction: "low_wins", // standing = position (1 = best)
-  }));
+  const liveGames: LiveGame[] = live.map((g) => {
+    const rawDist = g.points_distribution as PointsDistribution | null;
+    const standings = standingsByGame.get(g.id as string) ?? [];
+
+    if (isPerMatch(rawDist)) {
+      // Adapter (computeMatchPlayResults) writes raw_score per team. Build a
+      // synthetic distribution = sorted actual points so placementPoints passes
+      // them through unchanged (direction high_wins).
+      if (standings.length === 0) {
+        // No decided matches yet — no contribution to points-available or teamTotals.
+        return { id: g.id as string, distribution: null, numTeams: teamIds.length, standings: [], direction: "high_wins" as const };
+      }
+      const sorted = [...standings].sort((a, b) => b.value - a.value);
+      return {
+        id: g.id as string,
+        distribution: sorted.map((s) => s.value),
+        numTeams: teamIds.length,
+        standings: sorted,
+        direction: "high_wins" as const,
+      };
+    }
+
+    if (isPlacement(rawDist)) {
+      return {
+        id: g.id as string,
+        distribution: rawDist.values,
+        numTeams: teamIds.length,
+        standings,
+        direction: "low_wins" as const,
+      };
+    }
+
+    // null / unknown shape — contributes nothing
+    return { id: g.id as string, distribution: null, numTeams: teamIds.length, standings: [], direction: "low_wins" as const };
+  });
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
 
@@ -83,7 +119,7 @@ export async function computeCompetitionLeaderboard(
     games: allGames.map((g) => ({
       id: g.id as string,
       name: (g.name as string | null) ?? "Game",
-      distribution: (g.points_distribution as number[] | null) ?? null,
+      distribution: (g.points_distribution as PointsDistribution | null) ?? null,
       status: g.status as string,
       dropped: g.status === "dropped",
       gameTypeId: (g.game_type_id as string | null) ?? null,

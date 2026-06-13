@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { rollUp, placementPoints, winThreshold, type LiveGame } from "../../lib/competitionPlacement";
+import type { PointsDistribution } from "../../lib/pointsDistribution";
 
 /**
  * Slice D2 — CompetitionLeaderboard data contract (§6).
@@ -19,7 +20,7 @@ let tripId: string;
 let competitionId: string;
 const gameIds: string[] = [];
 
-async function makeGame(distribution: number[] | null, name = "Game") {
+async function makeGame(distribution: PointsDistribution | null, name = "Game") {
   const g = (await ctx.caller().games.create({
     tripId,
     gameTypeId: MANUAL,
@@ -68,7 +69,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   });
 
   it("early state: all totals zero, winNumber derived, game returns with no cells", async () => {
-    const gameId = await makeGame([9, 6], "Shell Game");
+    const gameId = await makeGame({ type: "placement", values: [9, 6] }, "Shell Game");
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
 
@@ -86,7 +87,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   });
 
   it("in-progress: scores entered, teamTotals and pointsToClinch update", async () => {
-    const gameId = await makeGame([9, 6], "Scored Game");
+    const gameId = await makeGame({ type: "placement", values: [9, 6] }, "Scored Game");
     await enterResults(gameId, [
       { teamId: teamA, position: 1 },
       { teamId: teamB, position: 2 },
@@ -116,7 +117,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
       gameTypeId: MANUAL,
       name: "Clincher",
       competitionId: cleanComp,
-      pointsDistribution: [10, 0],
+      pointsDistribution: { type: "placement", values: [10, 0] },
     }) as { id: string };
     gameIds.push(g.id);
 
@@ -155,7 +156,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
       gameTypeId: MANUAL,
       name: "Retain Test",
       competitionId: cleanComp,
-      pointsDistribution: [14, 14],
+      pointsDistribution: { type: "placement", values: [14, 14] },
     }) as { id: string };
     gameIds.push(g.id);
 
@@ -191,7 +192,7 @@ describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
       gameTypeId: MANUAL,
       name: "3-way",
       competitionId: comp,
-      pointsDistribution: [9, 6, 4],
+      pointsDistribution: { type: "placement", values: [9, 6, 4] },
     }) as { id: string };
     gameIds.push(g.id);
 
@@ -227,13 +228,13 @@ describe("D2 §6 — dropped game excluded from totals and winNumber", () => {
 
     const g1r = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Live", competitionId: comp,
-      pointsDistribution: [9, 6],
+      pointsDistribution: { type: "placement", values: [9, 6] },
     }) as { id: string };
     const g1 = g1r.id;
     gameIds.push(g1);
     const g2r = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "To Drop", competitionId: comp,
-      pointsDistribution: [9, 6],
+      pointsDistribution: { type: "placement", values: [9, 6] },
     }) as { id: string };
     const g2 = g2r.id;
     gameIds.push(g2);
@@ -267,7 +268,7 @@ describe("D2 §6 — non-engine game with no entry shows at 0, not hidden", () =
 
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Not Entered Yet", competitionId: comp,
-      pointsDistribution: [5, 3],
+      pointsDistribution: { type: "placement", values: [5, 3] },
     }) as { id: string };
     gameIds.push(g.id);
 
@@ -294,7 +295,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     await ctx.createTeam(comp, "A", { shortName: "A" });
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Shape Test", competitionId: comp,
-      pointsDistribution: [9],
+      pointsDistribution: { type: "placement", values: [9] },
     }) as { id: string };
     gameIds.push(g.id);
 
@@ -316,7 +317,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
 
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Delegate", competitionId: comp,
-      pointsDistribution: [9, 6],
+      pointsDistribution: { type: "placement", values: [9, 6] },
     }) as { id: string };
     gameIds.push(g.id);
 

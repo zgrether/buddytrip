@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
+import type { PointsDistribution } from "../../lib/pointsDistribution";
 
 /**
  * Slice D1 — competition-game unification behavior (§5/§6/§8).
@@ -17,7 +18,7 @@ let teamB: string;
 let memberId: string;
 const gameIds: string[] = [];
 
-async function newGame(distribution: number[] | null, name = "Game") {
+async function newGame(distribution: PointsDistribution | null, name = "Game") {
   const g = (await ctx.caller().games.create({
     tripId,
     gameTypeId: MANUAL,
@@ -28,6 +29,9 @@ async function newGame(distribution: number[] | null, name = "Game") {
   gameIds.push(g.id);
   return g.id;
 }
+
+const DIST_9642: PointsDistribution = { type: "placement", values: [9, 6, 4, 2] };
+const DIST_96: PointsDistribution = { type: "placement", values: [9, 6] };
 
 beforeAll(async () => {
   ctx = await TestContext.create();
@@ -50,16 +54,16 @@ afterAll(async () => {
 
 describe("Phase-1 shell + leaderboard (§3/§6)", () => {
   it("a game with all Phase-2 fields null is creatable and contributes points-available", async () => {
-    const id = await newGame([9, 6, 4, 2], "Shell");
+    const id = await newGame(DIST_9642, "Shell");
     const game = (await ctx.caller().games.getById({ tripId, gameId: id })) as {
       scorecard_schema: unknown;
       course_id: unknown;
-      points_distribution: number[];
+      points_distribution: PointsDistribution;
       status: string;
     };
     expect(game.scorecard_schema).toBeNull(); // Phase-2 null…
     expect(game.course_id).toBeNull();
-    expect(game.points_distribution).toEqual([9, 6, 4, 2]); // …but Phase-1 set
+    expect(game.points_distribution).toEqual({ type: "placement", values: [9, 6, 4, 2] }); // …but Phase-1 set
     expect(game.status).toBe("pending");
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
@@ -71,7 +75,7 @@ describe("Phase-1 shell + leaderboard (§3/§6)", () => {
 
 describe("manual adapter → universal roll-up (§5)", () => {
   it("entered per-team placements write game_results and roll up to distribution points", async () => {
-    const id = await newGame([9, 6, 4, 2], "Pickem");
+    const id = await newGame(DIST_9642, "Pickem");
     await ctx.caller().games.setManualResults({
       tripId,
       gameId: id,
@@ -92,7 +96,8 @@ describe("manual adapter → universal roll-up (§5)", () => {
     const tA = await ctx.createTeam(comp2, "A");
     const tB = await ctx.createTeam(comp2, "B");
     const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: MANUAL, name: "Tie", competitionId: comp2, pointsDistribution: [9, 6],
+      tripId, gameTypeId: MANUAL, name: "Tie", competitionId: comp2,
+      pointsDistribution: { type: "placement", values: [9, 6] },
     })) as { id: string };
     gameIds.push(g.id);
     await ctx.caller().games.setManualResults({
@@ -111,8 +116,8 @@ describe("dropping recomputes the win number (§4/§6)", () => {
     const comp3 = await ctx.createCompetition(tripId, "Drop Comp");
     await ctx.createTeam(comp3, "A");
     await ctx.createTeam(comp3, "B");
-    const g1 = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "G1", competitionId: comp3, pointsDistribution: [9, 6] })) as { id: string };
-    const g2 = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "G2", competitionId: comp3, pointsDistribution: [9, 6] })) as { id: string };
+    const g1 = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "G1", competitionId: comp3, pointsDistribution: DIST_96 })) as { id: string };
+    const g2 = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "G2", competitionId: comp3, pointsDistribution: DIST_96 })) as { id: string };
     gameIds.push(g1.id, g2.id);
 
     let lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp3 });
@@ -132,8 +137,8 @@ describe("dropping recomputes the win number (§4/§6)", () => {
 
 describe("per-game organizer delegation (§8)", () => {
   it("a delegated organizer can edit THEIR game but not another; non-members blocked", async () => {
-    const mine = await newGame([9, 6], "Pickem-BJ");
-    const other = await newGame([9, 6], "Scramble");
+    const mine = await newGame(DIST_96, "Pickem-BJ");
+    const other = await newGame(DIST_96, "Scramble");
     await ctx.caller().games.addOrganizer({ tripId, gameId: mine, userId: memberId });
 
     const member = ctx.callerAs("member");
@@ -148,7 +153,7 @@ describe("per-game organizer delegation (§8)", () => {
   });
 
   it("a plain trip member with no grant cannot edit a game", async () => {
-    const g = await newGame([9, 6], "NoGrant");
+    const g = await newGame(DIST_96, "NoGrant");
     await expect(ctx.callerAs("member").games.setStatus({ tripId, gameId: g, status: "active" })).rejects.toThrow(/Organizer|game-organizer/i);
   });
 });

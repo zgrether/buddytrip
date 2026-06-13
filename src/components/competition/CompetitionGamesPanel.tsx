@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Flag, Plus, Pencil, Star, Trash2, X, Trophy, RotateCcw } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
+import type { PointsDistribution } from "@/lib/pointsDistribution";
 
 /**
  * CompetitionGamesPanel — the Slice D1 §7 contest list + creation flow, on
@@ -33,7 +34,7 @@ export interface GameRow {
   game_type_id: string | null;
   name: string | null;
   status: "pending" | "active" | "complete" | "dropped";
-  points_distribution: number[] | null;
+  points_distribution: PointsDistribution | null;
   scorecard_schema: unknown | null;
   schedule_item_id: string | null;
 }
@@ -45,6 +46,7 @@ interface GameType {
   description: string | null;
   isEngine: boolean;
   isGolf: boolean;
+  resultStrategy: string | null;
 }
 
 export function CompetitionGamesPanel({ competitionId, tripId, canEdit }: Props) {
@@ -149,9 +151,18 @@ function GameCard({
   onEdit: () => void;
 }) {
   const dropped = game.status === "dropped";
-  const dist = game.points_distribution ?? [];
-  const total = dist.reduce((a, b) => a + b, 0);
-  const distSummary = dist.length > 0 ? dist.map((p, i) => `${ordinalShort(i + 1)}: ${p}`).join(" · ") : null;
+  const dist = game.points_distribution;
+
+  let total = 0;
+  let distSummary: string | null = null;
+  if (dist?.type === "placement") {
+    total = dist.values.reduce((a, b) => a + b, 0);
+    distSummary = dist.values.length > 0
+      ? dist.values.map((p, i) => `${ordinalShort(i + 1)}: ${p}`).join(" · ")
+      : null;
+  } else if (dist?.type === "per_match") {
+    distSummary = `${fmtValue(dist.value)} pt/match`;
+  }
 
   return (
     <div
@@ -175,7 +186,7 @@ function GameCard({
           <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
             {game.name || "Untitled game"}
           </p>
-          {!dropped && total > 0 && (
+          {!dropped && dist?.type === "placement" && total > 0 && (
             <span className="text-[11px] font-semibold tabular-nums" style={{ color: "var(--color-bt-accent)" }}>
               {total} pt{total === 1 ? "" : "s"}
             </span>
@@ -244,22 +255,52 @@ function GameSheet({
     game?.game_type_id ?? golfTypes[0]?.id ?? otherTypes[0]?.id ?? ""
   );
   const [title, setTitle] = useState(game?.name ?? "");
+  // Placement-mode state
   const [points, setPoints] = useState<number[]>(() => {
     const d = game?.points_distribution;
-    return d && d.length > 0 ? [...d] : [0];
+    if (d?.type === "placement") return d.values.length > 0 ? [...d.values] : [0];
+    return [0];
+  });
+  // Per-match-mode state
+  const [perMatchValue, setPerMatchValue] = useState<number>(() => {
+    const d = game?.points_distribution;
+    if (d?.type === "per_match") return d.value;
+    return 1;
   });
   const [error, setError] = useState<string | null>(null);
 
   const visibleTypes = isGolf ? golfTypes : otherTypes;
   // Keep a valid selection when toggling Golf/Other.
   const effectiveTypeId = visibleTypes.some((t) => t.id === gameTypeId) ? gameTypeId : visibleTypes[0]?.id ?? "";
+  const selectedType = types.find((t) => t.id === effectiveTypeId);
+  const isMatchPlay = selectedType?.resultStrategy === "match_play_singles";
+
+  // Projected total readout for match-play: team assignment counts.
+  const { data: teamCounts } = trpc.competitions.teamAssignmentCounts.useQuery(
+    { tripId, competitionId },
+    { enabled: isMatchPlay }
+  );
+  const projectedCap = useMemo(() => {
+    if (!teamCounts) return null;
+    const sizes = Object.values(teamCounts as Record<string, number>);
+    if (sizes.length === 0) return null;
+    return Math.min(...sizes);
+  }, [teamCounts]);
 
   const create = trpc.games.create.useMutation();
   const update = trpc.games.update.useMutation();
   const setDist = trpc.games.setPointsDistribution.useMutation();
   const setStatus = trpc.games.setStatus.useMutation();
 
-  const total = points.reduce((a, b) => a + (b || 0), 0);
+  const placementTotal = points.reduce((a, b) => a + (b || 0), 0);
+
+  function buildDistribution(): PointsDistribution | null {
+    if (isMatchPlay) {
+      return { type: "per_match", value: perMatchValue > 0 ? perMatchValue : 1 };
+    }
+    const values = points.filter((p) => p > 0);
+    return values.length > 0 ? { type: "placement", values: points.map((p) => p || 0) } : null;
+  }
 
   async function persist(): Promise<boolean> {
     setError(null);
@@ -271,7 +312,7 @@ function GameSheet({
       setError("Pick a format");
       return false;
     }
-    const distribution = points.filter((p) => p > 0).length > 0 ? points.map((p) => p || 0) : null;
+    const distribution = buildDistribution();
     try {
       if (isEdit && game) {
         await update.mutateAsync({ tripId, gameId: game.id, name: title.trim() });
@@ -284,7 +325,6 @@ function GameSheet({
           competitionId,
           pointsDistribution: distribution,
         })) as { id: string };
-        // create takes the distribution inline; nothing more to write.
         void created;
       }
       utils.games.listByTrip.invalidate({ tripId });
@@ -299,8 +339,6 @@ function GameSheet({
   async function handleSaveClose() {
     if (await persist()) onClose();
   }
-  // Shell-only for now: configure deep-link is a follow-on (no per-game config
-  // page yet). Persists the shell exactly like Save & close.
   async function handleSaveConfigure() {
     if (await persist()) onClose();
   }
@@ -368,64 +406,16 @@ function GameSheet({
               />
             </Field>
 
-            <Field label="Points Distribution">
-              <div className="space-y-2">
-                {points.map((p, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <span className="w-16 flex-shrink-0 text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                      {ordinalShort(i + 1)} place
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={p || ""}
-                      onChange={(e) => {
-                        const next = [...points];
-                        next[i] = parseFloat(e.target.value) || 0;
-                        setPoints(next);
-                      }}
-                      placeholder="0"
-                      className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none"
-                      style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-                    />
-                    <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>pts</span>
-                    <button
-                      type="button"
-                      onClick={() => setPoints(points.filter((_, j) => j !== i))}
-                      aria-label={`Remove ${ordinalShort(i + 1)} place`}
-                      className="ml-auto flex h-6 w-6 items-center justify-center rounded-md"
-                      style={{ color: "var(--color-bt-text-dim)" }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-                {(points.length === 0 || (points[points.length - 1] ?? 0) > 0) && (
-                  <button
-                    type="button"
-                    onClick={() => setPoints([...points, 0])}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
-                    style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-                  >
-                    <Plus size={12} style={{ color: "var(--color-bt-accent)" }} />
-                    Add {ordinalShort(points.length + 1)} place
-                  </button>
-                )}
-                {points.length > 0 && (
-                  <div className="mt-1 flex items-center justify-between pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-                    <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Total available
-                    </span>
-                    <span
-                      className="text-sm font-bold tabular-nums"
-                      style={{ color: total > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
-                    >
-                      {total} pt{total === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </Field>
+            {isMatchPlay ? (
+              <PerMatchEditor
+                value={perMatchValue}
+                onChange={setPerMatchValue}
+                projectedCap={projectedCap}
+                teamCountsLoaded={!!teamCounts}
+              />
+            ) : (
+              <PlacementEditor points={points} setPoints={setPoints} total={placementTotal} />
+            )}
 
             {error && (
               <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>
@@ -470,6 +460,139 @@ function GameSheet({
         </div>
       </div>
     </ScrollLock>
+  );
+}
+
+// ── Per-match editor ──────────────────────────────────────────────────────────
+
+function PerMatchEditor({
+  value,
+  onChange,
+  projectedCap,
+  teamCountsLoaded,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  projectedCap: number | null;
+  teamCountsLoaded: boolean;
+}) {
+  const projectedTotal = projectedCap != null ? value * projectedCap : null;
+
+  let totalLabel: string;
+  if (!teamCountsLoaded) {
+    totalLabel = "—";
+  } else if (projectedCap == null || projectedCap === 0) {
+    totalLabel = "— set teams";
+  } else {
+    totalLabel = `proj. ${fmtValue(projectedTotal!)} pts`;
+  }
+
+  return (
+    <Field label="Points per Match">
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <input
+            type="number"
+            min={0.5}
+            step={0.5}
+            value={value}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              if (!isNaN(v) && v > 0) onChange(v);
+            }}
+            className="w-24 rounded-lg px-2 py-1.5 text-sm outline-none"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+          />
+          <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            pt per match · winner takes all, halve splits ½
+          </span>
+        </div>
+        <div className="flex items-center justify-between pt-1" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            Projected total
+          </span>
+          <span
+            className="text-sm font-bold tabular-nums"
+            style={{ color: projectedTotal != null ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+          >
+            {totalLabel}
+          </span>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+// ── Placement editor ──────────────────────────────────────────────────────────
+
+function PlacementEditor({
+  points,
+  setPoints,
+  total,
+}: {
+  points: number[];
+  setPoints: (p: number[]) => void;
+  total: number;
+}) {
+  return (
+    <Field label="Points Distribution">
+      <div className="space-y-2">
+        {points.map((p, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <span className="w-16 flex-shrink-0 text-xs font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {ordinalShort(i + 1)} place
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={p || ""}
+              onChange={(e) => {
+                const next = [...points];
+                next[i] = parseFloat(e.target.value) || 0;
+                setPoints(next);
+              }}
+              placeholder="0"
+              className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+            />
+            <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>pts</span>
+            <button
+              type="button"
+              onClick={() => setPoints(points.filter((_, j) => j !== i))}
+              aria-label={`Remove ${ordinalShort(i + 1)} place`}
+              className="ml-auto flex h-6 w-6 items-center justify-center rounded-md"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+        {(points.length === 0 || (points[points.length - 1] ?? 0) > 0) && (
+          <button
+            type="button"
+            onClick={() => setPoints([...points, 0])}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+            style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+          >
+            <Plus size={12} style={{ color: "var(--color-bt-accent)" }} />
+            Add {ordinalShort(points.length + 1)} place
+          </button>
+        )}
+        {points.length > 0 && (
+          <div className="mt-1 flex items-center justify-between pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+              Total available
+            </span>
+            <span
+              className="text-sm font-bold tabular-nums"
+              style={{ color: total > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
+            >
+              {total} pt{total === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
+      </div>
+    </Field>
   );
 }
 
@@ -532,4 +655,12 @@ function ordinalShort(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/** Format a point value: whole numbers show as-is, 0.5 → "½", 1.5 → "1½". */
+function fmtValue(n: number): string {
+  const whole = Math.floor(n);
+  const isHalf = Math.abs(n - whole - 0.5) < 0.001;
+  if (!isHalf) return String(whole);
+  return whole === 0 ? "½" : `${whole}½`;
 }
