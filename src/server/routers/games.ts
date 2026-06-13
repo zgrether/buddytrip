@@ -90,7 +90,7 @@ export const gamesRouter = router({
   listTypes: authedProcedure.query(async ({ ctx }) => {
     const { data, error } = await ctx.supabase
       .from("game_type_templates")
-      .select("id, key, name, description, result_strategy, scorecard_schema, category, sort_order")
+      .select("id, key, name, description, result_strategy, scorecard_schema, category, compatible_modifiers, sort_order")
       .order("sort_order", { ascending: true });
     if (error) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to list game types: ${error.message}` });
@@ -106,6 +106,8 @@ export const gamesRouter = router({
       resultStrategy: (t.result_strategy as string | null) ?? null,
       // The creation Type tier (golf | card | yard | bar | other). Data-driven.
       category: (t.category as string | null) ?? "other",
+      // Optional special rules this format supports (SPECIAL RULES toggles).
+      compatibleModifiers: (t.compatible_modifiers as string[] | null) ?? [],
     }));
   }),
 
@@ -349,6 +351,9 @@ export const gamesRouter = router({
           .optional(),
         // Free-text "rules of the day" (Configuration tab). Owner or delegate.
         rulesForToday: z.string().max(2000).nullable().optional(),
+        // Enabled special rules + per-rule config, keyed by modifier (golf
+        // SPECIAL RULES). Presence of a key = enabled. Owner or delegate.
+        modifiers: z.record(z.string(), z.record(z.string(), z.unknown())).nullable().optional(),
       })
     )
     .use(requireGameEdit())
@@ -359,6 +364,7 @@ export const gamesRouter = router({
       if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
       if (input.competitionFormat !== undefined) patch.competition_format = input.competitionFormat;
       if (input.rulesForToday !== undefined) patch.rules_for_today = input.rulesForToday;
+      if (input.modifiers !== undefined) patch.modifiers = input.modifiers;
       if (Object.keys(patch).length === 0) return { success: true };
       const { error } = await ctx.supabase.from("games").update(patch).eq("id", input.gameId).eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to update game: ${error.message}` });

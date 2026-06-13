@@ -46,6 +46,7 @@ export interface GameRow {
   points_total: number | null;
   competition_format: string | null;
   rules_for_today: string | null;
+  modifiers: Record<string, Record<string, unknown>> | null;
   scorecard_schema: unknown | null;
   course_id: string | null;
   schedule_item_id: string | null;
@@ -60,6 +61,7 @@ interface GameType {
   isGolf: boolean;
   resultStrategy: string | null;
   category: string;
+  compatibleModifiers: string[];
 }
 
 interface Member { memberId: string; displayName: string }
@@ -86,6 +88,14 @@ const COMP_FORMATS = [
 function formatLabel(key: string | null): string | null {
   return COMP_FORMATS.find((f) => f.key === key)?.label ?? null;
 }
+
+/** Display metadata for the golf special-rule keys. Which rules are AVAILABLE
+ *  comes from the game type's model (compatibleModifiers); this is just the copy.
+ *  Per-rule configurability is deferred — each is on/off for now. */
+const SPECIAL_RULES: Record<string, { label: string; desc: string }> = {
+  moving_tees: { label: "Moving tees", desc: "The trailing team picks the tee box on the next hole." },
+  glorious_holes: { label: "Glorious finishing holes", desc: "The closing holes carry extra weight." },
+};
 
 /** Singles vs doubles for the match readout. Only singles exists today. */
 function matchFormatFor(gameTypeId: string | null): MatchFormat {
@@ -299,6 +309,8 @@ function GameSheet({
   });
   const [compFormat, setCompFormat] = useState<string | null>(game?.competition_format ?? null);
   const [rules, setRules] = useState<string>(game?.rules_for_today ?? "");
+  // Enabled special rules (golf) — keyed by modifier, value = per-rule config.
+  const [modifiers, setModifiers] = useState<Record<string, Record<string, unknown>>>(game?.modifiers ?? {});
   // Single delegate. undefined = not-yet-initialized from the existing grant.
   const [delegateId, setDelegateId] = useState<string | null | undefined>(game ? undefined : null);
   const [formatSheetOpen, setFormatSheetOpen] = useState(false);
@@ -373,10 +385,10 @@ function GameSheet({
       if (isEdit && game) {
         gameId = game.id;
         if (canEdit) {
-          await update.mutateAsync({ tripId, gameId, name: title.trim(), competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null });
+          await update.mutateAsync({ tripId, gameId, name: title.trim(), competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
           await setTotalM.mutateAsync({ tripId, gameId, total: isMatchPlay ? null : total });
         } else {
-          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null });
+          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
         }
         await setDist.mutateAsync({ tripId, gameId, distribution });
       } else {
@@ -385,8 +397,8 @@ function GameSheet({
           pointsDistribution: distribution, pointsTotal: isMatchPlay ? null : total,
         })) as { id: string };
         gameId = created.id;
-        if (compFormat || rules.trim()) {
-          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null });
+        if (compFormat || rules.trim() || Object.keys(modifiers).length > 0) {
+          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null, modifiers });
         }
       }
       if (canEdit) await reconcileDelegate(gameId);
@@ -483,6 +495,9 @@ function GameSheet({
                 perMatchValue={perMatchValue}
                 rules={rules}
                 setRules={setRules}
+                availableModifiers={selectedType?.compatibleModifiers ?? []}
+                modifiers={modifiers}
+                setModifiers={setModifiers}
                 compFormat={compFormat}
                 openFormatSheet={() => setFormatSheetOpen(true)}
               />
@@ -696,13 +711,16 @@ function MatchReadoutLine({ readout }: { readout: ReturnType<typeof matchReadout
 
 function ConfigTab({
   canEdit, members, delegateId, setDelegateId, isMatchPlay, isGolf, courseId, total, placeInputs, setPlaceInputs,
-  placement, pFit, mFit, readout, perMatchValue, rules, setRules, compFormat, openFormatSheet,
+  placement, pFit, mFit, readout, perMatchValue, rules, setRules, availableModifiers, modifiers, setModifiers,
+  compFormat, openFormatSheet,
 }: {
   canEdit: boolean; members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
   isMatchPlay: boolean; isGolf: boolean; courseId: string | null; total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
   placement: ReturnType<typeof validatePlacement>; pFit: ReturnType<typeof placementFit>;
   mFit: ReturnType<typeof matchFit>; readout: ReturnType<typeof matchReadout>;
   perMatchValue: number; rules: string; setRules: (s: string) => void;
+  availableModifiers: string[]; modifiers: Record<string, Record<string, unknown>>;
+  setModifiers: (m: Record<string, Record<string, unknown>>) => void;
   compFormat: string | null; openFormatSheet: () => void;
 }) {
   return (
@@ -737,6 +755,10 @@ function ConfigTab({
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
         />
       </Field>
+
+      {isGolf && availableModifiers.length > 0 && (
+        <SpecialRules available={availableModifiers} modifiers={modifiers} setModifiers={setModifiers} />
+      )}
 
       <Field label="Competition format">
         <button
@@ -869,6 +891,72 @@ function DelegationBlock({
         Hand this game&rsquo;s setup and running to one person — they get their own Configuration tab.
       </p>
     </Field>
+  );
+}
+
+/**
+ * SPECIAL RULES — golf-only, model-driven optional rules (e.g. moving tees,
+ * glorious finishing holes). Which rules appear comes from the game type's
+ * `compatibleModifiers`; enabled ones are stored in `games.modifiers` keyed by
+ * rule, value = per-rule config (deferred — on/off for now).
+ */
+function SpecialRules({
+  available, modifiers, setModifiers,
+}: {
+  available: string[];
+  modifiers: Record<string, Record<string, unknown>>;
+  setModifiers: (m: Record<string, Record<string, unknown>>) => void;
+}) {
+  const toggle = (key: string) => {
+    const next = { ...modifiers };
+    if (next[key]) delete next[key];
+    else next[key] = {};
+    setModifiers(next);
+  };
+  return (
+    <Field label="Special rules">
+      <div className="space-y-1.5">
+        {available.map((key) => {
+          const meta = SPECIAL_RULES[key] ?? { label: key, desc: "" };
+          const on = !!modifiers[key];
+          return (
+            <div
+              key={key}
+              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
+              style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>{meta.label}</p>
+                {meta.desc && <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>{meta.desc}</p>}
+              </div>
+              <Switch on={on} onClick={() => toggle(key)} label={meta.label} />
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+        Optional. Fine-tuning each rule comes later — flip it on now to flag it for the day.
+      </p>
+    </Field>
+  );
+}
+
+function Switch({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onClick}
+      className="relative h-6 w-10 flex-shrink-0 rounded-full transition-colors"
+      style={{ background: on ? "var(--color-bt-accent)" : "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+    >
+      <span
+        className="absolute top-0.5 h-4 w-4 rounded-full transition-all"
+        style={{ left: on ? "20px" : "2px", background: on ? "var(--color-bt-base)" : "var(--color-bt-text-dim)" }}
+      />
+    </button>
   );
 }
 
