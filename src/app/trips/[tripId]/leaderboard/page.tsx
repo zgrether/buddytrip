@@ -4,33 +4,28 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { TopNav } from "@/components/TopNav";
 import { TripBottomNav } from "@/components/BottomNav";
-import { ScoreboardPanel } from "@/components/competition/ScoreboardPanel";
+import { CompetitionLeaderboard } from "@/components/competition/CompetitionLeaderboard";
 
 /**
- * Live Leaderboard — renders the owner's chosen scoreboard style.
+ * Live Leaderboard — Tier-1 competition standings view (Slice D2).
  *
- * Drops the old 4-tab placeholder (Overview / Groups / Trip Info /
- * History). Now this page is just the styled scoreboard. The owner
- * picks the style from the comp tab; everyone else sees whatever was
- * picked. The scoreboard is driven by the games-based competition
- * leaderboard (game_results); manual placement entry on a game is a
- * follow-on UI (games.setManualResults).
+ * Renders the CompetitionLeaderboard hero: 2-team head-to-head or N-team ranked
+ * list, magic number, session breakdown, clinch state. Data comes from the
+ * competitions.leaderboard query (no realtime subscription in D2 scope — the
+ * component polls on a 30-second interval; a future realtime invalidation can
+ * drop in without a rewrite). The owner's scoreboard-style picker (8 variants)
+ * stays on the Comp tab (ScoreboardPanel); this page is the dedicated hero view.
  *
- * Shows a placeholder when the competition isn't live yet (status !==
- * "active"). The bottom-nav Live entry only renders when status ===
- * "active", so most users shouldn't see that state — it's a fallback
- * for hard URL loads.
+ * Shows a placeholder when the competition isn't live (status !== "active").
  */
 export default function LiveLeaderboardPage() {
   const { tripId } = useParams<{ tripId: string }>();
-  const { isOwner } = useTripRole(tripId);
 
   // Realtime subscription so the leaderboard reflects owner changes
-  // (scoreboard_style, Go Live toggle) without a refresh.
+  // (Go Live toggle) without a refresh.
   useRealtimeCompetition(tripId);
 
   const { data: competition, isLoading } = trpc.competitions.getByTrip.useQuery({
@@ -64,19 +59,14 @@ export default function LiveLeaderboardPage() {
                 </p>
               )}
             </div>
-            <ScoreboardPanel
+            <CompetitionLeaderboard
               competitionId={competition.id}
               tripId={tripId}
-              isOwner={!!isOwner}
             />
           </div>
         )}
       </div>
 
-      {/* Bottom nav — only render when the comp is live (matches
-          page.tsx). Live tab will highlight as active since pathname
-          matches its href. When not live, the inline CTA in the empty
-          state handles navigation back. */}
       {competition?.status === "active" && (
         <TripBottomNav tripId={tripId} showComp={true} />
       )}
