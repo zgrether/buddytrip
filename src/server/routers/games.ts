@@ -90,7 +90,7 @@ export const gamesRouter = router({
   listTypes: authedProcedure.query(async ({ ctx }) => {
     const { data, error } = await ctx.supabase
       .from("game_type_templates")
-      .select("id, key, name, description, result_strategy, scorecard_schema, sort_order")
+      .select("id, key, name, description, result_strategy, scorecard_schema, category, sort_order")
       .order("sort_order", { ascending: true });
     if (error) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to list game types: ${error.message}` });
@@ -104,6 +104,8 @@ export const gamesRouter = router({
       isEngine: t.result_strategy != null,
       isGolf: t.scorecard_schema != null, // golf engine types carry a scorecard
       resultStrategy: (t.result_strategy as string | null) ?? null,
+      // The creation Type tier (golf | card | yard | bar | other). Data-driven.
+      category: (t.category as string | null) ?? "other",
     }));
   }),
 
@@ -340,6 +342,11 @@ export const gamesRouter = router({
         name: z.string().max(200).nullable().optional(),
         teeTime: z.string().max(5).nullable().optional(),
         scheduleItemId: z.string().uuid().nullable().optional(),
+        // The "How's it played?" label (Configuration tab). Owner or delegate.
+        competitionFormat: z
+          .enum(["head_to_head", "bracket_se", "bracket_de", "best_of_n", "live_results"])
+          .nullable()
+          .optional(),
       })
     )
     .use(requireGameEdit())
@@ -348,6 +355,7 @@ export const gamesRouter = router({
       if (input.name !== undefined) patch.name = input.name;
       if (input.teeTime !== undefined) patch.tee_time = input.teeTime;
       if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
+      if (input.competitionFormat !== undefined) patch.competition_format = input.competitionFormat;
       if (Object.keys(patch).length === 0) return { success: true };
       const { error } = await ctx.supabase.from("games").update(patch).eq("id", input.gameId).eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to update game: ${error.message}` });
