@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Flag, Plus, Pencil, Star, Trash2, X, Trophy, RotateCcw,
-  Spade, Target, Beer, Dices, Swords, Radio, ChevronRight, Check, Users,
+  Flag, Plus, Minus, Pencil, Star, Trash2, X, Trophy, RotateCcw,
+  Spade, Target, Beer, Dices, Swords, Radio, ChevronRight, Check, Users, Info, SlidersHorizontal,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -17,18 +17,14 @@ import {
  * (Game · Configuration), on `games`.
  *
  * Game tab (owner-controlled): Type → format → name → course (golf) → the
- * owner-set point value (a placement TOTAL, or a match per-match value). Non-golf
- * types offer a single "Generic <Type> Game" — manual-scored, never a named
- * "Manual" choice.
+ * owner-set point value (a placement TOTAL, or a match per-match value), set with
+ * an integrated stepper. Non-golf types offer a single "Generic <Type> Game".
  *
  * Configuration tab (the hub returned to via the dashboard tap-through):
- * role-aware delegation at the top; a MODEL-AWARE point editor (placement → place
- * splits that must SUM to the owner total; match → a derived "N matches ready"
- * readout, no place table); the "How's it played?" competition-format chooser;
- * and soft fit-warnings that live here only. A single save persists both tabs.
- *
- * Validation/derivation is the pure gameConfig.ts (shared with the server), so
- * the UI blocks exactly what the API rejects.
+ * a single role-aware delegate at the top; a MODEL-AWARE point editor (placement
+ * → place splits that must SUM to the owner total; match → a derived readout);
+ * the rules-of-the-day explainer; and the "How's it played?" format chooser. A
+ * single save persists both tabs (and reconciles the delegate grant).
  */
 
 interface Props {
@@ -49,6 +45,7 @@ export interface GameRow {
   points_distribution: PointsDistribution | null;
   points_total: number | null;
   competition_format: string | null;
+  rules_for_today: string | null;
   scorecard_schema: unknown | null;
   course_id: string | null;
   schedule_item_id: string | null;
@@ -64,6 +61,8 @@ interface GameType {
   resultStrategy: string | null;
   category: string;
 }
+
+interface Member { memberId: string; displayName: string }
 
 // ── Static option tables ──────────────────────────────────────────────────────
 
@@ -196,8 +195,6 @@ function GameCard({
   const dropped = game.status === "dropped";
   const dist = game.points_distribution;
 
-  // Model-aware points line: placement → "8 · 5│3│0"; match → "8 · 8 matches"
-  // (or "needs split"/"matches not set"); unallocated → "needs split".
   let pointsLine: string | null = null;
   if (dist?.type === "placement") {
     const total = game.points_total ?? dist.values.reduce((a, b) => a + b, 0);
@@ -286,22 +283,24 @@ function GameSheet({
   const [title, setTitle] = useState(game?.name ?? "");
   const [tab, setTab] = useState<Tab>("game");
 
-  // Placement: owner total (Game tab) + the place split (Config tab). 1st place
-  // initializes EMPTY (never 0) so "untouched" stays distinct from "entered 0".
-  const [total, setTotal] = useState<string>(
-    game?.points_total != null ? String(game.points_total) : ""
-  );
+  // Owner total (placement) / per-match value (match) — integer steppers, so
+  // there's always a concrete value (defaults: 8 placement, 1 per match).
+  const [total, setTotal] = useState<number>(game?.points_total ?? 8);
+  const [perMatchValue, setPerMatchValue] = useState<number>(() => {
+    const d = game?.points_distribution;
+    return d?.type === "per_match" ? d.value : 1;
+  });
+  // Placement split. 1st place initializes EMPTY (never 0) so "untouched" stays
+  // distinct from "entered 0".
   const [placeInputs, setPlaceInputs] = useState<string[]>(() => {
     const d = game?.points_distribution;
     if (d?.type === "placement" && d.values.length > 0) return d.values.map(String);
     return [""];
   });
-  // Match: per-match value (Game tab).
-  const [perMatchValue, setPerMatchValue] = useState<string>(() => {
-    const d = game?.points_distribution;
-    return d?.type === "per_match" ? String(d.value) : "1";
-  });
   const [compFormat, setCompFormat] = useState<string | null>(game?.competition_format ?? null);
+  const [rules, setRules] = useState<string>(game?.rules_for_today ?? "");
+  // Single delegate. undefined = not-yet-initialized from the existing grant.
+  const [delegateId, setDelegateId] = useState<string | null | undefined>(game ? undefined : null);
   const [formatSheetOpen, setFormatSheetOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -309,10 +308,21 @@ function GameSheet({
   const categoryTypes = types.filter((t) => t.category === category);
   const effectiveTypeId = categoryTypes.some((t) => t.id === gameTypeId) ? gameTypeId : categoryTypes[0]?.id ?? "";
   const selectedType = types.find((t) => t.id === effectiveTypeId);
-  const isMatchPlay = selectedType?.resultStrategy === "match_play"; // FIX: was compared to a key
+  const isMatchPlay = selectedType?.resultStrategy === "match_play";
   const isGolf = category === "golf";
 
-  // Team headcounts drive the match readout + placement fit (members-with-teams).
+  // Members (for the delegate picker + name resolution) and the existing grant.
+  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, { enabled: canEdit });
+  const orgQuery = trpc.games.listOrganizers.useQuery(
+    { tripId, gameId: game?.id ?? "" },
+    { enabled: !!game?.id }
+  );
+  const originalOrgId = ((orgQuery.data as { user_id: string }[] | undefined)?.[0]?.user_id) ?? null;
+  useEffect(() => {
+    if (game && delegateId === undefined && orgQuery.isSuccess) setDelegateId(originalOrgId);
+  }, [game, delegateId, orgQuery.isSuccess, originalOrgId]);
+  const desiredDelegate = delegateId === undefined ? originalOrgId : delegateId;
+
   const { data: teamCounts } = trpc.competitions.teamAssignmentCounts.useQuery({ tripId, competitionId });
   const teamSizes = useMemo(() => Object.values((teamCounts as Record<string, number>) ?? {}), [teamCounts]);
   const numTeams = teamSizes.length;
@@ -322,53 +332,64 @@ function GameSheet({
   const setDist = trpc.games.setPointsDistribution.useMutation();
   const setTotalM = trpc.games.setPointsTotal.useMutation();
   const setStatus = trpc.games.setStatus.useMutation();
+  const addOrg = trpc.games.addOrganizer.useMutation();
+  const removeOrg = trpc.games.removeOrganizer.useMutation();
 
-  // Derived placement validation (the same pure fn the server uses).
-  const totalNum = Number(total) || 0;
+  // Derived validation (the same pure fn the server uses).
   const started = !isMatchPlay && (placeInputs[0]?.trim() ?? "") !== "";
   const enteredValues = started ? placeInputs.map((s) => Number(s.trim() || "0")) : [];
-  const placement = validatePlacement(totalNum, enteredValues);
+  const placement = validatePlacement(total, enteredValues);
   const pFit = placementFit(enteredValues, numTeams);
   const mFit = matchFit(teamSizes, matchFormatFor(effectiveTypeId));
-  const readout = matchReadout(Number(perMatchValue) || 0, teamSizes, matchFormatFor(effectiveTypeId));
+  const readout = matchReadout(perMatchValue, teamSizes, matchFormatFor(effectiveTypeId));
+  const blockedPartial = started && !placement.saveable;
+
+  // Clear a submit error as soon as the user changes anything relevant.
+  useEffect(() => {
+    if (error) setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, total, perMatchValue, placeInputs, compFormat, effectiveTypeId, rules]);
 
   function buildDistribution(): PointsDistribution | null {
-    if (isMatchPlay) return { type: "per_match", value: Number(perMatchValue) > 0 ? Number(perMatchValue) : 1 };
+    if (isMatchPlay) return { type: "per_match", value: perMatchValue > 0 ? perMatchValue : 1 };
     return started ? { type: "placement", values: enteredValues } : null;
+  }
+
+  async function reconcileDelegate(gameId: string) {
+    const original = isEdit ? originalOrgId : null;
+    if (desiredDelegate === original) return;
+    if (original) await removeOrg.mutateAsync({ tripId, gameId, userId: original });
+    if (desiredDelegate) await addOrg.mutateAsync({ tripId, gameId, userId: desiredDelegate });
   }
 
   async function persist(): Promise<boolean> {
     setError(null);
-    if (canEdit && !title.trim()) { setError("Title is required"); setTab("game"); return false; }
+    if (canEdit && !title.trim()) { setError("Add a title to save this game"); setTab("game"); return false; }
     if (!effectiveTypeId) { setError("Pick a format"); setTab("game"); return false; }
-    if (canEdit && !isMatchPlay && totalNum <= 0) { setError("Set a point value on the Game tab"); setTab("game"); return false; }
-    if (!isMatchPlay && started && !placement.saveable) {
-      setError(`Points must total ${fmtValue(totalNum)} exactly — ${fmtValue(placement.allocated)} of ${fmtValue(totalNum)} placed`);
-      setTab("config");
-      return false;
-    }
+    if (blockedPartial) { setTab("config"); return false; } // button is disabled too
     const distribution = buildDistribution();
     try {
+      let gameId: string;
       if (isEdit && game) {
+        gameId = game.id;
         if (canEdit) {
-          await update.mutateAsync({ tripId, gameId: game.id, name: title.trim(), competitionFormat: (compFormat as never) ?? null });
-          await setTotalM.mutateAsync({ tripId, gameId: game.id, total: isMatchPlay ? null : totalNum });
+          await update.mutateAsync({ tripId, gameId, name: title.trim(), competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null });
+          await setTotalM.mutateAsync({ tripId, gameId, total: isMatchPlay ? null : total });
         } else {
-          // Delegate: distribution + format only (can't touch name/total).
-          await update.mutateAsync({ tripId, gameId: game.id, competitionFormat: (compFormat as never) ?? null });
+          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null });
         }
-        await setDist.mutateAsync({ tripId, gameId: game.id, distribution });
+        await setDist.mutateAsync({ tripId, gameId, distribution });
       } else {
         const created = (await create.mutateAsync({
-          tripId,
-          gameTypeId: effectiveTypeId,
-          name: title.trim(),
-          competitionId,
-          pointsDistribution: distribution,
-          pointsTotal: isMatchPlay ? null : totalNum,
+          tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
+          pointsDistribution: distribution, pointsTotal: isMatchPlay ? null : total,
         })) as { id: string };
-        if (compFormat) await update.mutateAsync({ tripId, gameId: created.id, competitionFormat: compFormat as never });
+        gameId = created.id;
+        if (compFormat || rules.trim()) {
+          await update.mutateAsync({ tripId, gameId, competitionFormat: (compFormat as never) ?? null, rulesForToday: rules.trim() || null });
+        }
       }
+      if (canEdit) await reconcileDelegate(gameId);
       utils.games.listByTrip.invalidate({ tripId });
       utils.competitions.leaderboard.invalidate({ tripId, competitionId });
       return true;
@@ -405,7 +426,6 @@ function GameSheet({
           style={{ background: "var(--color-bt-card-float)", border: "1px solid var(--color-bt-border)" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header + tabs */}
           <div style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
             <div className="flex items-center justify-between px-4 py-3">
               <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
@@ -447,10 +467,11 @@ function GameSheet({
             ) : (
               <ConfigTab
                 canEdit={canEdit}
-                tripId={tripId}
-                gameId={game?.id ?? null}
+                members={members as Member[]}
+                delegateId={desiredDelegate}
+                setDelegateId={setDelegateId}
                 isMatchPlay={isMatchPlay}
-                totalNum={totalNum}
+                total={total}
                 placeInputs={placeInputs}
                 setPlaceInputs={setPlaceInputs}
                 placement={placement}
@@ -458,6 +479,8 @@ function GameSheet({
                 mFit={mFit}
                 readout={readout}
                 perMatchValue={perMatchValue}
+                rules={rules}
+                setRules={setRules}
                 compFormat={compFormat}
                 openFormatSheet={() => setFormatSheetOpen(true)}
               />
@@ -466,7 +489,6 @@ function GameSheet({
             {error && <p className="text-xs" style={{ color: "var(--color-bt-danger)" }}>{error}</p>}
           </div>
 
-          {/* Footer */}
           <div className="flex items-center gap-2 border-t p-4" style={{ borderColor: "var(--color-bt-border)" }}>
             {isEdit && game && canEdit && (
               <button
@@ -494,7 +516,7 @@ function GameSheet({
             <button
               type="button"
               onClick={handleSave}
-              disabled={busy}
+              disabled={busy || blockedPartial}
               data-testid="save-game"
               className="flex-1 rounded-xl py-3 text-sm font-semibold disabled:opacity-50"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
@@ -527,10 +549,10 @@ function GameTab({
   setCategory: (c: string) => void; categoryTypes: GameType[]; effectiveTypeId: string;
   setGameTypeId: (id: string) => void; selectedType: GameType | undefined; title: string;
   setTitle: (s: string) => void; isGolf: boolean; courseId: string | null; isMatchPlay: boolean;
-  total: string; setTotal: (s: string) => void; perMatchValue: string; setPerMatchValue: (s: string) => void;
+  total: number; setTotal: (n: number) => void; perMatchValue: number; setPerMatchValue: (n: number) => void;
   readout: ReturnType<typeof matchReadout>;
 }) {
-  const readOnly = !canEdit; // delegate: Game tab is the owner's, shown read-only
+  const readOnly = !canEdit;
   return (
     <>
       {!isEdit && (
@@ -553,7 +575,7 @@ function GameTab({
           </div>
           {selectedType && !selectedType.isEngine && (
             <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-              No built-in scoring engine for this type yet — name it below and enter the result by hand. Known games (Poker, Euchre…) get their own scoring later.
+              No built-in scoring engine for this type yet — name it below and enter the result by hand.
             </p>
           )}
         </Field>
@@ -586,44 +608,78 @@ function GameTab({
       )}
 
       {isMatchPlay ? (
-        <Field label="Points per match">
-          <div className="flex items-center gap-3">
-            <input
-              type="number" min={0.5} step={0.5} value={perMatchValue} readOnly={readOnly}
-              onChange={(e) => setPerMatchValue(e.target.value)}
-              className="w-24 rounded-lg px-2 py-1.5 text-sm outline-none"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-            />
-            <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-              per match · winner takes all, halve splits ½
-            </span>
-          </div>
-          <MatchReadoutLine readout={readout} />
-        </Field>
+        <PointStepper
+          label="Points per match"
+          caption="POINTS PER MATCH"
+          value={perMatchValue}
+          onChange={readOnly ? () => {} : setPerMatchValue}
+          footer={<MatchReadoutLine readout={readout} />}
+        />
       ) : (
-        <Field label="Point value" required>
-          <div className="flex items-center gap-3">
-            <input
-              type="number" min={0} step={1} value={total} readOnly={readOnly}
-              onChange={(e) => setTotal(e.target.value)}
-              placeholder="8"
-              className="w-24 rounded-lg px-2 py-1.5 text-sm outline-none"
-              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
-            />
-            <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>points for this game</span>
-          </div>
-          <p className="mt-1.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Split across finishing places on the Configuration tab ›
-          </p>
-        </Field>
+        <PointStepper
+          label="Point value"
+          caption="POINTS FOR THIS GAME"
+          value={total}
+          onChange={readOnly ? () => {} : setTotal}
+          footer={
+            <div className="flex items-center gap-1.5">
+              <SlidersHorizontal size={12} style={{ color: "var(--color-bt-text-dim)" }} />
+              <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                Split across finishing places on the Configuration tab ›
+              </span>
+            </div>
+          }
+        />
       )}
     </>
   );
 }
 
+/** The integrated −/value/+ point control (matches the mock). */
+function PointStepper({
+  label, caption, value, onChange, footer,
+}: {
+  label: string; caption: string; value: number; onChange: (n: number) => void; footer?: React.ReactNode;
+}) {
+  return (
+    <Field label={label} required>
+      <div className="rounded-xl" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
+        <div className="flex items-center gap-3 px-3 py-3">
+          <StepBtn dir="dec" disabled={value <= 1} onClick={() => onChange(Math.max(1, value - 1))} />
+          <div className="flex-1 text-center">
+            <div className="text-3xl font-black leading-none tabular-nums" style={{ color: "var(--color-bt-text)" }}>{fmtValue(value)}</div>
+            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{caption}</div>
+          </div>
+          <StepBtn dir="inc" onClick={() => onChange(value + 1)} />
+        </div>
+        {footer && (
+          <div className="px-3 py-2.5" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </Field>
+  );
+}
+
+function StepBtn({ dir, onClick, disabled }: { dir: "inc" | "dec"; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={dir === "inc" ? "Increase" : "Decrease"}
+      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg disabled:opacity-40"
+      style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+    >
+      {dir === "inc" ? <Plus size={16} /> : <Minus size={16} />}
+    </button>
+  );
+}
+
 function MatchReadoutLine({ readout }: { readout: ReturnType<typeof matchReadout> }) {
   return (
-    <div className="mt-2 flex items-center justify-between pt-1" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+    <div className="flex items-center justify-between">
       <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
         Points available
       </span>
@@ -637,36 +693,48 @@ function MatchReadoutLine({ readout }: { readout: ReturnType<typeof matchReadout
 // ── Configuration tab ─────────────────────────────────────────────────────────
 
 function ConfigTab({
-  canEdit, tripId, gameId, isMatchPlay, totalNum, placeInputs, setPlaceInputs,
-  placement, pFit, mFit, readout, perMatchValue, compFormat, openFormatSheet,
+  canEdit, members, delegateId, setDelegateId, isMatchPlay, total, placeInputs, setPlaceInputs,
+  placement, pFit, mFit, readout, perMatchValue, rules, setRules, compFormat, openFormatSheet,
 }: {
-  canEdit: boolean; tripId: string; gameId: string | null; isMatchPlay: boolean; totalNum: number;
-  placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
+  canEdit: boolean; members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
+  isMatchPlay: boolean; total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
   placement: ReturnType<typeof validatePlacement>; pFit: ReturnType<typeof placementFit>;
   mFit: ReturnType<typeof matchFit>; readout: ReturnType<typeof matchReadout>;
-  perMatchValue: string; compFormat: string | null; openFormatSheet: () => void;
+  perMatchValue: number; rules: string; setRules: (s: string) => void;
+  compFormat: string | null; openFormatSheet: () => void;
 }) {
   return (
     <>
-      <DelegationBlock canEdit={canEdit} tripId={tripId} gameId={gameId} />
+      <DelegationBlock canEdit={canEdit} members={members} delegateId={delegateId} setDelegateId={setDelegateId} />
 
       {isMatchPlay ? (
         <Field label="Point value">
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black tabular-nums" style={{ color: "var(--color-bt-text)" }}>{fmtValue(Number(perMatchValue) || 0)}</span>
+            <span className="text-2xl font-black tabular-nums" style={{ color: "var(--color-bt-text)" }}>{fmtValue(perMatchValue)}</span>
             <span className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>/ match · set on Game tab</span>
           </div>
-          <MatchReadoutLine readout={readout} />
-          <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-            A match game splits the per-match value across matches — no place table. The total lands once team sizes set the match count.
-          </p>
+          <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+            <MatchReadoutLine readout={readout} />
+          </div>
         </Field>
       ) : (
-        <PlacementEditor totalNum={totalNum} placeInputs={placeInputs} setPlaceInputs={setPlaceInputs} placement={placement} />
+        <PlacementEditor total={total} placeInputs={placeInputs} setPlaceInputs={setPlaceInputs} placement={placement} />
       )}
 
       {!isMatchPlay && pFit.state === "warn" && <FitWarning message={pFit.message!} />}
       {isMatchPlay && mFit.state === "warn" && <FitWarning message={mFit.message!} />}
+
+      <Field label="Rules explainer">
+        <textarea
+          value={rules}
+          onChange={(e) => setRules(e.target.value)}
+          rows={3}
+          maxLength={2000}
+          placeholder="Tap out the rules of the day — formats, gimmes, mulligans, tiebreakers…"
+          className="w-full resize-none rounded-lg px-3 py-2 text-sm outline-none"
+          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+        />
+      </Field>
 
       <Field label="Competition format">
         <button
@@ -686,22 +754,19 @@ function ConfigTab({
   );
 }
 
-function DelegationBlock({ canEdit, tripId, gameId }: { canEdit: boolean; tripId: string; gameId: string | null }) {
-  const utils = trpc.useUtils();
+function DelegationBlock({
+  canEdit, members, delegateId, setDelegateId,
+}: {
+  canEdit: boolean; members: Member[]; delegateId: string | null; setDelegateId: (id: string | null) => void;
+}) {
   const [picking, setPicking] = useState(false);
-  const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId }, { enabled: picking });
-  const { data: organizers = [] } = trpc.games.listOrganizers.useQuery(
-    { tripId, gameId: gameId ?? "" },
-    { enabled: !!gameId }
-  );
-  const addOrg = trpc.games.addOrganizer.useMutation();
 
   if (!canEdit) {
     return (
       <div className="flex items-start gap-2.5 rounded-xl px-3 py-3" style={{ background: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }}>
         <Users size={16} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
         <div>
-          <p className="text-sm font-semibold" style={{ color: "var(--color-bt-accent)" }}>You've been asked to help set this up</p>
+          <p className="text-sm font-semibold" style={{ color: "var(--color-bt-accent)" }}>You&rsquo;ve been asked to help set this up</p>
           <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
             Configure away. The owner keeps the basics (name, course, value) on the Game tab.
           </p>
@@ -710,11 +775,19 @@ function DelegationBlock({ canEdit, tripId, gameId }: { canEdit: boolean; tripId
     );
   }
 
-  const orgCount = (organizers as { user_id: string }[]).length;
+  const assigned = members.find((m) => m.memberId === delegateId);
   return (
-    <Field label="Delegate" >
-      {!gameId ? (
-        <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>Save the game first, then you can hand its setup to someone.</p>
+    <Field label="Delegate">
+      {assigned ? (
+        <div
+          className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm"
+          style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
+        >
+          <span className="flex items-center gap-2"><Users size={14} style={{ color: "var(--color-bt-accent)" }} />{assigned.displayName}</span>
+          <button type="button" onClick={() => { setDelegateId(null); setPicking(false); }} aria-label="Remove delegate" className="flex h-6 w-6 items-center justify-center rounded-md" style={{ color: "var(--color-bt-text-dim)" }}>
+            <X size={13} />
+          </button>
+        </div>
       ) : !picking ? (
         <button
           type="button"
@@ -723,19 +796,15 @@ function DelegationBlock({ canEdit, tripId, gameId }: { canEdit: boolean; tripId
           style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
         >
           <Users size={15} style={{ color: "var(--color-bt-accent)" }} />
-          {orgCount > 0 ? `${orgCount} organizer${orgCount === 1 ? "" : "s"} · add another` : "Assign a game organizer"}
+          Assign a game organizer
         </button>
       ) : (
         <div className="space-y-1.5">
-          {(members as { memberId: string; displayName: string }[]).map((m) => (
+          {members.map((m) => (
             <button
               key={m.memberId}
               type="button"
-              onClick={async () => {
-                await addOrg.mutateAsync({ tripId, gameId, userId: m.memberId });
-                utils.games.listOrganizers.invalidate({ tripId, gameId });
-                setPicking(false);
-              }}
+              onClick={() => { setDelegateId(m.memberId); setPicking(false); }}
               className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm"
               style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
             >
@@ -743,10 +812,13 @@ function DelegationBlock({ canEdit, tripId, gameId }: { canEdit: boolean; tripId
               <Plus size={13} style={{ color: "var(--color-bt-accent)" }} />
             </button>
           ))}
+          {members.length === 0 && (
+            <p className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>No crew to assign yet.</p>
+          )}
         </div>
       )}
       <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-        Hand this game's setup and running to someone — they get the game-organizer grant and their own Configuration tab.
+        Hand this game&rsquo;s setup and running to one person — they get their own Configuration tab.
       </p>
     </Field>
   );
@@ -763,16 +835,16 @@ function FitWarning({ message }: { message: string }) {
 // ── Placement editor (distributes the owner total) ────────────────────────────
 
 function PlacementEditor({
-  totalNum, placeInputs, setPlaceInputs, placement,
+  total, placeInputs, setPlaceInputs, placement,
 }: {
-  totalNum: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
+  total: number; placeInputs: string[]; setPlaceInputs: (v: string[]) => void;
   placement: ReturnType<typeof validatePlacement>;
 }) {
   const started = (placeInputs[0]?.trim() ?? "") !== "";
   return (
     <Field label="Point distribution">
-      <p className="mb-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        The owner set this game at <span style={{ color: "var(--color-bt-text)" }}>{fmtValue(totalNum)} points</span>. Spread them across team places — the split must total {fmtValue(totalNum)} exactly.
+      <p className="mb-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
+        The owner set this game at <span className="font-semibold" style={{ color: "var(--color-bt-accent)" }}>{fmtValue(total)} points</span>. Spread them across team places — the split must total {fmtValue(total)} exactly.
       </p>
       <div className="space-y-2">
         {placeInputs.map((p, i) => (
@@ -783,7 +855,6 @@ function PlacementEditor({
             <input
               type="number" min={0} value={p}
               onChange={(e) => { const next = [...placeInputs]; next[i] = e.target.value; setPlaceInputs(next); }}
-              placeholder="pts"
               className="w-20 rounded-lg px-2 py-1.5 text-sm outline-none"
               style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)", border: "1px solid var(--color-bt-border)" }}
             />
@@ -816,21 +887,27 @@ function PlacementEditor({
           <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
             Allocated
           </span>
-          {!started ? (
-            <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>0 of {fmtValue(totalNum)} pts · undistributed for now</span>
-          ) : placement.saveable ? (
-            <span className="flex items-center gap-1 text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-accent)" }}>
-              <Check size={13} /> {fmtValue(placement.allocated)} of {fmtValue(totalNum)} pts
-            </span>
-          ) : (
-            <span className="text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-danger)" }}>
-              {fmtValue(placement.allocated)} of {fmtValue(totalNum)} pts
-            </span>
-          )}
+          <span
+            className="flex items-center gap-1 text-sm font-bold tabular-nums"
+            style={{ color: !started ? "var(--color-bt-text-dim)" : placement.saveable ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}
+          >
+            {started && placement.saveable && <Check size={13} />}
+            {fmtValue(placement.allocated)} of {fmtValue(total)} pts
+          </span>
         </div>
+        {!started && (
+          <div className="flex items-start gap-1.5">
+            <Info size={12} style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }} />
+            <span className="text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
+              Points haven&rsquo;t been distributed yet — it can wait until later.
+            </span>
+          </div>
+        )}
         {started && !placement.saveable && (
           <p className="text-[11px]" style={{ color: "var(--color-bt-danger)" }}>
-            {placement.remaining > 0 ? `${fmtValue(placement.remaining)} left to place` : `${fmtValue(-placement.remaining)} over — total must be ${fmtValue(totalNum)} to save`}
+            {placement.remaining > 0
+              ? `${fmtValue(placement.remaining)} point${placement.remaining === 1 ? "" : "s"} left to allocate`
+              : `${fmtValue(-placement.remaining)} point${-placement.remaining === 1 ? "" : "s"} over — must total ${fmtValue(total)}`}
           </p>
         )}
       </div>
@@ -853,7 +930,7 @@ function FormatSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--color-bt-border)" }}>
-          <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>How's it played?</h3>
+          <h3 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>How&rsquo;s it played?</h3>
           <button type="button" onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ color: "var(--color-bt-text-dim)" }}>
             <X size={16} />
           </button>
@@ -882,7 +959,7 @@ function FormatSheet({
             </button>
           ))}
           <p className="px-1 pt-1 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-            However it runs, you can always enter the result by hand — picking a format never leaves you stuck on "coming soon."
+            However it runs, you can always enter the result by hand — picking a format never leaves you stuck on &ldquo;coming soon.&rdquo;
           </p>
         </div>
       </div>
@@ -944,9 +1021,9 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 flex items-baseline gap-1.5">
+      <div className="mb-1.5 flex items-center gap-1.5">
         <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>{label}</label>
-        {required && <span className="text-[10px]" style={{ color: "var(--color-bt-text-dim)" }}>required</span>}
+        {required && <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-bt-danger)" }} />}
       </div>
       {children}
     </div>

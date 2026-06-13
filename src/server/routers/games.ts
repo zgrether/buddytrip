@@ -347,6 +347,8 @@ export const gamesRouter = router({
           .enum(["head_to_head", "bracket_se", "bracket_de", "best_of_n", "live_results"])
           .nullable()
           .optional(),
+        // Free-text "rules of the day" (Configuration tab). Owner or delegate.
+        rulesForToday: z.string().max(2000).nullable().optional(),
       })
     )
     .use(requireGameEdit())
@@ -356,6 +358,7 @@ export const gamesRouter = router({
       if (input.teeTime !== undefined) patch.tee_time = input.teeTime;
       if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
       if (input.competitionFormat !== undefined) patch.competition_format = input.competitionFormat;
+      if (input.rulesForToday !== undefined) patch.rules_for_today = input.rulesForToday;
       if (Object.keys(patch).length === 0) return { success: true };
       const { error } = await ctx.supabase.from("games").update(patch).eq("id", input.gameId).eq("trip_id", ctx.tripId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to update game: ${error.message}` });
