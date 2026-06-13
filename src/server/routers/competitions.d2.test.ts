@@ -44,10 +44,6 @@ async function enterResults(
     });
 }
 
-async function dropGame(gameId: string) {
-  await ctx.caller().games.drop({ tripId, gameId });
-}
-
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("D2 Leaderboard Trip");
