@@ -6,6 +6,7 @@ import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
 import { buildScorecardSchema, validateStrokeIndex, type ScorecardSchema } from "@/lib/courseIndex";
+import { validatePlacement } from "@/lib/gameConfig";
 
 /**
  * games — the competition-engine spine (Slice A: individual stroke play).
@@ -37,6 +38,10 @@ export const gamesRouter = router({
           ])
           .nullable()
           .optional(),
+        // Owner-set TOTAL for placement games (Stage 3). NULL for match games
+        // (total derived = value × matchCount). Set here on create from the
+        // Game tab; changed later only via setPointsTotal (owner-only).
+        pointsTotal: z.number().min(0).nullable().optional(),
         // Optional, one-directional agenda link — never a gate. (§9)
         scheduleItemId: z.string().uuid().nullable().optional(),
       })
@@ -54,6 +59,7 @@ export const gamesRouter = router({
         name: input.name ?? null,
         tee_time: input.teeTime ?? null,
         points_distribution: input.pointsDistribution ?? null,
+        points_total: input.pointsTotal ?? null,
         schedule_item_id: input.scheduleItemId ?? null,
         status: "pending",
       });
@@ -371,8 +377,32 @@ export const gamesRouter = router({
       return { success: true };
     }),
 
-  // setPointsDistribution — game-edit gate. The competition-layer value
-  // (`[9,6,4,2]`). Editing it re-derives the leaderboard on next read (§5b/§6).
+  // setPointsTotal — Owner/Organizer ONLY (the delegation boundary, Stage 3).
+  // A game's TOTAL is owner-set; a game-delegate distributes WITHIN it but can't
+  // change it. requireTripRole("Organizer") blocks a Member-level delegate
+  // outright (a delegate has only a game_organizers grant, not Organizer role).
+  // NULL clears the total (match games, whose total is derived).
+  setPointsTotal: authedProcedure
+    .input(z.object({ tripId: z.string(), gameId: z.string(), total: z.number().min(0).nullable() }))
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games").select("id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      const { error } = await ctx.supabase
+        .from("games").update({ points_total: input.total }).eq("id", input.gameId).eq("trip_id", ctx.tripId);
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set total: ${error.message}` });
+      return { success: true };
+    }),
+
+  // setPointsDistribution — game-edit gate (owner OR game-delegate). The
+  // competition-layer split. Editing it re-derives the leaderboard on next read
+  // (§5b/§6). Stage 3 sum-to-total: a PLACEMENT split must equal the owner-set
+  // points_total once distribution has BEGUN (values non-empty). An empty
+  // (undistributed) split saves — the shell/delegate state; a PARTIAL one
+  // (entered ≠ total) is rejected. per_match carries no total relationship. Uses
+  // the SAME validatePlacement the client uses (CLAUDE.md #8), so the API can't
+  // accept what the UI blocks.
   setPointsDistribution: authedProcedure
     .input(
       z.object({
@@ -388,6 +418,23 @@ export const gamesRouter = router({
     )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
+      if (input.distribution?.type === "placement") {
+        const { data: game } = await ctx.supabase
+          .from("games").select("points_total").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+        const total = (game?.points_total as number | null) ?? null;
+        // Only enforce when a total exists to enforce against. (A legacy game
+        // with no owner-set total keeps its pre-Slice-D free-form behavior.)
+        if (total != null) {
+          const check = validatePlacement(total, input.distribution.values);
+          if (!check.saveable) {
+            const over = check.remaining < 0;
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Points must total ${total} exactly — ${check.allocated} allocated, ${over ? `${-check.remaining} over` : `${check.remaining} left to place`}.`,
+            });
+          }
+        }
+      }
       const { error } = await ctx.supabase
         .from("games")
         .update({ points_distribution: input.distribution })
